@@ -16,7 +16,20 @@ Design decisions are in **`docs/superpowers/specs/2026-08-13-carbquick-design.md
 - ✅ Toolchain installed and verified
 - ✅ Requirements verified against official docs
 - ✅ Gradle build config resolves; wrapper generated
-- ❌ **No application code written yet** — implementation was deliberately stopped here
+- ✅ **Domain calculation engine** — `CarbCalculator`, `NutritionBasis`, `PortionParser`,
+  `NutritionValueValidator`. Built test-first, 35 JVM tests passing.
+- ✅ **Room + repository** — `ProductEntity`/`ProductDao`/`CarbScanDatabase`/`RoomProductDataSource`
+  and `ProductRepository` owning the §10 lookup priority. 15 JVM tests passing.
+- ⚠️ **`ProductDaoTest` (androidTest) compiles but has never been run** — no emulator here. The DAO's
+  SQL ordering and the TEXT-decimal round-trip are therefore *unverified*.
+- ❌ Not started: OFF remote data source, scanner, OCR, all UI, settings, docs deliverables (§73).
+
+Working app name is **CarbScan** (`app.carbscan`); the docs still say CarbQuick throughout.
+
+Run tests with:
+```powershell
+.\gradlew.bat :app:testDebugUnitTest
+```
 
 ## Toolchain (already installed — do NOT reinstall)
 
@@ -43,6 +56,9 @@ update `JAVA_HOME`. Do not use `winget` — see traps below.
    error. Kotlin options go in the `android { kotlin { } }` block. This is already handled.
 5. **KSP has its own version line** (2.3.11) that does *not* track Kotlin's (2.3.21). Don't "fix"
    the mismatch — it's intentional. Kotlin 2.4.x has no KSP build yet, so 2.4.x is not usable.
+6. **`compileSdk` must be 37, not 36.** AndroidX (core 1.19.0, Compose 1.12.0, lifecycle 2.11.0)
+   refuses to compile against 36. `targetSdk` stays 36 — that's the Play requirement, and the two
+   are independent. `platforms;android-37.0` + `build-tools;37.0.0` are installed.
 
 ## Verified facts (checked 2026-08-13 — do not trust training data over these)
 
