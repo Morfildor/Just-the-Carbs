@@ -155,7 +155,13 @@ dependencies {
     implementation(libs.camera.core)
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
-    implementation(libs.camera.view)
+    // camera-view drags in camera-video -> androidx.media3, which merges ACCESS_NETWORK_STATE into
+    // the manifest. §9 permits CAMERA and INTERNET only, and CarbScan never records video: it binds
+    // Preview and ImageAnalysis, never VideoCapture. Excluding it honours §9 and drops the media3
+    // and muxer code from the APK. (LifecycleCameraController would need this — PreviewView does not.)
+    implementation(libs.camera.view) {
+        exclude(group = "androidx.camera", module = "camera-video")
+    }
     implementation(libs.mlkit.barcode)
     implementation(libs.mlkit.text)
 

@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -360,12 +362,20 @@ private fun QuickAdjustRow(onAdjust: (Int) -> Unit) {
             OutlinedButton(
                 onClick = { onAdjust(delta) },
                 shape = RoundedCornerShape(Space.buttonRadius),
+                // A button's default 24dp side padding leaves too little room for "+10" at a large
+                // font scale, where it truncates to "+1" — a control that lies about what it does.
+                // heightIn rather than height so the row grows instead of clipping (§39).
+                contentPadding = PaddingValues(horizontal = Space.xs, vertical = 0.dp),
                 modifier = Modifier
                     .weight(1f)
-                    .height(Space.minTouchTarget)
+                    .heightIn(min = Space.minTouchTarget)
                     .semantics { contentDescription = description },
             ) {
-                Text(text = if (delta > 0) "+$delta" else "$delta")
+                Text(
+                    text = if (delta > 0) "+$delta" else "$delta",
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
         }
     }
@@ -377,17 +387,21 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
+        // Same large-font constraint as the adjust row, and worse here: the Dutch "Hele
+        // verpakking" is twice the length of "Full pack".
         OutlinedButton(
             onClick = { onSetPortion(pack.divide(BigDecimal(2), 2, RoundingMode.HALF_UP)) },
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-        ) { Text(stringResource(R.string.product_half_pack)) }
+            contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.s),
+            modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
+        ) { Text(stringResource(R.string.product_half_pack), textAlign = TextAlign.Center) }
 
         OutlinedButton(
             onClick = { onSetPortion(pack) },
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-        ) { Text(stringResource(R.string.product_full_pack)) }
+            contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.s),
+            modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
+        ) { Text(stringResource(R.string.product_full_pack), textAlign = TextAlign.Center) }
     }
 }
 
