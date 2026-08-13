@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "a777dad1339b671e3be20040d179690f",
+    "identityHash": "aa6b9ace4fe98dc03ad869ab5f871d73",
     "entities": [
       {
         "tableName": "products",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`barcode` TEXT NOT NULL, `name` TEXT NOT NULL, `carbsPer100` TEXT NOT NULL, `basis` TEXT NOT NULL, `source` TEXT NOT NULL, `brand` TEXT, `packageAmount` TEXT, `servingAmount` TEXT, `imageUrl` TEXT, `originalRemoteCarbs` TEXT, `verifiedAt` INTEGER, `remoteUpdatedAt` INTEGER, `lastUsedAt` INTEGER, `lastPortion` TEXT, `favorite` INTEGER NOT NULL, PRIMARY KEY(`barcode`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`barcode` TEXT NOT NULL, `name` TEXT NOT NULL, `carbsPer100` TEXT NOT NULL, `basis` TEXT NOT NULL, `dataSource` TEXT NOT NULL, `verificationStatus` TEXT NOT NULL, `brand` TEXT, `packageAmount` TEXT, `servingAmount` TEXT, `imageUrl` TEXT, `originalRemoteCarbs` TEXT, `verifiedAt` INTEGER, `remoteUpdatedAt` INTEGER, `lastUsedAt` INTEGER, `lastPortion` TEXT, `favorite` INTEGER NOT NULL, PRIMARY KEY(`barcode`))",
         "fields": [
           {
             "fieldPath": "barcode",
@@ -33,8 +33,14 @@
             "notNull": true
           },
           {
-            "fieldPath": "source",
-            "columnName": "source",
+            "fieldPath": "dataSource",
+            "columnName": "dataSource",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verificationStatus",
+            "columnName": "verificationStatus",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -112,7 +118,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a777dad1339b671e3be20040d179690f')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'aa6b9ace4fe98dc03ad869ab5f871d73')"
     ]
   }
 }

@@ -3,9 +3,10 @@ package app.carbscan.data
 import app.carbscan.domain.LocalProductDataSource
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.Product
+import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
-import app.carbscan.domain.ProductSource
+import app.carbscan.domain.VerificationStatus
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.time.Clock
@@ -57,10 +58,10 @@ class ProductRepository(
     suspend fun refreshFromRemote(barcode: String): Boolean {
         val existing = (local.fetch(barcode) as? ProductFetchResult.Found)?.product
 
-        // The whole point of §23: a verified or manual product is the user's, and a sync may not
-        // touch it. Returning early — rather than fetching and then discarding — also spends no
-        // request against the rate limit.
-        if (existing != null && existing.source.isUserOwned) return false
+        // The whole point of §23: a verified or user-authored product belongs to the user and a
+        // sync may not touch it. Returning early — rather than fetching and then discarding — also
+        // spends no request against the 15/min rate limit.
+        if (existing != null && !existing.isRemoteRefreshable) return false
 
         val fetched = remote.fetch(barcode) as? ProductFetchResult.Found ?: return false
 
@@ -79,6 +80,11 @@ class ProductRepository(
     /**
      * Record that the user confirmed this product against the physical package (§23).
      *
+     * [Product.dataSource] is deliberately left alone. A product that came from Open Food Facts and
+     * was then verified is *both* things, and flattening that into one field would throw away the
+     * provenance — the app could no longer tell a user-typed product from a downloaded one the user
+     * happened to check.
+     *
      * The figure that was on screen beforehand is preserved as [Product.originalRemoteCarbs] so
      * *Reset to online value* remains available and the override stays auditable.
      */
@@ -90,38 +96,61 @@ class ProductRepository(
         packageAmount: BigDecimal? = null,
     ) {
         val existing = requireExisting(barcode)
+        // Only downloaded data has an "online value" to fall back to. Keep the *first* one, so
+        // repeated verifications do not overwrite the original with a previous correction of it.
+        val onlineOriginal = when {
+            existing.dataSource.isUserAuthored -> null
+            else -> existing.originalRemoteCarbs ?: existing.carbsPer100
+        }
         local.save(
             existing.copy(
                 name = name ?: existing.name,
                 carbsPer100 = verifiedCarbsPer100,
                 basis = basis,
                 packageAmount = packageAmount ?: existing.packageAmount,
-                source = ProductSource.USER_VERIFIED,
-                // Keep the *first* online value, so repeated verifications do not overwrite the
-                // original with a previous correction of it.
-                originalRemoteCarbs = existing.originalRemoteCarbs ?: existing.carbsPer100,
+                verificationStatus = VerificationStatus.USER_VERIFIED,
+                originalRemoteCarbs = onlineOriginal,
                 verifiedAt = clock.instant(),
             ),
         )
     }
 
-    /** Undo a verification, returning to the online figure (§23, behind the overflow menu). */
+    /**
+     * Undo a verification, returning to the online figure (§23, behind the overflow menu).
+     * The provenance is untouched — it was always Open Food Facts data and still is.
+     */
     suspend fun resetToOnlineValue(barcode: String) {
         val existing = requireExisting(barcode)
         val online = existing.originalRemoteCarbs ?: return
         local.save(
             existing.copy(
                 carbsPer100 = online,
-                source = ProductSource.REMOTE,
+                verificationStatus = VerificationStatus.UNVERIFIED,
                 originalRemoteCarbs = null,
                 verifiedAt = null,
             ),
         )
     }
 
-    /** Store a product the user typed in themselves (§27), or one built from a confirmed OCR read. */
-    suspend fun saveManualProduct(product: Product) {
-        local.save(product.copy(source = ProductSource.MANUAL))
+    /**
+     * Store a product the user authored: typed in by hand (§27) or built from an OCR read they
+     * confirmed (§29).
+     *
+     * Both count as verified, because in each case the user was reading the physical package when
+     * they entered the number — that is precisely what verification means here.
+     */
+    suspend fun saveUserAuthoredProduct(
+        product: Product,
+        origin: ProductDataOrigin = ProductDataOrigin.MANUAL,
+    ) {
+        require(origin.isUserAuthored) { "$origin is not a user-authored origin" }
+        local.save(
+            product.copy(
+                dataSource = origin,
+                verificationStatus = VerificationStatus.USER_VERIFIED,
+                verifiedAt = clock.instant(),
+            ),
+        )
     }
 
     /** Remember the portion so the next visit pre-fills it, and float the product up Recents (§20, §21). */

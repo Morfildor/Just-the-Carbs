@@ -5,7 +5,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.Product
-import app.carbscan.domain.ProductSource
+import app.carbscan.domain.ProductDataOrigin
+import app.carbscan.domain.VerificationStatus
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -51,13 +52,15 @@ class ProductDaoTest {
         carbs: String = "48.2",
         usedSecondsAfterEpoch: Long? = null,
         favorite: Boolean = false,
-        source: ProductSource = ProductSource.REMOTE,
+        origin: ProductDataOrigin = ProductDataOrigin.OPEN_FOOD_FACTS,
+        verification: VerificationStatus = VerificationStatus.UNVERIFIED,
     ) = Product(
         barcode = barcode,
         name = "Product $barcode",
         carbsPer100 = BigDecimal(carbs),
         basis = NutritionBasis.PER_100_G,
-        source = source,
+        dataSource = origin,
+        verificationStatus = verification,
         lastUsedAt = usedSecondsAfterEpoch?.let(epoch::plusSeconds),
         lastPortion = usedSecondsAfterEpoch?.let { BigDecimal("65") },
         favorite = favorite,
@@ -117,14 +120,15 @@ class ProductDaoTest {
 
     @Test
     fun verificationTimestampRoundTrips() = runTest {
-        val verified = product("111", source = ProductSource.USER_VERIFIED)
+        val verified = product("111", verification = VerificationStatus.USER_VERIFIED)
             .copy(verifiedAt = epoch, originalRemoteCarbs = BigDecimal("50.0"))
         dao.upsert(verified.toEntity())
 
         val stored = dao.findByBarcode("111")!!.toDomain()
 
         assertEquals(epoch, stored.verifiedAt)
-        assertEquals(ProductSource.USER_VERIFIED, stored.source)
+        assertEquals(VerificationStatus.USER_VERIFIED, stored.verificationStatus)
+        assertEquals(ProductDataOrigin.OPEN_FOOD_FACTS, stored.dataSource)
         assertEquals(BigDecimal("50.0"), stored.originalRemoteCarbs)
     }
 
@@ -141,7 +145,7 @@ class ProductDaoTest {
     @Test
     fun clearingRecentHistoryKeepsVerifiedProductsAndFavourites() = runTest {
         dao.upsert(
-            product("111", usedSecondsAfterEpoch = 10, source = ProductSource.USER_VERIFIED)
+            product("111", usedSecondsAfterEpoch = 10, verification = VerificationStatus.USER_VERIFIED)
                 .copy(verifiedAt = epoch)
                 .toEntity(),
         )
@@ -151,7 +155,7 @@ class ProductDaoTest {
 
         val verified = dao.findByBarcode("111")!!.toDomain()
         assertNotNull("the verified product itself must survive", verified)
-        assertEquals(ProductSource.USER_VERIFIED, verified.source)
+        assertEquals(VerificationStatus.USER_VERIFIED, verified.verificationStatus)
         assertNull("but it no longer shows as recent", verified.lastUsedAt)
 
         val favourite = dao.findByBarcode("222")!!.toDomain()

@@ -5,7 +5,8 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.Product
-import app.carbscan.domain.ProductSource
+import app.carbscan.domain.ProductDataOrigin
+import app.carbscan.domain.VerificationStatus
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -28,7 +29,10 @@ data class ProductEntity(
     val name: String,
     val carbsPer100: String,
     val basis: String,
-    val source: String,
+    /** [ProductDataOrigin] name. Provenance — permanent for the life of the row. */
+    val dataSource: String,
+    /** [VerificationStatus] name. Changes independently of [dataSource]. */
+    val verificationStatus: String,
     val brand: String?,
     val packageAmount: String?,
     val servingAmount: String?,
@@ -46,7 +50,8 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
     name = name,
     carbsPer100 = carbsPer100.toPlainString(),
     basis = basis.name,
-    source = source.name,
+    dataSource = dataSource.name,
+    verificationStatus = verificationStatus.name,
     brand = brand,
     packageAmount = packageAmount?.toPlainString(),
     servingAmount = servingAmount?.toPlainString(),
@@ -64,7 +69,8 @@ fun ProductEntity.toDomain(): Product = Product(
     name = name,
     carbsPer100 = BigDecimal(carbsPer100),
     basis = NutritionBasis.valueOf(basis),
-    source = ProductSource.valueOf(source),
+    dataSource = ProductDataOrigin.valueOf(dataSource),
+    verificationStatus = VerificationStatus.valueOf(verificationStatus),
     brand = brand,
     packageAmount = packageAmount?.let(::BigDecimal),
     servingAmount = servingAmount?.let(::BigDecimal),

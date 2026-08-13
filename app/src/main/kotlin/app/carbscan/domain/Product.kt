@@ -4,30 +4,39 @@ import java.math.BigDecimal
 import java.time.Instant
 
 /**
- * Where a product's carbohydrate figure came from, which is what decides whether the app is allowed
- * to replace it (brief §10, §23).
+ * Where a product's data originally came from. Provenance, and nothing else.
  *
- * The brief (§33) lists `source` and `userVerified` as separate fields. They are collapsed into one
- * here on purpose: two fields that encode the same fact can disagree, and a record claiming to be
- * both "remote" and "verified" has no safe interpretation. §33 explicitly permits improving the
- * model where the architecture warrants it.
+ * This is permanent: a product that arrived from Open Food Facts stays [OPEN_FOOD_FACTS] forever,
+ * even after the user checks it against the package. Whether the user has checked it is a separate
+ * fact — see [VerificationStatus] — because the two answer different questions and a product can
+ * change one without changing the other.
  */
-enum class ProductSource {
-    /** Cached Open Food Facts data. Refreshable. Shown as *Online value* (§25). */
-    REMOTE,
+enum class ProductDataOrigin {
+    /** Fetched from the Open Food Facts database (§12). Displayed as *Online value* (§25). */
+    OPEN_FOOD_FACTS,
 
-    /** The user checked this against the physical package. Shown as *✓ Verified by you* (§23). */
-    USER_VERIFIED,
-
-    /** The user created this, typically after an unknown barcode (§26, §27). */
+    /** Typed in by the user, usually after an unknown barcode (§26, §27). */
     MANUAL,
+
+    /** Read off a nutrition label by OCR and confirmed by the user — never auto-accepted (§29). */
+    OCR,
     ;
 
     /**
-     * True when the value belongs to the user rather than to a database. Remote data may never
-     * silently replace it — the single rule the whole §23 reliability story rests on.
+     * True when the value was authored on this device rather than downloaded. Remote data may never
+     * replace it, regardless of verification status: a manual product the user has not yet
+     * double-checked is still *their* number, not one for a sync to silently correct.
      */
-    val isUserOwned: Boolean get() = this != REMOTE
+    val isUserAuthored: Boolean get() = this != OPEN_FOOD_FACTS
+}
+
+/** Whether the user has personally checked this value against the physical package (§23). */
+enum class VerificationStatus {
+    /** Not checked by the user. For OFF data this drives *Online value · Check package if needed*. */
+    UNVERIFIED,
+
+    /** The user confirmed it against the package. Displayed as *✓ Verified by you* (§23). */
+    USER_VERIFIED,
 }
 
 /**
@@ -41,7 +50,10 @@ data class Product(
     val name: String,
     val carbsPer100: BigDecimal,
     val basis: NutritionBasis,
-    val source: ProductSource,
+    /** Provenance. Permanent — verifying a product does not change where it came from. */
+    val dataSource: ProductDataOrigin,
+    /** Whether the user has checked it. Orthogonal to [dataSource]. */
+    val verificationStatus: VerificationStatus = VerificationStatus.UNVERIFIED,
     val brand: String? = null,
     /** Declared package size, used only for the ½ pack / Full pack shortcuts (§14). */
     val packageAmount: BigDecimal? = null,
@@ -59,4 +71,21 @@ data class Product(
 ) {
     /** The unit the portion field is locked to. Never converted (§17, design decision 3.1). */
     val portionUnit: String get() = basis.unitLabel
+
+    val isUserVerified: Boolean get() = verificationStatus == VerificationStatus.USER_VERIFIED
+
+    /**
+     * Whether a remote refresh is allowed to replace this record's product facts.
+     *
+     * Both conditions are required, and they exclude different things:
+     * - user-authored data (manual, OCR) is never remote-refreshable, verified or not;
+     * - verified data is never remote-refreshable, even though its provenance is Open Food Facts.
+     *
+     * This single property is the whole of §23's "sync must NEVER silently replace it".
+     */
+    val isRemoteRefreshable: Boolean
+        get() = !dataSource.isUserAuthored && verificationStatus == VerificationStatus.UNVERIFIED
+
+    /** True once the user overrode an online figure, so *Reset to online value* can be offered (§23). */
+    val canResetToOnlineValue: Boolean get() = originalRemoteCarbs != null
 }
