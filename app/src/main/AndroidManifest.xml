@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PLACEHOLDER manifest — proves the build config resolves. The next session replaces this with the
+  real manifest: CAMERA + INTERNET only (§9), android:allowBackup="false" (§34, owner decision),
+  no cleartext traffic (§35), MainActivity with the system splash screen (§6).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+</manifest>

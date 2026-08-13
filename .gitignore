@@ -1,0 +1,26 @@
+# Signing material — NEVER commit (brief §53)
+keystore.properties
+*.jks
+*.keystore
+release/
+upload-keystore*
+
+# Local config
+local.properties
+
+# Build output
+build/
+app/build/
+.gradle/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
