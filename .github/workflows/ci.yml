@@ -34,12 +34,22 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Belt and braces: this repo is developed on Windows, where git can drop the executable
+      # bit on gradlew. The bit is set in the index; this stops a future rewrite silently
+      # breaking CI with "Permission denied".
+      - name: Ensure gradlew is executable
+        run: chmod +x ./gradlew
+
       # AndroidX requires compiling against API 37, which is newer than the runner image
       # ships with. See CLAUDE.md — targetSdk stays at the Play-mandated 36.
+      #
+      # sdkmanager is NOT on PATH on the hosted runners; only platform-tools is. It has to be
+      # invoked through ANDROID_SDK_ROOT, or the step fails with "command not found".
       - name: Install Android SDK platform 37
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
 
       # The safety-critical layer. Runs first so a calculation regression fails fast.
       - name: Unit tests
@@ -87,6 +97,18 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # Belt and braces: this repo is developed on Windows, where git can drop the executable
+      # bit on gradlew. The bit is set in the index; this stops a future rewrite silently
+      # breaking CI with "Permission denied".
+      - name: Ensure gradlew is executable
+        run: chmod +x ./gradlew
+
+      - name: Install Android SDK platform 37
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Enable KVM
         run: |
