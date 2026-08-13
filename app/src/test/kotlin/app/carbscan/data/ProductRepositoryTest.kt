@@ -372,6 +372,23 @@ class ProductRepositoryTest {
         assertEquals(now, stored.verifiedAt)
     }
 
+    /**
+     * Regression: a product the user just created must be reachable.
+     *
+     * Recents are keyed on `lastUsedAt`, so a newly authored product with a null timestamp is saved
+     * to the database and then invisible — and since there is no browse-all-products screen, it is
+     * unreachable forever. Authoring a product IS using it.
+     */
+    @Test
+    fun `a user-authored product is immediately visible in recents`() = runTest {
+        val local = FakeLocal()
+        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), clock)
+
+        repository.saveUserAuthoredProduct(product(UNVERIFIED_MANUAL, "12.0"))
+
+        assertEquals(now, local.stored.getValue(barcode).lastUsedAt)
+    }
+
     @Test
     fun `only an unverified Open Food Facts product is remote-refreshable`() {
         assertTrue(product(PLAIN_OFF, "1").isRemoteRefreshable)

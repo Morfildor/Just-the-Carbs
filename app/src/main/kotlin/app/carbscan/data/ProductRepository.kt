@@ -144,11 +144,16 @@ class ProductRepository(
         origin: ProductDataOrigin = ProductDataOrigin.MANUAL,
     ) {
         require(origin.isUserAuthored) { "$origin is not a user-authored origin" }
+        val timestamp = clock.instant()
         local.save(
             product.copy(
                 dataSource = origin,
                 verificationStatus = VerificationStatus.USER_VERIFIED,
-                verifiedAt = clock.instant(),
+                verifiedAt = timestamp,
+                // Authoring a product counts as using it. Recents are keyed on lastUsedAt, and
+                // without this the product is saved but absent from the only screen that lists
+                // products — created, then unreachable.
+                lastUsedAt = timestamp,
             ),
         )
     }

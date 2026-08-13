@@ -16,6 +16,9 @@ import app.carbscan.domain.VerificationStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
@@ -61,6 +64,24 @@ class ProductViewModel(
 
     private val _state = MutableStateFlow(ProductUiState())
     val state: StateFlow<ProductUiState> = _state.asStateFlow()
+
+    init {
+        // Record the portion from the state itself rather than from a "back was pressed" callback.
+        //
+        // The user leaves this screen in more ways than the back button: the system back gesture,
+        // Home, the recents switcher, or the process being killed outright. A callback on one
+        // button catches exactly one of those, so §20's "remember the last portion" quietly failed
+        // for the most common gesture on the device.
+        //
+        // Debounced so that typing "250" records once, not once per digit.
+        viewModelScope.launch {
+            _state
+                .map { it.portionText }
+                .distinctUntilChanged()
+                .debounce(PORTION_SETTLE_MS)
+                .collect { rememberUsage() }
+        }
+    }
 
     /** Load a stored or remote product by barcode. */
     fun load(barcode: String) {
@@ -204,5 +225,8 @@ class ProductViewModel(
 
     private companion object {
         const val KEY_PORTION = "portion_text"
+
+        /** Long enough to cover typing a three-digit portion, short enough to beat a fast exit. */
+        const val PORTION_SETTLE_MS = 600L
     }
 }

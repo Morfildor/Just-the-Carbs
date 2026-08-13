@@ -54,6 +54,11 @@ private val LightColors = lightColorScheme(
     onPrimaryContainer = Color(0xFF04322A),
     secondary = InkMuted,
     onSecondary = Color.White,
+    // Selected FilterChips read from secondaryContainer. Leaving these unset falls back to
+    // Material's baseline lavender, which is how a considered palette ends up with a stray purple
+    // chip in the middle of it — visible on the very first run of the manual-entry screen.
+    secondaryContainer = TealSoft,
+    onSecondaryContainer = Color(0xFF04322A),
     background = Paper,
     onBackground = Ink,
     surface = Paper,
@@ -74,6 +79,8 @@ private val DarkColors = darkColorScheme(
     onPrimaryContainer = TealBright,
     secondary = ChalkMuted,
     onSecondary = Night,
+    secondaryContainer = TealShade,
+    onSecondaryContainer = TealBright,
     background = Night,
     onBackground = Chalk,
     surface = Night,
