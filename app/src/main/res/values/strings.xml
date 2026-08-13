@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  English (default). Dutch lives in values-nl (§42).
+
+  NOTE: app_name is NOT declared here. It is generated from branding.gradle.kts so that a rebrand
+  touches one file and cannot leave a stale name behind (§5).
+
+  Wording follows §15 and §45: the app reports a carbohydrate amount. It never implies a dose,
+  a recommendation, or medical validation.
+-->
+<resources>
+
+    <!-- Home -->
+    <string name="home_scan_button">Scan barcode</string>
+    <string name="home_manual_button">Enter manually</string>
+    <string name="home_recent_title">Recent</string>
+    <string name="home_empty_title">Scan a barcode to begin</string>
+    <string name="home_empty_body">Products you use appear here for one-tap access.</string>
+    <string name="home_settings">Settings</string>
+
+    <!-- Recents list -->
+    <string name="recent_summary">%1$s → %2$s</string>
+    <string name="recent_never_used">Not used yet</string>
+    <string name="favorite_add">Add to favourites</string>
+    <string name="favorite_remove">Remove from favourites</string>
+    <string name="favorite_marker">Favourite</string>
+
+    <!-- Scanner -->
+    <string name="scanner_title">Scan barcode</string>
+    <string name="scanner_hint">Point the camera at the barcode</string>
+    <string name="scanner_torch_on">Turn on flashlight</string>
+    <string name="scanner_torch_off">Turn off flashlight</string>
+    <string name="scanner_torch_unavailable">This device has no flashlight</string>
+    <string name="scanner_close">Close scanner</string>
+    <string name="scanner_enter_manually">Enter barcode</string>
+    <string name="scanner_unavailable">The camera is unavailable. You can still enter a product manually.</string>
+
+    <!-- Camera permission (§9) -->
+    <string name="permission_title">Camera access is needed to scan a barcode.</string>
+    <string name="permission_body">CarbScan uses the camera only to read barcodes and nutrition labels. Images are never uploaded or saved.</string>
+    <string name="permission_allow">Allow camera</string>
+    <string name="permission_manual">Enter manually</string>
+    <string name="permission_settings">Open settings</string>
+
+    <!-- Product / calculator (§14) -->
+    <string name="product_back">Back</string>
+    <string name="product_per_100">%1$s g carbs / 100 %2$s</string>
+    <string name="product_source_online">Online value</string>
+    <string name="product_source_online_hint">Check package if needed</string>
+    <string name="product_source_verified">✓ Verified by you</string>
+    <string name="product_source_manual">Entered by you</string>
+    <string name="product_source_ocr">Read from label by you</string>
+    <string name="product_verified_when">Verified %1$s</string>
+    <string name="product_portion_question">How much are you eating?</string>
+    <string name="product_portion_label">Portion in %1$s</string>
+    <string name="product_result_label">CARBOHYDRATES</string>
+    <string name="product_result_calculated">%1$s g calculated</string>
+    <string name="product_result_pending">Enter a portion</string>
+    <string name="product_half_pack">½ pack</string>
+    <string name="product_full_pack">Full pack</string>
+    <string name="product_copy">Copy value</string>
+    <string name="product_copied">%1$s copied</string>
+    <string name="product_more_actions">More actions</string>
+    <string name="product_verify">Verify label</string>
+    <string name="product_edit">Edit product</string>
+    <string name="product_reset_online">Reset to online value</string>
+    <string name="product_remove">Remove from recents</string>
+    <string name="product_scan_label">Scan nutrition label</string>
+
+    <!-- Quick adjust (§16) -->
+    <string name="adjust_minus_ten">Minus 10</string>
+    <string name="adjust_minus_five">Minus 5</string>
+    <string name="adjust_plus_five">Plus 5</string>
+    <string name="adjust_plus_ten">Plus 10</string>
+
+    <!-- Unknown product (§26) -->
+    <string name="notfound_title">Product not found</string>
+    <string name="notfound_body">This barcode isn\'t in the product database. You can read the value from the package instead.</string>
+    <string name="notfound_barcode">Barcode %1$s</string>
+
+    <!-- Unusable value (§13) -->
+    <string name="unusable_title">Carbohydrate value unavailable</string>
+    <string name="unusable_body">The database entry for this product has no carbohydrate value that can be used safely.</string>
+
+    <!-- Errors (§36) -->
+    <string name="error_offline_title">No internet connection</string>
+    <string name="error_offline_body">Saved products still work offline.</string>
+    <string name="error_timeout_title">The lookup took too long</string>
+    <string name="error_rate_limited_title">Too many lookups just now</string>
+    <string name="error_rate_limited_body">The product database limits how often it can be asked. Try again shortly.</string>
+    <string name="error_server_title">The product database is unavailable</string>
+    <string name="error_malformed_title">The response could not be read</string>
+    <string name="error_generic_body">You can read the value from the package instead.</string>
+    <string name="error_retry">Try again</string>
+    <string name="error_invalid_barcode">That barcode doesn\'t look valid</string>
+
+    <!-- Manual entry (§27) -->
+    <string name="manual_title">Enter product</string>
+    <string name="manual_name">Product name</string>
+    <string name="manual_carbs">Carbohydrates per 100</string>
+    <string name="manual_basis">Measured per</string>
+    <string name="manual_basis_g">100 g</string>
+    <string name="manual_basis_ml">100 ml</string>
+    <string name="manual_package">Package size (optional)</string>
+    <string name="manual_barcode">Barcode</string>
+    <string name="manual_save">Save product</string>
+    <string name="manual_error_name">Enter a product name</string>
+    <string name="manual_error_carbs">Enter carbohydrates per 100 as a number</string>
+    <string name="manual_error_carbs_range">That value is outside the possible range</string>
+
+    <!-- Quick calculator (§28) -->
+    <string name="quick_title">Quick calculation</string>
+    <string name="quick_subtitle">Calculate without saving a product</string>
+
+    <!-- Verification (§23) -->
+    <string name="verify_title">Verify against the package</string>
+    <string name="verify_body">Check these against the printed label. Your values are kept and are never replaced by the database.</string>
+    <string name="verify_confirm">Save as verified</string>
+    <string name="verify_cancel">Cancel</string>
+
+    <!-- Millilitre / gram (design decision 3.1) -->
+    <string name="basis_mismatch_title">This product is measured in %1$s</string>
+    <string name="basis_mismatch_body">Grams and millilitres are not interchangeable without knowing the product\'s density, so CarbScan won\'t convert between them. To use the other unit, enter the value from the package.</string>
+
+    <!-- OCR (§29) -->
+    <string name="ocr_title">Scan nutrition label</string>
+    <string name="ocr_hint">Frame the nutrition table</string>
+    <string name="ocr_detected">Detected — %1$s %2$s / 100 %3$s</string>
+    <string name="ocr_use">Use %1$s</string>
+    <string name="ocr_edit">Edit</string>
+    <string name="ocr_ambiguous_title">Couldn\'t confidently identify the carbohydrate value.</string>
+    <string name="ocr_ambiguous_body">Check the label and enter the value yourself.</string>
+    <string name="ocr_candidates_title">Which row is the total carbohydrate?</string>
+
+    <!-- Settings (§43) -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_results">Results</string>
+    <string name="settings_results_whole">Whole gram with decimal detail</string>
+    <string name="settings_results_decimal">Decimal only</string>
+    <string name="settings_interaction">Interaction</string>
+    <string name="settings_haptics">Haptic feedback</string>
+    <string name="settings_data">Data</string>
+    <string name="settings_clear_recents">Clear recent history</string>
+    <string name="settings_clear_products">Clear saved products</string>
+    <string name="settings_clear_recents_confirm">Clear recent history? Verified products and favourites are kept.</string>
+    <string name="settings_clear_products_confirm">Delete every saved product, including values you verified? This cannot be undone.</string>
+    <string name="settings_confirm">Delete</string>
+    <string name="settings_cancel">Cancel</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version %1$s</string>
+    <string name="settings_attribution">Product data from Open Food Facts, used under the Open Database License (ODbL).</string>
+    <string name="settings_safety_title">Important</string>
+    <!-- §45: describes only what the software does. No efficacy or approval claim. -->
+    <string name="settings_safety_body">CarbScan calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
+
+    <!-- Generic -->
+    <string name="action_done">Done</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+
+</resources>

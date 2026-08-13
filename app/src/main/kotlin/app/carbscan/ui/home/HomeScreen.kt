@@ -1,0 +1,241 @@
+package app.carbscan.ui.home
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import app.carbscan.BuildConfig
+import app.carbscan.R
+import app.carbscan.domain.Product
+import app.carbscan.domain.ResultFormatter
+import app.carbscan.domain.CarbCalculator
+import app.carbscan.ui.components.FavoriteButton
+import app.carbscan.ui.theme.Space
+
+/**
+ * Home (§6, §7).
+ *
+ * One primary surface, no bottom navigation. Favourites float to the top of Recent rather than
+ * occupying a tab of their own, because a second tab would add a decision to a workflow whose whole
+ * value is not having to make one (§22, §74).
+ *
+ * Nothing here waits on the network: recents are local, and the list renders before any lookup
+ * could possibly return (§7).
+ */
+@Composable
+fun HomeScreen(
+    recents: List<Product>,
+    onScan: () -> Unit,
+    onManualEntry: () -> Unit,
+    onOpenProduct: (String) -> Unit,
+    onToggleFavorite: (Product) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = Space.screenEdge, end = Space.s, top = Space.s, bottom = Space.s),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = BuildConfig.APP_NAME,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f).semantics { heading() },
+            )
+            val settingsLabel = stringResource(R.string.home_settings)
+            IconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier
+                    .size(Space.minTouchTarget)
+                    .semantics { contentDescription = settingsLabel },
+            ) {
+                Icon(Icons.Filled.Settings, contentDescription = null)
+            }
+        }
+
+        // Recents take the scrollable middle; the primary action sits at the bottom where a thumb
+        // actually reaches it (§40).
+        if (recents.isEmpty()) {
+            EmptyState(modifier = Modifier.weight(1f))
+        } else {
+            RecentList(
+                recents = recents,
+                onOpenProduct = onOpenProduct,
+                onToggleFavorite = onToggleFavorite,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Space.screenEdge)
+                .padding(bottom = Space.m)
+                .navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Button(
+                onClick = onScan,
+                shape = RoundedCornerShape(Space.buttonRadius),
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+            ) {
+                Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
+                Spacer(Modifier.size(Space.s))
+                Text(
+                    text = stringResource(R.string.home_scan_button),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+
+            TextButton(
+                onClick = onManualEntry,
+                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+            ) {
+                Text(stringResource(R.string.home_manual_button))
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(Space.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.home_empty_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(Space.s))
+        Text(
+            text = stringResource(R.string.home_empty_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun RecentList(
+    recents: List<Product>,
+    onOpenProduct: (String) -> Unit,
+    onToggleFavorite: (Product) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = Space.screenEdge,
+            end = Space.screenEdge,
+            bottom = Space.m,
+        ),
+        verticalArrangement = Arrangement.spacedBy(Space.s),
+    ) {
+        item {
+            Text(
+                text = stringResource(R.string.home_recent_title),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = Space.s).semantics { heading() },
+            )
+        }
+        items(items = recents, key = { it.barcode }) { product ->
+            RecentCard(
+                product = product,
+                onClick = { onOpenProduct(product.barcode) },
+                onToggleFavorite = { onToggleFavorite(product) },
+            )
+        }
+    }
+}
+
+/**
+ * A recent product (§7): name, last portion, last result, favourite. Nothing else.
+ *
+ * No calories, no macros, no "eaten today" — none of which would make the next scan faster, and
+ * all of which would make this look like the diet tracker the app must not be (§2).
+ */
+@Composable
+private fun RecentCard(product: Product, onClick: () -> Unit, onToggleFavorite: () -> Unit) {
+    // Recompute rather than store a display string, so a corrected carbs value is reflected in the
+    // summary immediately instead of showing a figure derived from the old one.
+    val summary = product.lastPortion?.let { portion ->
+        val result = CarbCalculator.calculate(product.carbsPer100, portion, product.basis)
+        stringResource(
+            R.string.recent_summary,
+            "${portion.stripTrailingZeros().toPlainString()} ${product.portionUnit}",
+            "${ResultFormatter.whole(result.wholeGrams)} g",
+        )
+    } ?: stringResource(R.string.recent_never_used)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(Space.cardRadius),
+            )
+            .clickable(onClick = onClick)
+            .padding(start = Space.m, top = Space.s, bottom = Space.s, end = Space.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(vertical = Space.xs)) {
+            Text(
+                text = product.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        FavoriteButton(favorite = product.favorite, onToggle = onToggleFavorite)
+    }
+}

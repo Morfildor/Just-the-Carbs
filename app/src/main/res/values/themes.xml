@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The real UI is Compose; this theme only paints the window before the first frame, which is
+      what stops a light flash on a dark device (§6, §38).
+    -->
+    <style name="Theme.CarbScan" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!--
+      The system splash screen (§6). No artificial delay is added: it is shown only for as long as
+      the app genuinely takes to draw its first frame.
+    -->
+    <style name="Theme.CarbScan.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.CarbScan</item>
+    </style>
+</resources>

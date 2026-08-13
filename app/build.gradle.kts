@@ -11,6 +11,18 @@ plugins {
 
 apply(from = rootProject.file("branding.gradle.kts"))
 
+// Single source of truth for anything user-visible about the app's identity (brief §5).
+val brandAppName = extra["brandAppName"] as String
+val brandApplicationId = extra["brandApplicationId"] as String
+val brandNamespace = extra["brandNamespace"] as String
+val brandContactEmail = extra["brandContactEmail"] as String
+val brandVersionCode = extra["brandVersionCode"] as Int
+val brandVersionName = extra["brandVersionName"] as String
+
+// Open Food Facts requires a User-Agent that identifies the app and offers a contact route
+// (verified 2026-08-13). Anonymous clients are blocked.
+val offUserAgent = "$brandAppName/$brandVersionName (Android; $brandContactEmail)"
+
 // Signing material is read from keystore.properties (gitignored) or environment variables.
 // NOTHING secret is ever committed (brief §53).
 val keystorePropsFile = rootProject.file("keystore.properties")
@@ -25,20 +37,27 @@ val releaseStoreFile = secret("storeFile", "CARBSCAN_STORE_FILE")
 val hasSigningMaterial = releaseStoreFile != null && file(releaseStoreFile).exists()
 
 android {
-    namespace = "app.carbscan"
+    namespace = brandNamespace
     // AndroidX (core 1.19.0, Compose 1.12.0, lifecycle 2.11.0) requires compiling against API 37.
     // compileSdk is independent of targetSdk: targetSdk stays at the Play-mandated 36 (§4).
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.carbscan"
+        applicationId = brandApplicationId
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = brandVersionCode
+        versionName = brandVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+
+        // The launcher label comes from branding.gradle.kts, so it is never hardcoded in a
+        // strings.xml that a translator might rename (§5). Do not also declare app_name in res/.
+        resValue("string", "app_name", brandAppName)
+        buildConfigField("String", "APP_NAME", "\"$brandAppName\"")
+        buildConfigField("String", "OFF_USER_AGENT", "\"$offUserAgent\"")
+        buildConfigField("String", "CONTACT_EMAIL", "\"$brandContactEmail\"")
     }
 
     signingConfigs {
@@ -81,6 +100,8 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        // Required for the generated app_name string; off by default in AGP 9.
+        resValues = true
     }
 
     packaging {

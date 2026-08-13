@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dutch (§42). "Koolhydraten" is the term printed on Dutch packaging and the one the OCR parser
+  looks for, so the UI uses the same word the user is reading off the package.
+-->
+<resources>
+
+    <string name="home_scan_button">Streepjescode scannen</string>
+    <string name="home_manual_button">Handmatig invoeren</string>
+    <string name="home_recent_title">Recent</string>
+    <string name="home_empty_title">Scan een streepjescode om te beginnen</string>
+    <string name="home_empty_body">Producten die je gebruikt verschijnen hier.</string>
+    <string name="home_settings">Instellingen</string>
+
+    <string name="recent_summary">%1$s → %2$s</string>
+    <string name="recent_never_used">Nog niet gebruikt</string>
+    <string name="favorite_add">Toevoegen aan favorieten</string>
+    <string name="favorite_remove">Verwijderen uit favorieten</string>
+    <string name="favorite_marker">Favoriet</string>
+
+    <string name="scanner_title">Streepjescode scannen</string>
+    <string name="scanner_hint">Richt de camera op de streepjescode</string>
+    <string name="scanner_torch_on">Zaklamp aan</string>
+    <string name="scanner_torch_off">Zaklamp uit</string>
+    <string name="scanner_torch_unavailable">Dit toestel heeft geen zaklamp</string>
+    <string name="scanner_close">Scanner sluiten</string>
+    <string name="scanner_enter_manually">Streepjescode invoeren</string>
+    <string name="scanner_unavailable">De camera is niet beschikbaar. Je kunt een product handmatig invoeren.</string>
+
+    <string name="permission_title">Cameratoegang is nodig om een streepjescode te scannen.</string>
+    <string name="permission_body">CarbScan gebruikt de camera alleen om streepjescodes en voedingswaardelabels te lezen. Afbeeldingen worden nooit geüpload of opgeslagen.</string>
+    <string name="permission_allow">Camera toestaan</string>
+    <string name="permission_manual">Handmatig invoeren</string>
+    <string name="permission_settings">Instellingen openen</string>
+
+    <string name="product_back">Terug</string>
+    <string name="product_per_100">%1$s g koolhydraten / 100 %2$s</string>
+    <string name="product_source_online">Onlinewaarde</string>
+    <string name="product_source_online_hint">Controleer zo nodig de verpakking</string>
+    <string name="product_source_verified">✓ Door jou gecontroleerd</string>
+    <string name="product_source_manual">Door jou ingevoerd</string>
+    <string name="product_source_ocr">Door jou van het label gelezen</string>
+    <string name="product_verified_when">Gecontroleerd %1$s</string>
+    <string name="product_portion_question">Hoeveel eet je?</string>
+    <string name="product_portion_label">Portie in %1$s</string>
+    <string name="product_result_label">KOOLHYDRATEN</string>
+    <string name="product_result_calculated">%1$s g berekend</string>
+    <string name="product_result_pending">Voer een portie in</string>
+    <string name="product_half_pack">½ verpakking</string>
+    <string name="product_full_pack">Hele verpakking</string>
+    <string name="product_copy">Waarde kopiëren</string>
+    <string name="product_copied">%1$s gekopieerd</string>
+    <string name="product_more_actions">Meer acties</string>
+    <string name="product_verify">Label controleren</string>
+    <string name="product_edit">Product bewerken</string>
+    <string name="product_reset_online">Terug naar onlinewaarde</string>
+    <string name="product_remove">Verwijderen uit recent</string>
+    <string name="product_scan_label">Voedingswaardelabel scannen</string>
+
+    <string name="adjust_minus_ten">Min 10</string>
+    <string name="adjust_minus_five">Min 5</string>
+    <string name="adjust_plus_five">Plus 5</string>
+    <string name="adjust_plus_ten">Plus 10</string>
+
+    <string name="notfound_title">Product niet gevonden</string>
+    <string name="notfound_body">Deze streepjescode staat niet in de productdatabase. Je kunt de waarde van de verpakking gebruiken.</string>
+    <string name="notfound_barcode">Streepjescode %1$s</string>
+
+    <string name="unusable_title">Koolhydraatwaarde niet beschikbaar</string>
+    <string name="unusable_body">De database heeft voor dit product geen koolhydraatwaarde die veilig te gebruiken is.</string>
+
+    <string name="error_offline_title">Geen internetverbinding</string>
+    <string name="error_offline_body">Opgeslagen producten werken offline gewoon.</string>
+    <string name="error_timeout_title">Het opzoeken duurde te lang</string>
+    <string name="error_rate_limited_title">Te veel opzoekacties</string>
+    <string name="error_rate_limited_body">De productdatabase beperkt het aantal aanvragen. Probeer het zo opnieuw.</string>
+    <string name="error_server_title">De productdatabase is niet bereikbaar</string>
+    <string name="error_malformed_title">Het antwoord kon niet gelezen worden</string>
+    <string name="error_generic_body">Je kunt de waarde van de verpakking gebruiken.</string>
+    <string name="error_retry">Opnieuw proberen</string>
+    <string name="error_invalid_barcode">Die streepjescode lijkt niet geldig</string>
+
+    <string name="manual_title">Product invoeren</string>
+    <string name="manual_name">Productnaam</string>
+    <string name="manual_carbs">Koolhydraten per 100</string>
+    <string name="manual_basis">Gemeten per</string>
+    <string name="manual_basis_g">100 g</string>
+    <string name="manual_basis_ml">100 ml</string>
+    <string name="manual_package">Verpakkingsgrootte (optioneel)</string>
+    <string name="manual_barcode">Streepjescode</string>
+    <string name="manual_save">Product opslaan</string>
+    <string name="manual_error_name">Voer een productnaam in</string>
+    <string name="manual_error_carbs">Voer koolhydraten per 100 in als getal</string>
+    <string name="manual_error_carbs_range">Die waarde valt buiten het mogelijke bereik</string>
+
+    <string name="quick_title">Snelle berekening</string>
+    <string name="quick_subtitle">Bereken zonder een product op te slaan</string>
+
+    <string name="verify_title">Controleren met de verpakking</string>
+    <string name="verify_body">Vergelijk deze met het gedrukte label. Jouw waarden blijven bewaard en worden nooit door de database vervangen.</string>
+    <string name="verify_confirm">Opslaan als gecontroleerd</string>
+    <string name="verify_cancel">Annuleren</string>
+
+    <string name="basis_mismatch_title">Dit product wordt gemeten in %1$s</string>
+    <string name="basis_mismatch_body">Grammen en milliliters zijn niet uitwisselbaar zonder de dichtheid van het product, dus CarbScan rekent er niet tussen om. Voer de waarde van de verpakking in om de andere eenheid te gebruiken.</string>
+
+    <string name="ocr_title">Voedingswaardelabel scannen</string>
+    <string name="ocr_hint">Breng de voedingswaardetabel in beeld</string>
+    <string name="ocr_detected">Gevonden — %1$s %2$s / 100 %3$s</string>
+    <string name="ocr_use">Gebruik %1$s</string>
+    <string name="ocr_edit">Bewerken</string>
+    <string name="ocr_ambiguous_title">De koolhydraatwaarde kon niet met zekerheid worden herkend.</string>
+    <string name="ocr_ambiguous_body">Controleer het label en voer de waarde zelf in.</string>
+    <string name="ocr_candidates_title">Welke regel is het totaal aan koolhydraten?</string>
+
+    <string name="settings_title">Instellingen</string>
+    <string name="settings_appearance">Weergave</string>
+    <string name="settings_theme_system">Systeem</string>
+    <string name="settings_theme_light">Licht</string>
+    <string name="settings_theme_dark">Donker</string>
+    <string name="settings_results">Resultaten</string>
+    <string name="settings_results_whole">Hele gram met decimaal</string>
+    <string name="settings_results_decimal">Alleen decimaal</string>
+    <string name="settings_interaction">Interactie</string>
+    <string name="settings_haptics">Haptische feedback</string>
+    <string name="settings_data">Gegevens</string>
+    <string name="settings_clear_recents">Recente geschiedenis wissen</string>
+    <string name="settings_clear_products">Opgeslagen producten wissen</string>
+    <string name="settings_clear_recents_confirm">Recente geschiedenis wissen? Gecontroleerde producten en favorieten blijven bewaard.</string>
+    <string name="settings_clear_products_confirm">Alle opgeslagen producten verwijderen, inclusief waarden die je hebt gecontroleerd? Dit kan niet ongedaan worden gemaakt.</string>
+    <string name="settings_confirm">Verwijderen</string>
+    <string name="settings_cancel">Annuleren</string>
+    <string name="settings_about">Over</string>
+    <string name="settings_version">Versie %1$s</string>
+    <string name="settings_attribution">Productgegevens van Open Food Facts, gebruikt onder de Open Database License (ODbL).</string>
+    <string name="settings_safety_title">Belangrijk</string>
+    <string name="settings_safety_body">CarbScan berekent het koolhydraatgehalte van een portie. De app berekent geen insuline of andere medicatie en vervangt niet de informatie op de verpakking. Controleer altijd de verpakking als een waarde niet klopt.</string>
+
+    <string name="action_done">Klaar</string>
+    <string name="action_cancel">Annuleren</string>
+    <string name="action_close">Sluiten</string>
+
+</resources>

@@ -1,16 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  PLACEHOLDER manifest — proves the build config resolves. The next session replaces this with the
-  real manifest: CAMERA + INTERNET only (§9), android:allowBackup="false" (§34, owner decision),
-  no cleartext traffic (§35), MainActivity with the system splash screen (§6).
--->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      CAMERA and INTERNET only (brief §9). No location, contacts, storage, Bluetooth, phone state
+      or Health Connect: scanning a barcode and reading a public food database need nothing else.
+    -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- The app stays fully usable without a camera: manual entry is always available (§9). -->
     <uses-feature
         android:name="android.hardware.camera.any"
         android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
+    <application
+        android:name=".CarbScanApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.CarbScan.Starting"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@style/Theme.CarbScan.Starting"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Bundle the barcode model with the app rather than downloading it on first use. A scanner
+          that needs a network round-trip before it can read anything would defeat §32's offline
+          requirement and slow the very first scan, which is the one that forms the impression.
+        -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode,ocr" />
+
+    </application>
 
 </manifest>

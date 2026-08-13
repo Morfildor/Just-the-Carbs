@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup is disabled outright in the manifest (§34, owner decision 4). This file exists so the
+  intent is explicit and reviewable rather than implied by an attribute alone.
+
+  Two reasons, one decision:
+    - Privacy: which foods the user eats, and when, never reaches a Google account.
+    - Licensing: the cached Open Food Facts data is never redistributed, so ODbL share-alike is
+      not engaged by a purely on-device cache.
+-->
+<full-backup-content>
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="." />
+</full-backup-content>

@@ -1,0 +1,14 @@
+package app.carbscan.domain
+
+/** Appearance choice (§43). */
+enum class ThemeChoice { SYSTEM, LIGHT, DARK }
+
+/**
+ * The whole of the app's settings (§43). Intentionally four values: anything that does not make
+ * scan → portion → carbs faster, safer or clearer does not belong here (§74).
+ */
+data class AppSettings(
+    val theme: ThemeChoice = ThemeChoice.SYSTEM,
+    val resultStyle: ResultStyle = ResultStyle.WHOLE_WITH_DECIMAL,
+    val hapticsEnabled: Boolean = true,
+)
