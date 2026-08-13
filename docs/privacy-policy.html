@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy — CarbScan</title>
+<!--
+  Static, self-contained, no external requests. Suitable for GitHub Pages or any static host.
+  The Play listing requires this to be publicly reachable at a stable URL (§48).
+-->
+<style>
+  :root {
+    --ink: #14161A; --muted: #5C6470; --paper: #FBFAF8; --rule: #E4E2DE; --accent: #0B6E5F;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #ECEEF1; --muted: #99A2AE; --paper: #0E1013; --rule: #272C33; --accent: #4ECDB4; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; padding: 2.5rem 1.25rem 5rem; max-width: 44rem;
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--paper);
+  }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .35rem; letter-spacing: -.02em; }
+  h2 { font-size: 1.2rem; margin: 2.5rem 0 .6rem; letter-spacing: -.01em; }
+  .meta { color: var(--muted); font-size: .92rem; margin-bottom: 2rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .95rem; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; }
+  code { background: color-mix(in srgb, var(--rule) 55%, transparent); padding: .1rem .3rem; border-radius: 4px; font-size: .9em; }
+  .callout { border-left: 3px solid var(--accent); padding: .1rem 0 .1rem 1rem; margin: 1.5rem 0; color: var(--ink); }
+  footer { margin-top: 3.5rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .88rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>Privacy policy — CarbScan</h1>
+<p class="meta">Last updated: 13 August 2026 · Contact: REPLACE_ME@example.com</p>
+
+<div class="callout">
+  <strong>In one paragraph.</strong> CarbScan has no account, no advertising, and no analytics we
+  added. Your products, portions, favourites and verified values stay on your device. It is
+  <em>not</em> true that no data leaves your device: when you scan a barcode the app has never seen,
+  it sends that barcode to Open Food Facts to look up the product. That is the only request CarbScan
+  itself makes.
+</div>
+
+<h2>What stays on your device</h2>
+<p>Stored in an app-private database that no other app can read:</p>
+<ul>
+  <li>Barcodes and product names you have scanned or entered</li>
+  <li>Carbohydrate values, measurement basis, package sizes</li>
+  <li>Your verified values, and the online value they replaced</li>
+  <li>The last portion you used per product, and when you last used it</li>
+  <li>Favourites, and your settings</li>
+</ul>
+<p>There is no login, no cloud profile and no synchronisation. Deleting the app deletes all of it.</p>
+
+<h2>What leaves your device</h2>
+<p><strong>One thing: a barcode lookup.</strong></p>
+<table>
+  <tr><th>Recipient</th><td>Open Food Facts (<code>world.openfoodfacts.org</code>)</td></tr>
+  <tr><th>When</th><td>Only when you scan or enter a barcode not already saved on your device</td></tr>
+  <tr><th>What is sent</th><td>The barcode number, and a User-Agent identifying the app and version</td></tr>
+  <tr><th>What is not sent</th><td>Any identifier for you or your device, your portions, your results, your history, your verified values</td></tr>
+  <tr><th>Transport</th><td>HTTPS only; cleartext traffic is disabled at the platform level</td></tr>
+</table>
+<p>
+  Open Food Facts is an independent organisation and will receive your IP address as an unavoidable
+  part of any internet request; their handling of that is governed by their own privacy policy. A
+  cached product is served with no network request at all.
+</p>
+
+<h2>Camera</h2>
+<p>The camera is used to read barcodes and nutrition labels.</p>
+<ul>
+  <li>Processing is <strong>on-device</strong>; frames are analysed in memory and discarded immediately.</li>
+  <li><strong>No photograph is saved</strong>, and no image is uploaded to us or anyone else.</li>
+  <li>No storage or photo-library permission is requested, so the app cannot see your gallery.</li>
+  <li>Access is requested when you first open the scanner, not at launch. You may decline — manual entry always remains available.</li>
+</ul>
+
+<h2>What CarbScan does not contain</h2>
+<p>
+  No advertising SDK. No advertising ID. No analytics SDK we added. No crash-reporting SDK. No
+  third-party tracker. No social login. No Health Connect. No Bluetooth. No location access. Your
+  data is never sold and never shared for advertising.
+</p>
+
+<h2>One thing we want to be precise about</h2>
+<p>
+  CarbScan uses Google ML Kit for barcode and label recognition. ML Kit runs recognition on-device,
+  but ships with a Google data-transport component (<code>com.google.android.datatransport</code>)
+  that we did not add and do not control, and which adds the <code>ACCESS_NETWORK_STATE</code>
+  permission. Google may receive diagnostic information about ML Kit usage through it. We disclose
+  this rather than claim a purity we cannot demonstrate.
+</p>
+
+<h2>Backup</h2>
+<p>
+  Android backup is disabled. Your food history is never copied to your Google account. The
+  trade-off is that saved products do not transfer to a new phone.
+</p>
+
+<h2>Your control</h2>
+<table>
+  <tr><th>You want to</th><th>Do this</th></tr>
+  <tr><td>Remove usage history, keep verified products</td><td>Settings → Clear recent history</td></tr>
+  <tr><td>Delete everything the app has stored</td><td>Settings → Clear saved products</td></tr>
+  <tr><td>Remove all data permanently</td><td>Uninstall the app</td></tr>
+  <tr><td>Stop all network requests</td><td>Use the app offline; saved products keep working</td></tr>
+</table>
+<p>There is no account to delete, because there is no account.</p>
+
+<h2>Children</h2>
+<p>CarbScan is not directed at children and collects nothing that could identify anyone, of any age.</p>
+
+<h2>Changes</h2>
+<p>
+  Material changes will be reflected here with an updated date, published alongside the app release
+  that introduces them.
+</p>
+
+<h2>Contact</h2>
+<p>REPLACE_ME@example.com</p>
+
+<footer>
+  Product data is provided by Open Food Facts and used under the Open Database License (ODbL).
+  CarbScan is not affiliated with, endorsed by, or connected to any medical device manufacturer.
+</footer>
+
+</body>
+</html>
