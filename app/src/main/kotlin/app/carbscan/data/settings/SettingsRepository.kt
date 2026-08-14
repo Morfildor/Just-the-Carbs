@@ -18,9 +18,11 @@ import java.io.IOException
 private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 /** The four user preferences of §43. Local only — no account, no sync (§34). */
-class SettingsRepository(private val context: Context) {
+class SettingsRepository private constructor(private val store: DataStore<Preferences>) {
 
-    val settings: Flow<AppSettings> = context.settingsStore.data
+    constructor(context: Context) : this(context.settingsStore)
+
+    val settings: Flow<AppSettings> = store.data
         // A corrupt or unreadable preference file must not stop the app from calculating. Falling
         // back to defaults keeps the core workflow alive (§36).
         .catch { cause -> if (cause is IOException) emit(emptyPreferences()) else throw cause }
@@ -31,26 +33,34 @@ class SettingsRepository(private val context: Context) {
                 resultStyle = prefs[RESULT_STYLE]?.toEnum(ResultStyle.entries, ResultStyle.DECIMAL_DOMINANT)
                     ?: ResultStyle.DECIMAL_DOMINANT,
                 hapticsEnabled = prefs[HAPTICS] ?: true,
+                hasSeenOnboarding = prefs[HAS_SEEN_ONBOARDING] ?: false,
             )
         }
 
     suspend fun setTheme(choice: ThemeChoice) =
-        context.settingsStore.edit { it[THEME] = choice.name }.let {}
+        store.edit { it[THEME] = choice.name }.let {}
 
     suspend fun setResultStyle(style: ResultStyle) =
-        context.settingsStore.edit { it[RESULT_STYLE] = style.name }.let {}
+        store.edit { it[RESULT_STYLE] = style.name }.let {}
 
     suspend fun setHapticsEnabled(enabled: Boolean) =
-        context.settingsStore.edit { it[HAPTICS] = enabled }.let {}
+        store.edit { it[HAPTICS] = enabled }.let {}
+
+    suspend fun setHasSeenOnboarding(seen: Boolean) =
+        store.edit { it[HAS_SEEN_ONBOARDING] = seen }.let {}
 
     private fun <T : Enum<T>> String.toEnum(values: List<T>, fallback: T): T =
         values.firstOrNull { it.name == this } ?: fallback
 
     private fun emptyPreferences() = androidx.datastore.preferences.core.emptyPreferences()
 
-    private companion object {
-        val THEME = stringPreferencesKey("theme")
-        val RESULT_STYLE = stringPreferencesKey("result_style")
-        val HAPTICS = booleanPreferencesKey("haptics")
+    companion object {
+        /** Test-only entry point so tests can inject a temp-file DataStore instead of a Context. */
+        internal fun forTesting(store: DataStore<Preferences>) = SettingsRepository(store)
+
+        private val THEME = stringPreferencesKey("theme")
+        private val RESULT_STYLE = stringPreferencesKey("result_style")
+        private val HAPTICS = booleanPreferencesKey("haptics")
+        private val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
     }
 }

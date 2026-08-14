@@ -29,7 +29,7 @@
     <string name="scanner_unavailable">De camera is niet beschikbaar. Je kunt een product handmatig invoeren.</string>
 
     <string name="permission_title">Cameratoegang is nodig om een streepjescode te scannen.</string>
-    <string name="permission_body">CarbScan gebruikt de camera alleen om streepjescodes en voedingswaardelabels te lezen. Afbeeldingen worden nooit geüpload of opgeslagen.</string>
+    <string name="permission_body">Deze app gebruikt de camera alleen om streepjescodes en voedingswaardelabels te lezen. Afbeeldingen worden nooit geüpload of opgeslagen.</string>
     <string name="permission_allow">Camera toestaan</string>
     <string name="permission_manual">Handmatig invoeren</string>
     <string name="permission_settings">Instellingen openen</string>
@@ -108,7 +108,7 @@
     <string name="verify_cancel">Annuleren</string>
 
     <string name="basis_mismatch_title">Dit product wordt gemeten in %1$s</string>
-    <string name="basis_mismatch_body">Grammen en milliliters zijn niet uitwisselbaar zonder de dichtheid van het product, dus CarbScan rekent er niet tussen om. Voer de waarde van de verpakking in om de andere eenheid te gebruiken.</string>
+    <string name="basis_mismatch_body">Grammen en milliliters zijn niet uitwisselbaar zonder de dichtheid van het product, dus deze app rekent er niet tussen om. Voer de waarde van de verpakking in om de andere eenheid te gebruiken.</string>
 
     <string name="ocr_title">Voedingswaardelabel scannen</string>
     <string name="ocr_hint">Breng de voedingswaardetabel in beeld</string>
@@ -169,7 +169,7 @@
     <string name="settings_version">Versie %1$s</string>
     <string name="settings_attribution">Productgegevens van Open Food Facts (openfoodfacts.org), gebruikt onder de Open Database License (ODbL). Individuele records vallen onder de Database Contents License (DbCL).</string>
     <string name="settings_safety_title">Belangrijk</string>
-    <string name="settings_safety_body">CarbScan berekent het koolhydraatgehalte van een portie. De app berekent geen insuline of andere medicatie en vervangt niet de informatie op de verpakking. Controleer altijd de verpakking als een waarde niet klopt.</string>
+    <string name="settings_safety_body">Deze app berekent het koolhydraatgehalte van een portie. De app berekent geen insuline of andere medicatie en vervangt niet de informatie op de verpakking. Controleer altijd de verpakking als een waarde niet klopt.</string>
 
     <string name="action_done">Klaar</string>
     <string name="action_cancel">Annuleren</string>

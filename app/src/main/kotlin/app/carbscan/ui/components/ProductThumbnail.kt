@@ -63,7 +63,7 @@ fun ProductThumbnail(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .background(MaterialTheme.colorScheme.primaryContainer)
             // Purely decorative: the product name sits next to it, so announcing it again would
             // make a screen reader say everything twice (§39).
             .clearAndSetSemantics { },
@@ -80,7 +80,7 @@ fun ProductThumbnail(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = (size.value * 0.34f).sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }
         }
@@ -123,7 +123,7 @@ fun SearchThumbnail(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .background(MaterialTheme.colorScheme.primaryContainer)
             .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {
@@ -138,7 +138,7 @@ fun SearchThumbnail(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = (size.value * 0.34f).sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }
         }

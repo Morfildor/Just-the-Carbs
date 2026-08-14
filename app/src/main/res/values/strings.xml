@@ -38,7 +38,7 @@
 
     <!-- Camera permission (§9) -->
     <string name="permission_title">Camera access is needed to scan a barcode.</string>
-    <string name="permission_body">CarbScan uses the camera only to read barcodes and nutrition labels. Images are never uploaded or saved.</string>
+    <string name="permission_body">This app uses the camera only to read barcodes and nutrition labels. Images are never uploaded or saved.</string>
     <string name="permission_allow">Allow camera</string>
     <string name="permission_manual">Enter manually</string>
     <string name="permission_settings">Open settings</string>
@@ -145,7 +145,7 @@
     <string name="verify_label_value" tools:ignore="MissingTranslation">%1$s g / 100 %2$s</string>
     <string name="verify_label_match" tools:ignore="MissingTranslation">✓ Values match</string>
     <string name="verify_label_mismatch" tools:ignore="MissingTranslation">These do not match. Which is right?</string>
-    <string name="verify_label_basis_mismatch" tools:ignore="MissingTranslation">The package is measured per 100 %1$s, but this product is measured per 100 %2$s. CarbScan does not convert between them.</string>
+    <string name="verify_label_basis_mismatch" tools:ignore="MissingTranslation">The package is measured per 100 %1$s, but this product is measured per 100 %2$s. this app does not convert between them.</string>
     <string name="verify_label_confirm" tools:ignore="MissingTranslation">Confirm</string>
     <string name="verify_label_use_package" tools:ignore="MissingTranslation">Use package value</string>
     <string name="verify_label_edit" tools:ignore="MissingTranslation">Edit detected value</string>
@@ -265,7 +265,7 @@
 
     <!-- Millilitre / gram (design decision 3.1) -->
     <string name="basis_mismatch_title">This product is measured in %1$s</string>
-    <string name="basis_mismatch_body">Grams and millilitres are not interchangeable without knowing the product\'s density, so CarbScan won\'t convert between them. To use the other unit, enter the value from the package.</string>
+    <string name="basis_mismatch_body">Grams and millilitres are not interchangeable without knowing the product\'s density, so this app won\'t convert between them. To use the other unit, enter the value from the package.</string>
 
     <!-- OCR (§29) -->
     <string name="ocr_title">Scan nutrition label</string>
@@ -336,7 +336,21 @@
     <string name="settings_attribution_images" tools:ignore="MissingTranslation">Product photos from Open Food Facts (openfoodfacts.org), used under the Creative Commons Attribution-ShareAlike 3.0 licence (CC BY-SA 3.0). A photo may also show packaging artwork owned by its manufacturer.</string>
     <string name="settings_safety_title">Important</string>
     <!-- §45: describes only what the software does. No efficacy or approval claim. -->
-    <string name="settings_safety_body">CarbScan calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
+    <string name="settings_safety_body">This app calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
+
+    <!-- Onboarding (first-launch carousel) -->
+    <string name="onboarding_skip" tools:ignore="MissingTranslation">Skip</string>
+    <string name="onboarding_step_1" tools:ignore="MissingTranslation">STEP 1</string>
+    <string name="onboarding_step_2" tools:ignore="MissingTranslation">STEP 2</string>
+    <string name="onboarding_step_3" tools:ignore="MissingTranslation">STEP 3</string>
+    <string name="onboarding_title_1" tools:ignore="MissingTranslation">Scan it.</string>
+    <string name="onboarding_body_1" tools:ignore="MissingTranslation">Point your camera at any barcode. No searching, no typing a product name.</string>
+    <string name="onboarding_title_2" tools:ignore="MissingTranslation">Size the portion.</string>
+    <string name="onboarding_body_2" tools:ignore="MissingTranslation">Drag, type, or tap a preset. Grams, slices, whatever makes sense for the food.</string>
+    <string name="onboarding_title_3" tools:ignore="MissingTranslation">Get the number.</string>
+    <string name="onboarding_body_3" tools:ignore="MissingTranslation">Just the carbs. Nothing else on screen competes with it.</string>
+    <string name="onboarding_next" tools:ignore="MissingTranslation">Next</string>
+    <string name="onboarding_get_started" tools:ignore="MissingTranslation">Get started</string>
 
     <!-- Generic -->
     <string name="action_done">Done</string>

@@ -10,6 +10,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -266,7 +267,14 @@ private fun CameraPreview(
                 // §8's "optional manual barcode entry" — genuinely a barcode field now. It
                 // previously jumped straight to manual product entry, so the control did not do
                 // what its label said.
-                TextButton(onClick = { showBarcodeDialog = true }) {
+                TextButton(
+                    onClick = { showBarcodeDialog = true },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .height(52.dp)
+                        .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                ) {
                     Text(
                         text = stringResource(R.string.scanner_enter_manually),
                         color = Color.White,
@@ -280,19 +288,14 @@ private fun CameraPreview(
 /** A subtle frame — a hint, not a target the barcode has to be squeezed into (§8). */
 @Composable
 private fun ScanFrame(modifier: Modifier = Modifier) {
+    val accent = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
-            .fillMaxWidth(0.8f)
+            .fillMaxWidth(0.68f)
             .height(180.dp)
-            .background(Color.Transparent, RoundedCornerShape(Space.cardRadius))
-            .padding(2.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(Space.cardRadius)),
-        )
-    }
+            .background(accent.copy(alpha = 0.08f), RoundedCornerShape(26.dp))
+            .border(3.dp, accent, RoundedCornerShape(26.dp)),
+    )
 }
 
 @Composable

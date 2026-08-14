@@ -33,6 +33,7 @@ import app.carbscan.R
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.ui.theme.Space
+import app.carbscan.ui.theme.extendedColors
 
 /**
  * The provenance badge (§23, §25).
@@ -58,7 +59,7 @@ fun SourceBadge(product: Product, modifier: Modifier = Modifier) {
                     color = if (verified) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
-                        MaterialTheme.colorScheme.surfaceVariant
+                        MaterialTheme.extendedColors.orangeSoft
                     },
                     shape = RoundedCornerShape(50),
                 )
@@ -71,7 +72,7 @@ fun SourceBadge(product: Product, modifier: Modifier = Modifier) {
                 color = if (verified) {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                    MaterialTheme.extendedColors.onOrangeSoft
                 },
             )
         }

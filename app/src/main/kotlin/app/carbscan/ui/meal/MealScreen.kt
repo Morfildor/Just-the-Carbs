@@ -10,11 +10,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -36,6 +38,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import app.carbscan.R
 import app.carbscan.domain.MealItem
 import app.carbscan.domain.ResultFormatter
@@ -43,6 +46,7 @@ import app.carbscan.domain.ResultStyle
 import app.carbscan.domain.AppSettings
 import app.carbscan.ui.theme.NumberType
 import app.carbscan.ui.theme.Space
+import app.carbscan.ui.theme.extendedColors
 
 /** Stable handles for instrumented tests. */
 const val MEAL_TOTAL_TAG = "meal_total"
@@ -84,60 +88,70 @@ fun MealScreen(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding(),
-    ) {
-        Row(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.s, vertical = Space.xs),
-            verticalAlignment = Alignment.CenterVertically,
+                .align(Alignment.TopEnd)
+                .offset(x = 80.dp, y = (-90).dp)
+                .size(200.dp)
+                .background(MaterialTheme.extendedColors.orangeSoft.copy(alpha = 0.9f), CircleShape),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding(),
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.product_back),
-                )
-            }
-            Text(
-                text = stringResource(R.string.meal_title),
-                style = MaterialTheme.typography.titleMedium,
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = Space.s)
-                    .semantics { heading() },
-            )
-            // Only offered when there is something to clear — a permanently-present destructive
-            // action on an empty screen is noise the user has to learn to ignore.
-            if (state.items.isNotEmpty()) {
-                TextButton(
-                    onClick = { onShowClearConfirmation(true) },
-                    modifier = Modifier.testTag(MEAL_CLEAR_TAG),
-                ) {
-                    Text(stringResource(R.string.meal_clear))
-                }
-            }
-        }
-
-        if (state.items.isEmpty()) {
-            EmptyMeal(modifier = Modifier.weight(1f))
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = Space.screenEdge),
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.s, vertical = Space.xs),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(state.items, key = { it.id }) { item ->
-                    MealItemRow(item = item, onRemove = { onRemoveItem(item) })
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.product_back),
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.meal_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = Space.s)
+                        .semantics { heading() },
+                )
+                // Only offered when there is something to clear — a permanently-present destructive
+                // action on an empty screen is noise the user has to learn to ignore.
+                if (state.items.isNotEmpty()) {
+                    TextButton(
+                        onClick = { onShowClearConfirmation(true) },
+                        modifier = Modifier.testTag(MEAL_CLEAR_TAG),
+                    ) {
+                        Text(stringResource(R.string.meal_clear))
+                    }
                 }
             }
-        }
 
-        MealTotalPanel(state = state, settings = settings)
+            if (state.items.isEmpty()) {
+                EmptyMeal(modifier = Modifier.weight(1f))
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = Space.screenEdge),
+                ) {
+                    items(state.items, key = { it.id }) { item ->
+                        MealItemRow(item = item, onRemove = { onRemoveItem(item) })
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            }
+
+            MealTotalPanel(state = state, settings = settings)
+        }
     }
 }
 
@@ -213,7 +227,7 @@ private fun MealItemRow(item: MealItem, onRemove: () -> Unit) {
  */
 @Composable
 private fun MealTotalPanel(state: MealUiState, settings: AppSettings) {
-    val panelShape = RoundedCornerShape(topStart = Space.xl, topEnd = Space.xl)
+    val panelShape = RoundedCornerShape(topStart = Space.sheetTopRadius, topEnd = Space.sheetTopRadius)
     val total = state.total
 
     Column(
@@ -243,7 +257,7 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings) {
         Text(
             text = dominant,
             style = NumberType.result,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.extendedColors.result,
             maxLines = 1,
             // Same reason as the calculator's result, and more pressing here: a meal total is the
             // sum of several portions, so it reaches three and four digits sooner than any single

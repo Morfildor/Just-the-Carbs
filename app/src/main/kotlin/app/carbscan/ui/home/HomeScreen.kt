@@ -12,11 +12,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -30,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -78,85 +81,105 @@ fun HomeScreen(
     mealTotal: CarbResult? = null,
     onOpenMeal: () -> Unit = {},
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding(),
-    ) {
-        Row(
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Doc's decorative blue-soft circle, bleeding off the top-right corner (result.html).
+        // Purely decorative — sits behind all content, never intercepts touches.
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = Space.screenEdge, end = Space.s, top = Space.s, bottom = Space.s),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = BuildConfig.APP_NAME,
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f).semantics { heading() },
-            )
-            val settingsLabel = stringResource(R.string.home_settings)
-            IconButton(
-                onClick = onOpenSettings,
-                modifier = Modifier
-                    .size(Space.minTouchTarget)
-                    .semantics { contentDescription = settingsLabel },
-            ) {
-                Icon(Icons.Filled.Settings, contentDescription = null)
-            }
-        }
-
-        // The meal in progress, if there is one (§10). Above recents rather than below, because a
-        // half-built meal is the thing the user is in the middle of; and absent entirely when the
-        // meal is empty, so Home's resting state is unchanged from before this feature existed.
-        MealBarIfPresent(
-            itemCount = mealItems.size,
-            total = mealTotal,
-            onClick = onOpenMeal,
-            modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
+                .align(Alignment.TopEnd)
+                .offset(x = 80.dp, y = (-90).dp)
+                .size(220.dp)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f), CircleShape),
         )
-
-        // Recents take the scrollable middle; the primary action sits at the bottom where a thumb
-        // actually reaches it (§40).
-        if (recents.isEmpty()) {
-            EmptyState(modifier = Modifier.weight(1f))
-        } else {
-            RecentList(
-                recents = recents,
-                settings = settings,
-                onOpenProduct = onOpenProduct,
-                onToggleFavorite = onToggleFavorite,
-                modifier = Modifier.weight(1f),
-            )
-        }
 
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.screenEdge)
-                .padding(bottom = Space.m)
-                .navigationBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding(),
         ) {
-            Button(
-                onClick = onScan,
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(64.dp),
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = Space.screenEdge, end = Space.s, top = Space.s, bottom = Space.s),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
-                Spacer(Modifier.size(Space.s))
                 Text(
-                    text = stringResource(R.string.home_scan_button),
-                    style = MaterialTheme.typography.titleMedium,
+                    text = BuildConfig.APP_NAME,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f).semantics { heading() },
+                )
+                val settingsLabel = stringResource(R.string.home_settings)
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier
+                        .size(Space.minTouchTarget)
+                        .semantics { contentDescription = settingsLabel },
+                ) {
+                    Icon(Icons.Filled.Settings, contentDescription = null)
+                }
+            }
+
+            // The meal in progress, if there is one (§10). Above recents rather than below, because a
+            // half-built meal is the thing the user is in the middle of; and absent entirely when the
+            // meal is empty, so Home's resting state is unchanged from before this feature existed.
+            MealBarIfPresent(
+                itemCount = mealItems.size,
+                total = mealTotal,
+                onClick = onOpenMeal,
+                modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
+            )
+
+            // Recents take the scrollable middle; the primary action sits at the bottom where a thumb
+            // actually reaches it (§40).
+            if (recents.isEmpty()) {
+                EmptyState(modifier = Modifier.weight(1f))
+            } else {
+                RecentList(
+                    recents = recents,
+                    settings = settings,
+                    onOpenProduct = onOpenProduct,
+                    onToggleFavorite = onToggleFavorite,
+                    modifier = Modifier.weight(1f),
                 )
             }
 
-            TextButton(
-                onClick = onManualEntry,
-                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.screenEdge)
+                    .padding(bottom = Space.m)
+                    .navigationBarsPadding(),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(stringResource(R.string.home_manual_button))
+                Button(
+                    onClick = onScan,
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp)
+                        .shadow(
+                            elevation = 12.dp,
+                            shape = RoundedCornerShape(Space.buttonRadius),
+                            ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                            spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                        ),
+                ) {
+                    Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
+                    Spacer(Modifier.size(Space.s))
+                    Text(
+                        text = stringResource(R.string.home_scan_button),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+
+                TextButton(
+                    onClick = onManualEntry,
+                    modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                ) {
+                    Text(stringResource(R.string.home_manual_button))
+                }
             }
         }
     }
@@ -180,7 +203,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .size(112.dp)
                 .background(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     shape = RoundedCornerShape(32.dp),
                 ),
             contentAlignment = Alignment.Center,
@@ -190,7 +213,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             Icon(
                 painter = painterResource(R.drawable.ic_launcher_foreground),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(92.dp),
             )
         }
