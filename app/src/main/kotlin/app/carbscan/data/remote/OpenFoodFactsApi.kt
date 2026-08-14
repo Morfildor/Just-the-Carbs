@@ -37,6 +37,10 @@ interface OpenFoodFactsApi {
             "quantity",
             "nutriments",
             "image_front_small_url",
+            // The 400 px display variant, for the calculator's hero image (§5). Adding one URL
+            // string to the response is negligible next to the identification value of an image
+            // the user can actually recognise their package in.
+            "image_front_url",
             "serving_size",
         ).joinToString(",")
     }

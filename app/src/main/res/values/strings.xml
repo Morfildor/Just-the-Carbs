@@ -61,6 +61,7 @@
     <string name="product_result_calculated">%1$s g calculated</string>
     <string name="product_result_whole">≈ %1$s g whole grams</string>
     <string name="product_result_pending">Enter a portion</string>
+    <string name="product_quarter_pack">¼ pack</string>
     <string name="product_half_pack">½ pack</string>
     <string name="product_full_pack">Full pack</string>
     <string name="product_copy">Copy value</string>

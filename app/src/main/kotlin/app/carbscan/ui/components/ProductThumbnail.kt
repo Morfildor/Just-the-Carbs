@@ -22,7 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import app.carbscan.domain.Product
-import app.carbscan.domain.ProductImageUrlValidator
+import app.carbscan.domain.ProductImageSelector
 import app.carbscan.ui.theme.Motion
 import app.carbscan.ui.theme.Space
 import coil3.compose.AsyncImage
@@ -46,10 +46,16 @@ fun ProductThumbnail(
     modifier: Modifier = Modifier,
     size: Dp = Space.thumbnail,
 ) {
-    val shape = RoundedCornerShape(Space.m)
+    val shape = RoundedCornerShape(Space.cardRadius)
     // A malicious or corrupt remote record must not make the app load an image from an arbitrary
     // third-party host (§15) — an untrusted URL is treated exactly like a missing one.
-    val safeImageUrl = remember(product.imageUrl) { ProductImageUrlValidator.validate(product.imageUrl) }
+    //
+    // Routed through ProductImageSelector so a list of 52 dp tiles keeps using the 200 px image
+    // even though a 400 px one now exists: decoding the larger bitmap for every row would cost
+    // memory for detail nobody can see at this size (§33). Validation is unchanged.
+    val safeImageUrl = remember(product.imageUrl, product.largeImageUrl) {
+        ProductImageSelector.thumbnailUrl(product)
+    }
     var imageLoaded by remember(safeImageUrl) { mutableStateOf(false) }
 
     Box(

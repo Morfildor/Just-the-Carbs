@@ -12,6 +12,10 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.dp
+import app.carbscan.ui.components.PRODUCT_HERO_TAG
 import app.carbscan.domain.AppSettings
 import app.carbscan.domain.CarbCalculator
 import app.carbscan.domain.NutritionBasis
@@ -200,6 +204,84 @@ class ProductScreenTest {
         compose.onAllNodesWithText("Online value").assertCountEquals(0)
     }
 
+    // ---- §4/§30 the product hero image ---------------------------------------------------------
+
+    /**
+     * The hero must be substantially larger than a Recents thumbnail (52 dp) — that size difference
+     * is the entire point of the feature (§4). Asserted against the real measured height rather
+     * than a screenshot, so it stays meaningful without a screenshot-testing framework (§30).
+     */
+    @Test
+    fun theProductHeroImageIsSubstantiallyLargerThanARecentThumbnail() {
+        showCalculator(product())
+
+        val heroHeight = compose.onNodeWithTag(PRODUCT_HERO_TAG)
+            .fetchSemanticsNode()
+            .size
+            .height
+
+        with(compose.density) {
+            // 52 dp is Space.thumbnail, what Recents uses. The hero is ~150 dp.
+            assert(heroHeight.toDp() > 120.dp) {
+                "hero image was ${heroHeight.toDp()}, expected well above the 52dp thumbnail"
+            }
+        }
+    }
+
+    /**
+     * A product with no image must not collapse or shift the layout — the container holds its space
+     * and shows a monogram, exactly as Recents already does (§30).
+     */
+    @Test
+    fun aProductWithNoImageKeepsTheHeroContainerAndStillCalculates() {
+        showCalculator(product())
+
+        compose.onNodeWithTag(PRODUCT_HERO_TAG).assertIsDisplayed()
+
+        compose.onNode(portionField()).performTextInput("65")
+        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+    }
+
+    /**
+     * The portion controls must not be separated from the product header by a large empty band
+     * (§19: "use responsive layout to prevent excessive scrolling", §38: not "a collection of soft
+     * cards" with dead space between them).
+     *
+     * This regression exists because the first version of the hero layout left roughly a quarter of
+     * the screen blank between the per-100 figure and "How much are you eating?" — something no
+     * assertion caught and only appeared when the screen was actually looked at. Measuring the gap
+     * turns that into something a test can hold.
+     */
+    @Test
+    fun thePortionControlsFollowTheProductHeaderWithoutALargeDeadBand() {
+        showCalculator(product())
+
+        val headerBottom = compose.onNodeWithText("48.2 g carbs / 100 g", substring = true)
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .bottom
+        val questionTop = compose.onNodeWithText("How much are you eating?")
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .top
+
+        with(compose.density) {
+            val gap = (questionTop - headerBottom).toDp()
+            assert(gap < 140.dp) { "dead band between product header and portion question was $gap" }
+        }
+    }
+
+    /** The image is identification, never a gate: the result stays reachable regardless (§30). */
+    @Test
+    fun theHeroImageDoesNotBlockTheResult() {
+        showCalculator(product())
+
+        compose.onNode(portionField()).performTextInput("65")
+
+        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithText("≈ 31 g whole grams").assertIsDisplayed()
+    }
+
     // ---- §14 pack shortcuts only when the size is actually known ------------------------------
 
     @Test
@@ -219,6 +301,38 @@ class ProductScreenTest {
         // A guessed pack size would be a wrong portion offered as a convenience (§13).
         compose.onAllNodesWithText("Full pack").assertCountEquals(0)
         compose.onAllNodesWithText("½ pack").assertCountEquals(0)
+        compose.onAllNodesWithText("¼ pack").assertCountEquals(0)
+    }
+
+    /** ¼ · ½ · Full, the set §14 settles on. ¾ is deliberately not offered. */
+    @Test
+    fun quarterHalfAndFullPackAreOfferedAndNothingElse() {
+        showCalculator(product(packageAmount = "400"))
+
+        compose.onNodeWithText("¼ pack").assertIsDisplayed()
+        compose.onNodeWithText("½ pack").assertIsDisplayed()
+        compose.onNodeWithText("Full pack").assertIsDisplayed()
+        compose.onAllNodesWithText("¾ pack").assertCountEquals(0)
+    }
+
+    @Test
+    fun aQuarterPackSetsAQuarterOfThePackageAmount() {
+        showCalculator(product(packageAmount = "400"))
+
+        compose.onNodeWithText("¼ pack").performClick()
+
+        // 400 / 4 = 100 g; 48.2 x 100 / 100 = 48.2
+        compose.onNodeWithText("48.2 g").assertIsDisplayed()
+    }
+
+    @Test
+    fun aHalfPackStillSetsHalfThePackageAmount() {
+        showCalculator(product(packageAmount = "400"))
+
+        compose.onNodeWithText("½ pack").performClick()
+
+        // 400 / 2 = 200 g; 48.2 x 200 / 100 = 96.4
+        compose.onNodeWithText("96.4 g").assertIsDisplayed()
     }
 
     // ---- §43 result style --------------------------------------------------------------------

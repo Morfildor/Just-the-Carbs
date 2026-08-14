@@ -28,16 +28,34 @@ import androidx.compose.ui.unit.sp
  */
 
 private val Ink = Color(0xFF14161A)
-private val Paper = Color(0xFFFBFAF8)
+private val Paper = Color(0xFFF4F2EE)
 private val PaperRaised = Color(0xFFFFFFFF)
-private val InkMuted = Color(0xFF5C6470)
-private val LineLight = Color(0xFFE4E2DE)
+
+/**
+ * Secondary text (development-pass brief §20).
+ *
+ * Darkened from #5C6470. The old value met contrast minimums but read as washed out, which mattered
+ * because most of this app's *labels* — "Online value", the conversion equation, the whole-gram line
+ * — use it. Low-contrast labels on a low-contrast surface was the main source of the "too soft"
+ * impression.
+ */
+private val InkMuted = Color(0xFF4A515C)
+
+/**
+ * Borders. Strengthened from #E4E2DE, which was roughly a 2% step off the surfaces it was drawn on
+ * and therefore not really a border at all — cards appeared to float without edges.
+ */
+private val LineLight = Color(0xFFD8D5CF)
 
 private val Night = Color(0xFF0E1013)
 private val NightRaised = Color(0xFF171A1F)
 private val Chalk = Color(0xFFECEEF1)
-private val ChalkMuted = Color(0xFF99A2AE)
-private val LineDark = Color(0xFF272C33)
+
+/** Brightened from #99A2AE: the same washed-out-label problem as [InkMuted], in the dark (§20). */
+private val ChalkMuted = Color(0xFFA8B1BD)
+
+/** Strengthened from #272C33 so dark-mode cards have a visible edge against their surface (§20). */
+private val LineDark = Color(0xFF343A43)
 
 private val TealDeep = Color(0xFF0B6E5F)
 private val TealSoft = Color(0xFFD7EFE9)
@@ -68,11 +86,13 @@ private val LightColors = lightColorScheme(
     // Explicit container ramp. Without these, Material derives them from the seed and the result
     // surface came out within 1% of the page background — the most important element on the
     // screen was effectively invisible.
+    // A ramp with real steps between rungs (§20). The page is now a definite warm grey, so a white
+    // raised surface reads as genuinely lifted off it rather than as the same colour twice.
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF7F5F1),
-    surfaceContainer = Color(0xFFF2F0EB),
-    surfaceContainerHigh = Color(0xFFEDEAE4),
-    surfaceContainerHighest = Color(0xFFE8E5DE),
+    surfaceContainerLow = Color(0xFFFAF9F6),
+    surfaceContainer = Color(0xFFEBE8E2),
+    surfaceContainerHigh = Color(0xFFE3DFD8),
+    surfaceContainerHighest = Color(0xFFDAD6CE),
     outline = LineLight,
     outlineVariant = LineLight,
     error = Color(0xFF9B2C2C),
@@ -95,11 +115,13 @@ private val DarkColors = darkColorScheme(
     onSurface = Chalk,
     surfaceVariant = NightRaised,
     onSurfaceVariant = ChalkMuted,
-    surfaceContainerLowest = Color(0xFF090B0D),
-    surfaceContainerLow = Color(0xFF131619),
-    surfaceContainer = Color(0xFF171A1F),
-    surfaceContainerHigh = Color(0xFF1E2228),
-    surfaceContainerHighest = Color(0xFF262B32),
+    // Wider steps than before (§20): dark surfaces sat within ~4% of each other, so the result
+    // panel and the page merged into one flat black field.
+    surfaceContainerLowest = Color(0xFF07090B),
+    surfaceContainerLow = Color(0xFF14171B),
+    surfaceContainer = Color(0xFF1B1F24),
+    surfaceContainerHigh = Color(0xFF242930),
+    surfaceContainerHighest = Color(0xFF2E343C),
     outline = LineDark,
     outlineVariant = LineDark,
     error = Color(0xFFF2999A),
@@ -119,8 +141,27 @@ object Space {
     val xl = 32.dp
     val xxl = 48.dp
 
-    val cardRadius = 20.dp
-    val buttonRadius = 18.dp
+    /**
+     * Radii (development-pass brief §20).
+     *
+     * Tightened from 20/18 dp. At those values every surface — cards, buttons, chips, inputs, the
+     * result panel — carried nearly the same very round corner, which reads as toy-like and, worse,
+     * removes the shape difference that tells the user what kind of thing they are looking at.
+     *
+     * They are now deliberately *different* from each other, because shape is information:
+     * containers are calm, controls are crisper, chips stay chip-shaped.
+     */
+    val cardRadius = 14.dp
+
+    /** Buttons and inputs. Crisper than a card, so a control reads as pressable. */
+    val buttonRadius = 12.dp
+
+    /** Product imagery. Slightly softer than a control, so the photo reads as content. */
+    val mediaRadius = 16.dp
+
+    /** Chips stay pill-shaped — their whole affordance is "chip", and it should not be diluted. */
+    val chipRadius = 999.dp
+
     val minTouchTarget = 48.dp
     val screenEdge = 20.dp
 

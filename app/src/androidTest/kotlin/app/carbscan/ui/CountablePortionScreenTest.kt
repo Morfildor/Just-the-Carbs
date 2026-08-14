@@ -10,8 +10,11 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToLog
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -379,7 +382,14 @@ class CountablePortionScreenTest {
         // 42 x (2 x 36) / 100 = 30.24
         compose.onNodeWithText("30.2 g").assertIsDisplayed()
 
+        // Typing the count left the soft keyboard open, and a control the keyboard covers is not
+        // clickable even though performClick() does not throw (see the note at the top of this
+        // file). Committing the text field's IME action closes the keyboard first, so the click
+        // that follows lands on a control the user could actually reach.
+        compose.onNode(countField()).performImeAction()
+        compose.waitForIdle()
         compose.onNodeWithText("Online portion").performScrollTo().performClick()
+        compose.waitForIdle()
         // The form pre-fills with the current 36 so confirming a correct weight is one tap.
         //
         // Asserted on the field by tag rather than on the title text: expanding the form changes
@@ -436,7 +446,7 @@ class CountablePortionScreenTest {
         showCalculatorWithNotice(product(), sliceUnit(), BigDecimal("38"))
         compose.onNodeWithText("30.2 g").assertIsDisplayed()
 
-        compose.onNodeWithText("Use new value").performClick()
+        compose.onNodeWithText("Use new value").performScrollTo().performClick()
 
         // 42 x (2 x 38) / 100 = 31.92
         compose.onNodeWithText("31.9 g").assertIsDisplayed()

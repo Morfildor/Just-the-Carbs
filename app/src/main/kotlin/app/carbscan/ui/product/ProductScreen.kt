@@ -7,11 +7,12 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import app.carbscan.ui.components.ProductThumbnail
+import app.carbscan.ui.components.ProductHeroImage
 import app.carbscan.ui.theme.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -28,6 +31,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -57,6 +61,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -65,6 +70,8 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
@@ -340,9 +347,23 @@ private fun CalculatorBody(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // Pinned directly under the title, where the user expects the product's own facts. Leaving
-        // it inside the centred block left it floating in the middle of the screen, detached from
-        // the name it describes.
+        // ZONE 1 — product identity (development-pass brief §4, §19).
+        //
+        // The hero image is the first thing on the screen because the first question the user has,
+        // before they trust any number, is "is this the package in my hand?". It compacts while the
+        // keyboard is open: identification matters before typing, the portion and result matter
+        // during it.
+        // Read from the IME inset's height rather than the experimental `isImeVisible`, which is a
+        // stable API giving the same fact. Non-zero means the keyboard is taking screen space.
+        val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+        ProductHeroImage(
+            product = product,
+            compact = imeVisible,
+            modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
+        )
+
+        // The per-100 figure and its provenance, directly under the image they describe.
         ProductSummary(
             product = product,
             modifier = Modifier.padding(horizontal = Space.screenEdge),
@@ -365,26 +386,23 @@ private fun CalculatorBody(
 
         // ZONE 2 — portion controls. Scrollable, and deliberately holds only what the user can
         // afford to scroll for: the mode row, the input field itself, and the secondary shortcuts.
-        //
-        // When the content is taller than the viewport (keyboard open, large font, or an expanded
-        // inline form), a scroll region starts at the TOP — which silently defeats
-        // Arrangement.Bottom and hides exactly the controls the user just opened. Following the
-        // content's growth keeps "anchored to the bottom" true at every viewport height instead of
-        // only when everything happens to fit.
+        // The equation and the result live outside it, in the pinned surface below (§3.2).
         val portionScroll = rememberScrollState()
-        LaunchedEffect(portionScroll.maxValue, state.correctingPortionUnit, state.showAddPortionUnitForm) {
-            if (portionScroll.maxValue > 0) portionScroll.scrollTo(portionScroll.maxValue)
-        }
+        // Zone 2 takes the remaining height and lays its controls out from the TOP, directly under
+        // the product they belong to.
+        //
+        // It was previously bottom-anchored, on the reasoning that controls belong within thumb
+        // reach (§40). Once the hero image shortened zone 1, that left a measured 163 dp of dead
+        // space between the per-100 figure and "How much are you eating?" — a quarter of the
+        // screen of nothing, which reads as a broken layout rather than a calm one. The controls
+        // still sit comfortably in the lower half because the hero above them is 150 dp tall; they
+        // simply no longer float away from it. Pinned by
+        // `thePortionControlsFollowTheProductHeaderWithoutALargeDeadBand`.
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(portionScroll)
                 .padding(horizontal = Space.screenEdge),
-            // Anchored to the bottom, immediately above the result. §40 assumes the user is
-            // standing in a kitchen holding food in the other hand, so the controls belong within
-            // thumb reach and directly adjacent to the number they change. Centring instead left a
-            // gap both above and below the block, which read as unfinished rather than as calm.
-            verticalArrangement = Arrangement.Bottom,
         ) {
             Text(
                 text = stringResource(R.string.product_portion_question),
@@ -469,48 +487,50 @@ private fun CalculatorBody(
 }
 
 /**
- * The product header (§14): thumbnail, the per-100 figure, and where that figure came from.
+ * The per-100 figure and where it came from (§14, §19).
  *
- * Grouped into one card so the screen reads as *product* then *portion* then *result*, rather than
- * as a stack of unrelated lines.
+ * The thumbnail that used to sit here is gone: [ProductHeroImage] directly above now carries the
+ * product's identity, and repeating the same photo at 56 dp underneath it was redundant. Dropping
+ * it also lets this row become a single quiet line of facts rather than a card competing with the
+ * image above and the result below.
  */
 @Composable
 private fun ProductSummary(product: Product, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Space.cardRadius))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(Space.m),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ProductThumbnail(product = product, size = 56.dp)
-
-        Column(modifier = Modifier.weight(1f).padding(start = Space.m)) {
-            Text(
-                text = stringResource(
-                    R.string.product_per_100,
-                    product.carbsPer100.stripTrailingZeros().toPlainString(),
-                    product.portionUnit,
-                ),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(Space.s))
-            SourceBadge(product)
-        }
+    // Stacked rather than side by side. The badge is itself a two-part block (a pill plus, for
+    // unverified online data, a "Check package if needed" line), so putting it beside the per-100
+    // figure produced a ragged two-line arrangement where neither element had a clean baseline —
+    // visible only once a real product was on screen.
+    Column(modifier = modifier.fillMaxWidth().padding(vertical = Space.xs)) {
+        Text(
+            text = stringResource(
+                R.string.product_per_100,
+                product.carbsPer100.stripTrailingZeros().toPlainString(),
+                product.portionUnit,
+            ),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(Space.xs))
+        SourceBadge(product)
     }
 }
 
 @Composable
 private fun PortionField(value: String, unit: String, onValueChange: (String) -> Unit) {
+    val focusManager = LocalFocusManager.current
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         textStyle = NumberType.portion,
         singleLine = true,
         // Decimal keypad, because portions have decimals and a full keyboard would be noise (§16).
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        // Done, for the same reason as the count field: a decimal keypad has no Enter key, so
+        // without it there is no in-app way to put the keyboard away.
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Decimal,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
         suffix = {
             Text(text = unit, style = MaterialTheme.typography.titleMedium)
         },
@@ -555,27 +575,52 @@ private fun QuickAdjustRow(onAdjust: (Int) -> Unit) {
     }
 }
 
+/**
+ * ¼ · ½ · Full pack (development-pass brief §14).
+ *
+ * ¼ was added because it is genuinely common for the large packages this shortcut applies to — a
+ * 400 g loaf, a 1 L carton — and it removes an arithmetic step the user would otherwise do in their
+ * head while holding the food.
+ *
+ * **¾ is deliberately absent.** §14 requires demonstrated value for it, and a fourth button pushes
+ * the labels into truncation at large font scales, where a control that says "Fu…" is worse than a
+ * control that does not exist.
+ *
+ * The reliability gate is unchanged: this row only renders when [PackageQuantityParser] read a
+ * package size confidently, so a guessed pack size can never be presented as a shortcut, and
+ * multipacks are still never inferred (§14, §13). Every fraction resolves through the same
+ * base-unit path as a typed portion — no separate calculation.
+ */
 @Composable
 private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) {
+    // Scale 2 with HALF_UP: a 355 ml can quartered is 88.75 ml, and truncating to a whole number
+    // would silently change the portion the user asked for.
+    val fractions = listOf(
+        R.string.product_quarter_pack to pack.divide(BigDecimal(4), 2, RoundingMode.HALF_UP),
+        R.string.product_half_pack to pack.divide(BigDecimal(2), 2, RoundingMode.HALF_UP),
+        R.string.product_full_pack to pack,
+    )
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
-        // Same large-font constraint as the adjust row, and worse here: the Dutch "Hele
-        // verpakking" is twice the length of "Full pack".
-        OutlinedButton(
-            onClick = { onSetPortion(pack.divide(BigDecimal(2), 2, RoundingMode.HALF_UP)) },
-            shape = RoundedCornerShape(Space.buttonRadius),
-            contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.s),
-            modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
-        ) { Text(stringResource(R.string.product_half_pack), textAlign = TextAlign.Center) }
-
-        OutlinedButton(
-            onClick = { onSetPortion(pack) },
-            shape = RoundedCornerShape(Space.buttonRadius),
-            contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.s),
-            modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
-        ) { Text(stringResource(R.string.product_full_pack), textAlign = TextAlign.Center) }
+        fractions.forEach { (label, amount) ->
+            OutlinedButton(
+                onClick = { onSetPortion(amount) },
+                shape = RoundedCornerShape(Space.buttonRadius),
+                // Tighter horizontal padding than the default so three labels fit one row at a
+                // large font scale — the constraint that keeps ¾ out.
+                contentPadding = PaddingValues(horizontal = Space.xs, vertical = Space.s),
+                modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
+            ) {
+                Text(
+                    text = stringResource(label),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 
@@ -599,14 +644,14 @@ private fun PortionModeRow(
             selected = isGramsSelected,
             onClick = onSelectGrams,
             label = { Text(stringResource(R.string.product_mode_grams)) },
-            shape = RoundedCornerShape(Space.buttonRadius),
+            shape = RoundedCornerShape(Space.chipRadius),
         )
         units.forEach { unit ->
             FilterChip(
                 selected = !isGramsSelected && unit.id == selectedUnitId,
                 onClick = { onSelectUnit(unit.id) },
                 label = { Text(unit.chipLabel()) },
-                shape = RoundedCornerShape(Space.buttonRadius),
+                shape = RoundedCornerShape(Space.chipRadius),
             )
         }
     }
@@ -630,6 +675,7 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
     // The composable owns the selection; the caller still owns the text. Whenever the incoming
     // value differs from what we last emitted (mode switch, unit change, restored state), the
     // field's text is resynchronised while leaving the caret at the end.
+    val focusManager = LocalFocusManager.current
     var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     if (fieldValue.text != value) {
         fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
@@ -644,7 +690,15 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
         },
         textStyle = NumberType.portion,
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        // A Done action, not the platform default. The decimal keypad has no Enter key, so without
+        // this the only way to dismiss the keyboard is the system back gesture — leaving the
+        // controls underneath it (verify, add unit, pack shortcuts) covered with no obvious way to
+        // reach them.
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Decimal,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
         suffix = { Text(text = unit.unitLabel(count = 2), style = MaterialTheme.typography.titleMedium) },
         shape = RoundedCornerShape(Space.buttonRadius),
         modifier = Modifier

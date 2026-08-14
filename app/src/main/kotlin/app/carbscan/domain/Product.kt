@@ -58,7 +58,16 @@ data class Product(
     /** Declared package size, used only for the ½ pack / Full pack shortcuts (§14). */
     val packageAmount: BigDecimal? = null,
     val servingAmount: BigDecimal? = null,
+    /** Small (200 px) front image — thumbnails in Recents and search results. */
     val imageUrl: String? = null,
+    /**
+     * Larger (400 px) front image for the calculator's hero (§5).
+     *
+     * Kept as a separate field rather than replacing [imageUrl]: the two serve different jobs, and
+     * a list of 52 dp tiles should not decode 400 px bitmaps. Nullable because older cached rows
+     * predate it and many OFF records have no image at all.
+     */
+    val largeImageUrl: String? = null,
     /** Retained when the user overrides a remote value, so *Reset to online value* stays possible (§23). */
     val originalRemoteCarbs: BigDecimal? = null,
     /**

@@ -51,6 +51,7 @@
     <string name="product_result_calculated">%1$s g berekend</string>
     <string name="product_result_whole">≈ %1$s g hele grammen</string>
     <string name="product_result_pending">Voer een portie in</string>
+    <string name="product_quarter_pack">¼ verpakking</string>
     <string name="product_half_pack">½ verpakking</string>
     <string name="product_full_pack">Hele verpakking</string>
     <string name="product_copy">Waarde kopiëren</string>

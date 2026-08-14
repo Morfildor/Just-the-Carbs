@@ -93,6 +93,7 @@ class OpenFoodFactsDataSource(private val api: OpenFoodFactsApi) : ProductDataSo
                 brand = remote.brands?.takeIf { it.isNotBlank() }?.substringBefore(',')?.trim(),
                 packageAmount = quantity?.amount,
                 imageUrl = remote.imageFrontSmallUrl?.takeIf { it.isNotBlank() },
+                largeImageUrl = remote.imageFrontUrl?.takeIf { it.isNotBlank() },
             ),
             portionUnitCandidate = servingSize,
         )

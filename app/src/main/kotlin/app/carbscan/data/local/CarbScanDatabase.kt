@@ -22,14 +22,21 @@ import androidx.sqlite.execSQL
  * package. Every version bump gets a real [androidx.room.migration.Migration].
  */
 @Database(
-    entities = [ProductEntity::class, PortionUnitEntity::class],
-    version = 3,
+    entities = [
+        ProductEntity::class,
+        PortionUnitEntity::class,
+        MealItemEntity::class,
+        PortionUsageEntity::class,
+    ],
+    version = 4,
     exportSchema = true,
 )
 abstract class CarbScanDatabase : RoomDatabase() {
 
     abstract fun productDao(): ProductDao
     abstract fun portionUnitDao(): PortionUnitDao
+    abstract fun mealItemDao(): MealItemDao
+    abstract fun portionUsageDao(): PortionUsageDao
 
     companion object {
         private const val NAME = "carbscan.db"
@@ -101,25 +108,86 @@ abstract class CarbScanDatabase : RoomDatabase() {
                     connection.execSQL("ALTER TABLE products ADD COLUMN lastCount TEXT")
                 }
             }
+        }
 
-            private fun SQLiteConnection.hasColumn(table: String, column: String): Boolean {
-                val statement = prepare("PRAGMA table_info(`$table`)")
-                return statement.use {
-                    var found = false
-                    while (it.step()) {
-                        if (it.getText(1) == column) {
-                            found = true
-                            break
-                        }
-                    }
-                    found
+        /**
+         * v3 → v4: the temporary meal, usual portions, and the calculator's hero image.
+         *
+         * Purely additive — two new tables and one new nullable column. No existing column is
+         * altered, dropped or retyped, so every v1/v2/v3 record (verified products, favourites,
+         * recents, portion units, remembered input mode, remote-change metadata) survives by
+         * construction rather than by careful copying.
+         *
+         * `current_meal_items` deliberately has **no foreign key to `products`**. A meal item is an
+         * immutable calculation snapshot (§9): it must survive its product being reformulated,
+         * re-verified, or deleted. A cascading FK would delete the item; a restricting FK would
+         * block the product delete. Copying the few facts needed to re-display and re-total is the
+         * only shape that satisfies "an existing meal item must NOT silently change".
+         *
+         * Same `PRAGMA table_info` guard as [MIGRATION_2_3] and for the same reason — Room's
+         * MigrationTestHelper re-invokes migrations during validation, and a naive ALTER then fails
+         * with "duplicate column" as a pure testing artefact.
+         */
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(connection: SQLiteConnection) {
+                if (!connection.hasColumn("products", "largeImageUrl")) {
+                    connection.execSQL("ALTER TABLE products ADD COLUMN largeImageUrl TEXT")
                 }
+
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `current_meal_items` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productBarcode` TEXT,
+                        `displayName` TEXT NOT NULL,
+                        `portionDescription` TEXT NOT NULL,
+                        `resolvedAmount` TEXT NOT NULL,
+                        `basis` TEXT NOT NULL,
+                        `carbsPer100` TEXT NOT NULL,
+                        `exactCarbs` TEXT NOT NULL,
+                        `addedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `portion_usage` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productBarcode` TEXT NOT NULL,
+                        `inputMode` TEXT NOT NULL,
+                        `portionUnitId` INTEGER,
+                        `amount` TEXT NOT NULL,
+                        `usageCount` INTEGER NOT NULL,
+                        `lastUsedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_portion_usage_productBarcode_inputMode_portionUnitId_amount` " +
+                        "ON `portion_usage` (`productBarcode`, `inputMode`, `portionUnitId`, `amount`)",
+                )
+            }
+        }
+
+        /** Shared by the guarded migrations above. SQLite has no "ADD COLUMN IF NOT EXISTS". */
+        private fun SQLiteConnection.hasColumn(table: String, column: String): Boolean {
+            val statement = prepare("PRAGMA table_info(`$table`)")
+            return statement.use {
+                var found = false
+                while (it.step()) {
+                    if (it.getText(1) == column) {
+                        found = true
+                        break
+                    }
+                }
+                found
             }
         }
 
         fun build(context: Context): CarbScanDatabase =
             Room.databaseBuilder(context.applicationContext, CarbScanDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

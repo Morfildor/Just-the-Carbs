@@ -41,9 +41,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.carbscan.BuildConfig
 import app.carbscan.R
+import app.carbscan.domain.AppSettings
 import app.carbscan.domain.InputMode
 import app.carbscan.domain.Product
 import app.carbscan.domain.ResultFormatter
+import app.carbscan.domain.ResultStyle
 import app.carbscan.domain.CarbCalculator
 import app.carbscan.ui.components.ProductThumbnail
 import app.carbscan.ui.components.FavoriteButton
@@ -63,6 +65,7 @@ import app.carbscan.ui.theme.Space
 @Composable
 fun HomeScreen(
     recents: List<RecentEntry>,
+    settings: AppSettings,
     onScan: () -> Unit,
     onManualEntry: () -> Unit,
     onOpenProduct: (String) -> Unit,
@@ -105,6 +108,7 @@ fun HomeScreen(
         } else {
             RecentList(
                 recents = recents,
+                settings = settings,
                 onOpenProduct = onOpenProduct,
                 onToggleFavorite = onToggleFavorite,
                 modifier = Modifier.weight(1f),
@@ -195,6 +199,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 @Composable
 private fun RecentList(
     recents: List<RecentEntry>,
+    settings: AppSettings,
     onOpenProduct: (String) -> Unit,
     onToggleFavorite: (Product) -> Unit,
     modifier: Modifier = Modifier,
@@ -219,6 +224,7 @@ private fun RecentList(
         items(items = recents, key = { it.product.barcode }) { entry ->
             RecentCard(
                 entry = entry,
+                settings = settings,
                 onClick = { onOpenProduct(entry.product.barcode) },
                 onToggleFavorite = { onToggleFavorite(entry.product) },
             )
@@ -233,7 +239,12 @@ private fun RecentList(
  * all of which would make this look like the diet tracker the app must not be (§2).
  */
 @Composable
-private fun RecentCard(entry: RecentEntry, onClick: () -> Unit, onToggleFavorite: () -> Unit) {
+private fun RecentCard(
+    entry: RecentEntry,
+    settings: AppSettings,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+) {
     val product = entry.product
     // Recompute rather than store a display string, so a corrected carbs value is reflected in the
     // summary immediately instead of showing a figure derived from the old one.
@@ -245,11 +256,15 @@ private fun RecentCard(entry: RecentEntry, onClick: () -> Unit, onToggleFavorite
             ?.takeIf { entry.lastUnit != null && product.lastInputMode == InputMode.PORTION_UNIT }
             ?.let { count -> "${count.stripTrailingZeros().toPlainString()} ${entry.lastUnit!!.unitLabel(count = 2)}" }
             ?: "${portion.stripTrailingZeros().toPlainString()} ${product.portionUnit}"
-        stringResource(
-            R.string.recent_summary,
-            amountLabel,
-            "${ResultFormatter.whole(result.wholeGrams)} g",
-        )
+        // Follows the user's configured result style (§18). Recents previously always showed the
+        // whole gram while the calculator led with the decimal, so the same portion of the same
+        // product read as "30 g" here and "30.2 g" one tap away — the app appearing to disagree
+        // with itself about a number the user is about to rely on.
+        val carbsLabel = when (settings.resultStyle) {
+            ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(result.exact)} g"
+            ResultStyle.WHOLE_DOMINANT -> "${ResultFormatter.whole(result.wholeGrams)} g"
+        }
+        stringResource(R.string.recent_summary, amountLabel, carbsLabel)
     } ?: stringResource(R.string.recent_never_used)
 
     Row(

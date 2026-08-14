@@ -66,6 +66,7 @@ fun CarbScanNavHost(
 
             HomeScreen(
                 recents = recents,
+                settings = settings,
                 onScan = { navController.navigate(Routes.SCAN) },
                 onManualEntry = { navController.navigate(Routes.manual()) },
                 onOpenProduct = { navController.navigate(Routes.product(it)) },

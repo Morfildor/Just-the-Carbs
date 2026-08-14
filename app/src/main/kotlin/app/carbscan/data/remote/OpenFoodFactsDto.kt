@@ -4,7 +4,11 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Open Food Facts read API v2 response.
+ * Open Food Facts read API **v3** response (`api/v3/product/{barcode}`).
+ *
+ * This said "v2" until 2026-08-14 while the endpoint in [OpenFoodFactsApi] had already moved to v3 —
+ * corrected against the actual request path, not from memory. The fields this app reads are
+ * unchanged between the two versions; v2 remains deprecated-but-supported upstream.
  *
  * Every field is nullable with a default. OFF is a crowd-sourced database: any field can be
  * missing, and a strict schema would turn an incomplete record into a parse failure — which the app
@@ -35,6 +39,12 @@ data class OffProduct(
     val quantity: String? = null,
     val nutriments: OffNutriments? = null,
     @SerialName("image_front_small_url") val imageFrontSmallUrl: String? = null,
+    /**
+     * The 400 px front image — OFF's own display variant, confirmed live on 2026-08-14
+     * (`front_en.879.400.jpg`). Feeds the calculator's hero image (§5). Deliberately not the
+     * multi-megabyte original: 400 px covers a 120–170 dp hero at 3× density.
+     */
+    @SerialName("image_front_url") val imageFrontUrl: String? = null,
     /**
      * Free text, e.g. "1 slice (36 g)". Feeds [app.carbscan.domain.ServingSizeParser] only —
      * `serving_quantity`/`serving_quantity_unit` are deliberately not modelled here: OFF documents
