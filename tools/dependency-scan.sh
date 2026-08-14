@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dependency vulnerability scan for CarbScan (§26).
+# Dependency vulnerability scan for Just the Carbs (§26).
 #
 # Resolves the release runtime classpath and checks every artifact that actually ships
 # against OSV.dev, the same advisory database GitHub and Google use.

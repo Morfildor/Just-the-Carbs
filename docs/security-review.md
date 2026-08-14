@@ -1,4 +1,4 @@
-# Security review — CarbScan
+# Security review — Just the Carbs
 
 Written against the actual code and build configuration, not a generic checklist. Where a claim
 depends on something only observable at runtime (the merged manifest, a minified build), the
@@ -13,9 +13,9 @@ and independent review](#third-party-dependencies-and-independent-review) below)
 
 | Permission | Declared by | Purpose |
 |---|---|---|
-| `CAMERA` | CarbScan | Barcode and nutrition-label scanning |
-| `INTERNET` | CarbScan | Open Food Facts product-data and product-image requests |
-| `ACCESS_NETWORK_STATE` | Transitive, `com.google.android.datatransport` via ML Kit | Not used by CarbScan code; see [google-play-data-safety.md](google-play-data-safety.md) |
+| `CAMERA` | Just the Carbs | Barcode and nutrition-label scanning |
+| `INTERNET` | Just the Carbs | Open Food Facts product-data and product-image requests |
+| `ACCESS_NETWORK_STATE` | Transitive, `com.google.android.datatransport` via ML Kit | Not used by Just the Carbs code; see [google-play-data-safety.md](google-play-data-safety.md) |
 
 No storage, photo-library, contacts, location, Bluetooth, phone-state, or SMS permission exists
 anywhere in the merged manifest (checked via
@@ -123,7 +123,7 @@ three columns to `products` — no new backup surface, since the existing rule e
   holding a plain decimal string, never `REAL` — a deliberate, tested choice (not a security
   control) to avoid binary floating-point round-trip corruption; see `CLAUDE.md`.
 - The database lives in the app's private storage (Room's default location under
-  `/data/data/app.carbscan/databases/`), inaccessible to other apps on a non-rooted device without
+  `/data/data/app.justthecarbs/databases/`), inaccessible to other apps on a non-rooted device without
   the `READ_EXTERNAL_STORAGE`-style access this app never requests or grants a path to.
 - No secrets, tokens, or credentials are stored in the database — there is no account, so there is
   nothing of that kind to store.
@@ -159,8 +159,8 @@ action cannot itself carry more information than the single number the user aske
 
 No API key, client secret, or credential exists anywhere in the checked-in source (Open Food Facts'
 read API requires none). Release signing material is read exclusively from `keystore.properties`
-(gitignored) or environment variables (`CARBSCAN_STORE_FILE`, `CARBSCAN_STORE_PASSWORD`,
-`CARBSCAN_KEY_ALIAS`, `CARBSCAN_KEY_PASSWORD`) — never committed. The build fails closed with no
+(gitignored) or environment variables (`JUSTTHECARBS_STORE_FILE`, `JUSTTHECARBS_STORE_PASSWORD`,
+`JUSTTHECARBS_KEY_ALIAS`, `JUSTTHECARBS_KEY_PASSWORD`) — never committed. The build fails closed with no
 release artifact when any signing input is absent (verified 2026-08-14). A disposable test key can
 exercise the path but must never be uploaded.
 

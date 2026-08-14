@@ -1,4 +1,4 @@
-# Regulatory release gate — CarbScan
+# Regulatory release gate — Just the Carbs
 
 **NO-GO. Every OPEN row blocks public publication.** This document records engineering evidence
 and owner actions; it is not a regulatory determination. Last engineering review: 2026-08-14.

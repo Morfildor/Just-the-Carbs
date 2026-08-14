@@ -23,7 +23,7 @@ extra["brandAppName"] = "Just the Carbs"
 extra["brandApplicationId"] = "app.justthecarbs"
 
 /** Kotlin/Java namespace. */
-extra["brandNamespace"] = "app.carbscan"
+extra["brandNamespace"] = "app.justthecarbs"
 
 /** Contact placeholder — OWNER MUST REPLACE before publication (also used in the OFF User-Agent). */
 extra["brandContactEmail"] = "albinogorillassupport@gmail.com"

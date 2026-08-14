@@ -33,16 +33,16 @@ val keystoreProps = Properties().apply {
 fun secret(key: String, env: String): String? =
     keystoreProps.getProperty(key) ?: System.getenv(env)
 
-val releaseStoreFile = secret("storeFile", "CARBSCAN_STORE_FILE")
-val releaseStorePassword = secret("storePassword", "CARBSCAN_STORE_PASSWORD")
-val releaseKeyAlias = secret("keyAlias", "CARBSCAN_KEY_ALIAS")
-val releaseKeyPassword = secret("keyPassword", "CARBSCAN_KEY_PASSWORD")
+val releaseStoreFile = secret("storeFile", "JUSTTHECARBS_STORE_FILE")
+val releaseStorePassword = secret("storePassword", "JUSTTHECARBS_STORE_PASSWORD")
+val releaseKeyAlias = secret("keyAlias", "JUSTTHECARBS_KEY_ALIAS")
+val releaseKeyPassword = secret("keyPassword", "JUSTTHECARBS_KEY_PASSWORD")
 val resolvedReleaseStoreFile = releaseStoreFile?.let(rootProject::file)
 val missingSigningMaterial = buildList {
-    if (releaseStoreFile.isNullOrBlank()) add("storeFile / CARBSCAN_STORE_FILE")
-    if (releaseStorePassword.isNullOrBlank()) add("storePassword / CARBSCAN_STORE_PASSWORD")
-    if (releaseKeyAlias.isNullOrBlank()) add("keyAlias / CARBSCAN_KEY_ALIAS")
-    if (releaseKeyPassword.isNullOrBlank()) add("keyPassword / CARBSCAN_KEY_PASSWORD")
+    if (releaseStoreFile.isNullOrBlank()) add("storeFile / JUSTTHECARBS_STORE_FILE")
+    if (releaseStorePassword.isNullOrBlank()) add("storePassword / JUSTTHECARBS_STORE_PASSWORD")
+    if (releaseKeyAlias.isNullOrBlank()) add("keyAlias / JUSTTHECARBS_KEY_ALIAS")
+    if (releaseKeyPassword.isNullOrBlank()) add("keyPassword / JUSTTHECARBS_KEY_PASSWORD")
     if (resolvedReleaseStoreFile != null && !resolvedReleaseStoreFile.exists()) {
         add("signing file does not exist: ${resolvedReleaseStoreFile.absolutePath}")
     }
@@ -130,7 +130,7 @@ android {
     }
 
     // Room's MigrationTestHelper (androidTest) loads exported schema JSON from assets at runtime;
-    // without this it cannot find app.carbscan.data.local.CarbScanDatabase/<version>.json.
+    // without this it cannot find app.justthecarbs.data.local.JustTheCarbsDatabase/<version>.json.
     sourceSets {
         getByName("androidTest") {
             assets.srcDirs("$projectDir/schemas")
@@ -158,7 +158,7 @@ gradle.taskGraph.whenReady {
         throw GradleException(
             "Release signing is incomplete; refusing to create an unsigned release artifact. " +
                 "Missing: ${missingSigningMaterial.joinToString()}. " +
-                "Provide keystore.properties or the CARBSCAN_* environment variables."
+                "Provide keystore.properties or the JUSTTHECARBS_* environment variables."
         )
     }
 }
@@ -196,7 +196,7 @@ dependencies {
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
     // camera-view drags in camera-video -> androidx.media3, which merges ACCESS_NETWORK_STATE into
-    // the manifest. §9 permits CAMERA and INTERNET only, and CarbScan never records video: it binds
+    // the manifest. §9 permits CAMERA and INTERNET only, and the app never records video: it binds
     // Preview and ImageAnalysis, never VideoCapture. Excluding it honours §9 and drops the media3
     // and muxer code from the APK. (LifecycleCameraController would need this — PreviewView does not.)
     implementation(libs.camera.view) {

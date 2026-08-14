@@ -1,4 +1,4 @@
-# Google Play release readiness — CarbScan
+# Google Play release readiness — Just the Carbs
 
 **Decision: NO-GO as of 2026-08-14.** The app is technically close to release, but public
 publication is blocked by the unresolved §44 qualification assessment. Production signing,
@@ -43,8 +43,8 @@ Run from PowerShell. `keytool` prompts for secrets, so passwords do not enter sh
 New-Item -ItemType Directory -Path 'C:\secure' -Force
 & 'C:\atools\jdk-21.0.12+8\bin\keytool.exe' `
   -genkeypair -v `
-  -keystore 'C:\secure\CarbScan-upload.jks' `
-  -alias 'carbscan-upload' `
+  -keystore 'C:\secure\JustTheCarbs-upload.jks' `
+  -alias 'justthecarbs-upload' `
   -keyalg RSA -keysize 3072 -validity 10000
 Copy-Item 'keystore.properties.example' 'keystore.properties'
 notepad 'keystore.properties'
@@ -107,7 +107,7 @@ These answers describe the 2026-08-14 build. Reconfirm them against the artifact
 
 | Play field | Draft answer | Basis |
 |---|---|---|
-| App name | `CarbScan` | 8 characters; centralized branding. |
+| App name | `Just the Carbs` | 14 characters; centralized branding. |
 | Default language | English | App also contains Dutch resources, but listing localization is optional. |
 | App or game | App | Utility/calculator behavior. |
 | Free or paid | Owner decision; no paid features exist | Price is an owner commercial decision. |
@@ -126,7 +126,7 @@ high-level answers:
 | Does the app collect or share required user data types? | **Yes — collects.** Search terms are transmitted to Open Food Facts; ML Kit collects SDK diagnostics/usage data and per-installation identifiers. |
 | Is all collected user data encrypted in transit? | **Yes.** App traffic is HTTPS-only; ML Kit states its collected data is encrypted in transit using HTTPS. |
 | Account creation | **No account creation.** Account-deletion URL is not applicable. |
-| Data deletion request mechanism | **No server-side deletion mechanism is provided by CarbScan.** The app can delete all local data in Settings or by uninstalling. Confirm how the current form treats ephemeral/SDK data before submitting. |
+| Data deletion request mechanism | **No server-side deletion mechanism is provided by Just the Carbs.** The app can delete all local data in Settings or by uninstalling. Confirm how the current form treats ephemeral/SDK data before submitting. |
 | Independent security review | **No.** No qualifying independent review was performed. |
 
 Do not answer “No data collected.” Do not omit ML Kit because its APIs process camera frames
@@ -136,7 +136,7 @@ on-device; its official disclosure separately says it collects metrics and ident
 
 Every published app must complete the form. Current answer: **save as draft; §44 unresolved**.
 
-- Do not select **My app doesn’t provide any health features** merely because CarbScan stores no
+- Do not select **My app doesn’t provide any health features** merely because Just the Carbs stores no
   Health Connect data. Its intended-use context must be assessed.
 - If the owner assessment says it is regulated, select **Medical Device Apps** and provide every
   regulatory field requested by Google; do not upload until the legal route is complete.
@@ -178,7 +178,7 @@ The claim-reviewed copy is in [play-store-listing.md](play-store-listing.md). Cu
 
 | Field | Limit | Draft status |
 |---|---:|---|
-| App name | 30 characters | `CarbScan` — within limit. |
+| App name | 30 characters | `Just the Carbs` — within limit. |
 | Short description | 80 characters | Draft is within limit; recount after any policy wording change. |
 | Full description | 4,000 characters | Draft is within limit before any conditional health disclaimer; recount after insertion. |
 

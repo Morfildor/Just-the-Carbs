@@ -1,4 +1,4 @@
-# Manual QA checklist — CarbScan
+# Manual QA checklist — Just the Carbs
 
 For a physical device (§61). The automated suites cover logic; this covers everything that only
 happens when a real person holds a real phone in front of real food.

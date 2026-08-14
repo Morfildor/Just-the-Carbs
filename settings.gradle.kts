@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "CarbScan"
+rootProject.name = "just-the-carbs"
 include(":app")

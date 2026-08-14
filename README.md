@@ -1,15 +1,14 @@
-# CarbScan
+# Just the Carbs
 
 Scan a food barcode, enter your portion, read the carbohydrate grams. That is the whole app.
 
-**CarbScan does not calculate insulin.** It is not a diet tracker, not a food diary, and it does not
+**Just the Carbs does not calculate insulin.** It is not a diet tracker, not a food diary, and it does not
 communicate with pumps or CGMs. It produces one number, clearly, so you can use it wherever you need
 it next.
 
-> **Working name.** "CarbScan" is a working name; the public name is undecided. Branding is
+> **Naming.** "Just the Carbs" is the app's public name. Branding is
 > centralised in [`branding.gradle.kts`](branding.gradle.kts) — app name, application id, namespace
-> and the Open Food Facts User-Agent all derive from that one file. Project documentation under
-> `docs/` still refers to the original name *CarbQuick*.
+> and the Open Food Facts User-Agent all derive from that one file.
 
 ---
 
@@ -134,7 +133,7 @@ No account, no advertising, no analytics we added, no tracker. Permissions: `CAM
 Products, portions, countable portion units, favourites and verified values stay on-device; Android
 backup is disabled.
 
-CarbScan's own code makes two kinds of request: a barcode lookup to Open Food Facts, and — when a
+Just the Carbs' own code makes two kinds of request: a barcode lookup to Open Food Facts, and — when a
 product has them — requests for its selected package photos, restricted to Open Food Facts' own image hosts
 (`ProductImageUrlValidator`). The privacy policy says so explicitly rather than claiming "no data
 leaves your device", which would be false. ML Kit ships a Google telemetry transport we do not
@@ -167,7 +166,7 @@ The release build type enables R8, resource shrinking, and no debug flags. It at
 config **only** when real signing material is present, and never falls back to the debug key.
 
 Signing material is read from `keystore.properties` (gitignored) or environment variables
-(`CARBSCAN_STORE_FILE`, `CARBSCAN_STORE_PASSWORD`, `CARBSCAN_KEY_ALIAS`, `CARBSCAN_KEY_PASSWORD`).
+(`JUSTTHECARBS_STORE_FILE`, `JUSTTHECARBS_STORE_PASSWORD`, `JUSTTHECARBS_KEY_ALIAS`, `JUSTTHECARBS_KEY_PASSWORD`).
 
 **No keystore, password or credential is committed, and none may be.** To create an upload key:
 
@@ -221,7 +220,7 @@ See [docs/known-limitations.md](docs/known-limitations.md).
 
 ## Regulatory status
 
-**Unresolved, and it blocks publication.** CarbScan performs carbohydrate arithmetic and calculates
+**Unresolved, and it blocks publication.** Just the Carbs performs carbohydrate arithmetic and calculates
 no medication — but qualification under EU MDR turns on intended purpose, not only on what the code
 computes, and a disclaimer must not be used to avoid the assessment.
 

@@ -9,7 +9,7 @@ and the requirements are in [Health Content and Services](https://support.google
 
 ## Facts that do not depend on §44
 
-CarbScan multiplies a product's carbohydrate value per 100 g or 100 ml by a user-entered portion
+Just the Carbs multiplies a product's carbohydrate value per 100 g or 100 ml by a user-entered portion
 and divides by 100. A count is first resolved to a gram/ml portion and then uses the same formula.
 
 | Capability | Build fact |
@@ -40,10 +40,10 @@ the signed §44 assessment supplies the branch.**
 
 Do not select **Nutrition and Weight Management** merely because the calculation uses carbohydrate
 facts. Google's category covers dietary-intake tracking, meal planning, diet/weight management, or
-specific dietary goals. CarbScan performs none of those and has no diary or daily totals.
+specific dietary goals. Just the Carbs performs none of those and has no diary or daily totals.
 
 Do not select **Clinical Decision Support** based on adjacency to another calculator. Google's
-examples include professional decision support and drug dosage calculators; CarbScan contains
+examples include professional decision support and drug dosage calculators; Just the Carbs contains
 neither. If a qualified assessor reaches a different classification, record their reasoning rather
 than altering the code description.
 

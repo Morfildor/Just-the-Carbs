@@ -1,12 +1,12 @@
 # Regulatory Qualification Assessment
 
-## CarbScan — carbohydrate calculator for packaged food
+## Just the Carbs — carbohydrate calculator for packaged food
 
 **Manufacturer's assessment of medical device qualification under Regulation (EU) 2017/745**
 
 | | |
 |---|---|
-| **Product** | CarbScan (application identifier `app.carbscan`) |
+| **Product** | Just the Carbs (application identifier `app.justthecarbs`) |
 | **Version assessed** | 1.0.0 (version code 1) |
 | **Manufacturer** | *(full name)* |
 | **Contact** | albinogorillassupport@gmail.com |
@@ -20,7 +20,7 @@
 
 ## Purpose of this document
 
-This is the manufacturer's documented assessment of whether CarbScan qualifies as a medical device
+This is the manufacturer's documented assessment of whether Just the Carbs qualifies as a medical device
 under Regulation (EU) 2017/745 (the Medical Device Regulation, "MDR").
 
 It records the intended purpose assigned to the product, the assessment performed against MDR
@@ -35,21 +35,21 @@ manufacturer's own reasoned assessment, retained as a record.
 
 ## 1. Intended purpose
 
-**CarbScan is a general-purpose calculator for the carbohydrate content of a portion of packaged
+**Just the Carbs is a general-purpose calculator for the carbohydrate content of a portion of packaged
 food.**
 
 The user scans a product barcode or enters a product manually. The application retrieves or accepts
 a carbohydrate-per-100 g (or per-100 ml) figure and multiplies it by a portion size the user
 enters, displaying the resulting carbohydrate quantity in grams.
 
-CarbScan is intended for anyone who wants to know the carbohydrate content of a portion of food,
+Just the Carbs is intended for anyone who wants to know the carbohydrate content of a portion of food,
 including people cooking, tracking nutrition for sport or training, managing their weight,
 following a low-carbohydrate diet, or with any other dietary interest.
 
-CarbScan contains no feature specific to any disease or condition, and no feature that any one
+Just the Carbs contains no feature specific to any disease or condition, and no feature that any one
 group of users requires and others do not.
 
-**CarbScan does not calculate insulin or any other medication. It does not interpret blood glucose.
+**Just the Carbs does not calculate insulin or any other medication. It does not interpret blood glucose.
 It does not provide diagnostic, therapeutic, monitoring, prediction or prognostic information. It
 does not replace the information printed on the product packaging.**
 
@@ -88,7 +88,7 @@ explanatory comments, which are addressed in Section 5.
 
 ### 2.4 Data held
 
-CarbScan stores product information and user preferences on the device only. It holds no patient
+Just the Carbs stores product information and user preferences on the device only. It holds no patient
 data of any kind: no identity, no account, no physiological measurement, no health history, and no
 record of what the user has eaten. There is no account system, no cloud synchronisation, and device
 backup is disabled.
@@ -100,7 +100,7 @@ backup is disabled.
 MDR Article 2(1) defines a medical device by reference to the manufacturer's intended purpose being
 one or more specified medical purposes.
 
-| Medical purpose under Article 2(1) | Claimed by CarbScan? | Basis |
+| Medical purpose under Article 2(1) | Claimed by Just the Carbs? | Basis |
 |---|---|---|
 | Diagnosis | No | The application produces no diagnostic output |
 | Prevention | No | No preventive claim is made; the product is not marketed against any disease |
@@ -109,7 +109,7 @@ one or more specified medical purposes.
 | Treatment or alleviation | No | No intervention is recommended. No portion, food or dose is suggested |
 
 **Assessment.** The intended purpose stated in Section 1 is not a medical purpose within the
-meaning of Article 2(1). CarbScan reports a property of a food product — the same property printed
+meaning of Article 2(1). Just the Carbs reports a property of a food product — the same property printed
 on the packaging — for a portion size selected by the user.
 
 Nutritional information concerning packaged food is not, of itself, medical information. The
@@ -130,7 +130,7 @@ MDCG 2019-11 asks, in substance, whether software performs an action on data bey
 archival, communication or simple search, and whether that action is for the benefit of an
 individual patient for a medical purpose.
 
-**On the action performed.** CarbScan performs a single multiplication and a division by one
+**On the action performed.** Just the Carbs performs a single multiplication and a division by one
 hundred, applied to a value the user has supplied or confirmed. This is arithmetic on a
 food-labelling figure. The application applies no algorithm, no model, no patient-specific
 parameter and no interpretation. The output contains no information not already present in the
@@ -143,10 +143,10 @@ asserted.
 
 **On the clarification introduced by revision 1.** Revision 1 clarifies that software processing
 health information falls within the scope of the MDR only where it directly serves a medical
-purpose. CarbScan processes food product information rather than health information relating to a
+purpose. Just the Carbs processes food product information rather than health information relating to a
 person, and holds no patient data at all (Section 2.4).
 
-**Assessment.** CarbScan does not meet the qualification criteria for medical device software. In
+**Assessment.** Just the Carbs does not meet the qualification criteria for medical device software. In
 function it is comparable to a kitchen scale or a unit converter rather than to clinical software.
 
 ---
@@ -168,7 +168,7 @@ expecting `31.3` does not misread the Dutch `31,3`.
 ### 5.2 Origin of those design decisions
 
 The manufacturer is himself an insulin pump user who uses a separate bolus calculator, and
-developed CarbScan in the first instance because he wanted a faster way to obtain a carbohydrate
+developed Just the Carbs in the first instance because he wanted a faster way to obtain a carbohydrate
 figure. The design decisions described above derive from that first-hand knowledge: such figures
 are frequently transcribed by hand, and a comma decimal separator is misread by software expecting
 a decimal point.
@@ -199,7 +199,7 @@ used by people with diabetes in precisely this way, and none qualifies as a medi
 reason. Were foreseeable use by a patient sufficient to qualify a product, food packaging itself
 would qualify.
 
-**CarbScan performs no part of a dose calculation.** It applies no insulin-to-carbohydrate ratio,
+**Just the Carbs performs no part of a dose calculation.** It applies no insulin-to-carbohydrate ratio,
 no correction factor, no insulin-on-board calculation and no patient parameter. It provides no
 interface to any dosing application: no programming interface, no integration, no data export and
 no automation. Any transfer of a figure is performed by a person, by hand, into a separate
@@ -216,7 +216,7 @@ user subsequently does with that figure lies outside both the software and its i
 ### 5.4 Residual uncertainty
 
 The manufacturer records that this is the element of the assessment on which a competent authority
-could most plausibly reach a different view, particularly were CarbScan to be marketed toward
+could most plausibly reach a different view, particularly were Just the Carbs to be marketed toward
 diabetes management. The constraints in Section 7 exist for that reason and are binding. This
 residual uncertainty is accepted knowingly, having been identified rather than overlooked.
 
@@ -252,7 +252,7 @@ of any condition requires this assessment to be repeated before further distribu
 
 ### 7.1 Constraints on marketing
 
-CarbScan must not:
+Just the Carbs must not:
 
 - be described as being for diabetes, diabetes management, or blood glucose control;
 - be described using the words *recommend*, *advise*, *prescribe*, *dose*, *bolus*, or *therapy*;
@@ -290,7 +290,7 @@ turns. Their apparent individual modesty is not a reason to treat them as minor.
 
 ## 8. Conclusion
 
-**CarbScan, in the version identified on the first page of this document, is not a medical device
+**Just the Carbs, in the version identified on the first page of this document, is not a medical device
 within the meaning of Article 2(1) of Regulation (EU) 2017/745, and is not an accessory to a
 medical device.**
 

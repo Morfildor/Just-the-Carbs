@@ -1,4 +1,4 @@
-# Third-party notices — CarbScan
+# Third-party notices — Just the Carbs
 
 Dependencies and data sources, with the licence each is used under (§57).
 
@@ -8,7 +8,7 @@ Dependencies and data sources, with the licence each is used under (§57).
 
 ### Open Food Facts
 
-CarbScan retrieves product data from Open Food Facts.
+Just the Carbs retrieves product data from Open Food Facts.
 
 - **Database licence:** Open Database License (ODbL) v1.0
 - **Individual contents licence:** Database Contents License (DbCL) v1.0
@@ -39,7 +39,7 @@ it.
 
 ### Share-alike — requires review, not assumed resolved
 
-ODbL's share-alike obligation attaches to distributing a derivative *database*. As built, CarbScan
+ODbL's share-alike obligation attaches to distributing a derivative *database*. As built, Just the Carbs
 stores fetched products only in an app-private, on-device cache that is never exported, shared,
 uploaded or redistributed, and Android backup is disabled.
 
@@ -82,11 +82,11 @@ world.openfoodfacts.org/terms-of-use, re-checked live the same day)*
 
 Verify Open Food Facts' current API terms and rate limits before release. As checked 2026-08-14
 against `openfoodfacts.github.io/openfoodfacts-server/api/`: product reads are on the **v3** read
-endpoint (`api/v3/product/{barcode}`) — CarbScan migrated off v2 as part of the countable-portions
+endpoint (`api/v3/product/{barcode}`) — Just the Carbs migrated off v2 as part of the countable-portions
 work, since v2 is documented as deprecated-but-supported and the fields this app reads are
 unchanged between the two. Rate limit remains 15 reads/min/IP, and an identifying `User-Agent` is
-mandatory (documented format: `AppName/Version (ContactEmail)`). CarbScan sends
-`CarbScan/<version> (Android; <contact>)`, generated from `branding.gradle.kts`. The contact address
+mandatory (documented format: `AppName/Version (ContactEmail)`). Just the Carbs sends
+`Just the Carbs/<version> (Android; <contact>)`, generated from `branding.gradle.kts`. The contact address
 is `albinogorillassupport@gmail.com`, supplied by the owner on 2026-08-14 — this closes what was a
 real compliance gap against OFF's documented User-Agent format, since the previous value was a
 placeholder that identified nobody.
@@ -146,9 +146,9 @@ surfaced; the generated inventory is evidence, not legal advice.
 **OPEN — Owner:** complete the third-party licence review, including Open Food Facts share-alike,
 the two POM gaps, Google/ML Kit terms, bundled notices, and the final method of distribution.
 
-## CarbScan project licence
+## Just the Carbs project licence
 
-**OPEN — Owner:** no licence has been chosen for CarbScan itself. This document does not choose one.
+**OPEN — Owner:** no licence has been chosen for Just the Carbs itself. This document does not choose one.
 Record either the selected licence and copyright owner or an explicit all-rights-reserved decision
 before publication.
 
@@ -156,6 +156,6 @@ before publication.
 
 ## Trademarks
 
-CarbScan is not affiliated with, endorsed by, or connected to CamDiab, Ypsomed, CamAPS FX, Abbott,
+Just the Carbs is not affiliated with, endorsed by, or connected to CamDiab, Ypsomed, CamAPS FX, Abbott,
 Libre, or any other medical device manufacturer. No third-party trademark is used in the app name,
 icon, or promotional material (§51).

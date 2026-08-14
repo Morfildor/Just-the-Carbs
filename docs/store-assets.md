@@ -1,4 +1,4 @@
-# Store assets — CarbScan
+# Store assets — Just the Carbs
 
 Asset plan for the Play listing (§55).
 

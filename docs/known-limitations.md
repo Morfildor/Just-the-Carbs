@@ -1,4 +1,4 @@
-# Known limitations — CarbScan
+# Known limitations — Just the Carbs
 
 Written to be read by someone deciding whether to trust a number this app produced. Nothing here is
 softened (§67).
@@ -150,6 +150,6 @@ Counts below are from the run of 2026-08-14, not from memory.
 
 ## Regulatory
 
-**CarbScan's regulatory status is unresolved and gates publication.** See
+**Just the Carbs' regulatory status is unresolved and gates publication.** See
 [regulatory-release-checklist.md](regulatory-release-checklist.md). Do not publish until that
 assessment is complete and recorded.

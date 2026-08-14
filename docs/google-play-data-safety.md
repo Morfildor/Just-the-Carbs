@@ -19,7 +19,7 @@ Primary sources checked:
 | Does the app collect or share any required user data types? | **Yes — collects** | Search text is sent to Open Food Facts. ML Kit's official disclosure says its Android SDK collects diagnostics/usage data and identifiers. |
 | Is all collected data encrypted in transit? | **Yes** | App traffic is HTTPS-only and `usesCleartextTraffic="false"`; ML Kit states its collected data uses HTTPS. |
 | Does the app provide account creation? | **No** | No authentication or account model exists. |
-| Can users request server-side deletion? | **No mechanism provided by CarbScan** | Settings deletes all local records; the app controls no Open Food Facts or Google server record. Re-check the exact form wording for ephemeral/SDK data. |
+| Can users request server-side deletion? | **No mechanism provided by Just the Carbs** | Settings deletes all local records; the app controls no Open Food Facts or Google server record. Re-check the exact form wording for ephemeral/SDK data. |
 | Independent security review? | **No** | No qualifying independent audit was performed. |
 
 Do **not** submit the former “nothing collected” position. Google’s current ML Kit disclosure closes
@@ -73,8 +73,8 @@ network, or cloud sync exists.
 
 | Permission | Origin | Purpose |
 |---|---|---|
-| `CAMERA` | CarbScan | Barcode and nutrition-label scanning |
-| `INTERNET` | CarbScan | Open Food Facts and SDK networking |
+| `CAMERA` | Just the Carbs | Barcode and nutrition-label scanning |
+| `INTERNET` | Just the Carbs | Open Food Facts and SDK networking |
 | `ACCESS_NETWORK_STATE` | ML Kit → `com.google.android.datatransport` | Transitive SDK network/transport support |
 | `<package>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | AndroidX | Internal signature permission |
 
@@ -102,7 +102,7 @@ recognized outputs on-device. Separately, Google's disclosure says ML Kit collec
 - latency/performance, API configuration, input/output size, feature version, events, and errors.
 
 Google states these are used for diagnostics and usage analytics, encrypted with HTTPS, and not
-transferred to third parties. CarbScan does not enable barcode auto-zoom, so the additional
+transferred to third parties. Just the Carbs does not enable barcode auto-zoom, so the additional
 auto-zoom session ID, zoom events, and predicted bounding-box collection is not applicable.
 
 The transport cannot be excluded: a prior emulator experiment produced

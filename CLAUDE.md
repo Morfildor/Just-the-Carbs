@@ -1,4 +1,4 @@
-# CarbScan — session context
+# Just the Carbs — session context
 
 Read this first. It records what previous sessions verified so you don't re-derive it.
 
@@ -12,7 +12,7 @@ cd C:\Users\tuncb\Desktop\CarbTracker
 ```
 
 Output: `app\build\outputs\apk\debug\app-debug.apk` (~88 MB).
-A copy is kept on the Desktop as **`CarbScan-debug.apk`** — install that on a phone.
+A copy is kept on the Desktop as **`JustTheCarbs-debug.apk`** — install that on a phone.
 
 Other useful tasks:
 
@@ -30,17 +30,19 @@ Native Android app: scan a food barcode → enter portion → read carbohydrate 
 2026-08-14, the portion step can also be a **count** ("2 slices") when a trustworthy per-item
 weight exists — see [Countable portions](#countable-portions-2026-08-14) below.
 Requirements are in **`docs/MASTER-PROMPT.md`** (referenced throughout as §N).
-Design decisions are in `docs/superpowers/specs/2026-08-13-carbquick-design.md` (original) and
-`docs/superpowers/specs/2026-08-14-countable-portions-design.md` (countable portions).
+Design decisions are in `docs/superpowers/specs/2026-08-13-carbquick-design.md` (original — kept
+under its original filename/prose as a historical record from when the working name was CarbQuick)
+and `docs/superpowers/specs/2026-08-14-countable-portions-design.md` (countable portions).
 
 **It does NOT calculate insulin.** Not a diet tracker. Scope discipline is a hard requirement (§2).
 
-**Working name is CarbScan** (`app.carbscan`). Docs under `docs/` still say *CarbQuick* — the owner
-has NOT decided the public name, so do not sweep the docs. Branding is genuinely centralised in
-`branding.gradle.kts` (Gradle `extra` properties feeding namespace, applicationId, versionName,
-`app_name` and the OFF User-Agent).
+**Public name is Just the Carbs** (`app.justthecarbs`), decided 2026-08-14. Branding is genuinely
+centralised in `branding.gradle.kts` (Gradle `extra` properties feeding namespace, applicationId,
+versionName, `app_name` and the OFF User-Agent). Historical docs under `docs/superpowers/specs/`
+and `docs/superpowers/plans/` keep their original CarbScan/CarbQuick prose as a dated record of
+decisions made under the earlier working names — do not sweep those.
 
-GitHub: **https://github.com/Morfildor/CarbScan** — private, and staying private for now.
+GitHub: **https://github.com/Morfildor/Just-the-Carbs** — private, and staying private for now.
 
 ## Status (2026-08-14)
 
@@ -78,7 +80,7 @@ conversion layer in front of `CarbCalculator`, never a second calculation path.
 correction mid-session). `PortionUnit` mirrors `Product`'s provenance/verification split exactly.
 
 **Room v3**: new `portion_units` table (FK cascade to `products`, verified against a normally-opened
-`CarbScanDatabase`, not just the migration-test harness — see below) plus
+`JustTheCarbsDatabase`, not just the migration-test harness — see below) plus
 `lastInputMode`/`lastSelectedPortionUnitId`/`lastCount` on `products`. `MIGRATION_2_3` guards every
 `ALTER TABLE ADD COLUMN` with a `PRAGMA table_info` check — not defensive theatre: Room's own
 `MigrationTestHelper` was observed re-invoking the migration during its validation pass, which made
@@ -96,7 +98,7 @@ matching config, not a real shared instance.
 
 **Two genuine findings from actually running the tests, not just reading the code:**
 1. Room's `MigrationTestHelper` connection does not enforce the `portion_units` FK's
-   `ON DELETE CASCADE` the same way a normally-opened `CarbScanDatabase` does — confirmed by adding
+   `ON DELETE CASCADE` the same way a normally-opened `JustTheCarbsDatabase` does — confirmed by adding
    `PortionUnitDaoTest.deletingAProductCascadesToItsPortionUnits`, which uses
    `Room.inMemoryDatabaseBuilder` (the real production path) and passes. Trust the production-path
    test over the migration-harness one for this specific question.
