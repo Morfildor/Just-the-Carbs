@@ -23,13 +23,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductImageSelector
+import app.carbscan.R
 import app.carbscan.ui.theme.Motion
 import app.carbscan.ui.theme.Space
 import coil3.compose.AsyncImage
@@ -85,10 +90,11 @@ private fun ProductHeroImageContent(
 ) {
     val shape = RoundedCornerShape(Space.mediaRadius)
     // Same validator as everywhere else — a bigger image is still an untrusted URL (§5, §24).
-    val imageUrl = remember(product.imageUrl, product.largeImageUrl) {
+    val imageUrl = remember(product.imageUrl, product.largeImageUrl, product.images) {
         ProductImageSelector.heroImageUrl(product)
     }
     var loaded by remember(imageUrl) { mutableStateOf(false) }
+    val viewImagesDescription = stringResource(R.string.gallery_open)
 
     Box(
         modifier = modifier
@@ -110,7 +116,12 @@ private fun ProductHeroImageContent(
             .testTag(PRODUCT_HERO_TAG)
             // The product name is displayed directly above; announcing the image too would make a
             // screen reader say the same thing twice (§39).
-            .clearAndSetSemantics { },
+            .clearAndSetSemantics {
+                if (onClick != null) {
+                    role = Role.Button
+                    contentDescription = viewImagesDescription
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         if (!loaded) {

@@ -26,6 +26,14 @@ package app.carbscan.domain
  */
 object ProductImageSelector {
 
+    /** Safe, de-duplicated gallery images with at most one entry for each semantic role. */
+    fun galleryImages(product: Product): List<ProductImage> = product.images
+        .mapNotNull { image ->
+            ProductImageUrlValidator.validate(image.displayUrl)?.let { image.copy(displayUrl = it) }
+        }
+        .distinctBy { it.type }
+        .distinctBy { it.displayUrl }
+
     /**
      * The best safe image for a large, identification-grade display.
      *
@@ -33,7 +41,10 @@ object ProductImageSelector {
      * tile, exactly as they already do for a product with no image at all.
      */
     fun heroImageUrl(product: Product): String? =
-        ProductImageUrlValidator.validate(product.largeImageUrl)
+        galleryImages(product)
+            .firstOrNull { it.type == ProductImageType.FRONT }
+            ?.displayUrl
+            ?: ProductImageUrlValidator.validate(product.largeImageUrl)
             ?: ProductImageUrlValidator.validate(product.imageUrl)
 
     /**

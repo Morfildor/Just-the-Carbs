@@ -25,6 +25,30 @@ class CarbScanDatabaseMigrationTest {
     )
 
     @Test
+    fun migratingFromV4PreservesProductDataAndAddsEmptyGalleryMetadata() {
+        val db = helper.createDatabase(TEST_DB, 4)
+        db.execSQL(
+            """
+            INSERT INTO products
+            (barcode, name, carbsPer100, basis, dataSource, verificationStatus, favorite)
+            VALUES ('v4-product', 'Preserved', '42.5', 'PER_100_G', 'OPEN_FOOD_FACTS', 'USER_VERIFIED', 1)
+            """.trimIndent(),
+        )
+        db.close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 5, true, CarbScanDatabase.MIGRATION_4_5)
+        migrated.query(
+            "SELECT carbsPer100, verificationStatus, favorite, galleryImagesJson FROM products WHERE barcode = 'v4-product'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("42.5", cursor.getString(0))
+            assertEquals("USER_VERIFIED", cursor.getString(1))
+            assertEquals(1, cursor.getInt(2))
+            assertTrue("old rows start without gallery metadata", cursor.isNull(3))
+        }
+    }
+
+    @Test
     fun migratingFromV2PreservesAnExistingVerifiedFavouriteProduct() {
         val db = helper.createDatabase(TEST_DB, 2)
         db.execSQL(

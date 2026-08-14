@@ -112,12 +112,39 @@
 
     <string name="ocr_title">Voedingswaardelabel scannen</string>
     <string name="ocr_hint">Breng de voedingswaardetabel in beeld</string>
+    <string name="ocr_align_title">Breng de voedingswaardetabel in beeld</string>
+    <string name="ocr_looking">Koolhydraten zoeken…</string>
+    <string name="ocr_capture_label">Label vastleggen</string>
+    <string name="ocr_capturing">Label vastleggen…</string>
+    <string name="ocr_processing">Vastgelegd label lezen…</string>
+    <string name="ocr_not_found_title">Koolhydraten konden niet met zekerheid worden gevonden.</string>
+    <string name="ocr_not_found_body">Maak een scherpe, rechte foto van de hele voedingswaardetabel of voer de waarde zelf in.</string>
+    <string name="ocr_enter_manually">Handmatig invoeren</string>
+    <string name="ocr_scan_again">Opnieuw live scannen</string>
     <string name="ocr_detected">Gevonden — %1$s %2$s / 100 %3$s</string>
+    <string name="ocr_detected_basis_unknown">Gevonden — %1$s %2$s; basis per 100 niet vastgesteld</string>
     <string name="ocr_use">Gebruik %1$s</string>
+    <string name="ocr_use_per_100_g">Gebruik / 100 g</string>
+    <string name="ocr_use_per_100_ml">Gebruik / 100 ml</string>
     <string name="ocr_edit">Bewerken</string>
     <string name="ocr_ambiguous_title">De koolhydraatwaarde kon niet met zekerheid worden herkend.</string>
-    <string name="ocr_ambiguous_body">Controleer het label en voer de waarde zelf in.</string>
+    <string name="ocr_ambiguous_body">Controleer de regel en de basis op het label voordat je kiest, of voer de waarde zelf in.</string>
     <string name="ocr_candidates_title">Welke regel is het totaal aan koolhydraten?</string>
+
+    <string name="gallery_open">Productafbeeldingen bekijken</string>
+    <string name="gallery_title">Productafbeeldingen</string>
+    <string name="gallery_close">Productafbeeldingen sluiten</string>
+    <string name="gallery_previous">Vorige afbeelding</string>
+    <string name="gallery_next">Volgende afbeelding</string>
+    <string name="gallery_page">%1$d van %2$d</string>
+    <string name="gallery_front">Voorkant</string>
+    <string name="gallery_nutrition">Voedingswaarde</string>
+    <string name="gallery_ingredients">Ingrediënten</string>
+    <string name="gallery_packaging">Verpakking</string>
+    <string name="gallery_loading">Afbeelding laden…</string>
+    <string name="gallery_unavailable">Deze afbeelding is niet beschikbaar.</string>
+    <string name="gallery_retry">Opnieuw proberen</string>
+    <string name="gallery_image_description">%1$safbeelding van %2$s</string>
 
     <string name="settings_title">Instellingen</string>
     <string name="settings_appearance">Weergave</string>

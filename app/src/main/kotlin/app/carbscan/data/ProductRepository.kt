@@ -108,7 +108,17 @@ class ProductRepository(
         // *recorded* so the app can mention that the product may have been reformulated (§24), but
         // the value in use is never replaced.
         if (!existing.isRemoteRefreshable) {
-            local.save(existing.copy(latestRemoteCarbs = remoteCarbs, remoteUpdatedAt = clock.instant()))
+            local.save(
+                existing.copy(
+                    latestRemoteCarbs = remoteCarbs,
+                    remoteUpdatedAt = clock.instant(),
+                    // Images are display-only metadata. Refreshing them must not move the product
+                    // facts or the immutable calculation snapshot the user is working with.
+                    images = fetched.images.ifEmpty { existing.images },
+                    imageUrl = fetched.imageUrl ?: existing.imageUrl,
+                    largeImageUrl = fetched.largeImageUrl ?: existing.largeImageUrl,
+                ),
+            )
             return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs) else RefreshOutcome.Unchanged
         }
 
@@ -121,6 +131,11 @@ class ProductRepository(
                 favorite = existing.favorite,
                 lastPortion = existing.lastPortion,
                 lastUsedAt = existing.lastUsedAt,
+                // A response may temporarily omit selected_images. Keep previously validated
+                // display metadata rather than turning a cached offline gallery into an empty one.
+                images = fetched.images.ifEmpty { existing.images },
+                imageUrl = fetched.imageUrl ?: existing.imageUrl,
+                largeImageUrl = fetched.largeImageUrl ?: existing.largeImageUrl,
                 latestRemoteCarbs = remoteCarbs,
                 remoteUpdatedAt = clock.instant(),
             ),

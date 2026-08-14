@@ -54,6 +54,7 @@ interface OpenFoodFactsApi {
 
         val REQUESTED_FIELDS = listOf(
             "code",
+            "lang",
             "product_name",
             "product_name_nl",
             "brands",
@@ -64,6 +65,7 @@ interface OpenFoodFactsApi {
             // string to the response is negligible next to the identification value of an image
             // the user can actually recognise their package in.
             "image_front_url",
+            "selected_images",
             "serving_size",
         ).joinToString(",")
     }

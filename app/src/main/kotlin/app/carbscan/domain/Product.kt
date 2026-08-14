@@ -39,6 +39,21 @@ enum class VerificationStatus {
     USER_VERIFIED,
 }
 
+/** The four package-image roles Open Food Facts exposes in `selected_images`. */
+enum class ProductImageType {
+    FRONT,
+    NUTRITION,
+    INGREDIENTS,
+    PACKAGING,
+}
+
+/** One language-selected, allowlisted display image for a package-image role. */
+data class ProductImage(
+    val type: ProductImageType,
+    val language: String?,
+    val displayUrl: String,
+)
+
 /**
  * A product the app can calculate with. Field set follows brief §33.
  *
@@ -68,6 +83,8 @@ data class Product(
      * predate it and many OFF records have no image at all.
      */
     val largeImageUrl: String? = null,
+    /** Validated OFF display images, with no more than one language variant per image role. */
+    val images: List<ProductImage> = emptyList(),
     /** Retained when the user overrides a remote value, so *Reset to online value* stays possible (§23). */
     val originalRemoteCarbs: BigDecimal? = null,
     /**

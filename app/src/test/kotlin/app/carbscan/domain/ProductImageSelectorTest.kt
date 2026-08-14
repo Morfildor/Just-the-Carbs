@@ -1,7 +1,10 @@
 package app.carbscan.domain
 
+import app.carbscan.data.local.toDomain
+import app.carbscan.data.local.toEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigDecimal
 
@@ -16,7 +19,11 @@ class ProductImageSelectorTest {
     private val large = "https://images.openfoodfacts.org/images/products/301/762/042/2003/front_en.879.400.jpg"
     private val small = "https://images.openfoodfacts.org/images/products/301/762/042/2003/front_en.879.200.jpg"
 
-    private fun product(imageUrl: String? = null, largeImageUrl: String? = null) = Product(
+    private fun product(
+        imageUrl: String? = null,
+        largeImageUrl: String? = null,
+        images: List<ProductImage> = emptyList(),
+    ) = Product(
         barcode = "3017620422003",
         name = "Nutella",
         carbsPer100 = BigDecimal("57.5"),
@@ -24,12 +31,45 @@ class ProductImageSelectorTest {
         dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
         imageUrl = imageUrl,
         largeImageUrl = largeImageUrl,
+        images = images,
     )
 
     @Test
     fun `the hero prefers the larger front image`() {
         val hero = ProductImageSelector.heroImageUrl(product(imageUrl = small, largeImageUrl = large))
         assertEquals(large, hero)
+    }
+
+    @Test
+    fun `the hero prefers a validated selected front image`() {
+        val selected = ProductImage(ProductImageType.FRONT, "nl", "https://images.openfoodfacts.org/front-nl.400.jpg")
+
+        val hero = ProductImageSelector.heroImageUrl(
+            product(imageUrl = small, largeImageUrl = large, images = listOf(selected)),
+        )
+
+        assertEquals(selected.displayUrl, hero)
+    }
+
+    @Test
+    fun `gallery metadata survives the Room entity mapping`() {
+        val images = listOf(
+            ProductImage(ProductImageType.FRONT, "nl", large),
+            ProductImage(ProductImageType.NUTRITION, "en", "https://images.openfoodfacts.org/nutrition.400.jpg"),
+        )
+
+        val restored = product(images = images).toEntity().toDomain()
+
+        assertEquals(images, restored.images)
+    }
+
+    @Test
+    fun `unsafe cached gallery URLs are discarded when decoded`() {
+        val unsafe = ProductImage(ProductImageType.FRONT, "en", "https://evil.example.com/front.jpg")
+
+        val restored = product(images = listOf(unsafe)).toEntity().toDomain()
+
+        assertTrue(restored.images.isEmpty())
     }
 
     @Test

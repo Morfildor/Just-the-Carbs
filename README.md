@@ -61,14 +61,13 @@ Deliberately flat. A small app does not need a clean-architecture framework.
 
 ```
 domain/    Pure Kotlin, zero Android imports — the safety-critical layer
-           PortionResolver, ServingSizeParser, PortionUnit, ProductImageUrlValidator
+           PortionResolver, ServingSizeParser, PortionUnit, ProductImage, ProductImageUrlValidator
 data/
-  local/   Room (v3): ProductEntity/Dao, PortionUnitEntity/Dao, RoomProductDataSource,
-           RoomPortionUnitDataSource
+  local/   Room (v5): products (including gallery metadata), portion units, meal, usual portions
   remote/  Open Food Facts v3: Retrofit API, DTOs, OpenFoodFactsDataSource
   settings/DataStore preferences
   ProductRepository   ← owns the §10 lookup priority and portion-unit persistence/verification
-ocr/       NutritionLabelParser (pure) + LabelAnalyzer (ML Kit)
+ocr/       OcrDocument + NutritionTableParser (pure Kotlin); ML Kit mapper + LabelAnalyzer boundary
 ui/        Compose screens + ViewModels, immutable state via StateFlow
 ```
 
@@ -136,7 +135,7 @@ Products, portions, countable portion units, favourites and verified values stay
 backup is disabled.
 
 CarbScan's own code makes two kinds of request: a barcode lookup to Open Food Facts, and — when a
-product has one — a request for its photo, restricted to Open Food Facts' own image hosts
+product has them — requests for its selected package photos, restricted to Open Food Facts' own image hosts
 (`ProductImageUrlValidator`). The privacy policy says so explicitly rather than claiming "no data
 leaves your device", which would be false. ML Kit ships a Google telemetry transport we do not
 control; that is disclosed, not hidden. See [docs/privacy-policy.md](docs/privacy-policy.md).
@@ -151,7 +150,7 @@ connection pool, timeouts and identifying User-Agent.
 $env:JAVA_HOME="<path to JDK 21>"
 $env:ANDROID_HOME="C:\atools\sdk"
 
-.\gradlew.bat :app:testDebugUnitTest        # 225 JVM unit tests
+.\gradlew.bat :app:testDebugUnitTest        # 237 JVM unit tests
 .\gradlew.bat :app:lintDebug                # Android lint
 .\gradlew.bat :app:assembleDebug            # debug APK
 .\gradlew.bat :app:connectedDebugAndroidTest # instrumented tests (needs a device)
@@ -191,30 +190,32 @@ your upload key can be rotated if lost.
 | Value validation | null, NaN, infinity, negative, impossible magnitudes | 10 tests, passing |
 | Package quantity | g/ml/l/cl/kg, comma decimals, multipack refusal | 11 tests, passing |
 | Barcode | EAN-13/8, UPC-A check digits, normalisation | 10 tests, passing |
-| Repository | §10 priority, 7 provenance regressions, refresh rules, portion-unit persistence/verification/immutability | 40 tests, passing |
-| Open Food Facts | real HTTP via MockWebServer: malformed JSON, 429, 500, dropped connection, v3 endpoint, serving_size candidates | 21 tests, passing |
-| OCR parsing | Dutch/English, 100 g / 100 ml, sugars sub-line, ambiguity, failure | 14 tests, passing |
+| Repository | §10 priority, provenance, refresh rules, display-image refresh, portion-unit persistence/verification/immutability | 48 tests, passing |
+| Open Food Facts | real HTTP via MockWebServer: failures, v3 fields, serving sizes, selected-image language/security rules | 23 tests, passing |
+| OCR parsing | spatial fixtures, 15 languages, 100 g/ml, multiple columns, exclusions, ambiguity, diagnostics | 19 tests, passing |
 | Portion resolution | count × amount-per-unit, zero, decimal, large, negative rejection | 7 tests, passing |
 | Serving size parsing | English + Dutch recognition, multi-count normalization, ambiguity rejection | 20 tests, passing |
 | Image URL validation | HTTPS + host allowlist, rejects unapproved/malformed URLs | 6 tests, passing |
+| Product image selection/cache | safe hero/gallery selection, de-duplication, Room metadata round-trip | 12 tests, passing |
 | Label comparison | match, mismatch, basis mismatch refuses to convert | 6 tests, passing |
 | Product search | result mapping, missing carbs, 503 is not "no matches", offline | 9 tests, passing |
 | Room DAO | ordering, favourites float, TEXT decimal round-trip | 10 instrumented |
 | Room migrations | non-destructive, new columns/tables, cascade delete | instrumented |
-| Calculator UI (§60) | result on typing, no Calculate button, quick adjust, ml lock, provenance badges, pack shortcuts, double-rounding guard, long names, zero-carb, large and decimal portions | 16 instrumented |
+| Calculator UI (§60) | calculation behavior plus zero/one/multiple/unsafe gallery states, modal paging, slow loading, and retry | 28 instrumented |
 | Countable-portion UI (§22) | mode switching, derived-amount equation, user-defined units, session immutability | 10 instrumented |
 | Meal UI | add, add & scan next, remove, clear, running total, no dates anywhere | 13 instrumented |
 | Label verification UI | both values shown, nothing auto-applied, basis mismatch offers no apply path | 8 instrumented |
 | Usual portions UI | appears only on repetition, per-product, no history shown | 7 instrumented |
 | Search UI | never auto-selects, missing value stated in words, failure ≠ no matches | 9 instrumented |
 
-**Totals: 225 JVM unit tests and 89 instrumented tests, all passing; lint clean** (2026-08-14).
+**Totals: 237 JVM unit tests and 95 instrumented tests, all passing; lint clean** (2026-08-14).
 
 **Dependency scan:** `bash tools/dependency-scan.sh` — 226 shipped artifacts checked against
 OSV.dev, 0 known vulnerabilities (2026-08-14). Point-in-time; re-run before release.
 
-**Verified on hardware:** barcode decoding and label OCR — nothing else. **Verified against the
-live API:** product lookup, images, and search by name. **Not verified:** everything added in the
+**Verified on hardware:** barcode decoding and the previous OCR implementation — nothing else.
+The rebuilt spatial OCR is **implemented, but real-world reliability is still under validation**.
+**Verified against the live API:** product lookup, images, and search by name. **Not verified:** everything added in the
 2026-08-14 pass on real hardware, breadth of physical devices, and the release build on hardware.
 See [docs/known-limitations.md](docs/known-limitations.md).
 

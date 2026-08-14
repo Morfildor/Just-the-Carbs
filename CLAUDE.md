@@ -17,10 +17,10 @@ A copy is kept on the Desktop as **`CarbScan-debug.apk`** — install that on a 
 Other useful tasks:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest         # 225 JVM tests
+.\gradlew.bat :app:testDebugUnitTest         # 237 JVM tests
 .\gradlew.bat :app:lintDebug                 # lint (clean)
 .\gradlew.bat :app:assembleRelease           # minified, UNSIGNED (~64 MB)
-.\gradlew.bat :app:connectedDebugAndroidTest # 89 instrumented tests, needs a device
+.\gradlew.bat :app:connectedDebugAndroidTest # 95 instrumented tests, needs a device
 bash tools/dependency-scan.sh                # CVE scan of the shipped dependency graph
 ```
 
@@ -48,7 +48,7 @@ GitHub: **https://github.com/Morfildor/CarbScan** — private, and staying priva
   `NutritionValueValidator`, `PackageQuantityParser`, `BarcodeValidator`, `ResultFormatter`
 - ✅ Room + `ProductRepository` owning the §10 lookup priority
 - ✅ Open Food Facts data source behind the `ProductDataSource` abstraction
-- ✅ Full UI: home, scanner, calculator, manual entry, verify dialog, label OCR, settings
+- ✅ Full UI: home, scanner, calculator, manual entry, verify dialog, spatial label OCR, product gallery, settings
 - ✅ Debug APK and minified release APK both build; release smoke-tested (launches, no crash) on
   the emulator with a debug-signed copy — the committed release artifact stays unsigned
 - ✅ §73 documentation set complete in `docs/`, incl. new `security-review.md` and
@@ -58,7 +58,7 @@ GitHub: **https://github.com/Morfildor/CarbScan** — private, and staying priva
 - ✅ Manual barcode entry (§8); live Open Food Facts verified end to end incl. product images
 - ✅ **Countable portions** (2026-08-14) — see dedicated section below
 - ✅ **Product development pass** (2026-08-14) — see dedicated section below
-- ✅ **225 JVM unit tests, 89 instrumented tests, all passing; lint clean**
+- ✅ **237 JVM unit tests, 95 instrumented tests, all passing; lint clean**
 - ✅ The previously flaky instrumented test is **fixed** — it was a test bug (a keyboard-covered
   control that `performClick()` silently no-ops on), not app behaviour. Full suite is green.
 - ✅ **Dependency vulnerability scan run** — `tools/dependency-scan.sh`, 226 shipped artifacts,
@@ -116,14 +116,15 @@ matching config, not a real shared instance.
 ### Verified by the owner on a physical device (2026-08-14)
 
 - **Barcode scanning works.**
-- **Nutrition-label OCR works.**
+- The previous nutrition-label parser was spot-checked. The rebuilt spatial OCR is **implemented,
+  but real-world reliability is still under validation** and needs new physical-package coverage.
 
 These were the two largest unknowns and are now closed. Do not re-list them as unverified.
 
 ### NOT verified — do not claim otherwise
 
 - Behaviour across a range of physical devices, incl. Samsung Galaxy specifics (§61 §14).
-- **Anything at all on a physical device beyond barcode scanning and label OCR.** Everything in
+- **Anything in this pass on a physical device beyond barcode scanning.** Everything in
   this pass — meal, label verification, usual portions, search, attribution — was verified on the
   **emulator** only. That is the single biggest standing gap.
 - The release (R8) build on physical hardware — it runs on the emulator.
@@ -256,15 +257,15 @@ Note: `connectedAndroidTest` **uninstalls the app afterwards** — reinstall bef
 
 ```
 domain/    Pure Kotlin, ZERO Android imports — the safety-critical layer. Keep it that way.
-           PortionResolver, ServingSizeParser, PortionUnit(Kind), ProductImageUrlValidator,
+           PortionResolver, ServingSizeParser, PortionUnit(Kind), ProductImage, ProductImageUrlValidator,
            MealStore, PortionUsageStore, LabelComparison, ProductSearch
 data/
-  local/   Room (v4): ProductEntity/Dao, PortionUnitEntity/Dao, RoomProductDataSource,
+  local/   Room (v5): ProductEntity/Dao, PortionUnitEntity/Dao, RoomProductDataSource,
            RoomPortionUnitDataSource, RoomMealDataSource, RoomPortionUsageDataSource
   remote/  Retrofit (OFF v3 read + cgi/search.pl) + OpenFoodFactsDataSource
   settings/DataStore
   ProductRepository   ← owns the §10 lookup priority, portion units, meal, usage, search
-ocr/       NutritionLabelParser (pure) + LabelAnalyzer (ML Kit)
+ocr/       OcrDocument + NutritionTableParser (pure) + ML Kit mapper/LabelAnalyzer boundary
 ui/        Compose screens + ViewModels, immutable state via StateFlow
            product/, meal/, search/, components/ (shared design system)
 ```
@@ -279,10 +280,10 @@ Key invariants, each pinned by a test:
 - Carbohydrate values (and countable-portion weights) are stored as **TEXT** in SQLite, never REAL.
 - `ResultFormatter` sets `RoundingMode.HALF_UP` explicitly — `DecimalFormat` defaults to HALF_EVEN,
   which made the app display a different decimal from the one it calculated (15.4 vs 15.5).
-- Room schema is at **v4**; `MIGRATION_1_2` adds `latestRemoteCarbs`, `MIGRATION_2_3` adds
+- Room schema is at **v5**; `MIGRATION_1_2` adds `latestRemoteCarbs`, `MIGRATION_2_3` adds
   `portion_units` + three `products` columns for remembered countable-portion mode, `MIGRATION_3_4`
   adds `current_meal_items` (the name is the scope guarantee: there is only ever a *current* meal)
-  and `portion_usage`. Never destructive. `MIGRATION_2_3`'s `ALTER TABLE ADD
+  and `portion_usage`; `MIGRATION_4_5` adds nullable selected-image gallery metadata. Never destructive. `MIGRATION_2_3`'s `ALTER TABLE ADD
   COLUMN` calls are guarded by a `PRAGMA table_info` check — see "Countable portions" above for why.
 - `MealStore` has **no meal id** and `PortionUsageStore` has **no all-usage accessor**. Both
   absences are the scope guarantee (§2) expressed structurally — adding either would make a food
@@ -322,9 +323,9 @@ Key invariants, each pinned by a test:
    sharing, server-side caching), so reassess before any such feature ships.
    See `docs/third-party-notices.md`.
 4. Licence for the project not yet chosen.
-5. **Physical-device verification of everything built in the 2026-08-14 development pass.** Only
-   barcode scanning and label OCR have ever been confirmed on real hardware. Meal, label
-   verification, usual portions and search are emulator-only.
+5. **Physical-device verification of the rebuilt spatial OCR and gallery.** Barcode scanning and
+   the previous OCR implementation were spot-checked on real hardware. The new parser, still
+   capture path, and product gallery are emulator-only.
 6. **Countable portions against a real OFF `serving_size`.** Still fixture-only; no live product
    with a countable-unit-shaped `serving_size` has been checked against real packaging.
    `docs/manual-qa.md` §15a.

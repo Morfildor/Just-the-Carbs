@@ -8,6 +8,9 @@ import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
+import app.carbscan.domain.ProductImage
+import app.carbscan.domain.ProductImageType
+import app.carbscan.domain.ProductImageUrlValidator
 import app.carbscan.domain.ProductSearchHit
 import app.carbscan.domain.ProductSearchResult
 import app.carbscan.domain.ProductSearchSource
@@ -17,6 +20,7 @@ import kotlinx.serialization.SerializationException
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.Locale
 
 /**
  * Open Food Facts as a [ProductDataSource] (§11, §12).
@@ -27,7 +31,10 @@ import java.net.UnknownHostException
  * Every remote value passes through [NutritionValueValidator] before it can become a [Product]:
  * this is the boundary where untrusted data stops being trusted (§13).
  */
-class OpenFoodFactsDataSource(private val api: OpenFoodFactsApi) : ProductDataSource, ProductSearchSource {
+class OpenFoodFactsDataSource(
+    private val api: OpenFoodFactsApi,
+    private val preferredLanguage: () -> String = { Locale.getDefault().toLanguageTag() },
+) : ProductDataSource, ProductSearchSource {
 
     /**
      * Free-text search (spec §9).
@@ -170,10 +177,61 @@ class OpenFoodFactsDataSource(private val api: OpenFoodFactsApi) : ProductDataSo
                 packageAmount = quantity?.amount,
                 imageUrl = remote.imageFrontSmallUrl?.takeIf { it.isNotBlank() },
                 largeImageUrl = remote.imageFrontUrl?.takeIf { it.isNotBlank() },
+                images = remote.selectedProductImages(),
             ),
             portionUnitCandidate = servingSize,
         )
     }
+
+    /**
+     * Chooses one display image per role. The ordering is deliberately explicit and stable:
+     * device/app language, product language, English, then lexicographic fallback. Unsafe URLs are
+     * skipped rather than blocking a later safe language, and a repeated URL is shown only once.
+     */
+    private fun OffProduct.selectedProductImages(): List<ProductImage> {
+        val selected = selectedImages ?: return emptyList()
+        val priorities = buildList {
+            addLanguagePreference(preferredLanguage())
+            addLanguagePreference(lang)
+            addLanguagePreference("en")
+        }.distinct()
+
+        return listOf(
+            ProductImageType.FRONT to selected.front,
+            ProductImageType.NUTRITION to selected.nutrition,
+            ProductImageType.INGREDIENTS to selected.ingredients,
+            ProductImageType.PACKAGING to selected.packaging,
+        ).mapNotNull { (type, image) -> image?.selectDisplay(type, priorities) }
+            .distinctBy { it.displayUrl }
+    }
+
+    private fun MutableList<String>.addLanguagePreference(language: String?) {
+        val normalized = normalizeLanguage(language) ?: return
+        add(normalized)
+        normalized.substringBefore('-').takeIf { it != normalized }?.let(::add)
+    }
+
+    private fun OffSelectedImage.selectDisplay(
+        type: ProductImageType,
+        priorities: List<String>,
+    ): ProductImage? {
+        val entries = display.entries.sortedBy { it.key.lowercase(Locale.ROOT) }
+        val ordered = priorities.flatMap { preferred ->
+            entries.filter { normalizeLanguage(it.key) == preferred }
+        } + entries
+
+        return ordered.distinctBy { it.key.lowercase(Locale.ROOT) }.firstNotNullOfOrNull { entry ->
+            ProductImageUrlValidator.validate(entry.value)?.let { safeUrl ->
+                ProductImage(type = type, language = entry.key, displayUrl = safeUrl)
+            }
+        }
+    }
+
+    private fun normalizeLanguage(language: String?): String? = language
+        ?.trim()
+        ?.replace('_', '-')
+        ?.lowercase(Locale.ROOT)
+        ?.takeIf { it.isNotEmpty() }
 
     private companion object {
         const val HTTP_NOT_FOUND = 404

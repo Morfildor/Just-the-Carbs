@@ -47,7 +47,12 @@ class AppContainer(context: Context) {
      * search source, and constructing it twice would open two paths to the same host.
      */
     private val openFoodFacts by lazy {
-        OpenFoodFactsDataSource(NetworkModule.openFoodFactsApi(okHttpClient))
+        OpenFoodFactsDataSource(
+            NetworkModule.openFoodFactsApi(okHttpClient),
+            preferredLanguage = {
+                appContext.resources.configuration.locales[0].toLanguageTag()
+            },
+        )
     }
 
     val productRepository by lazy {

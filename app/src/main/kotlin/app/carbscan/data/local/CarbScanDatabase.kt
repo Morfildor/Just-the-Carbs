@@ -28,7 +28,7 @@ import androidx.sqlite.execSQL
         MealItemEntity::class,
         PortionUsageEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class CarbScanDatabase : RoomDatabase() {
@@ -170,6 +170,15 @@ abstract class CarbScanDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 → v5: optional OFF gallery metadata; all existing product/session data is retained. */
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(connection: SQLiteConnection) {
+                if (!connection.hasColumn("products", "galleryImagesJson")) {
+                    connection.execSQL("ALTER TABLE products ADD COLUMN galleryImagesJson TEXT")
+                }
+            }
+        }
+
         /** Shared by the guarded migrations above. SQLite has no "ADD COLUMN IF NOT EXISTS". */
         private fun SQLiteConnection.hasColumn(table: String, column: String): Boolean {
             val statement = prepare("PRAGMA table_info(`$table`)")
@@ -187,7 +196,7 @@ abstract class CarbScanDatabase : RoomDatabase() {
 
         fun build(context: Context): CarbScanDatabase =
             Room.databaseBuilder(context.applicationContext, CarbScanDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }

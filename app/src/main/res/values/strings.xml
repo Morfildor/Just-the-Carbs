@@ -270,12 +270,40 @@
     <!-- OCR (§29) -->
     <string name="ocr_title">Scan nutrition label</string>
     <string name="ocr_hint">Frame the nutrition table</string>
+    <string name="ocr_align_title">Align the nutrition table</string>
+    <string name="ocr_looking">Looking for carbohydrates…</string>
+    <string name="ocr_capture_label">Capture label</string>
+    <string name="ocr_capturing">Capturing label…</string>
+    <string name="ocr_processing">Reading captured label…</string>
+    <string name="ocr_not_found_title">Couldn’t confidently find carbohydrates.</string>
+    <string name="ocr_not_found_body">Try a clear, straight photo of the full nutrition table, or enter the value yourself.</string>
+    <string name="ocr_enter_manually">Enter manually</string>
+    <string name="ocr_scan_again">Scan live again</string>
     <string name="ocr_detected">Detected — %1$s %2$s / 100 %3$s</string>
+    <string name="ocr_detected_basis_unknown">Detected — %1$s %2$s; per-100 basis not established</string>
     <string name="ocr_use">Use %1$s</string>
+    <string name="ocr_use_per_100_g">Use / 100 g</string>
+    <string name="ocr_use_per_100_ml">Use / 100 ml</string>
     <string name="ocr_edit">Edit</string>
     <string name="ocr_ambiguous_title">Couldn\'t confidently identify the carbohydrate value.</string>
-    <string name="ocr_ambiguous_body">Check the label and enter the value yourself.</string>
+    <string name="ocr_ambiguous_body">Check the row and printed basis before choosing, or enter the value yourself.</string>
     <string name="ocr_candidates_title">Which row is the total carbohydrate?</string>
+
+    <!-- Product image gallery -->
+    <string name="gallery_open">View product images</string>
+    <string name="gallery_title">Product images</string>
+    <string name="gallery_close">Close product images</string>
+    <string name="gallery_previous">Previous image</string>
+    <string name="gallery_next">Next image</string>
+    <string name="gallery_page">%1$d of %2$d</string>
+    <string name="gallery_front">Front</string>
+    <string name="gallery_nutrition">Nutrition</string>
+    <string name="gallery_ingredients">Ingredients</string>
+    <string name="gallery_packaging">Packaging</string>
+    <string name="gallery_loading">Loading image…</string>
+    <string name="gallery_unavailable">This image is unavailable.</string>
+    <string name="gallery_retry">Retry</string>
+    <string name="gallery_image_description">%1$s image for %2$s</string>
 
     <!-- Settings (§43) -->
     <string name="settings_title">Settings</string>

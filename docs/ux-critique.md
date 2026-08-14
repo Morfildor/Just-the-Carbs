@@ -8,9 +8,10 @@ API and against the minified (R8) release build. Where a judgement comes from re
 than using the screen, it says so — that distinction turned out to matter more than any other in
 this pass.
 
-**The standing caveat:** none of this has been used on a physical device. The two things ever
-confirmed on real hardware are barcode scanning and label OCR. Everything below is emulator
-evidence, which is real evidence but not the same thing as a person holding a bag of bread.
+**The standing caveat:** none of this has been used on a physical device. Barcode scanning and the
+previous label-OCR implementation were spot-checked on real hardware; the rebuilt spatial OCR,
+still capture, and product gallery are emulator-only. Everything below is emulator evidence, which
+is real evidence but not the same thing as a person holding a bag of bread.
 
 ---
 

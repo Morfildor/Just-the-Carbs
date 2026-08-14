@@ -5,6 +5,7 @@ import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.PortionUnitKind
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductFetchResult
+import app.carbscan.domain.ProductImageType
 import app.carbscan.domain.VerificationStatus
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -48,7 +49,7 @@ class OpenFoodFactsDataSourceTest {
             .build()
             .create(OpenFoodFactsApi::class.java)
 
-        dataSource = OpenFoodFactsDataSource(api)
+        dataSource = OpenFoodFactsDataSource(api, preferredLanguage = { "nl" })
     }
 
     @After
@@ -92,6 +93,65 @@ class OpenFoodFactsDataSourceTest {
     }
 
     @Test
+    fun `selected images prefer device then product then English and keep one safe image per type`() = runTest {
+        respond(
+            """
+            {"product":{
+              "product_name":"Chocolate",
+              "lang":"de",
+              "nutriments":{"carbohydrates_100g":48.2},
+              "selected_images":{
+                "front":{"display":{
+                  "en":"https://images.openfoodfacts.org/front-en.400.jpg",
+                  "nl":"https://images.openfoodfacts.org/front-nl.400.jpg"}},
+                "nutrition":{"display":{
+                  "en":"https://images.openfoodfacts.org/nutrition-en.400.jpg",
+                  "de":"https://images.openfoodfacts.org/nutrition-de.400.jpg"}},
+                "ingredients":{"display":{
+                  "nl":"https://evil.example.com/ingredients-nl.400.jpg",
+                  "en":"https://images.openfoodfacts.org/ingredients-en.400.jpg"}},
+                "packaging":{"display":{
+                  "nl":"https://images.openfoodfacts.org/front-nl.400.jpg"}}
+              }
+            }}
+            """.trimIndent(),
+        )
+
+        val images = found(dataSource.fetch(barcode)).images
+
+        assertEquals(
+            listOf(ProductImageType.FRONT, ProductImageType.NUTRITION, ProductImageType.INGREDIENTS),
+            images.map { it.type },
+        )
+        assertEquals(listOf("nl", "de", "en"), images.map { it.language })
+        assertEquals(
+            listOf(
+                "https://images.openfoodfacts.org/front-nl.400.jpg",
+                "https://images.openfoodfacts.org/nutrition-de.400.jpg",
+                "https://images.openfoodfacts.org/ingredients-en.400.jpg",
+            ),
+            images.map { it.displayUrl },
+        )
+    }
+
+    @Test
+    fun `selected image fallback is deterministic when preferred languages are absent`() = runTest {
+        respond(
+            """{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":1.0},
+               "selected_images":{"front":{"display":{
+                 "sv":"https://images.openfoodfacts.org/front-sv.400.jpg",
+                 "fr":"https://images.openfoodfacts.org/front-fr.400.jpg"}}}}}
+            """
+                .trimIndent(),
+        )
+
+        val image = found(dataSource.fetch(barcode)).images.single()
+
+        assertEquals("fr", image.language)
+        assertEquals("https://images.openfoodfacts.org/front-fr.400.jpg", image.displayUrl)
+    }
+
+    @Test
     fun `sends the identifying User-Agent that Open Food Facts requires`() = runTest {
         respond("""{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":1.0}}}""")
 
@@ -110,6 +170,8 @@ class OpenFoodFactsDataSourceTest {
         val path = server.takeRequest().path.orEmpty()
         assertTrue("path was $path", path.contains("/api/v3/product/$barcode"))
         assertTrue("path was $path", path.contains("fields="))
+        assertTrue("path was $path", path.contains("selected_images"))
+        assertTrue("path was $path", path.contains("lang"))
     }
 
     @Test

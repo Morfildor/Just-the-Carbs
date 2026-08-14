@@ -51,6 +51,8 @@ data class ProductEntity(
     val lastInputMode: String?,
     val lastSelectedPortionUnitId: Long?,
     val lastCount: String?,
+    /** Compact JSON for validated gallery metadata. Null on rows cached before v5. */
+    val galleryImagesJson: String? = null,
 )
 
 fun Product.toEntity(): ProductEntity = ProductEntity(
@@ -75,6 +77,7 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
     lastInputMode = lastInputMode?.name,
     lastSelectedPortionUnitId = lastSelectedPortionUnitId,
     lastCount = lastCount?.toPlainString(),
+    galleryImagesJson = ProductImageCacheCodec.encode(images),
 )
 
 fun ProductEntity.toDomain(): Product = Product(
@@ -99,4 +102,5 @@ fun ProductEntity.toDomain(): Product = Product(
     lastInputMode = lastInputMode?.let(InputMode::valueOf),
     lastSelectedPortionUnitId = lastSelectedPortionUnitId,
     lastCount = lastCount?.let(::BigDecimal),
+    images = ProductImageCacheCodec.decode(galleryImagesJson),
 )

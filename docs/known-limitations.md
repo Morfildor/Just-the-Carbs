@@ -44,12 +44,18 @@ regex's.
 
 ## OCR
 
-**OCR can misread a label.** Poor light, curved packaging, glare, and unusual table layouts all
-degrade recognition. Every reading is presented for confirmation and none is ever auto-accepted.
-When more than one plausible carbohydrate row is found, the app asks rather than choosing.
+**Implemented, but real-world reliability is still under validation.** The parser now uses OCR
+element geometry to establish a total-carbohydrate row and a per-100 g/ml column. Poor light,
+curved packaging, glare, small print, damaged labels, and unusual tables can still defeat either
+text recognition or spatial alignment. A confident proposal still requires a user tap; ambiguous
+interpretations are shown as candidates, and insufficient evidence routes to still capture or
+manual entry.
 
-**Only Dutch and English labels are recognised.** German and French keywords are present but
-untested. Other languages will typically produce no reading, which routes you to manual entry.
+**The centralized terminology set covers 15 Latin-script label languages:** English, Dutch,
+German, French, Spanish, Italian, Portuguese, Turkish, Polish, Danish, Swedish, Norwegian,
+Finnish, Czech, and Romanian. Six have realistic spatial fixtures; the remaining nine have
+terminology/exclusion fixtures. Automated coverage is not evidence of reliable recognition on all
+fonts, packages, and camera conditions.
 
 **OCR reads what is printed; it cannot know if the print is wrong.**
 
@@ -131,13 +137,13 @@ Counts below are from the run of 2026-08-14, not from memory.
 
 | Area | State |
 |---|---|
-| Calculation, parsing, validation, repository, OCR parsing, meal totals, label comparison, search | **225 JVM unit tests, all passing** |
-| Room DAO ordering and decimal round-trip, plus calculator, meal, label-verification, usual-portion and search UI behaviour | **89 instrumented tests, all passing** on an API 36 emulator |
+| Calculation, parsing, validation, repository, OCR parsing, meal totals, label comparison, search | **237 JVM unit tests, all passing** |
+| Room DAO/migrations plus calculator, gallery, meal, label-verification, usual-portion and search UI behaviour | **95 instrumented tests, all passing** on an API 36 emulator |
 | Instrumented suite stability | The one previously order-dependent test now passes in the full suite; the cause was a keyboard-covered control, fixed per-interaction rather than retried |
 | Dependency vulnerabilities | **226 shipped artifacts scanned against OSV.dev, 0 known vulnerabilities** (2026-08-14, `tools/dependency-scan.sh`) — a point-in-time result, not a standing property |
 | Scan → portion → carbs, recents, manual entry, ml basis, dark mode, large font | Exercised by hand on an API 36 emulator |
 | Barcode decoding from a real barcode | **Verified on a physical device** (2026-08-14) |
-| Nutrition-label OCR against real packaging | **Verified on a physical device** (2026-08-14) |
+| Rebuilt spatial nutrition-label OCR against real packaging | **Implemented, but real-world reliability is still under validation.** The previous parser was spot-checked on one physical device; that does not validate this rewrite. |
 | Real Open Food Facts responses | **Verified against the live API** (2026-08-14): barcode 3017620422003 returned Nutella, 57.5 g/100 g, with its product image. Also covered by 17 tests over a local HTTP server |
 | Breadth of physical hardware, incl. Samsung Galaxy specifics | Only spot-checked; not systematically tested |
 | Release (R8/minified) build | Builds and runs on an emulator; Room, enums and ML Kit verified to survive minification. Not yet run on physical hardware, and not signed with production material |

@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import app.carbscan.ui.components.ProductHeroImage
+import app.carbscan.ui.components.ProductGalleryDialog
 import app.carbscan.ui.theme.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -88,6 +89,7 @@ import app.carbscan.domain.PortionParser
 import app.carbscan.domain.PortionUnit
 import app.carbscan.domain.PortionUnitKind
 import app.carbscan.domain.Product
+import app.carbscan.domain.ProductImageSelector
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ResultFormatter
 import app.carbscan.domain.ResultStyle
@@ -159,6 +161,19 @@ fun ProductScreen(
     onDismissLabelVerdict: () -> Unit = {},
     onSelectUsualPortion: (PortionUsage) -> Unit = {},
 ) {
+    var galleryOpen by remember(state.product?.barcode) { mutableStateOf(false) }
+    val galleryImages = remember(state.product?.images) {
+        state.product?.let(ProductImageSelector::galleryImages).orEmpty()
+    }
+
+    if (galleryOpen && state.product != null && galleryImages.isNotEmpty()) {
+        ProductGalleryDialog(
+            productName = state.product.name,
+            images = galleryImages,
+            onDismiss = { galleryOpen = false },
+        )
+    }
+
     if (state.showVerifyDialog && state.product != null) {
         VerifyDialog(
             product = state.product,
@@ -231,6 +246,7 @@ fun ProductScreen(
                 onAddToMealAndScanNext = onAddToMealAndScanNext,
                 onOpenMeal = onOpenMeal,
                 onSelectUsualPortion = onSelectUsualPortion,
+                onOpenGallery = { galleryOpen = true },
             )
         }
     }
@@ -404,6 +420,7 @@ private fun CalculatorBody(
     onAddToMealAndScanNext: (String) -> Unit = {},
     onOpenMeal: () -> Unit = {},
     onSelectUsualPortion: (PortionUsage) -> Unit = {},
+    onOpenGallery: () -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -420,6 +437,7 @@ private fun CalculatorBody(
         ProductHeroImage(
             product = product,
             compact = imeVisible,
+            onClick = onOpenGallery.takeIf { ProductImageSelector.galleryImages(product).isNotEmpty() },
             modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
         )
 

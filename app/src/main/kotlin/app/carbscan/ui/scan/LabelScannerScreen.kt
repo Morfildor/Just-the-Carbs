@@ -2,17 +2,25 @@ package app.carbscan.ui.scan
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,12 +33,16 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FlashlightOff
+import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -42,29 +54,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.carbscan.R
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.ocr.CarbCandidate
 import app.carbscan.ocr.LabelAnalyzer
 import app.carbscan.ocr.LabelReading
+import app.carbscan.ocr.OcrDiagnosticsLogger
+import app.carbscan.ui.components.RecoveryPanel
 import app.carbscan.ui.theme.Space
+import java.io.File
 import java.math.BigDecimal
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Nutrition-label OCR (§29).
- *
- * The camera never commits a value. Whatever is read is presented as a proposal — *Detected —
- * Koolhydraten 47,3 g / 100 g* — with **Use 47,3** and **Edit**, and nothing is stored until the
- * user picks one. When several rows are plausible the app shows them all and asks; it does not
- * choose. This is design decision 3.3 in practice: OCR is never auto-accepted.
- */
+/** Nutrition-table OCR camera. It proposes values; it never commits one without a tap. */
 @Composable
 fun LabelScannerScreen(
     onUseValue: (BigDecimal, NutritionBasis) -> Unit,
@@ -72,108 +83,228 @@ fun LabelScannerScreen(
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-
     var hasPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
                 PackageManager.PERMISSION_GRANTED,
         )
     }
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { hasPermission = it }
+    var permissionRequested by remember { mutableStateOf(false) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasPermission = granted
+        permissionRequested = true
+    }
 
     LaunchedEffect(Unit) { if (!hasPermission) launcher.launch(Manifest.permission.CAMERA) }
 
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        if (hasPermission) {
+            LabelCamera(
+                onUseValue = onUseValue,
+                onEditManually = onEditManually,
+                onClose = onClose,
+            )
+        } else {
+            LabelPermissionRationale(
+                showAllow = !permissionRequested,
+                onAllow = { launcher.launch(Manifest.permission.CAMERA) },
+                onEditManually = onEditManually,
+                onClose = onClose,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LabelCamera(
+    onUseValue: (BigDecimal, NutritionBasis) -> Unit,
+    onEditManually: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
+
     var reading by remember { mutableStateOf<LabelReading?>(null) }
+    var captureState by remember { mutableStateOf(CaptureState.IDLE) }
+    var camera by remember { mutableStateOf<Camera?>(null) }
+    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    var torchAvailable by remember { mutableStateOf(false) }
+    var torchOn by remember { mutableStateOf(false) }
+    var cameraFailed by remember { mutableStateOf(false) }
+
+    val pendingCapture = remember { AtomicReference<File?>(null) }
+    val cameraProvider = remember { AtomicReference<ProcessCameraProvider?>(null) }
+    val disposed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val executor = remember { Executors.newSingleThreadExecutor() }
     val analyzer = remember {
-        LabelAnalyzer { result -> reading = result }
+        LabelAnalyzer { result -> mainExecutor.execute { reading = result } }
     }
 
     DisposableEffect(Unit) {
         onDispose {
+            disposed.set(true)
+            cameraProvider.getAndSet(null)?.unbindAll()
             analyzer.close()
+            pendingCapture.getAndSet(null)?.delete()
             executor.shutdown()
         }
     }
 
-    // Freeze the proposal while the user decides, so the card cannot change mid-tap.
     LaunchedEffect(reading) {
         if (reading != null) analyzer.pause()
     }
 
-    if (!hasPermission) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .statusBarsPadding()
-                .padding(Space.screenEdge),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
+    fun resumeLive() {
+        reading = null
+        captureState = CaptureState.IDLE
+        analyzer.resume()
+    }
+
+    fun captureLabel() {
+        val capture = imageCapture
+        if (capture == null) {
+            reading = LabelReading.NotFound
+            return
+        }
+
+        val file = runCatching { File.createTempFile("carbscan-label-", ".jpg", context.cacheDir) }
+            .getOrElse {
+                OcrDiagnosticsLogger.failure("Could not create temporary label image", it)
+                reading = LabelReading.NotFound
+                return
+            }
+        analyzer.pause()
+        reading = null
+        captureState = CaptureState.CAPTURING
+        pendingCapture.set(file)
+        val options = ImageCapture.OutputFileOptions.Builder(file).build()
+        capture.takePicture(
+            options,
+            executor,
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    mainExecutor.execute { captureState = CaptureState.PROCESSING }
+                    analyzer.analyzeStill(context, file) { result ->
+                        pendingCapture.compareAndSet(file, null)
+                        mainExecutor.execute {
+                            captureState = CaptureState.IDLE
+                            reading = result
+                        }
+                    }
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    OcrDiagnosticsLogger.failure("Label capture failed", exception)
+                    pendingCapture.compareAndSet(file, null)
+                    file.delete()
+                    mainExecutor.execute {
+                        captureState = CaptureState.IDLE
+                        reading = LabelReading.NotFound
+                    }
+                }
+            },
+        )
+    }
+
+    if (cameraFailed) {
+        RecoveryPanel(
+            title = stringResource(R.string.scanner_unavailable),
+            body = null,
+            modifier = Modifier.fillMaxSize().padding(top = 120.dp),
         ) {
-            Text(
-                text = stringResource(R.string.permission_title),
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(Space.l))
             Button(
                 onClick = onEditManually,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(Space.buttonRadius),
             ) { Text(stringResource(R.string.permission_manual)) }
+            TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.action_close))
+            }
         }
         return
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                val previewView = PreviewView(ctx).apply {
-                    scaleType = PreviewView.ScaleType.FILL_CENTER
-                }
+                val previewView = PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
                 val providerFuture = ProcessCameraProvider.getInstance(ctx)
-                providerFuture.addListener({
-                    runCatching {
+                providerFuture.addListener(listener@{
+                    if (disposed.get()) return@listener
+                    try {
                         val provider = providerFuture.get()
+                        cameraProvider.set(provider)
                         val preview = Preview.Builder().build().apply {
                             surfaceProvider = previewView.surfaceProvider
                         }
+                        val analysisSelector = ResolutionSelector.Builder()
+                            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                            .setResolutionStrategy(
+                                ResolutionStrategy(
+                                    Size(1280, 720),
+                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                                ),
+                            )
+                            .build()
                         val analysis = ImageAnalysis.Builder()
+                            .setResolutionSelector(analysisSelector)
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
                             .also { it.setAnalyzer(executor, analyzer) }
+                        val stillSelector = ResolutionSelector.Builder()
+                            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                            .setResolutionStrategy(
+                                ResolutionStrategy(
+                                    Size(1920, 1440),
+                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                                ),
+                            )
+                            .build()
+                        val stillCapture = ImageCapture.Builder()
+                            .setResolutionSelector(stillSelector)
+                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                            .build()
 
                         provider.unbindAll()
-                        provider.bindToLifecycle(
+                        camera = provider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
                             analysis,
+                            stillCapture,
                         )
+                        imageCapture = stillCapture
+                        torchAvailable = camera?.cameraInfo?.hasFlashUnit() == true
+                    } catch (error: Exception) {
+                        OcrDiagnosticsLogger.failure("Could not bind label camera", error)
+                        cameraFailed = true
                     }
-                }, ContextCompat.getMainExecutor(ctx))
+                }, mainExecutor)
                 previewView
             },
         )
 
         Row(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(Space.s),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconButton(
+            LabelScrimIconButton(
                 onClick = onClose,
-                modifier = Modifier
-                    .size(Space.minTouchTarget)
-                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50)),
-            ) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.scanner_close),
-                    tint = Color.White,
+                icon = Icons.Filled.Close,
+                description = stringResource(R.string.scanner_close),
+            )
+            if (torchAvailable) {
+                LabelScrimIconButton(
+                    onClick = {
+                        torchOn = !torchOn
+                        camera?.cameraControl?.enableTorch(torchOn)
+                    },
+                    icon = if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff,
+                    description = stringResource(
+                        if (torchOn) R.string.scanner_torch_off else R.string.scanner_torch_on,
+                    ),
                 )
             }
         }
@@ -186,35 +317,55 @@ fun LabelScannerScreen(
                 .padding(Space.m),
         ) {
             when (val current = reading) {
-                null -> Text(
-                    text = stringResource(R.string.ocr_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                is LabelReading.Single -> ProposalCard(
+                null -> SearchingCard(captureState, ::captureLabel, onEditManually)
+                is LabelReading.Confident -> ProposalCard(
                     candidates = listOf(current.candidate),
+                    ambiguous = false,
                     onUse = onUseValue,
+                    onCapture = ::captureLabel,
                     onEdit = onEditManually,
-                    onRetry = { reading = null; analyzer.resume() },
+                    onRetry = ::resumeLive,
                 )
-
                 is LabelReading.Ambiguous -> ProposalCard(
                     candidates = current.candidates,
+                    ambiguous = true,
                     onUse = onUseValue,
+                    onCapture = ::captureLabel,
                     onEdit = onEditManually,
-                    onRetry = { reading = null; analyzer.resume() },
+                    onRetry = ::resumeLive,
                 )
-
-                LabelReading.NotFound -> ProposalCard(
-                    candidates = emptyList(),
-                    onUse = onUseValue,
-                    onEdit = onEditManually,
-                    onRetry = { reading = null; analyzer.resume() },
-                )
+                LabelReading.NotFound -> NotFoundCard(::captureLabel, onEditManually, ::resumeLive)
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchingCard(captureState: CaptureState, onCapture: () -> Unit, onEdit: () -> Unit) {
+    ScannerCard {
+        Text(stringResource(R.string.ocr_align_title), style = MaterialTheme.typography.titleMedium)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Space.s),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (captureState != CaptureState.IDLE) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
+            Text(
+                text = stringResource(
+                    when (captureState) {
+                        CaptureState.IDLE -> R.string.ocr_looking
+                        CaptureState.CAPTURING -> R.string.ocr_capturing
+                        CaptureState.PROCESSING -> R.string.ocr_processing
+                    },
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        CaptureButton(onCapture, enabled = captureState == CaptureState.IDLE)
+        TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+            Text(stringResource(R.string.ocr_enter_manually))
         }
     }
 }
@@ -222,71 +373,190 @@ fun LabelScannerScreen(
 @Composable
 private fun ProposalCard(
     candidates: List<CarbCandidate>,
+    ambiguous: Boolean,
     onUse: (BigDecimal, NutritionBasis) -> Unit,
+    onCapture: () -> Unit,
     onEdit: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(Space.cardRadius))
-            .padding(Space.m),
-        verticalArrangement = Arrangement.spacedBy(Space.s),
-    ) {
-        when {
-            candidates.isEmpty() -> {
-                Text(
-                    text = stringResource(R.string.ocr_ambiguous_title),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(R.string.ocr_ambiguous_body),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            candidates.size > 1 -> Text(
-                // Several plausible rows: the user decides which is the total (§29).
-                text = stringResource(R.string.ocr_candidates_title),
-                style = MaterialTheme.typography.titleMedium,
+    ScannerCard {
+        if (ambiguous) {
+            Text(stringResource(R.string.ocr_candidates_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.ocr_ambiguous_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-
         candidates.forEach { candidate ->
             val display = candidate.value.stripTrailingZeros().toPlainString()
-            Column {
+            val basis = candidate.basis
+            if (basis != null) {
                 Text(
                     text = stringResource(
                         R.string.ocr_detected,
                         candidate.label,
                         "$display g",
-                        candidate.basis.unitLabel,
+                        basis.unitLabel,
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(Space.xs))
                 Button(
-                    onClick = { onUse(candidate.value, candidate.basis) },
+                    onClick = { onUse(candidate.value, basis) },
                     shape = RoundedCornerShape(Space.buttonRadius),
                     modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
                 ) { Text(stringResource(R.string.ocr_use, display)) }
+            } else {
+                Text(
+                    text = stringResource(R.string.ocr_detected_basis_unknown, candidate.label, "$display g"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Space.s),
+                ) {
+                    OutlinedButton(
+                        onClick = { onUse(candidate.value, NutritionBasis.PER_100_G) },
+                        modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+                        shape = RoundedCornerShape(Space.buttonRadius),
+                    ) { Text(stringResource(R.string.ocr_use_per_100_g)) }
+                    OutlinedButton(
+                        onClick = { onUse(candidate.value, NutritionBasis.PER_100_ML) },
+                        modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+                        shape = RoundedCornerShape(Space.buttonRadius),
+                    ) { Text(stringResource(R.string.ocr_use_per_100_ml)) }
+                }
             }
         }
+        SecondaryScannerActions(onCapture, onEdit, onRetry)
+    }
+}
 
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-            OutlinedButton(
-                onClick = onEdit,
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-            ) { Text(stringResource(R.string.ocr_edit)) }
-
-            OutlinedButton(
-                onClick = onRetry,
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-            ) { Text(stringResource(R.string.error_retry)) }
+@Composable
+private fun NotFoundCard(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () -> Unit) {
+    ScannerCard {
+        Text(stringResource(R.string.ocr_not_found_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.ocr_not_found_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        CaptureButton(onCapture)
+        OutlinedButton(
+            onClick = onEdit,
+            shape = RoundedCornerShape(Space.buttonRadius),
+            modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+        ) { Text(stringResource(R.string.ocr_enter_manually)) }
+        TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+            Text(stringResource(R.string.ocr_scan_again))
         }
     }
 }
+
+@Composable
+private fun SecondaryScannerActions(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+        OutlinedButton(
+            onClick = onCapture,
+            shape = RoundedCornerShape(Space.buttonRadius),
+            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+        ) { Text(stringResource(R.string.ocr_capture_label)) }
+        OutlinedButton(
+            onClick = onEdit,
+            shape = RoundedCornerShape(Space.buttonRadius),
+            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+        ) { Text(stringResource(R.string.ocr_edit)) }
+    }
+    TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+        Text(stringResource(R.string.ocr_scan_again))
+    }
+}
+
+@Composable
+private fun CaptureButton(onClick: () -> Unit, enabled: Boolean = true) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(Space.buttonRadius),
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+    ) { Text(stringResource(R.string.ocr_capture_label)) }
+}
+
+@Composable
+private fun ScannerCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(Space.cardRadius))
+            .padding(Space.m),
+        verticalArrangement = Arrangement.spacedBy(Space.s),
+        content = content,
+    )
+}
+
+@Composable
+private fun LabelScrimIconButton(
+    onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(Space.minTouchTarget)
+            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+            .semantics { contentDescription = description },
+    ) { Icon(icon, contentDescription = null, tint = Color.White) }
+}
+
+@Composable
+private fun LabelPermissionRationale(
+    showAllow: Boolean,
+    onAllow: () -> Unit,
+    onEditManually: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .padding(Space.screenEdge),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(R.string.permission_title),
+            style = MaterialTheme.typography.titleLarge,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(Space.s))
+        Text(
+            text = stringResource(R.string.permission_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(Space.l))
+        if (showAllow) {
+            Button(
+                onClick = onAllow,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) { Text(stringResource(R.string.permission_allow)) }
+            Spacer(Modifier.height(Space.s))
+        }
+        Button(
+            onClick = onEditManually,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(Space.buttonRadius),
+        ) { Text(stringResource(R.string.permission_manual)) }
+        TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+            Text(stringResource(R.string.action_close))
+        }
+    }
+}
+
+private enum class CaptureState { IDLE, CAPTURING, PROCESSING }

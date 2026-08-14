@@ -42,7 +42,7 @@ network destinations (`world.openfoodfacts.org` for product data, `images.openfo
 platform level, not just by convention in the request-building code. No `network_security_config.xml`
 exists because none is needed: there is no cleartext exception to declare for any domain.
 
-## Remote image URL validation (countable-portions work, 2026-08-14)
+## Remote image URL validation and gallery (updated 2026-08-14)
 
 A corrupt or malicious Open Food Facts product record could in principle carry an `image_url`
 pointing anywhere. Before this pass, that URL went straight to Coil with only a blank-string check.
@@ -57,9 +57,11 @@ pointing anywhere. Before this pass, that URL went straight to Coil with only a 
 - Anything that fails to parse as a URI, or is null/blank, is rejected the same way a missing image
   already was — falling back to the monogram tile, never a broken state.
 
-`ProductThumbnail.kt` is the single call site that reads `product.imageUrl` for display, and it now
-routes through this validator before ever reaching Coil's `AsyncImage`. There is no second path
-that bypasses it.
+The v3 `selected_images` display URLs for Front, Nutrition, Ingredients, and Packaging are validated
+at the remote mapping boundary. They are validated again when decoded from Room and again by
+`ProductImageSelector` before the hero or gallery reaches Coil. Language selection keeps one image
+per role and duplicate URLs are removed; adding a gallery therefore does not widen the host or
+scheme allowlist.
 
 **What this does not cover:** the validator only constrains which *host* an image request can
 reach — it does not, and cannot, verify that the image content itself is safe or non-malicious.
@@ -80,6 +82,24 @@ by construction rather than by convention.
 The User-Agent interceptor (`NetworkModule.userAgent`) is applied to this one shared client, so it
 reaches both the product-data host and the image host. Both are Open Food Facts–operated hosts, so
 this is not a case of leaking an app-identifying header to an unrelated third party.
+
+Gallery requests use the same singleton Coil loader and shared OkHttp client as the existing hero
+and thumbnails. Pager composition keeps the adjacent image warm when there is more than one image.
+Loading and failure stay inside the modal; neither blocks or mutates the carbohydrate calculation.
+Coil's normal disk/memory cache can serve an already-fetched image offline.
+
+## Nutrition-label still images and diagnostics
+
+`ImageCapture` writes a still only to a unique file in the app-private cache directory. It is not
+inserted into MediaStore, never needs storage/photo-library permission, is processed on-device by
+ML Kit, and is deleted on success, OCR failure, setup failure, capture failure, or scanner disposal.
+No label image is persisted in Room or exposed to another component.
+
+OCR diagnostics log actual live-analysis and still dimensions, latency, recognized elements,
+anchors, headers, candidate geometry/scores, and selection/rejection reasons only behind the static
+`BuildConfig.DEBUG` branch. Release is non-debuggable and minified, so R8 removes that branch. The
+diagnostics contain recognized label text and must therefore remain debug-only; HTTP logging is
+still not enabled.
 
 ## WebView
 
@@ -123,12 +143,9 @@ Gradle no longer leaves an unsigned release artifact that could be mistaken for 
 
 ## Logs
 
-No `Log.d`/`Log.e`/`println` call exists anywhere in `app/src/main` (`grep -rn "Log\.|println("
-app/src/main/kotlin` returns nothing). There is nothing that could leak a barcode, a carbohydrate
-value, or a URL into logcat, because no logging statement was ever added. `okhttp-logging` (HTTP
-request/response logging) is declared in the version catalog but is **not** wired into
-`NetworkModule` or any `OkHttpClient` — declared, unused, and therefore not shipping any request
-body or header to logcat in either build type.
+Only `OcrDiagnosticsLogger` writes application debug logs, for the diagnostic fields described
+above, and every entry is guarded by `BuildConfig.DEBUG`. No barcode or HTTP body/header logger is
+wired into the app. `okhttp-logging` remains declared in the version catalog but unused.
 
 ## Clipboard
 
@@ -200,13 +217,13 @@ published tomorrow, and re-running it stays a release-checklist item.
 
 | Area | Finding | Status |
 |---|---|---|
-| Image URL validation | Was unvalidated before this pass — any `image_url` in a remote record would reach Coil | **Fixed**: host-allowlist validator, tested |
+| Image URL validation | Hero, thumbnail, selected-image DTO, Room metadata, and gallery paths | **Fixed**: repeated HTTPS/OFF-host validation, tested |
 | Shared OkHttp client | Was two separately-constructed clients, not one shared instance | **Fixed**: single `AppContainer.okHttpClient` |
 | Cleartext traffic | Disabled at platform level | Already correct, unchanged |
 | Exported components | Only the required launcher activity | Already correct, unchanged |
 | WebView | Absent | Already correct, unchanged |
 | Backup | Disabled, plus explicit domain exclusions | Already correct, unchanged |
-| Logging | No logging statements exist | Already correct, unchanged |
+| Logging | OCR diagnostics could expose recognized label text | **Debug-only**: statically guarded; absent from non-debuggable minified release |
 | Clipboard | Copies only the numeric value | Already correct, unchanged |
 | Secrets | None committed; release signing fails closed | Already correct, unchanged |
 | Dependency vulnerability scanning | Was never performed | **Done 2026-08-14**: `tools/dependency-scan.sh`, 226 artifacts, 0 known vulnerabilities — re-run before each release |

@@ -15,6 +15,8 @@ import app.carbscan.domain.PortionUsageStore
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
+import app.carbscan.domain.ProductImage
+import app.carbscan.domain.ProductImageType
 import app.carbscan.domain.ProductSearchResult
 import app.carbscan.domain.ProductSearchSource
 import app.carbscan.domain.ProductDataOrigin
@@ -325,6 +327,26 @@ class ProductRepositoryTest {
     }
 
     @Test
+    fun `a refresh can add display images without changing a verified carbohydrate value`() = runTest {
+        val verified = product(VERIFIED_OFF, "48.2", name = "Verified by owner")
+        val image = ProductImage(
+            ProductImageType.NUTRITION,
+            "en",
+            "https://images.openfoodfacts.org/nutrition-en.400.jpg",
+        )
+        val fetched = product(PLAIN_OFF, "99.9", name = "Remote name").copy(images = listOf(image))
+        val local = FakeLocal(listOf(verified))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.Found(fetched)))
+
+        repository.refreshFromRemote(barcode)
+
+        val stored = local.stored.getValue(barcode)
+        assertEquals(0, BigDecimal("48.2").compareTo(stored.carbsPer100))
+        assertEquals("Verified by owner", stored.name)
+        assertEquals(listOf(image), stored.images)
+    }
+
+    @Test
     fun `a background refresh never overwrites a manually created product`() = runTest {
         val local = FakeLocal(listOf(product(MANUAL, "12.0")))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "99.9")))
@@ -344,6 +366,23 @@ class ProductRepositoryTest {
         repository.refreshFromRemote(barcode)
 
         assertEquals(0, BigDecimal("50.1").compareTo(local.stored.getValue(barcode).carbsPer100))
+    }
+
+    @Test
+    fun `a remote refresh that omits selected images preserves the cached gallery`() = runTest {
+        val cachedImage = ProductImage(
+            ProductImageType.FRONT,
+            "en",
+            "https://images.openfoodfacts.org/front-en.400.jpg",
+        )
+        val cached = product(PLAIN_OFF, "48.2").copy(images = listOf(cachedImage))
+        val local = FakeLocal(listOf(cached))
+        val remoteWithoutImages = product(PLAIN_OFF, "50.1").copy(images = emptyList())
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.Found(remoteWithoutImages)))
+
+        repository.refreshFromRemote(barcode)
+
+        assertEquals(listOf(cachedImage), local.stored.getValue(barcode).images)
     }
 
     @Test

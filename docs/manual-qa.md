@@ -105,7 +105,7 @@ one-handed, without putting anything down.
 | 8.2 | No gram/ml conversion is offered or implied anywhere | ☐ |
 | 8.3 | Correcting a wrongly-inferred basis via Verify works | ☐ |
 
-## 9. Nutrition-label OCR (§29) — *unverified against real packaging*
+## 9. Nutrition-label OCR (§29) — *implemented; real-world reliability under validation*
 
 | # | Check | Pass |
 |---|---|---|
@@ -114,8 +114,25 @@ one-handed, without putting anything down.
 | 9.3 | **"waarvan suikers" is never taken as the total** | ☐ |
 | 9.4 | Nothing is auto-accepted — always *Use* / *Edit* | ☐ |
 | 9.5 | Two plausible columns → candidates shown, app does not choose | ☐ |
-| 9.6 | Unreadable label → honest failure plus manual entry | ☐ |
-| 9.7 | No image is saved to the gallery | ☐ |
+| 9.6 | Carb row visible but per-100 basis unclear → candidate plus explicit g/ml choice; never a guessed basis | ☐ |
+| 9.7 | Unreadable label → honest failure plus *Capture label* and manual entry | ☐ |
+| 9.8 | *Capture label* reads a sharper still through the same confirmation flow | ☐ |
+| 9.9 | Torch toggles when the device has a flash; scanner remains usable without one | ☐ |
+| 9.10 | Repeated capture/live attempts stay responsive; no OCR backlog develops | ☐ |
+| 9.11 | No captured label image appears in Photos and no temporary file remains after completion/exit | ☐ |
+
+## 9a. Product image gallery
+
+| # | Check | Pass |
+|---|---|---|
+| 9a.1 | Product with no safe selected images keeps the monogram/hero and has no gallery action | ☐ |
+| 9a.2 | One image opens a modal over the calculator with label/close/Back and no arrows | ☐ |
+| 9a.3 | Multiple images swipe and page with explicit arrows; indicator and type/language update | ☐ |
+| 9a.4 | Tall and wide images fit without cropping important package text | ☐ |
+| 9a.5 | Slow image shows progress without blocking portion entry or changing the result | ☐ |
+| 9a.6 | Broken image shows an unavailable/retry state and closes back to the unchanged calculator | ☐ |
+| 9a.7 | Cached gallery image remains visible offline; an uncached one fails cleanly | ☐ |
+| 9a.8 | Dark mode, largest font, TalkBack labels, swipe, arrows, close, and Android Back are usable | ☐ |
 
 ## 10. Offline and errors (§32, §36)
 

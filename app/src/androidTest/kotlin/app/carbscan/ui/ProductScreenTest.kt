@@ -1,26 +1,38 @@
 package app.carbscan.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.carbscan.ui.components.PRODUCT_HERO_TAG
+import app.carbscan.ui.components.PRODUCT_GALLERY_NEXT_TAG
+import app.carbscan.ui.components.PRODUCT_GALLERY_PREVIOUS_TAG
+import app.carbscan.ui.components.PRODUCT_GALLERY_TAG
+import app.carbscan.ui.components.PRODUCT_GALLERY_ERROR_TAG
+import app.carbscan.ui.components.ProductGalleryDialog
 import app.carbscan.domain.AppSettings
 import app.carbscan.domain.CarbCalculator
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
+import app.carbscan.domain.ProductImage
+import app.carbscan.domain.ProductImageType
 import app.carbscan.domain.ResultStyle
 import app.carbscan.domain.VerificationStatus
 import app.carbscan.ui.product.ProductScreen
@@ -29,6 +41,11 @@ import app.carbscan.ui.theme.CarbScanTheme
 import org.junit.Rule
 import org.junit.Test
 import java.math.BigDecimal
+import java.io.IOException
+import coil3.ImageLoader
+import coil3.fetch.Fetcher
+import coil3.request.Options
+import kotlinx.coroutines.awaitCancellation
 
 /**
  * §60 workflow tests for the calculator.
@@ -52,6 +69,7 @@ class ProductScreenTest {
         origin: ProductDataOrigin = ProductDataOrigin.OPEN_FOOD_FACTS,
         verification: VerificationStatus = VerificationStatus.UNVERIFIED,
         packageAmount: String? = null,
+        images: List<ProductImage> = emptyList(),
     ) = Product(
         barcode = "8712100849060",
         name = name,
@@ -60,6 +78,7 @@ class ProductScreenTest {
         dataSource = origin,
         verificationStatus = verification,
         packageAmount = packageAmount?.let(::BigDecimal),
+        images = images,
     )
 
     /**
@@ -240,6 +259,136 @@ class ProductScreenTest {
 
         compose.onNode(portionField()).performTextInput("65")
         compose.onNodeWithText("31.3 g").assertIsDisplayed()
+    }
+
+    private fun showGalleryWithControlledImage(data: GalleryTestImage) {
+        compose.setContent {
+            val context = LocalContext.current
+            val imageLoader = remember {
+                ImageLoader.Builder(context)
+                    .components { add(GalleryTestFetcherFactory()) }
+                    .build()
+            }
+            DisposableEffect(imageLoader) { onDispose(imageLoader::shutdown) }
+
+            CarbScanTheme {
+                ProductGalleryDialog(
+                    productName = "Test product",
+                    images = listOf(
+                        ProductImage(
+                            ProductImageType.FRONT,
+                            "en",
+                            "https://images.openfoodfacts.org/test.400.jpg",
+                        ),
+                    ),
+                    onDismiss = {},
+                    imageLoader = imageLoader,
+                    imageModel = { data },
+                )
+            }
+        }
+    }
+
+    @Test
+    fun aProductWithoutSafeGalleryImagesHasNoFakeGalleryAction() {
+        showCalculator(
+            product(
+                images = listOf(
+                    ProductImage(ProductImageType.FRONT, "en", "https://evil.example.com/front.jpg"),
+                ),
+            ),
+        )
+
+        compose.onNodeWithTag(PRODUCT_HERO_TAG).assertHasNoClickAction()
+    }
+
+    @Test
+    fun oneProductImageOpensAClosableModalWithoutPagingControls() {
+        showCalculator(
+            product(
+                images = listOf(
+                    ProductImage(
+                        ProductImageType.FRONT,
+                        "nl",
+                        "https://images.openfoodfacts.org/front-nl.400.jpg",
+                    ),
+                ),
+            ),
+        )
+
+        compose.onNodeWithContentDescription("View product images").assertHasClickAction().performClick()
+
+        compose.onNodeWithTag(PRODUCT_GALLERY_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Front").assertIsDisplayed()
+        compose.onAllNodesWithTag(PRODUCT_GALLERY_NEXT_TAG).assertCountEquals(0)
+        compose.onAllNodesWithTag(PRODUCT_GALLERY_PREVIOUS_TAG).assertCountEquals(0)
+
+        compose.onNodeWithContentDescription("Close product images").performClick()
+        compose.onAllNodesWithTag(PRODUCT_GALLERY_TAG).assertCountEquals(0)
+    }
+
+    @Test
+    fun galleryArrowsPageImagesWithoutChangingTheCalculatorValue() {
+        showCalculator(
+            product(
+                images = listOf(
+                    ProductImage(
+                        ProductImageType.FRONT,
+                        "nl",
+                        "https://images.openfoodfacts.org/front-nl.400.jpg",
+                    ),
+                    ProductImage(
+                        ProductImageType.NUTRITION,
+                        "en",
+                        "https://images.openfoodfacts.org/nutrition-en.400.jpg",
+                    ),
+                ),
+            ),
+        )
+        compose.onNode(portionField()).performTextInput("65")
+        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+
+        compose.onNodeWithContentDescription("View product images").performClick()
+        compose.onNodeWithTag(PRODUCT_GALLERY_NEXT_TAG).performClick()
+        compose.waitUntil(timeoutMillis = 3_000) {
+            compose.onAllNodesWithText("2 of 2").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Nutrition").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Close product images").performClick()
+
+        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+    }
+
+    @Test
+    fun aSlowGalleryImageKeepsAnExplicitLoadingState() {
+        showGalleryWithControlledImage(GalleryTestImage.SLOW)
+
+        compose.onNodeWithText("Loading image…").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_GALLERY_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun aBrokenGalleryImageShowsRetryWithoutClosingTheModal() {
+        showGalleryWithControlledImage(GalleryTestImage.BROKEN)
+
+        compose.waitUntil(timeoutMillis = 3_000) {
+            compose.onAllNodesWithTag(PRODUCT_GALLERY_ERROR_TAG).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("This image is unavailable.").assertIsDisplayed()
+        compose.onNodeWithText("Retry").performClick()
+        compose.onNodeWithTag(PRODUCT_GALLERY_TAG).assertIsDisplayed()
+    }
+
+    private enum class GalleryTestImage { SLOW, BROKEN }
+
+    private class GalleryTestFetcherFactory : Fetcher.Factory<GalleryTestImage> {
+        override fun create(data: GalleryTestImage, options: Options, imageLoader: ImageLoader): Fetcher =
+            Fetcher {
+                when (data) {
+                    GalleryTestImage.SLOW -> awaitCancellation()
+                    GalleryTestImage.BROKEN -> throw IOException("Controlled gallery failure")
+                }
+            }
     }
 
     /**

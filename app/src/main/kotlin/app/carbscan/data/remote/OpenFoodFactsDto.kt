@@ -43,6 +43,8 @@ data class OffSearchResponse(
 @Serializable
 data class OffProduct(
     val code: String? = null,
+    /** Language tag used for the product's primary localized content. */
+    val lang: String? = null,
     @SerialName("product_name") val productName: String? = null,
     /** Localized name, preferred where present (§12). */
     @SerialName("product_name_nl") val productNameNl: String? = null,
@@ -61,6 +63,7 @@ data class OffProduct(
      * multi-megabyte original: 400 px covers a 120–170 dp hero at 3× density.
      */
     @SerialName("image_front_url") val imageFrontUrl: String? = null,
+    @SerialName("selected_images") val selectedImages: OffSelectedImages? = null,
     /**
      * Free text, e.g. "1 slice (36 g)". Feeds [app.carbscan.domain.ServingSizeParser] only —
      * `serving_quantity`/`serving_quantity_unit` are deliberately not modelled here: OFF documents
@@ -69,6 +72,20 @@ data class OffProduct(
      * app would do with them that parsing this field directly does not already cover.
      */
     @SerialName("serving_size") val servingSize: String? = null,
+)
+
+@Serializable
+data class OffSelectedImages(
+    val front: OffSelectedImage? = null,
+    val nutrition: OffSelectedImage? = null,
+    val ingredients: OffSelectedImage? = null,
+    val packaging: OffSelectedImage? = null,
+)
+
+@Serializable
+data class OffSelectedImage(
+    /** OFF language tag to its 400 px display URL. Other sizes are intentionally not downloaded. */
+    val display: Map<String, String> = emptyMap(),
 )
 
 @Serializable
