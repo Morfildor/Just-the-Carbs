@@ -1,25 +1,32 @@
 package app.carbscan.ui.theme
 
+import app.carbscan.R
 import app.carbscan.domain.ThemeChoice
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The internal design system (brief §38).
+ * The internal design system (brief §38) — "Just the Carbs" pastel redesign.
  *
- * The palette is intentionally almost monochrome, with a single teal accent. On the calculator
+ * The palette is intentionally almost monochrome, with a single blue accent. On the calculator
  * screen the carbohydrate result must be the loudest thing on the display; a colourful interface
- * competes with it. Colour is therefore spent on exactly two jobs — the primary action, and the
+ * competes with it. Colour is therefore spent on exactly a few jobs — the primary action, and the
  * result — and everything else is a neutral (§3, §14).
  *
  * Dynamic colour is deliberately not used. It would hand the accent (and so the visual weight of
@@ -27,106 +34,131 @@ import androidx.compose.ui.unit.sp
  * excellent. It cannot be guaranteed to.
  */
 
-private val Ink = Color(0xFF14161A)
-private val Paper = Color(0xFFF4F2EE)
-private val PaperRaised = Color(0xFFFFFFFF)
+/** Space Grotesk, bundled as a variable font (design tokens: Typography). */
+val SpaceGrotesk = FontFamily(
+    Font(R.font.space_grotesk, weight = FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
+    Font(R.font.space_grotesk, weight = FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
+    Font(R.font.space_grotesk, weight = FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+)
+
+// Light palette (design doc "Design tokens" section).
+private val Blue = Color(0xFF2F8FE0)
+private val BlueSoft = Color(0xFFE4F1FC)
+private val Red = Color(0xFFFF5C5C)
+private val Orange = Color(0xFFFFA94D)
+private val OrangeSoft = Color(0xFFFFEEDC)
+private val Cream = Color(0xFFFFF6EE)
+private val Ink = Color(0xFF181A1E)
+private val InkMuted = Color(0xFF6B6A72)
+private val LineLight = Color(0xFFE4DFD3)
+private val DisabledBlue = Color(0xFFDCE8F5)
+
+// Dark palette — extrapolated from the light tokens (no dark spec exists in the handoff).
+// Cream inverts to near-black, ink inverts to off-white; accent hues held close to their light
+// values, brightened only enough to hold contrast on a dark ground.
+private val Night = Color(0xFF15140F)
+private val NightRaised = Color(0xFF1E1D18)
+private val Chalk = Color(0xFFF2EFE8)
+private val ChalkMuted = Color(0xFFAFAEA8)
+private val LineDark = Color(0xFF39372F)
+private val BlueDark = Color(0xFF5CA6E8)
+private val BlueSoftDark = Color(0xFF16324A)
+private val RedDark = Color(0xFFFF7A7A)
+private val OrangeDark = Color(0xFFFFB868)
+private val OrangeSoftDark = Color(0xFF4A3418)
+private val DisabledBlueDark = Color(0xFF2A3A47)
 
 /**
- * Secondary text (development-pass brief §20).
- *
- * Darkened from #5C6470. The old value met contrast minimums but read as washed out, which mattered
- * because most of this app's *labels* — "Online value", the conversion equation, the whole-gram line
- * — use it. Low-contrast labels on a low-contrast surface was the main source of the "too soft"
- * impression.
+ * The result red and a few tokens Material's ColorScheme has no matching role for (brief: "Why
+ * red here and blue elsewhere"). `result` is spent on exactly one thing per screen — the
+ * carbohydrate number — never on `error`, which is semantically a fault state this app doesn't have.
  */
-private val InkMuted = Color(0xFF4A515C)
+data class ExtendedColors(
+    val result: Color,
+    val orangeSoft: Color,
+    val onOrangeSoft: Color,
+    val disabledButton: Color,
+)
+
+private val LightExtendedColors = ExtendedColors(
+    result = Red,
+    orangeSoft = OrangeSoft,
+    onOrangeSoft = Color(0xFFB5710B),
+    disabledButton = DisabledBlue,
+)
+
+private val DarkExtendedColors = ExtendedColors(
+    result = RedDark,
+    orangeSoft = OrangeSoftDark,
+    onOrangeSoft = OrangeDark,
+    disabledButton = DisabledBlueDark,
+)
 
 /**
- * Borders. Strengthened from #E4E2DE, which was roughly a 2% step off the surfaces it was drawn on
- * and therefore not really a border at all — cards appeared to float without edges.
+ * Follows `themeChoice`, not the system — so it is provided once in [CarbScanTheme] rather than
+ * derived independently from `isSystemInDarkTheme()`. Read via [extendedColors].
  */
-private val LineLight = Color(0xFFD8D5CF)
-
-private val Night = Color(0xFF0E1013)
-private val NightRaised = Color(0xFF171A1F)
-private val Chalk = Color(0xFFECEEF1)
-
-/** Brightened from #99A2AE: the same washed-out-label problem as [InkMuted], in the dark (§20). */
-private val ChalkMuted = Color(0xFFA8B1BD)
-
-/** Strengthened from #272C33 so dark-mode cards have a visible edge against their surface (§20). */
-private val LineDark = Color(0xFF343A43)
-
-private val TealDeep = Color(0xFF0B6E5F)
-private val TealSoft = Color(0xFFD7EFE9)
-private val TealBright = Color(0xFF4ECDB4)
-private val TealShade = Color(0xFF123A34)
-
-private val WarnLight = Color(0xFF8A5300)
-private val WarnDark = Color(0xFFF0B356)
+val LocalExtendedColors = staticCompositionLocalOf { LightExtendedColors }
 
 private val LightColors = lightColorScheme(
-    primary = TealDeep,
+    primary = Blue,
     onPrimary = Color.White,
-    primaryContainer = TealSoft,
-    onPrimaryContainer = Color(0xFF04322A),
+    primaryContainer = BlueSoft,
+    onPrimaryContainer = Color(0xFF0B3E63),
     secondary = InkMuted,
     onSecondary = Color.White,
     // Selected FilterChips read from secondaryContainer. Leaving these unset falls back to
     // Material's baseline lavender, which is how a considered palette ends up with a stray purple
     // chip in the middle of it — visible on the very first run of the manual-entry screen.
-    secondaryContainer = TealSoft,
-    onSecondaryContainer = Color(0xFF04322A),
-    background = Paper,
+    secondaryContainer = BlueSoft,
+    onSecondaryContainer = Color(0xFF0B3E63),
+    background = Cream,
     onBackground = Ink,
-    surface = Paper,
+    surface = Cream,
     onSurface = Ink,
-    surfaceVariant = PaperRaised,
+    surfaceVariant = Color.White,
     onSurfaceVariant = InkMuted,
-    // Explicit container ramp. Without these, Material derives them from the seed and the result
-    // surface came out within 1% of the page background — the most important element on the
-    // screen was effectively invisible.
-    // A ramp with real steps between rungs (§20). The page is now a definite warm grey, so a white
-    // raised surface reads as genuinely lifted off it rather than as the same colour twice.
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFFAF9F6),
-    surfaceContainer = Color(0xFFEBE8E2),
-    surfaceContainerHigh = Color(0xFFE3DFD8),
-    surfaceContainerHighest = Color(0xFFDAD6CE),
+    surfaceContainerLow = Color(0xFFFDFBF8),
+    surfaceContainer = Color(0xFFF3EFE6),
+    surfaceContainerHigh = Color(0xFFEBE6DA),
+    surfaceContainerHighest = Color(0xFFE2DCCC),
     outline = LineLight,
     outlineVariant = LineLight,
     error = Color(0xFF9B2C2C),
     onError = Color.White,
-    tertiary = WarnLight,
+    tertiary = Orange,
+    tertiaryContainer = OrangeSoft,
+    onTertiaryContainer = Color(0xFF7A4B0A),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = TealBright,
-    onPrimary = Color(0xFF00201A),
-    primaryContainer = TealShade,
-    onPrimaryContainer = TealBright,
+    primary = BlueDark,
+    onPrimary = Color(0xFF00243D),
+    primaryContainer = BlueSoftDark,
+    onPrimaryContainer = BlueDark,
     secondary = ChalkMuted,
     onSecondary = Night,
-    secondaryContainer = TealShade,
-    onSecondaryContainer = TealBright,
+    secondaryContainer = BlueSoftDark,
+    onSecondaryContainer = BlueDark,
     background = Night,
     onBackground = Chalk,
     surface = Night,
     onSurface = Chalk,
     surfaceVariant = NightRaised,
     onSurfaceVariant = ChalkMuted,
-    // Wider steps than before (§20): dark surfaces sat within ~4% of each other, so the result
-    // panel and the page merged into one flat black field.
-    surfaceContainerLowest = Color(0xFF07090B),
-    surfaceContainerLow = Color(0xFF14171B),
-    surfaceContainer = Color(0xFF1B1F24),
-    surfaceContainerHigh = Color(0xFF242930),
-    surfaceContainerHighest = Color(0xFF2E343C),
+    surfaceContainerLowest = Color(0xFF0C0B08),
+    surfaceContainerLow = Color(0xFF19180F),
+    surfaceContainer = Color(0xFF201E17),
+    surfaceContainerHigh = Color(0xFF2A2820),
+    surfaceContainerHighest = Color(0xFF34322A),
     outline = LineDark,
     outlineVariant = LineDark,
     error = Color(0xFFF2999A),
     onError = Color(0xFF3A0A0B),
-    tertiary = WarnDark,
+    tertiary = OrangeDark,
+    tertiaryContainer = OrangeSoftDark,
+    onTertiaryContainer = OrangeDark,
 )
 
 /**
@@ -141,22 +173,13 @@ object Space {
     val xl = 32.dp
     val xxl = 48.dp
 
-    /**
-     * Radii (development-pass brief §20).
-     *
-     * Tightened from 20/18 dp. At those values every surface — cards, buttons, chips, inputs, the
-     * result panel — carried nearly the same very round corner, which reads as toy-like and, worse,
-     * removes the shape difference that tells the user what kind of thing they are looking at.
-     *
-     * They are now deliberately *different* from each other, because shape is information:
-     * containers are calm, controls are crisper, chips stay chip-shaped.
-     */
-    val cardRadius = 14.dp
+    /** Card radius (design tokens: 16-22px, 18 most common). */
+    val cardRadius = 18.dp
 
-    /** Buttons and inputs. Crisper than a card, so a control reads as pressable. */
-    val buttonRadius = 12.dp
+    /** Buttons and inputs (design tokens: 14-18px). */
+    val buttonRadius = 16.dp
 
-    /** Product imagery. Slightly softer than a control, so the photo reads as content. */
+    /** Product imagery. */
     val mediaRadius = 16.dp
 
     /** Chips stay pill-shaped — their whole affordance is "chip", and it should not be diluted. */
@@ -171,6 +194,9 @@ object Space {
     /** The result surface. Lifted off the page so it reads as the answer, not as another row. */
     val resultElevation = 3.dp
     val cardElevation = 0.dp
+
+    /** Pinned bottom sheet top corners (design tokens: 32px). */
+    val sheetTopRadius = 32.dp
 }
 
 /**
@@ -189,37 +215,48 @@ object Motion {
 object NumberType {
     /** The dominant result, e.g. `31 g`. */
     val result = TextStyle(
-        fontSize = 72.sp,
-        lineHeight = 76.sp,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = SpaceGrotesk,
+        fontSize = 64.sp,
+        lineHeight = 68.sp,
+        fontWeight = FontWeight.Bold,
         letterSpacing = (-2).sp,
         textAlign = TextAlign.Center,
     )
 
+    /** Step-based shrink for [result] so long values don't overflow their panel. */
+    val resultAutoSize = TextAutoSize.StepBased(
+        minFontSize = 36.sp,
+        maxFontSize = 64.sp,
+        stepSize = 1.sp,
+    )
+
     /** The portion being edited. */
     val portion = TextStyle(
-        fontSize = 44.sp,
-        lineHeight = 50.sp,
-        fontWeight = FontWeight.Medium,
-        letterSpacing = (-1).sp,
+        fontFamily = SpaceGrotesk,
+        fontSize = 48.sp,
+        lineHeight = 54.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = (-1.5).sp,
         textAlign = TextAlign.Center,
     )
 
     /** The supporting decimal, e.g. `31.3 g calculated` — legible, not a whisper (design 3.2). */
     val supporting = TextStyle(
-        fontSize = 17.sp,
-        lineHeight = 22.sp,
+        fontSize = 15.sp,
+        lineHeight = 20.sp,
         fontWeight = FontWeight.Normal,
     )
 }
 
 private val CarbScanTypography = Typography().run {
     copy(
-        headlineMedium = headlineMedium.copy(fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp),
-        titleLarge = titleLarge.copy(fontWeight = FontWeight.SemiBold),
-        titleMedium = titleMedium.copy(fontWeight = FontWeight.Medium),
-        labelLarge = labelLarge.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.4.sp),
-        labelSmall = labelSmall.copy(letterSpacing = 1.2.sp),
+        headlineMedium = headlineMedium.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
+        titleLarge = titleLarge.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold),
+        titleMedium = titleMedium.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold),
+        titleSmall = titleSmall.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold),
+        labelLarge = labelLarge.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold, letterSpacing = 0.4.sp),
+        labelMedium = labelMedium.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold),
+        labelSmall = labelSmall.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp),
     )
 }
 
@@ -234,9 +271,15 @@ fun CarbScanTheme(
         ThemeChoice.DARK -> true
     }
 
-    MaterialTheme(
-        colorScheme = if (dark) DarkColors else LightColors,
-        typography = CarbScanTypography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalExtendedColors provides if (dark) DarkExtendedColors else LightExtendedColors) {
+        MaterialTheme(
+            colorScheme = if (dark) DarkColors else LightColors,
+            typography = CarbScanTypography,
+            content = content,
+        )
+    }
 }
+
+/** The extended tokens Material's ColorScheme has no role for — see [ExtendedColors]. */
+val MaterialTheme.extendedColors: ExtendedColors
+    @Composable get() = LocalExtendedColors.current
