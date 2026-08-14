@@ -110,7 +110,10 @@ private fun ProductHeroImageContent(
             // In dark mode the same reasoning gives a light-but-not-white plate: a pure white slab
             // is a glare source at night, while a dark plate would still clash with the baked-in
             // white of the photo itself.
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .background(
+                if (loaded) MaterialTheme.colorScheme.surfaceContainerLowest
+                else MaterialTheme.colorScheme.primaryContainer,
+            )
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .testTag(PRODUCT_HERO_TAG)
@@ -129,8 +132,8 @@ private fun ProductHeroImageContent(
                 text = product.monogram(),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 40.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 44.sp,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
         }
 
