@@ -126,6 +126,7 @@ fun ProductScreen(
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onVerify: () -> Unit,
+    onVerifyByTyping: () -> Unit = {},
     onDismissVerify: () -> Unit,
     onConfirmVerification: (BigDecimal, app.carbscan.domain.NutritionBasis, String) -> Unit,
     onResetOnline: () -> Unit,
@@ -148,12 +149,31 @@ fun ProductScreen(
     onAddToMeal: (String) -> Unit = {},
     onAddToMealAndScanNext: (String) -> Unit = {},
     onOpenMeal: () -> Unit = {},
+    onConfirmLabelMatch: () -> Unit = {},
+    onUseDetectedLabelValue: (BigDecimal) -> Unit = {},
+    onEditDetectedLabelValue: (BigDecimal) -> Unit = {},
+    onDismissLabelVerdict: () -> Unit = {},
 ) {
     if (state.showVerifyDialog && state.product != null) {
         VerifyDialog(
             product = state.product,
             onConfirm = onConfirmVerification,
             onDismiss = onDismissVerify,
+        )
+    }
+
+    // A label reading is presented for comparison, never applied (§12). Shown over the calculator
+    // so the value being compared against stays visible behind it.
+    if (state.labelVerdict != null && state.product != null) {
+        LabelVerificationDialog(
+            verdict = state.labelVerdict,
+            productBasis = state.product.basis,
+            currentIsUserAuthored = state.product.dataSource.isUserAuthored,
+            onConfirmMatch = onConfirmLabelMatch,
+            onUsePackageValue = onUseDetectedLabelValue,
+            onEditDetected = onEditDetectedLabelValue,
+            onRescan = onScanLabel,
+            onDismiss = onDismissLabelVerdict,
         )
     }
 
@@ -169,6 +189,7 @@ fun ProductScreen(
             onBack = onBack,
             onToggleFavorite = onToggleFavorite,
             onVerify = onVerify,
+            onVerifyByTyping = onVerifyByTyping,
             onResetOnline = onResetOnline,
         )
 
@@ -214,6 +235,7 @@ private fun ProductTopBar(
     onBack: () -> Unit,
     onToggleFavorite: () -> Unit,
     onVerify: () -> Unit,
+    onVerifyByTyping: () -> Unit,
     onResetOnline: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -256,9 +278,16 @@ private fun ProductTopBar(
                     )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    // Scanning first, typing second. Both remain available: OCR fails on curved,
+                    // glossy and worn packaging often enough that removing the typed path would
+                    // strand the user exactly when the camera lets them down (§12).
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.product_verify)) },
                         onClick = { menuOpen = false; onVerify() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.product_verify_typed)) },
+                        onClick = { menuOpen = false; onVerifyByTyping() },
                     )
                     // Only offered when there is genuinely an online value to go back to (§23).
                     if (product.canResetToOnlineValue) {

@@ -8,6 +8,8 @@ import app.carbscan.data.RefreshOutcome
 import app.carbscan.domain.CarbCalculator
 import app.carbscan.domain.CarbResult
 import app.carbscan.domain.InputMode
+import app.carbscan.domain.LabelComparison
+import app.carbscan.domain.LabelVerdict
 import app.carbscan.domain.LookupError
 import app.carbscan.domain.MealItem
 import app.carbscan.domain.MealTotal
@@ -64,6 +66,14 @@ data class ProductUiState(
     val mealItems: List<MealItem> = emptyList(),
     /** Set for one collection after *Add & scan next*, so the screen knows to move on (§11). */
     val addedToMeal: Boolean = false,
+    /**
+     * A label reading waiting to be compared against the current value (§12).
+     *
+     * Held as a *verdict*, never applied. Same rule as [newerRemoteCarbs]: the calculator's figure
+     * does not move until the user says so — and unlike a background refresh, that holds here even
+     * when the two figures agree, because agreement is still a claim only the user can make.
+     */
+    val labelVerdict: LabelVerdict? = null,
 ) {
     val canCalculate: Boolean get() = product != null
     val selectedPortionUnit: PortionUnit? get() = portionUnits.firstOrNull { it.id == selectedPortionUnitId }
@@ -475,6 +485,73 @@ class ProductViewModel(
 
     /** Dismissing keeps the session exactly as it is; the newer value stays recorded locally. */
     fun dismissNewerRemoteValue() = _state.update { it.copy(newerRemoteCarbs = null) }
+
+    // ---- integrated label verification (development-pass brief §12) -----------------------------
+
+    /**
+     * A nutrition label was read by the camera. Compare it; do not apply it.
+     *
+     * The verdict goes into state and the calculator's figure stays exactly as it was. Even
+     * [LabelVerdict.Match] takes this path — there is deliberately no branch here that writes a
+     * value, so no future edit can accidentally make a camera frame self-accepting.
+     */
+    fun onLabelDetected(detected: BigDecimal, detectedBasis: NutritionBasis) {
+        val product = _state.value.product ?: return
+        _state.update {
+            it.copy(
+                labelVerdict = LabelComparison.compare(
+                    current = product.carbsPer100,
+                    currentBasis = product.basis,
+                    detected = detected,
+                    detectedBasis = detectedBasis,
+                ),
+            )
+        }
+    }
+
+    /**
+     * The user confirmed the package agrees with the value already in use (§12).
+     *
+     * This writes no new number — the figures are equal — but it *is* a verification: the user has
+     * now read the package, which is precisely what [VerificationStatus.USER_VERIFIED] records.
+     * Provenance is untouched, as always.
+     */
+    fun confirmLabelMatch() {
+        val product = _state.value.product ?: return
+        val verdict = _state.value.labelVerdict as? LabelVerdict.Match ?: return
+        viewModelScope.launch {
+            repository.saveVerification(
+                barcode = product.barcode,
+                verifiedCarbsPer100 = verdict.current,
+                basis = product.basis,
+            )
+            reloadAfterVerification()
+        }
+    }
+
+    /** The user chose the package's figure over the one on screen (§12). Their tap, their call. */
+    fun useDetectedLabelValue(detected: BigDecimal) {
+        val product = _state.value.product ?: return
+        viewModelScope.launch {
+            repository.saveVerification(
+                barcode = product.barcode,
+                verifiedCarbsPer100 = detected,
+                basis = product.basis,
+            )
+            reloadAfterVerification()
+        }
+    }
+
+    /** Dismissing changes nothing: not the value, not the verification status, not the session. */
+    fun dismissLabelVerdict() = _state.update { it.copy(labelVerdict = null) }
+
+    private suspend fun reloadAfterVerification() {
+        val product = _state.value.product ?: return
+        (repository.lookup(product.barcode) as? ProductFetchResult.Found)?.let { updated ->
+            _state.update { it.copy(product = updated.product, labelVerdict = null) }
+            recalculate()
+        }
+    }
 
     fun showVerifyDialog(show: Boolean) = _state.update { it.copy(showVerifyDialog = show) }
 

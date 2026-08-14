@@ -19,6 +19,8 @@ import androidx.navigation.navArgument
 import app.carbscan.AppContainer
 import app.carbscan.domain.AppSettings
 import app.carbscan.domain.MealTotal
+import app.carbscan.domain.NutritionBasis
+import java.math.BigDecimal
 import app.carbscan.ui.home.HomeScreen
 import app.carbscan.ui.home.HomeViewModel
 import app.carbscan.ui.manual.ManualEntryScreen
@@ -32,6 +34,16 @@ import app.carbscan.ui.scan.ScannerScreen
 import app.carbscan.ui.settings.SettingsScreen
 import app.carbscan.ui.settings.SettingsViewModel
 import kotlinx.coroutines.launch
+
+/**
+ * Keys for handing a label reading back from the scanner to the calculator (§12).
+ *
+ * Passed through the previous entry's `SavedStateHandle` rather than as route arguments: the
+ * calculator is being *returned to*, not navigated to afresh, and re-navigating would rebuild it
+ * and lose the portion the user had already typed.
+ */
+private const val KEY_DETECTED_CARBS = "detected_carbs"
+private const val KEY_DETECTED_BASIS = "detected_basis"
 
 private object Routes {
     const val HOME = "home"
@@ -117,6 +129,21 @@ fun CarbScanNavHost(
 
             LaunchedEffect(barcode) { viewModel.load(barcode) }
 
+            // A label reading handed back by the scanner (§12). Read once and cleared, so returning
+            // to this screen later does not re-open a comparison the user already resolved.
+            val savedState = entry.savedStateHandle
+            val detectedCarbs by savedState.getStateFlow<String?>(KEY_DETECTED_CARBS, null)
+                .collectAsStateWithLifecycle()
+            LaunchedEffect(detectedCarbs) {
+                val carbs = detectedCarbs ?: return@LaunchedEffect
+                val basis = savedState.get<String>(KEY_DETECTED_BASIS)
+                    ?.let(NutritionBasis::valueOf)
+                    ?: NutritionBasis.PER_100_G
+                savedState.remove<String>(KEY_DETECTED_CARBS)
+                savedState.remove<String>(KEY_DETECTED_BASIS)
+                viewModel.onLabelDetected(BigDecimal(carbs), basis)
+            }
+
             ProductScreen(
                 state = state,
                 settings = settings,
@@ -130,7 +157,13 @@ fun CarbScanNavHost(
                     viewModel.rememberUsage()
                     navController.popBackStack()
                 },
-                onVerify = { viewModel.showVerifyDialog(true) },
+                // *Verify label* opens the camera straight into nutrition-label OCR (spec §7).
+                // It previously opened a dialog asking the user to retype the figure — which is
+                // verification only in the sense that they had to read the package to do it, and
+                // is precisely the transcription step the app exists to remove. The typed path is
+                // still reachable from the comparison's *Edit detected value*.
+                onVerify = { navController.navigate(Routes.labelScan(barcode)) },
+                onVerifyByTyping = { viewModel.showVerifyDialog(true) },
                 onDismissVerify = { viewModel.showVerifyDialog(false) },
                 onConfirmVerification = viewModel::confirmVerification,
                 onResetOnline = viewModel::resetToOnlineValue,
@@ -160,6 +193,21 @@ fun CarbScanNavHost(
                     }
                 },
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
+                onConfirmLabelMatch = viewModel::confirmLabelMatch,
+                onUseDetectedLabelValue = viewModel::useDetectedLabelValue,
+                onEditDetectedLabelValue = { detected ->
+                    // "Edit detected value" hands the reading to manual entry pre-filled, so the
+                    // user corrects the OCR rather than retyping the whole label from scratch.
+                    viewModel.dismissLabelVerdict()
+                    navController.navigate(
+                        Routes.manual(
+                            barcode,
+                            detected.toPlainString(),
+                            state.product?.basis?.name.orEmpty(),
+                        ),
+                    )
+                },
+                onDismissLabelVerdict = viewModel::dismissLabelVerdict,
             )
         }
 
@@ -228,9 +276,25 @@ fun CarbScanNavHost(
             val barcode = entry.arguments?.getString("barcode").orEmpty()
             LabelScannerScreen(
                 onUseValue = { carbs, basis ->
-                    navController.navigate(
-                        Routes.manual(barcode, carbs.toPlainString(), basis.name),
-                    ) { popUpTo(Routes.LABEL_SCAN) { inclusive = true } }
+                    // For a product already on the calculator, a label reading comes back as a
+                    // *comparison* rather than as a new product (§12): the user scanned to check
+                    // the value they were looking at, so send them back to it with both figures.
+                    // Routing to manual entry instead — as this did — quietly reframed "check this"
+                    // as "create this", and lost the value being checked against.
+                    //
+                    // With no barcode there is nothing to compare against, so manual entry remains
+                    // correct: that path is authoring a product, not verifying one.
+                    if (barcode.isNotEmpty()) {
+                        navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
+                            handle[KEY_DETECTED_CARBS] = carbs.toPlainString()
+                            handle[KEY_DETECTED_BASIS] = basis.name
+                        }
+                        navController.popBackStack()
+                    } else {
+                        navController.navigate(
+                            Routes.manual(barcode, carbs.toPlainString(), basis.name),
+                        ) { popUpTo(Routes.LABEL_SCAN) { inclusive = true } }
+                    }
                 },
                 onEditManually = {
                     navController.navigate(Routes.manual(barcode)) {

@@ -130,6 +130,28 @@
         <item quantity="other">%d items</item>
     </plurals>
 
+    <!--
+      Integrated label verification (development-pass brief §12, design spec §7). English only,
+      same reasoning as the countable-portion strings above.
+
+      Note there is no "values match, applied automatically" string, and no wording anywhere that
+      claims the app checked the package. The app read a camera frame; only the user can say the
+      package agrees, which is why even a match needs a tap.
+    -->
+    <string name="verify_label_title" tools:ignore="MissingTranslation">Check against the package</string>
+    <string name="verify_label_current" tools:ignore="MissingTranslation">ONLINE</string>
+    <string name="verify_label_current_yours" tools:ignore="MissingTranslation">CURRENT</string>
+    <string name="verify_label_detected" tools:ignore="MissingTranslation">PACKAGE</string>
+    <string name="verify_label_value" tools:ignore="MissingTranslation">%1$s g / 100 %2$s</string>
+    <string name="verify_label_match" tools:ignore="MissingTranslation">✓ Values match</string>
+    <string name="verify_label_mismatch" tools:ignore="MissingTranslation">These do not match. Which is right?</string>
+    <string name="verify_label_basis_mismatch" tools:ignore="MissingTranslation">The package is measured per 100 %1$s, but this product is measured per 100 %2$s. CarbScan does not convert between them.</string>
+    <string name="verify_label_confirm" tools:ignore="MissingTranslation">Confirm</string>
+    <string name="verify_label_use_package" tools:ignore="MissingTranslation">Use package value</string>
+    <string name="verify_label_edit" tools:ignore="MissingTranslation">Edit detected value</string>
+    <string name="verify_label_rescan" tools:ignore="MissingTranslation">Scan again</string>
+    <string name="product_verify_typed" tools:ignore="MissingTranslation">Enter label value</string>
+
     <plurals name="portion_kind_slice" tools:ignore="MissingTranslation">
         <item quantity="one">slice</item>
         <item quantity="other">slices</item>
