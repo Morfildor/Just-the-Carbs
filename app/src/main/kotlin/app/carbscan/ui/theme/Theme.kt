@@ -65,6 +65,14 @@ private val LightColors = lightColorScheme(
     onSurface = Ink,
     surfaceVariant = PaperRaised,
     onSurfaceVariant = InkMuted,
+    // Explicit container ramp. Without these, Material derives them from the seed and the result
+    // surface came out within 1% of the page background — the most important element on the
+    // screen was effectively invisible.
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF7F5F1),
+    surfaceContainer = Color(0xFFF2F0EB),
+    surfaceContainerHigh = Color(0xFFEDEAE4),
+    surfaceContainerHighest = Color(0xFFE8E5DE),
     outline = LineLight,
     outlineVariant = LineLight,
     error = Color(0xFF9B2C2C),
@@ -87,6 +95,11 @@ private val DarkColors = darkColorScheme(
     onSurface = Chalk,
     surfaceVariant = NightRaised,
     onSurfaceVariant = ChalkMuted,
+    surfaceContainerLowest = Color(0xFF090B0D),
+    surfaceContainerLow = Color(0xFF131619),
+    surfaceContainer = Color(0xFF171A1F),
+    surfaceContainerHigh = Color(0xFF1E2228),
+    surfaceContainerHighest = Color(0xFF262B32),
     outline = LineDark,
     outlineVariant = LineDark,
     error = Color(0xFFF2999A),
@@ -110,6 +123,22 @@ object Space {
     val buttonRadius = 18.dp
     val minTouchTarget = 48.dp
     val screenEdge = 20.dp
+
+    /** Product thumbnails — big enough to recognise a packet, small enough to stay secondary (§7). */
+    val thumbnail = 52.dp
+
+    /** The result surface. Lifted off the page so it reads as the answer, not as another row. */
+    val resultElevation = 3.dp
+    val cardElevation = 0.dp
+}
+
+/**
+ * Motion (§38). Short and unshowy: this app is used standing in a kitchen, and animation that
+ * delays a number is animation that makes the app worse.
+ */
+object Motion {
+    const val QUICK_MS = 120
+    const val STANDARD_MS = 220
 }
 
 /**

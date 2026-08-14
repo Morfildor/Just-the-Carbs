@@ -1,5 +1,14 @@
 package app.carbscan.ui.product
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import app.carbscan.ui.components.ProductThumbnail
+import app.carbscan.ui.theme.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -275,27 +284,25 @@ private fun CalculatorBody(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
+        // Pinned directly under the title, where the user expects the product's own facts. Leaving
+        // it inside the centred block left it floating in the middle of the screen, detached from
+        // the name it describes.
+        ProductSummary(
+            product = product,
+            modifier = Modifier.padding(horizontal = Space.screenEdge),
+        )
+
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Space.screenEdge),
+            // Anchored to the bottom, immediately above the result. §40 assumes the user is
+            // standing in a kitchen holding food in the other hand, so the controls belong within
+            // thumb reach and directly adjacent to the number they change. Centring instead left a
+            // gap both above and below the block, which read as unfinished rather than as calm.
+            verticalArrangement = Arrangement.Bottom,
         ) {
-            Text(
-                text = stringResource(
-                    R.string.product_per_100,
-                    product.carbsPer100.stripTrailingZeros().toPlainString(),
-                    product.portionUnit,
-                ),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-
-            Spacer(Modifier.height(Space.s))
-            SourceBadge(product)
-
-            Spacer(Modifier.height(Space.xl))
-
             Text(
                 text = stringResource(R.string.product_portion_question),
                 style = MaterialTheme.typography.bodyLarge,
@@ -304,7 +311,7 @@ private fun CalculatorBody(
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(Space.s))
+            Spacer(Modifier.height(Space.m))
             PortionField(
                 value = state.portionText,
                 unit = product.portionUnit,
@@ -317,7 +324,7 @@ private fun CalculatorBody(
             // Only offered when the package size was read confidently. A guessed pack size would
             // be a wrong portion presented as a shortcut (§14, §13).
             product.packageAmount?.let { pack ->
-                Spacer(Modifier.height(Space.m))
+                Spacer(Modifier.height(Space.s))
                 PackShortcuts(pack = pack, onSetPortion = onSetPortion)
             }
 
@@ -325,6 +332,40 @@ private fun CalculatorBody(
         }
 
         ResultPanel(state = state, settings = settings)
+    }
+}
+
+/**
+ * The product header (§14): thumbnail, the per-100 figure, and where that figure came from.
+ *
+ * Grouped into one card so the screen reads as *product* then *portion* then *result*, rather than
+ * as a stack of unrelated lines.
+ */
+@Composable
+private fun ProductSummary(product: Product, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Space.cardRadius))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(Space.m),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ProductThumbnail(product = product, size = 56.dp)
+
+        Column(modifier = Modifier.weight(1f).padding(start = Space.m)) {
+            Text(
+                text = stringResource(
+                    R.string.product_per_100,
+                    product.carbsPer100.stripTrailingZeros().toPlainString(),
+                    product.portionUnit,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(Space.s))
+            SourceBadge(product)
+        }
     }
 }
 
@@ -422,15 +463,19 @@ private fun ResultPanel(state: ProductUiState, settings: AppSettings) {
     val copiedValue = result?.let { ResultFormatter.clipboardValue(it, settings.resultStyle) }
     val copiedMessage = copiedValue?.let { stringResource(R.string.product_copied, it) }
 
+    val panelShape = RoundedCornerShape(topStart = Space.xl, topEnd = Space.xl)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(topStart = Space.cardRadius, topEnd = Space.cardRadius),
-            )
+            // Shadow + a distinct container tone. This surface was previously pure white on an
+            // off-white page — a ~1% difference — so the most important element on the screen had
+            // no edge at all and read as part of the background.
+            .shadow(elevation = Space.resultElevation, shape = panelShape, clip = false)
+            .clip(panelShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .navigationBarsPadding()
-            .padding(horizontal = Space.screenEdge, vertical = Space.m),
+            .padding(horizontal = Space.screenEdge, vertical = Space.l),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -442,28 +487,47 @@ private fun ResultPanel(state: ProductUiState, settings: AppSettings) {
         Spacer(Modifier.height(Space.xs))
 
         if (result == null) {
-            Text(
-                text = stringResource(R.string.product_result_pending),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.height(80.dp).padding(top = Space.l),
-            )
+            // Reserves the same height the result will occupy, so the panel does not jump when the
+            // first digit is typed (§16: the result area must not move under the user).
+            Box(
+                modifier = Modifier.height(96.dp).fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.product_result_pending),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
             val dominant = when (settings.resultStyle) {
                 ResultStyle.WHOLE_WITH_DECIMAL -> "${ResultFormatter.whole(result.wholeGrams)} g"
                 ResultStyle.DECIMAL_ONLY -> "${ResultFormatter.decimal(result.exact)} g"
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = dominant,
-                    style = NumberType.result,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    // Announced as a live region so TalkBack reads the new result as the portion
-                    // changes, instead of leaving a blind user to go looking for it (§39).
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                )
+            Row(
+                modifier = Modifier.height(96.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Animated only on the digits changing, not on every recomposition, and only for
+                // 120ms — long enough to notice the number moved, short enough that nobody waits.
+                AnimatedContent(
+                    targetState = dominant,
+                    transitionSpec = {
+                        (fadeIn(tween(Motion.QUICK_MS)) togetherWith fadeOut(tween(Motion.QUICK_MS)))
+                    },
+                    label = "result",
+                ) { value ->
+                    Text(
+                        text = value,
+                        style = NumberType.result,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        // Announced as a live region so TalkBack reads the new result as the
+                        // portion changes, instead of leaving a blind user to hunt for it (§39).
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
 
                 Spacer(Modifier.width(Space.s))
 

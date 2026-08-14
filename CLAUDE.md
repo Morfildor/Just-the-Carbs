@@ -59,13 +59,18 @@ GitHub: **https://github.com/Morfildor/CarbScan** — private, and staying priva
 - Dutch comma decimal, dark mode, 1.8× font scale
 - Minified release build runs; Room, enums and ML Kit all survive R8
 
+### Verified by the owner on a physical device (2026-08-14)
+
+- **Barcode scanning works.**
+- **Nutrition-label OCR works.**
+
+These were the two largest unknowns and are now closed. Do not re-list them as unverified.
+
 ### NOT verified — do not claim otherwise
 
-- **Decoding a real barcode.** CameraX binds and ML Kit's `libbarhopper_v3.so` loads and analyses
-  frames, but no physical barcode has ever been decoded.
-- **OCR against real packaging.** Only the pure text parser is tested.
-- Live Open Food Facts responses (tested against MockWebServer, not the real API).
-- Any physical device, incl. Samsung Galaxy.
+- Live Open Food Facts responses end to end (tested against MockWebServer, not the real API).
+- Behaviour across a range of physical devices, incl. Samsung Galaxy specifics (§61 §14).
+- The release (R8) build on physical hardware — it runs on the emulator.
 
 ## Toolchain (installed — do NOT reinstall)
 

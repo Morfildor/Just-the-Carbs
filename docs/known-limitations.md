@@ -88,11 +88,11 @@ barcode again.
 | Calculation, parsing, validation, repository, OCR parsing | 110 JVM unit tests, passing |
 | Room DAO ordering and decimal round-trip | 10 instrumented tests, passing on an API 36 emulator |
 | Scan → portion → carbs, recents, manual entry, ml basis, dark mode, large font | Exercised by hand on an API 36 emulator |
-| **Barcode decoding from a real barcode** | **Not verified.** CameraX binds and ML Kit's barcode library loads and analyses frames, but no physical barcode has been decoded |
-| **OCR against a real package** | **Not verified.** Only the text parser is tested, using synthetic label text |
+| Barcode decoding from a real barcode | **Verified on a physical device** (2026-08-14) |
+| Nutrition-label OCR against real packaging | **Verified on a physical device** (2026-08-14) |
 | Real Open Food Facts responses | Not verified against the live API; tested against recorded/synthetic responses over a local HTTP server |
-| Behaviour on physical hardware, incl. Samsung Galaxy | Not verified |
-| Release (R8/minified) build | Not built or tested |
+| Breadth of physical hardware, incl. Samsung Galaxy specifics | Only spot-checked; not systematically tested |
+| Release (R8/minified) build | Builds and runs on an emulator; Room, enums and ML Kit verified to survive minification. Not yet run on physical hardware, and not signed with production material |
 
 ## Regulatory
 

@@ -1,8 +1,10 @@
 package app.carbscan.ui.home
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,11 +29,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.carbscan.BuildConfig
@@ -39,6 +44,7 @@ import app.carbscan.R
 import app.carbscan.domain.Product
 import app.carbscan.domain.ResultFormatter
 import app.carbscan.domain.CarbCalculator
+import app.carbscan.ui.components.ProductThumbnail
 import app.carbscan.ui.components.FavoriteButton
 import app.carbscan.ui.theme.Space
 
@@ -134,13 +140,40 @@ fun HomeScreen(
     }
 }
 
+/**
+ * The empty state (§3).
+ *
+ * Previously two lines of text floating in a large void, which read as unfinished rather than as
+ * calm. It now carries the app's own mark — the package-and-scan-beam from the launcher icon — at a
+ * size and opacity that furnishes the space without competing with the primary action below it.
+ */
 @Composable
 private fun EmptyState(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxWidth().padding(Space.xl),
+        modifier = modifier.fillMaxWidth().padding(horizontal = Space.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        Box(
+            modifier = Modifier
+                .size(112.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = RoundedCornerShape(32.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Inset inside the tile: the mark's scan beam runs the full width of its viewport, so
+            // at tile size it collides with the rounded corners.
+            Icon(
+                painter = painterResource(R.drawable.ic_launcher_foreground),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(92.dp),
+            )
+        }
+
+        Spacer(Modifier.height(Space.l))
         Text(
             text = stringResource(R.string.home_empty_title),
             style = MaterialTheme.typography.titleMedium,
@@ -213,26 +246,38 @@ private fun RecentCard(product: Product, onClick: () -> Unit, onToggleFavorite: 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = MaterialTheme.colorScheme.surfaceVariant,
+            .clip(RoundedCornerShape(Space.cardRadius))
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
                 shape = RoundedCornerShape(Space.cardRadius),
             )
             .clickable(onClick = onClick)
-            .padding(start = Space.m, top = Space.s, bottom = Space.s, end = Space.xs),
+            .padding(start = Space.s + Space.xs, top = Space.s, bottom = Space.s, end = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f).padding(vertical = Space.xs)) {
+        ProductThumbnail(product = product)
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = Space.s + Space.xs, end = Space.xs),
+        ) {
             Text(
                 text = product.name,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 text = summary,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 
