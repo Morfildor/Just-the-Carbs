@@ -70,6 +70,7 @@ import java.util.concurrent.Executors
 fun ScannerScreen(
     hapticsEnabled: Boolean,
     onBarcode: (String) -> Unit,
+    onManualBarcode: (String) -> Unit,
     onClose: () -> Unit,
     onEnterManually: () -> Unit,
 ) {
@@ -99,6 +100,7 @@ fun ScannerScreen(
             CameraPreview(
                 hapticsEnabled = hapticsEnabled,
                 onBarcode = onBarcode,
+                onManualBarcode = onManualBarcode,
                 onClose = onClose,
                 onEnterManually = onEnterManually,
             )
@@ -117,6 +119,7 @@ fun ScannerScreen(
 private fun CameraPreview(
     hapticsEnabled: Boolean,
     onBarcode: (String) -> Unit,
+    onManualBarcode: (String) -> Unit,
     onClose: () -> Unit,
     onEnterManually: () -> Unit,
 ) {
@@ -124,6 +127,7 @@ private fun CameraPreview(
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
 
+    var showBarcodeDialog by remember { mutableStateOf(false) }
     var torchOn by remember { mutableStateOf(false) }
     var torchAvailable by remember { mutableStateOf(false) }
     var cameraFailed by remember { mutableStateOf(false) }
@@ -164,6 +168,13 @@ private fun CameraPreview(
             }
         }
         return
+    }
+
+    if (showBarcodeDialog) {
+        ManualBarcodeDialog(
+            onConfirm = { code -> showBarcodeDialog = false; onManualBarcode(code) },
+            onDismiss = { showBarcodeDialog = false },
+        )
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -252,7 +263,10 @@ private fun CameraPreview(
                     Spacer(Modifier.width(Space.m))
                 }
 
-                TextButton(onClick = onEnterManually) {
+                // §8's "optional manual barcode entry" — genuinely a barcode field now. It
+                // previously jumped straight to manual product entry, so the control did not do
+                // what its label said.
+                TextButton(onClick = { showBarcodeDialog = true }) {
                     Text(
                         text = stringResource(R.string.scanner_enter_manually),
                         color = Color.White,

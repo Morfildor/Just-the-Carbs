@@ -24,6 +24,7 @@
     <string name="scanner_torch_off">Zaklamp uit</string>
     <string name="scanner_torch_unavailable">Dit toestel heeft geen zaklamp</string>
     <string name="scanner_close">Scanner sluiten</string>
+    <string name="scanner_enter_barcode_help">Typ het nummer dat onder de streepjescode staat.</string>
     <string name="scanner_enter_manually">Streepjescode invoeren</string>
     <string name="scanner_unavailable">De camera is niet beschikbaar. Je kunt een product handmatig invoeren.</string>
 

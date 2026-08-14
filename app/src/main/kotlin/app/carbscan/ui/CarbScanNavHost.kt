@@ -82,6 +82,11 @@ fun CarbScanNavHost(
                         popUpTo(Routes.SCAN) { inclusive = true }
                     }
                 },
+                onManualBarcode = { barcode ->
+                    navController.navigate(Routes.product(barcode)) {
+                        popUpTo(Routes.SCAN) { inclusive = true }
+                    }
+                },
                 onClose = { navController.popBackStack() },
                 onEnterManually = {
                     navController.navigate(Routes.manual()) {

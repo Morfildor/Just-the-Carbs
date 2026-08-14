@@ -32,6 +32,7 @@
     <string name="scanner_torch_off">Turn off flashlight</string>
     <string name="scanner_torch_unavailable">This device has no flashlight</string>
     <string name="scanner_close">Close scanner</string>
+    <string name="scanner_enter_barcode_help">Type the number printed under the barcode.</string>
     <string name="scanner_enter_manually">Enter barcode</string>
     <string name="scanner_unavailable">The camera is unavailable. You can still enter a product manually.</string>
 
