@@ -55,7 +55,7 @@ private object Routes {
     const val SCAN = "scan"
     const val PRODUCT = "product/{barcode}"
     const val MANUAL = "manual?barcode={barcode}&carbs={carbs}&basis={basis}"
-    const val LABEL_SCAN = "labelscan?barcode={barcode}"
+    const val LABEL_SCAN = "labelscan?barcode={barcode}&compare={compare}"
     const val SETTINGS = "settings"
     const val MEAL = "meal"
     const val SEARCH = "search"
@@ -65,7 +65,14 @@ private object Routes {
     fun manual(barcode: String? = null, carbs: String = "", basis: String = "") =
         "manual?barcode=${barcode.orEmpty()}&carbs=$carbs&basis=$basis"
 
-    fun labelScan(barcode: String? = null) = "labelscan?barcode=${barcode.orEmpty()}"
+    /**
+     * [compare]: whether a product is already loaded on the screen underneath, so a reading comes
+     * back as a comparison rather than a new product. Decided by the caller, not derived from
+     * whether [barcode] is blank — a not-found product screen has a real barcode but no loaded
+     * product, and must still take the "create" path (§12).
+     */
+    fun labelScan(barcode: String? = null, compare: Boolean = false) =
+        "labelscan?barcode=${barcode.orEmpty()}&compare=$compare"
 }
 
 /**
@@ -114,6 +121,15 @@ fun CarbScanNavHost(
             val recents by viewModel.recents.collectAsStateWithLifecycle()
             val mealItems by viewModel.mealItems.collectAsStateWithLifecycle()
 
+            // Home's own search instance (§9, owner request 2026-08-14): a deliberate, always-on
+            // entry point, not the SearchScreen fallback reached only from a failure. Same
+            // ViewModel class, same behaviour — a separate instance because it lives and dies with
+            // Home rather than with a route someone navigated to.
+            val searchViewModel: SearchViewModel = viewModel(
+                factory = factory { SearchViewModel(container.productRepository) },
+            )
+            val searchState by searchViewModel.state.collectAsStateWithLifecycle()
+
             HomeScreen(
                 recents = recents,
                 settings = settings,
@@ -125,6 +141,12 @@ fun CarbScanNavHost(
                 mealItems = mealItems,
                 mealTotal = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems),
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
+                searchState = searchState,
+                onSearchQueryChanged = searchViewModel::onQueryChanged,
+                onSearchSelect = { hit -> navController.navigate(Routes.product(hit.barcode)) },
+                onSearchScanLabel = { navController.navigate(Routes.labelScan()) },
+                onSearchEnterManually = { navController.navigate(Routes.manual()) },
+                onSearchRetry = searchViewModel::retry,
             )
         }
 
@@ -195,12 +217,18 @@ fun CarbScanNavHost(
                 // verification only in the sense that they had to read the package to do it, and
                 // is precisely the transcription step the app exists to remove. The typed path is
                 // still reachable from the comparison's *Edit detected value*.
-                onVerify = { navController.navigate(Routes.labelScan(barcode)) },
+                onVerify = { navController.navigate(Routes.labelScan(barcode, compare = true)) },
                 onVerifyByTyping = { viewModel.showVerifyDialog(true) },
                 onDismissVerify = { viewModel.showVerifyDialog(false) },
                 onConfirmVerification = viewModel::confirmVerification,
                 onResetOnline = viewModel::resetToOnlineValue,
-                onScanLabel = { navController.navigate(Routes.labelScan(barcode)) },
+                // Shared by two very different situations: the calculator's "rescan" (a product is
+                // loaded, so the reading is a comparison) and the not-found screen's recovery action
+                // (no product loaded yet, so the reading should create one). Only `state.product`
+                // tells them apart — the barcode is non-empty in both cases (§12).
+                onScanLabel = {
+                    navController.navigate(Routes.labelScan(barcode, compare = state.product != null))
+                },
                 onEnterManually = { navController.navigate(Routes.manual(barcode)) },
                 onRetry = { viewModel.load(barcode) },
                 onSearch = { navController.navigate(Routes.SEARCH) },
@@ -339,9 +367,11 @@ fun CarbScanNavHost(
             route = Routes.LABEL_SCAN,
             arguments = listOf(
                 navArgument("barcode") { type = NavType.StringType; defaultValue = "" },
+                navArgument("compare") { type = NavType.BoolType; defaultValue = false },
             ),
         ) { entry ->
             val barcode = entry.arguments?.getString("barcode").orEmpty()
+            val compare = entry.arguments?.getBoolean("compare") ?: false
             LabelScannerScreen(
                 onUseValue = { carbs, basis ->
                     // For a product already on the calculator, a label reading comes back as a
@@ -350,9 +380,12 @@ fun CarbScanNavHost(
                     // Routing to manual entry instead — as this did — quietly reframed "check this"
                     // as "create this", and lost the value being checked against.
                     //
-                    // With no barcode there is nothing to compare against, so manual entry remains
-                    // correct: that path is authoring a product, not verifying one.
-                    if (barcode.isNotEmpty()) {
+                    // `compare` is decided by the caller from whether a product was actually loaded,
+                    // not from whether `barcode` is blank: a not-found product screen has a real
+                    // barcode but no loaded product, and must still take the "create" path below —
+                    // otherwise the reading is silently dropped (ProductViewModel.onLabelDetected
+                    // no-ops with no product to compare against) and the screen just bounces back.
+                    if (compare) {
                         navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
                             handle[KEY_DETECTED_CARBS] = carbs.toPlainString()
                             handle[KEY_DETECTED_BASIS] = basis.name

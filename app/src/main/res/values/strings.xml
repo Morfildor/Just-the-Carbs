@@ -285,9 +285,6 @@
     <string name="ocr_use_per_100_g">Use / 100 g</string>
     <string name="ocr_use_per_100_ml">Use / 100 ml</string>
     <string name="ocr_edit">Edit</string>
-    <string name="ocr_ambiguous_title">Couldn\'t confidently identify the carbohydrate value.</string>
-    <string name="ocr_ambiguous_body">Check the row and printed basis before choosing, or enter the value yourself.</string>
-    <string name="ocr_candidates_title">Which row is the total carbohydrate?</string>
 
     <!-- Product image gallery -->
     <string name="gallery_open">View product images</string>

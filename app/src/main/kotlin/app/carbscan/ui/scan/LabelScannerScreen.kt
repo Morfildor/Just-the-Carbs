@@ -319,16 +319,19 @@ private fun LabelCamera(
             when (val current = reading) {
                 null -> SearchingCard(captureState, ::captureLabel, onEditManually)
                 is LabelReading.Confident -> ProposalCard(
-                    candidates = listOf(current.candidate),
-                    ambiguous = false,
+                    candidate = current.candidate,
                     onUse = onUseValue,
                     onCapture = ::captureLabel,
                     onEdit = onEditManually,
                     onRetry = ::resumeLive,
                 )
+                // Multiple rows/bases were plausible, but the app picks for the user rather than
+                // asking them to judge OCR geometry: `candidates` is already sorted by score, so the
+                // first entry is the parser's best guess. The one case still requiring a tap is a
+                // resolved row with an unresolved basis (g vs ml) — that is a genuine unknown the
+                // app cannot infer, not a candidate the user should have to pick between.
                 is LabelReading.Ambiguous -> ProposalCard(
-                    candidates = current.candidates,
-                    ambiguous = true,
+                    candidate = current.candidates.first(),
                     onUse = onUseValue,
                     onCapture = ::captureLabel,
                     onEdit = onEditManually,
@@ -372,62 +375,53 @@ private fun SearchingCard(captureState: CaptureState, onCapture: () -> Unit, onE
 
 @Composable
 private fun ProposalCard(
-    candidates: List<CarbCandidate>,
-    ambiguous: Boolean,
+    candidate: CarbCandidate,
     onUse: (BigDecimal, NutritionBasis) -> Unit,
     onCapture: () -> Unit,
     onEdit: () -> Unit,
     onRetry: () -> Unit,
 ) {
     ScannerCard {
-        if (ambiguous) {
-            Text(stringResource(R.string.ocr_candidates_title), style = MaterialTheme.typography.titleMedium)
+        val display = candidate.value.stripTrailingZeros().toPlainString()
+        val basis = candidate.basis
+        if (basis != null) {
             Text(
-                stringResource(R.string.ocr_ambiguous_body),
+                text = stringResource(
+                    R.string.ocr_detected,
+                    candidate.label,
+                    "$display g",
+                    basis.unitLabel,
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-        candidates.forEach { candidate ->
-            val display = candidate.value.stripTrailingZeros().toPlainString()
-            val basis = candidate.basis
-            if (basis != null) {
-                Text(
-                    text = stringResource(
-                        R.string.ocr_detected,
-                        candidate.label,
-                        "$display g",
-                        basis.unitLabel,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Button(
-                    onClick = { onUse(candidate.value, basis) },
+            Button(
+                onClick = { onUse(candidate.value, basis) },
+                shape = RoundedCornerShape(Space.buttonRadius),
+                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+            ) { Text(stringResource(R.string.ocr_use, display)) }
+        } else {
+            // The row is trustworthy but the printed per-100 basis was never spatially established
+            // — a genuine unknown the app cannot guess, unlike which row is the carbohydrate total.
+            Text(
+                text = stringResource(R.string.ocr_detected_basis_unknown, candidate.label, "$display g"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Space.s),
+            ) {
+                OutlinedButton(
+                    onClick = { onUse(candidate.value, NutritionBasis.PER_100_G) },
+                    modifier = Modifier.weight(1f).height(Space.minTouchTarget),
                     shape = RoundedCornerShape(Space.buttonRadius),
-                    modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
-                ) { Text(stringResource(R.string.ocr_use, display)) }
-            } else {
-                Text(
-                    text = stringResource(R.string.ocr_detected_basis_unknown, candidate.label, "$display g"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Space.s),
-                ) {
-                    OutlinedButton(
-                        onClick = { onUse(candidate.value, NutritionBasis.PER_100_G) },
-                        modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                        shape = RoundedCornerShape(Space.buttonRadius),
-                    ) { Text(stringResource(R.string.ocr_use_per_100_g)) }
-                    OutlinedButton(
-                        onClick = { onUse(candidate.value, NutritionBasis.PER_100_ML) },
-                        modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                        shape = RoundedCornerShape(Space.buttonRadius),
-                    ) { Text(stringResource(R.string.ocr_use_per_100_ml)) }
-                }
+                ) { Text(stringResource(R.string.ocr_use_per_100_g)) }
+                OutlinedButton(
+                    onClick = { onUse(candidate.value, NutritionBasis.PER_100_ML) },
+                    modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                ) { Text(stringResource(R.string.ocr_use_per_100_ml)) }
             }
         }
         SecondaryScannerActions(onCapture, onEdit, onRetry)

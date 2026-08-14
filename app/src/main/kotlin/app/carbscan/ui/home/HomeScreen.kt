@@ -20,13 +20,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,11 +41,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -46,17 +56,28 @@ import app.carbscan.BuildConfig
 import app.carbscan.R
 import app.carbscan.domain.AppSettings
 import app.carbscan.domain.InputMode
+import app.carbscan.domain.LookupError
 import app.carbscan.domain.Product
+import app.carbscan.domain.ProductSearchHit
 import app.carbscan.domain.ResultFormatter
 import app.carbscan.domain.ResultStyle
 import app.carbscan.domain.CarbCalculator
 import app.carbscan.domain.CarbResult
 import app.carbscan.domain.MealItem
-import app.carbscan.ui.components.ProductThumbnail
 import app.carbscan.ui.components.FavoriteButton
+import app.carbscan.ui.components.PrimaryAction
+import app.carbscan.ui.components.ProductThumbnail
+import app.carbscan.ui.components.RecoveryPanel
+import app.carbscan.ui.components.SearchResultRow
+import app.carbscan.ui.components.SecondaryAction
 import app.carbscan.ui.meal.MealBarIfPresent
 import app.carbscan.ui.product.unitLabel
+import app.carbscan.ui.search.SearchUiState
 import app.carbscan.ui.theme.Space
+
+/** Stable handles for instrumented tests. */
+const val HOME_SEARCH_FIELD_TAG = "home_search_field"
+const val HOME_SEARCH_RESULTS_TAG = "home_search_results"
 
 /**
  * Home (§6, §7).
@@ -80,6 +101,12 @@ fun HomeScreen(
     mealItems: List<MealItem> = emptyList(),
     mealTotal: CarbResult? = null,
     onOpenMeal: () -> Unit = {},
+    searchState: SearchUiState = SearchUiState(),
+    onSearchQueryChanged: (String) -> Unit = {},
+    onSearchSelect: (ProductSearchHit) -> Unit = {},
+    onSearchScanLabel: () -> Unit = {},
+    onSearchEnterManually: () -> Unit = {},
+    onSearchRetry: () -> Unit = {},
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Doc's decorative blue-soft circle, bleeding off the top-right corner (result.html).
@@ -121,19 +148,42 @@ fun HomeScreen(
                 }
             }
 
-            // The meal in progress, if there is one (§10). Above recents rather than below, because a
-            // half-built meal is the thing the user is in the middle of; and absent entirely when the
-            // meal is empty, so Home's resting state is unchanged from before this feature existed.
-            MealBarIfPresent(
-                itemCount = mealItems.size,
-                total = mealTotal,
-                onClick = onOpenMeal,
+            // A deliberate, always-available way in: not a fallback offered only after a failure
+            // (that is what SearchScreen still is for the recovery paths), but a first-class entry
+            // point someone reaches for on purpose because they already know what they want.
+            HomeSearchField(
+                query = searchState.query,
+                onQueryChanged = onSearchQueryChanged,
                 modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
             )
 
+            // The meal in progress, if there is one (§10). Above recents rather than below, because a
+            // half-built meal is the thing the user is in the middle of; and absent entirely when the
+            // meal is empty, so Home's resting state is unchanged from before this feature existed.
+            // Hidden while a search is active — the meal bar and search results both want the space
+            // right below the header, and a search in progress is the more immediate task.
+            if (searchState.query.isBlank()) {
+                MealBarIfPresent(
+                    itemCount = mealItems.size,
+                    total = mealTotal,
+                    onClick = onOpenMeal,
+                    modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
+                )
+            }
+
             // Recents take the scrollable middle; the primary action sits at the bottom where a thumb
-            // actually reaches it (§40).
-            if (recents.isEmpty()) {
+            // actually reaches it (§40). A non-blank query takes over the same space with live
+            // results instead — Home never shows both at once.
+            if (searchState.query.isNotBlank()) {
+                HomeSearchResults(
+                    state = searchState,
+                    onSelect = onSearchSelect,
+                    onScanLabel = onSearchScanLabel,
+                    onEnterManually = onSearchEnterManually,
+                    onRetry = onSearchRetry,
+                    modifier = Modifier.weight(1f),
+                )
+            } else if (recents.isEmpty()) {
                 EmptyState(modifier = Modifier.weight(1f))
             } else {
                 RecentList(
@@ -232,6 +282,121 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+/**
+ * Home's deliberate search entry (§9, owner request 2026-08-14): always visible, never only
+ * offered after a failure. Field only — [HomeSearchResults] below owns the live results, so typing
+ * here behaves exactly like typing on [app.carbscan.ui.search.SearchScreen].
+ */
+@Composable
+private fun HomeSearchField(
+    query: String,
+    onQueryChanged: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusManager = LocalFocusManager.current
+    val clearLabel = stringResource(R.string.search_clear)
+
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChanged,
+        singleLine = true,
+        placeholder = { Text(stringResource(R.string.search_hint)) },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(
+                    onClick = { onQueryChanged("") },
+                    modifier = Modifier.semantics { contentDescription = clearLabel },
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = null)
+                }
+            }
+        },
+        shape = RoundedCornerShape(Space.buttonRadius),
+        modifier = modifier.fillMaxWidth().testTag(HOME_SEARCH_FIELD_TAG),
+    )
+}
+
+/** Live results for Home's inline search — the same states [app.carbscan.ui.search.SearchScreen] renders. */
+@Composable
+private fun HomeSearchResults(
+    state: SearchUiState,
+    onSelect: (ProductSearchHit) -> Unit,
+    onScanLabel: () -> Unit,
+    onEnterManually: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when {
+        state.error != null -> {
+            val title = when (state.error) {
+                LookupError.OFFLINE -> stringResource(R.string.error_offline_title)
+                LookupError.TIMEOUT -> stringResource(R.string.error_timeout_title)
+                LookupError.RATE_LIMITED -> stringResource(R.string.error_rate_limited_title)
+                LookupError.SERVER -> stringResource(R.string.error_server_title)
+                LookupError.MALFORMED -> stringResource(R.string.error_malformed_title)
+            }
+            val body = when (state.error) {
+                LookupError.OFFLINE -> stringResource(R.string.error_offline_body)
+                LookupError.RATE_LIMITED -> stringResource(R.string.error_rate_limited_body)
+                else -> stringResource(R.string.error_generic_body)
+            }
+            Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                RecoveryPanel(title = title, body = body) {
+                    PrimaryAction(text = stringResource(R.string.error_retry), onClick = onRetry)
+                    SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+                    SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
+                }
+            }
+        }
+
+        state.searching && state.hits.isEmpty() -> Box(
+            modifier = modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(strokeWidth = 2.dp)
+        }
+
+        state.noMatches -> Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            RecoveryPanel(
+                title = stringResource(R.string.notfound_title),
+                body = stringResource(R.string.search_no_matches, state.query),
+            ) {
+                PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+                SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
+            }
+        }
+
+        // A query too short to search yet (SearchViewModel.MIN_QUERY_LENGTH) — not an error, not a
+        // miss, just not enough to go on.
+        state.hits.isEmpty() -> Box(
+            modifier = modifier.fillMaxWidth().padding(Space.screenEdge),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.search_prompt),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        else -> LazyColumn(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = Space.screenEdge)
+                .testTag(HOME_SEARCH_RESULTS_TAG),
+        ) {
+            items(state.hits, key = { it.barcode }) { hit ->
+                SearchResultRow(hit = hit, onClick = { onSelect(hit) })
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
     }
 }
 

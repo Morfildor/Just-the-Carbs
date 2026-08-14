@@ -1,8 +1,12 @@
 package app.carbscan.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.unit.dp
@@ -32,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import app.carbscan.R
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
+import app.carbscan.domain.ProductSearchHit
 import app.carbscan.ui.theme.Space
 import app.carbscan.ui.theme.extendedColors
 
@@ -186,4 +191,62 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
         fontWeight = FontWeight.SemiBold,
         modifier = modifier.semantics { heading() },
     )
+}
+
+/**
+ * One search candidate (spec §9). Shared between the full search screen and Home's inline search
+ * so the two never drift on what a hit shows.
+ *
+ * Says only what is known. A record with no carbohydrate value says so in words rather than showing
+ * a zero — a "0 g carbs" card would be a confident wrong answer about food, which is exactly the
+ * failure this app is built to avoid.
+ */
+@Composable
+fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit) {
+    val carbsText = hit.carbsPer100?.let { carbs ->
+        stringResource(
+            R.string.search_carbs,
+            carbs.stripTrailingZeros().toPlainString(),
+            hit.basis.unitLabel,
+        )
+    } ?: stringResource(R.string.search_no_carbs)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = Space.s)
+            .semantics {
+                contentDescription = "${hit.name}. ${hit.brand.orEmpty()} $carbsText"
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SearchThumbnail(imageUrl = hit.imageUrl, name = hit.name)
+        Spacer(Modifier.width(Space.m))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = hit.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+            )
+            // Brand and printed quantity together are usually what separates two otherwise
+            // identical-looking cards on a shelf — a 390 g pack from a 600 g one.
+            val subtitle = listOfNotNull(hit.brand, hit.packageQuantity).joinToString(" · ")
+            if (subtitle.isNotEmpty()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+            Text(
+                text = carbsText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
