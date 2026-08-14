@@ -38,7 +38,7 @@
 
     <!-- Camera permission (§9) -->
     <string name="permission_title">Camera access is needed to scan a barcode.</string>
-    <string name="permission_body">CarbScan uses the camera only to read barcodes and nutrition labels. Images are never uploaded or saved.</string>
+    <string name="permission_body">This app uses the camera only to read barcodes and nutrition labels. Images are never uploaded or saved.</string>
     <string name="permission_allow">Allow camera</string>
     <string name="permission_manual">Enter manually</string>
     <string name="permission_settings">Open settings</string>
@@ -265,7 +265,7 @@
 
     <!-- Millilitre / gram (design decision 3.1) -->
     <string name="basis_mismatch_title">This product is measured in %1$s</string>
-    <string name="basis_mismatch_body">Grams and millilitres are not interchangeable without knowing the product\'s density, so CarbScan won\'t convert between them. To use the other unit, enter the value from the package.</string>
+    <string name="basis_mismatch_body">Grams and millilitres are not interchangeable without knowing the product\'s density, so this app won\'t convert between them. To use the other unit, enter the value from the package.</string>
 
     <!-- OCR (§29) -->
     <string name="ocr_title">Scan nutrition label</string>
@@ -336,7 +336,7 @@
     <string name="settings_attribution_images" tools:ignore="MissingTranslation">Product photos from Open Food Facts (openfoodfacts.org), used under the Creative Commons Attribution-ShareAlike 3.0 licence (CC BY-SA 3.0). A photo may also show packaging artwork owned by its manufacturer.</string>
     <string name="settings_safety_title">Important</string>
     <!-- §45: describes only what the software does. No efficacy or approval claim. -->
-    <string name="settings_safety_body">CarbScan calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
+    <string name="settings_safety_body">This app calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
 
     <!-- Generic -->
     <string name="action_done">Done</string>

@@ -17,10 +17,10 @@
  */
 
 /** Working name. Must not contain another company's trademark (brief §5, §51). */
-extra["brandAppName"] = "CarbScan"
+extra["brandAppName"] = "Just the Carbs"
 
 /** Play Store application id. Immutable once published — choose carefully. */
-extra["brandApplicationId"] = "app.carbscan"
+extra["brandApplicationId"] = "app.justthecarbs"
 
 /** Kotlin/Java namespace. */
 extra["brandNamespace"] = "app.carbscan"
