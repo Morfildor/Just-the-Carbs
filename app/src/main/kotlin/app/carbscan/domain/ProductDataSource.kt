@@ -1,6 +1,7 @@
 package app.carbscan.domain
 
 import kotlinx.coroutines.flow.Flow
+import java.math.BigDecimal
 
 /** Why a lookup could not produce a value. Each maps to a distinct, actionable message (§36). */
 enum class LookupError {
@@ -13,6 +14,18 @@ enum class LookupError {
 }
 
 /**
+ * A countable unit a remote source suggested, not yet a stored [PortionUnit] (countable-portions
+ * brief §7). The repository decides whether to create or update a [PortionUnit] from this — it
+ * carries no id, provenance timestamps, or verification state, because those are storage concerns.
+ */
+data class PortionUnitCandidate(
+    val kind: PortionUnitKind,
+    val amountPerUnit: BigDecimal,
+    val basis: NutritionBasis,
+    val rawServingText: String,
+)
+
+/**
  * The outcome of asking any source for a product.
  *
  * [NotFound] and [Unusable] are deliberately different: "we have no record of this barcode" and
@@ -20,7 +33,8 @@ enum class LookupError {
  * escape hatches, but conflating them would let a bad value masquerade as a missing one (§13, §26).
  */
 sealed interface ProductFetchResult {
-    data class Found(val product: Product) : ProductFetchResult
+    data class Found(val product: Product, val portionUnitCandidate: PortionUnitCandidate? = null) :
+        ProductFetchResult
     data object NotFound : ProductFetchResult
     data class Unusable(val barcode: String) : ProductFetchResult
     data class Failed(val error: LookupError) : ProductFetchResult

@@ -12,7 +12,11 @@ CarbScan retrieves product data from Open Food Facts.
 
 - **Database licence:** Open Database License (ODbL) v1.0
 - **Individual contents licence:** Database Contents License (DbCL) v1.0
-- **Product images:** Creative Commons licences, varying by image
+- **Product images:** Creative Commons Attribution-ShareAlike (CC BY-SA) — per Open Food Facts'
+  own terms of use (`world.openfoodfacts.org/terms-of-use`, checked 2026-08-14), a separate
+  licence from the database's ODbL/DbCL. OFF's terms also note images "may contain graphical
+  elements subject to copyright or other rights" belonging to the photographed product's own
+  packaging — a real nuance OFF does not claim to have cleared, not boilerplate.
 
 **Attribution shown in-app** (Settings → About):
 
@@ -34,27 +38,41 @@ applicable current licences, and a licence review is a release-checklist gate.
 
 ☐ Licence review completed before publication - *(owner completes, with date)*
 
-### Product images — now displayed, licensing NOT yet reviewed
+### Product images — displayed and licence-hardened, attribution wording still an owner action
 
 Product images from Open Food Facts **are displayed in the app** (product thumbnails on the home
-list and the calculator header).
+list and the calculator header). As of the countable-portions work (2026-08-14):
 
-> **Open action.** Image licensing on Open Food Facts is **not uniform** and is **distinct from the
-> ODbL licence covering the structured database**. Individual images carry their own licences
-> (various Creative Commons terms) and may impose their own attribution requirements.
->
-> The in-app attribution currently covers the *database*. Before publication the owner must review
-> Open Food Facts' current image attribution and licensing requirements and add whatever additional
-> attribution they require.
+- The licence is now confirmed as **CC BY-SA** (see above), distinct from the database's ODbL/DbCL
+  — this was previously described as "varying by image" pending review; that review is done.
+- Requests for images are restricted to an approved-host allowlist
+  (`ProductImageUrlValidator`, HTTPS + `images.openfoodfacts.org`/`static.openfoodfacts.org` only)
+  — a corrupt or malicious product record cannot make the app fetch an image from an arbitrary
+  third-party host.
+- Coil (image loading) and Retrofit (product data) now genuinely **share one `OkHttpClient`
+  instance** — previously two separately-constructed clients with matching configuration, not one
+  shared object; both now inherit the same connection pool, timeouts, and identifying User-Agent.
 
-☐ Current OFF image attribution/licensing requirements reviewed and satisfied - *(owner completes,
-with date and source URL)*
+> **Remaining open action.** The in-app attribution string (Settings → About) currently covers only
+> the *database* licence (ODbL). CC BY-SA's own attribution requirement — credit Open Food Facts,
+> link to openfoodfacts.org, and (per CC BY-SA's share-alike term) note the licence — has not yet
+> been added as a distinct line. This is wording the owner should add before publication, not a
+> licensing determination left unmade.
+
+☐ CC BY-SA attribution wording added to in-app About / store listing - *(owner completes, with
+date)*
 
 ### API terms
 
-Verify Open Food Facts' current API terms and rate limits before release. As checked on 2026-08-13:
-15 reads/min/IP, and an identifying `User-Agent` is mandatory. CarbScan sends
-`CarbScan/<version> (Android; <contact>)`, generated from `branding.gradle.kts`.
+Verify Open Food Facts' current API terms and rate limits before release. As checked 2026-08-14
+against `openfoodfacts.github.io/openfoodfacts-server/api/`: product reads are on the **v3** read
+endpoint (`api/v3/product/{barcode}`) — CarbScan migrated off v2 as part of the countable-portions
+work, since v2 is documented as deprecated-but-supported and the fields this app reads are
+unchanged between the two. Rate limit remains 15 reads/min/IP, and an identifying `User-Agent` is
+mandatory (documented format: `AppName/Version (ContactEmail)`). CarbScan sends
+`CarbScan/<version> (Android; <contact>)`, generated from `branding.gradle.kts` — note the contact
+email is still the `REPLACE_ME@example.com` placeholder (tracked in CLAUDE.md), which is a real
+compliance gap against OFF's documented User-Agent format, not just an unfinished docs field.
 
 ---
 

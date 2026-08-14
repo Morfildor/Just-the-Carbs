@@ -12,7 +12,8 @@ This describes what the app actually does, verified against the source code (§4
 CarbScan has no account, no advertising, and no analytics we added. Your products, portions,
 favourites and verified values stay on your device. **It is not true that no data leaves your
 device:** when you scan a barcode the app has never seen, it sends that barcode to Open Food Facts
-to look up the product. That is the only request CarbScan itself makes.
+to look up the product, and — when that product has a photo — requests the photo too. Those two
+requests are the only ones CarbScan itself makes.
 
 ## What stays on your device
 
@@ -21,27 +22,30 @@ Stored locally in an app-private database, readable by no other app:
 - Barcodes and product names you have scanned or entered
 - Carbohydrate values, measurement basis, package sizes
 - Your verified values, and the online value they replaced
-- The last portion you used per product, and when you last used it
+- Countable portion units (e.g. "1 slice = 36 g"), whether suggested by Open Food Facts or
+  entered by you, and whether you have checked them against the package
+- The last portion or countable-unit count you used per product, and when you last used it
 - Favourites, and your settings (theme, result style, haptics)
 
 There is no login, no cloud profile, and no synchronisation. Deleting the app deletes all of it.
 
 ## What leaves your device
 
-**One thing: a barcode lookup.**
+**Two things: a barcode lookup, and — only when the product has one — its photo.**
 
 | Field | Value |
 |---|---|
-| Recipient | Open Food Facts (`world.openfoodfacts.org`) |
-| When | Only when you scan or enter a barcode not already saved on your device |
-| What is sent | The barcode number, and a User-Agent identifying the app and version |
+| Recipient | Open Food Facts, for product data (`world.openfoodfacts.org`) and product photos (`images.openfoodfacts.org`) |
+| When | Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts' own image host — the app checks this and will not load an image from any other address |
+| What is sent | The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo) |
 | What is *not* sent | Any identifier for you or your device, your portions, your results, your history, your verified values |
 | Transport | HTTPS only. Cleartext traffic is disabled at the platform level |
 
 Open Food Facts is an independent organisation and will receive your IP address as an unavoidable
 part of any internet request. Their handling of that is governed by their own privacy policy.
 
-A cached product is served without any network request, so re-using a product sends nothing.
+A cached product — and an already-loaded photo — is served without a new network request, so
+re-using a product typically sends nothing.
 
 ## Camera
 
@@ -100,4 +104,7 @@ app release that introduces them.
 ---
 
 *Product data is provided by Open Food Facts and used under the Open Database License (ODbL).
-CarbScan is not affiliated with, endorsed by, or connected to any medical device manufacturer.*
+Product photos are provided by Open Food Facts under the Creative Commons Attribution-ShareAlike
+licence (CC BY-SA) — a separate licence from the database itself; see
+[third-party-notices.md](third-party-notices.md). CarbScan is not affiliated with, endorsed by, or
+connected to any medical device manufacturer.*

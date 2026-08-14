@@ -8,7 +8,7 @@
   Wording follows §15 and §45: the app reports a carbohydrate amount. It never implies a dose,
   a recommendation, or medical validation.
 -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Home -->
     <string name="home_scan_button">Scan barcode</string>
@@ -77,6 +77,63 @@
     <string name="adjust_minus_five">Minus 5</string>
     <string name="adjust_plus_five">Plus 5</string>
     <string name="adjust_plus_ten">Plus 10</string>
+
+    <!--
+      Countable portions (countable-portions brief §3-§12). English only: the owner corrected the
+      original brief's Dutch requirement mid-implementation — no values-nl entries for these keys.
+      ServingSizeParser still recognizes Dutch remote text; that is input parsing, not app display.
+    -->
+    <string name="product_mode_grams" tools:ignore="MissingTranslation">Grams</string>
+    <string name="product_count_label" tools:ignore="MissingTranslation">Count</string>
+    <string name="product_count_equation" tools:ignore="MissingTranslation">%1$s %2$s × %3$s %4$s = %5$s %4$s</string>
+    <string name="product_add_portion_unit" tools:ignore="MissingTranslation">+ Add portion unit</string>
+    <string name="product_add_portion_unit_title" tools:ignore="MissingTranslation">Add portion unit</string>
+    <string name="product_portion_unit_type" tools:ignore="MissingTranslation">Portion type</string>
+    <string name="product_portion_unit_custom_name" tools:ignore="MissingTranslation">Name</string>
+    <string name="product_portion_unit_weighs" tools:ignore="MissingTranslation">1 %1$s weighs</string>
+    <string name="product_save" tools:ignore="MissingTranslation">Save</string>
+    <string name="product_online_portion" tools:ignore="MissingTranslation">Online portion</string>
+    <string name="product_verified_portion" tools:ignore="MissingTranslation">✓ Verified by you</string>
+    <string name="portion_changed_title" tools:ignore="MissingTranslation">Online portion changed</string>
+    <string name="portion_changed_body" tools:ignore="MissingTranslation">The database now reports %1$s %2$s per %3$s. Your current value is unchanged.</string>
+    <string name="portion_changed_apply" tools:ignore="MissingTranslation">Use new value</string>
+
+    <plurals name="portion_kind_slice" tools:ignore="MissingTranslation">
+        <item quantity="one">slice</item>
+        <item quantity="other">slices</item>
+    </plurals>
+    <plurals name="portion_kind_piece" tools:ignore="MissingTranslation">
+        <item quantity="one">piece</item>
+        <item quantity="other">pieces</item>
+    </plurals>
+    <plurals name="portion_kind_biscuit" tools:ignore="MissingTranslation">
+        <item quantity="one">biscuit</item>
+        <item quantity="other">biscuits</item>
+    </plurals>
+    <plurals name="portion_kind_cookie" tools:ignore="MissingTranslation">
+        <item quantity="one">cookie</item>
+        <item quantity="other">cookies</item>
+    </plurals>
+    <plurals name="portion_kind_bar" tools:ignore="MissingTranslation">
+        <item quantity="one">bar</item>
+        <item quantity="other">bars</item>
+    </plurals>
+    <plurals name="portion_kind_roll" tools:ignore="MissingTranslation">
+        <item quantity="one">roll</item>
+        <item quantity="other">rolls</item>
+    </plurals>
+    <plurals name="portion_kind_scoop" tools:ignore="MissingTranslation">
+        <item quantity="one">scoop</item>
+        <item quantity="other">scoops</item>
+    </plurals>
+    <plurals name="portion_kind_sachet" tools:ignore="MissingTranslation">
+        <item quantity="one">sachet</item>
+        <item quantity="other">sachets</item>
+    </plurals>
+    <plurals name="portion_kind_serving" tools:ignore="MissingTranslation">
+        <item quantity="one">serving</item>
+        <item quantity="other">servings</item>
+    </plurals>
 
     <!-- Unknown product (§26) -->
     <string name="notfound_title">Product not found</string>

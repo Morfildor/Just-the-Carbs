@@ -79,7 +79,7 @@ one-handed, without putting anything down.
 
 | # | Check | Pass |
 |---|---|---|
-| 6.1 | Whole gram dominates; decimal legible beneath | ☐ |
+| 6.1 | Decimal dominates (`31.3 g`); whole gram legible beneath (`≈ 31 g`) | ☐ |
 | 6.2 | Copy puts **only the number** on the clipboard (paste elsewhere: `31`, not `31 g carbs`) | ☐ |
 | 6.3 | Confirmation appears | ☐ |
 | 6.4 | Decimal-only setting changes the display | ☐ |
@@ -134,7 +134,7 @@ one-handed, without putting anything down.
 |---|---|---|
 | 11.1 | Most recently used first | ☐ |
 | 11.2 | Favourites float above other recents | ☐ |
-| 11.3 | Card shows name and `65 g → 31 g`, nothing irrelevant | ☐ |
+| 11.3 | Card shows name and `65 g → 31 g` (or, for a countable-unit product, `2 slices → 30 g`), nothing irrelevant | ☐ |
 | 11.4 | Tapping opens the calculator immediately, no network wait | ☐ |
 | 11.5 | Last portion is remembered — **including after leaving via the system back gesture** | ☐ |
 | 11.6 | …and after Home, and after the app is killed | ☐ |
@@ -172,6 +172,31 @@ one-handed, without putting anything down.
 | 14.3 | Samsung camera behaviour: scanner starts reliably | ☐ |
 | 14.4 | Gesture navigation and edge-to-edge layout correct | ☐ |
 | 14.5 | Samsung battery optimisation does not break resume | ☐ |
+
+## 15a. Countable portions (2026-08-14) — *not yet verified on hardware*
+
+Do not hardcode a live OFF product into an automated test; this section exists precisely because
+real Open Food Facts data (a real Dutch sliced-bread barcode) needs a human to check it.
+
+| # | Check | Pass |
+|---|---|---|
+| 15a.1 | Scan a real Dutch packaged sliced bread; product loads with name, image, carbs | ☐ |
+| 15a.2 | If OFF has a parseable `serving_size` for it, a **Slices** (or matching kind) chip appears automatically — if not, this product is not a countable-portion case; try another | ☐ |
+| 15a.3 | Selecting the chip shows a count field defaulting to `1`, and the equation text (`1 slice × NN g = NN g`) | ☐ |
+| 15a.4 | Typing `2` updates the equation and the result together, live | ☐ |
+| 15a.5 | The equation's per-slice weight is visible enough to sanity-check against the package | ☐ |
+| 15a.6 | Switching **Slices → Grams** keeps the equivalent gram amount, no re-typing | ☐ |
+| 15a.7 | Switching **Grams → Slices** restores the last count | ☐ |
+| 15a.8 | **+ Add portion unit**: create a custom unit (e.g. "Dumpling", a weight from your own scale); it becomes usable immediately, no extra tap | ☐ |
+| 15a.9 | A decimal count (`1.5`) is accepted and calculates correctly | ☐ |
+| 15a.10 | A negative or garbage count shows no result, not a crash or a wrong number | ☐ |
+| 15a.11 | Favourite the product, back out, reopen from Recents: the countable mode/unit/count you last used is restored — **not** grams | ☐ |
+| 15a.12 | Recents card for this product reads `2 slices → 30 g`, not `72 g → 30 g` | ☐ |
+| 15a.13 | Turn on airplane mode, reopen the same product: countable entry still works fully offline | ☐ |
+| 15a.14 | Dark mode: mode chips, count field and equation text all legible | ☐ |
+| 15a.15 | Largest system font: chips and equation text do not clip or overlap | ☐ |
+| 15a.16 | Keyboard open (typing a count): the result at the bottom of the screen stays visible | ☐ |
+| 15a.17 | A long product name combined with the mode row does not push the result off-screen | ☐ |
 
 ## 15. Safety acceptance (§71) — all must be true
 

@@ -1,7 +1,12 @@
 package app.carbscan.data
 
+import app.carbscan.domain.InputMode
 import app.carbscan.domain.LocalProductDataSource
 import app.carbscan.domain.NutritionBasis
+import app.carbscan.domain.PortionUnit
+import app.carbscan.domain.PortionUnitCandidate
+import app.carbscan.domain.PortionUnitKind
+import app.carbscan.domain.PortionUnitStore
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductDataSource
@@ -40,6 +45,7 @@ sealed interface RefreshOutcome {
 class ProductRepository(
     private val local: LocalProductDataSource,
     private val remote: ProductDataSource,
+    private val portionUnits: PortionUnitStore,
     private val clock: Clock = Clock.systemUTC(),
 ) {
 
@@ -56,6 +62,11 @@ class ProductRepository(
         return when (val fetched = remote.fetch(barcode)) {
             is ProductFetchResult.Found -> {
                 local.save(fetched.product)
+                // First sighting of this product: a suggested countable unit becomes a stored one
+                // outright, since there is nothing local yet for it to conflict with (§7, §9).
+                fetched.portionUnitCandidate?.let { candidate ->
+                    portionUnits.save(newPortionUnitFromCandidate(barcode, candidate))
+                }
                 fetched
             }
             // NotFound, Unusable and Failed all leave the cache untouched: the app does not record
@@ -75,8 +86,11 @@ class ProductRepository(
         val existing = (local.fetch(barcode) as? ProductFetchResult.Found)?.product
             ?: return RefreshOutcome.Unchanged
 
-        val fetched = (remote.fetch(barcode) as? ProductFetchResult.Found)?.product
+        val fetchedResult = remote.fetch(barcode) as? ProductFetchResult.Found
             ?: return RefreshOutcome.Unchanged
+        val fetched = fetchedResult.product
+
+        refreshPortionUnitFromCandidate(barcode, fetchedResult.portionUnitCandidate)
 
         val remoteCarbs = fetched.carbsPer100
         val differs = remoteCarbs.compareTo(existing.carbsPer100) != 0
@@ -207,10 +221,31 @@ class ProductRepository(
         )
     }
 
-    /** Remember the portion so the next visit pre-fills it, and float the product up Recents (§20, §21). */
-    suspend fun recordUse(barcode: String, portion: BigDecimal) {
+    /**
+     * Remember the portion so the next visit pre-fills it, and float the product up Recents (§20, §21).
+     *
+     * [mode]/[portionUnitId]/[count] are optional so grams-only usage (no countable units for this
+     * product) does not need to pass anything new (§11, §12). Passing [InputMode.GRAMS] explicitly
+     * clears any previously remembered countable selection, so switching back to grams and using it
+     * is itself what "remembers grams" next time.
+     */
+    suspend fun recordUse(
+        barcode: String,
+        portion: BigDecimal,
+        mode: InputMode? = null,
+        portionUnitId: Long? = null,
+        count: BigDecimal? = null,
+    ) {
         val existing = requireExisting(barcode)
-        local.save(existing.copy(lastPortion = portion, lastUsedAt = clock.instant()))
+        local.save(
+            existing.copy(
+                lastPortion = portion,
+                lastUsedAt = clock.instant(),
+                lastInputMode = mode ?: existing.lastInputMode,
+                lastSelectedPortionUnitId = if (mode == InputMode.GRAMS) null else portionUnitId ?: existing.lastSelectedPortionUnitId,
+                lastCount = if (mode == InputMode.GRAMS) null else count ?: existing.lastCount,
+            ),
+        )
     }
 
     suspend fun setFavorite(barcode: String, favorite: Boolean) {
@@ -219,6 +254,139 @@ class ProductRepository(
     }
 
     fun observeRecents(limit: Int): Flow<List<Product>> = local.observeRecents(limit)
+
+    // ---- countable portions (brief §2, §6-§9) --------------------------------------------------
+
+    fun observePortionUnits(barcode: String): Flow<List<PortionUnit>> = portionUnits.observeByBarcode(barcode)
+
+    suspend fun findPortionUnits(barcode: String): List<PortionUnit> = portionUnits.findByBarcode(barcode)
+
+    suspend fun findPortionUnit(id: Long): PortionUnit? = portionUnits.findById(id)
+
+    /**
+     * A unit the user defines themselves (§6): a known [kind] with their own weight, or a fully
+     * custom label. Always counts as verified — the user is reading their own kitchen scale or
+     * package, exactly what verification means elsewhere in this app.
+     */
+    suspend fun saveUserPortionUnit(
+        barcode: String,
+        kind: PortionUnitKind,
+        amountPerUnit: BigDecimal,
+        basis: NutritionBasis,
+        customLabel: String? = null,
+    ): PortionUnit {
+        require(kind != PortionUnitKind.CUSTOM || !customLabel.isNullOrBlank()) {
+            "a custom portion unit requires a label"
+        }
+        val now = clock.instant()
+        return portionUnits.save(
+            PortionUnit(
+                productBarcode = barcode,
+                kind = kind,
+                customLabel = customLabel,
+                amountPerUnit = amountPerUnit,
+                basis = basis,
+                dataSource = ProductDataOrigin.MANUAL,
+                verificationStatus = VerificationStatus.USER_VERIFIED,
+                verifiedAt = now,
+                originalRemoteAmountPerUnit = null,
+                latestRemoteAmountPerUnit = null,
+                rawRemoteServingText = null,
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
+    }
+
+    /**
+     * The user checked a remote-sourced unit against the package (§7), optionally correcting the
+     * weight while doing so. Mirrors [saveVerification]: provenance stays Open Food Facts, only
+     * verification state and the effective amount change.
+     */
+    suspend fun verifyPortionUnit(unitId: Long, confirmedAmountPerUnit: BigDecimal? = null): PortionUnit {
+        val existing = requirePortionUnit(unitId)
+        val verified = existing.copy(
+            amountPerUnit = confirmedAmountPerUnit ?: existing.amountPerUnit,
+            verificationStatus = VerificationStatus.USER_VERIFIED,
+            verifiedAt = clock.instant(),
+            updatedAt = clock.instant(),
+        )
+        return portionUnits.save(verified)
+    }
+
+    /** Deliberate acceptance of a newer remote amount (§7, mirrors [applyLatestRemoteValue]). */
+    suspend fun applyLatestRemotePortionUnit(unitId: Long): PortionUnit {
+        val existing = requirePortionUnit(unitId)
+        val latest = existing.latestRemoteAmountPerUnit ?: return existing
+        val applied = existing.copy(
+            amountPerUnit = latest,
+            verificationStatus = VerificationStatus.UNVERIFIED,
+            verifiedAt = null,
+            updatedAt = clock.instant(),
+        )
+        return portionUnits.save(applied)
+    }
+
+    suspend fun deletePortionUnit(unit: PortionUnit) = portionUnits.delete(unit)
+
+    private fun newPortionUnitFromCandidate(barcode: String, candidate: PortionUnitCandidate): PortionUnit {
+        val now = clock.instant()
+        return PortionUnit(
+            productBarcode = barcode,
+            kind = candidate.kind,
+            customLabel = null,
+            amountPerUnit = candidate.amountPerUnit,
+            basis = candidate.basis,
+            dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
+            verificationStatus = VerificationStatus.UNVERIFIED,
+            verifiedAt = null,
+            originalRemoteAmountPerUnit = candidate.amountPerUnit,
+            latestRemoteAmountPerUnit = candidate.amountPerUnit,
+            rawRemoteServingText = candidate.rawServingText,
+            createdAt = now,
+            updatedAt = now,
+        )
+    }
+
+    /**
+     * Same rule as the product's own carbohydrate refresh, applied per unit (§7, §9): an unverified
+     * Open-Food-Facts-sourced unit is kept in sync outright, while a user-verified or user-authored
+     * one only has its "latest remote" figure recorded for a notice, never its effective amount.
+     */
+    private suspend fun refreshPortionUnitFromCandidate(barcode: String, candidate: PortionUnitCandidate?) {
+        if (candidate == null) return
+        val existingUnits = portionUnits.findByBarcode(barcode)
+        val matching = existingUnits.firstOrNull {
+            it.dataSource == ProductDataOrigin.OPEN_FOOD_FACTS && it.kind == candidate.kind
+        }
+
+        if (matching == null) {
+            portionUnits.save(newPortionUnitFromCandidate(barcode, candidate))
+            return
+        }
+
+        if (matching.isRemoteRefreshable) {
+            portionUnits.save(
+                matching.copy(
+                    amountPerUnit = candidate.amountPerUnit,
+                    latestRemoteAmountPerUnit = candidate.amountPerUnit,
+                    rawRemoteServingText = candidate.rawServingText,
+                    updatedAt = clock.instant(),
+                ),
+            )
+        } else {
+            portionUnits.save(
+                matching.copy(
+                    latestRemoteAmountPerUnit = candidate.amountPerUnit,
+                    rawRemoteServingText = candidate.rawServingText,
+                    updatedAt = clock.instant(),
+                ),
+            )
+        }
+    }
+
+    private suspend fun requirePortionUnit(unitId: Long): PortionUnit =
+        portionUnits.findById(unitId) ?: error("no portion unit with id $unitId")
 
     private suspend fun requireExisting(barcode: String): Product =
         (local.fetch(barcode) as? ProductFetchResult.Found)?.product

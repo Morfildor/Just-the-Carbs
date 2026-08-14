@@ -130,6 +130,14 @@ fun CarbScanNavHost(
                 onRetry = { viewModel.load(barcode) },
                 onApplyNewerRemote = viewModel::applyNewerRemoteValue,
                 onDismissNewerRemote = viewModel::dismissNewerRemoteValue,
+                onSwitchToGrams = viewModel::switchToGrams,
+                onSwitchToPortionUnit = viewModel::switchToPortionUnit,
+                onCountChanged = viewModel::onCountChanged,
+                onShowAddPortionUnitForm = viewModel::showAddPortionUnitForm,
+                onAddPortionUnit = viewModel::addPortionUnit,
+                onVerifyPortionUnit = viewModel::verifySelectedPortionUnit,
+                onApplyNewerRemotePortionUnit = viewModel::applyNewerRemotePortionUnit,
+                onDismissNewerRemotePortionUnit = viewModel::dismissNewerRemotePortionUnit,
             )
         }
 

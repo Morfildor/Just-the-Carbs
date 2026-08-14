@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import app.carbscan.domain.Product
+import app.carbscan.domain.ProductImageUrlValidator
 import app.carbscan.ui.theme.Motion
 import app.carbscan.ui.theme.Space
 import coil3.compose.AsyncImage
@@ -46,7 +47,10 @@ fun ProductThumbnail(
     size: Dp = Space.thumbnail,
 ) {
     val shape = RoundedCornerShape(Space.m)
-    var imageLoaded by remember(product.imageUrl) { mutableStateOf(false) }
+    // A malicious or corrupt remote record must not make the app load an image from an arbitrary
+    // third-party host (§15) — an untrusted URL is treated exactly like a missing one.
+    val safeImageUrl = remember(product.imageUrl) { ProductImageUrlValidator.validate(product.imageUrl) }
+    var imageLoaded by remember(safeImageUrl) { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -74,10 +78,10 @@ fun ProductThumbnail(
             }
         }
 
-        if (!product.imageUrl.isNullOrBlank()) {
+        if (safeImageUrl != null) {
             AsyncImage(
                 model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                    .data(product.imageUrl)
+                    .data(safeImageUrl)
                     .crossfade(Motion.STANDARD_MS)
                     .build(),
                 contentDescription = null,

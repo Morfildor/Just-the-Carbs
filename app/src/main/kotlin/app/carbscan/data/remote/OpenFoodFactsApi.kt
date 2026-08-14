@@ -10,11 +10,17 @@ interface OpenFoodFactsApi {
     /**
      * Single-product read (§12).
      *
+     * v3, not v2 (countable-portions brief §14, verified 2026-08-14): v2 is documented as
+     * deprecated-but-supported, v3 is current, and the fields this app reads are unchanged between
+     * the two, so migrating now — while the DTO is already being extended for `serving_size` — is
+     * low-risk. Only the response envelope differs (`status` int vs string, a `result` wrapper), and
+     * this app never reads that envelope; see [OffProductResponse].
+     *
      * `fields` is always sent. Requesting only what the app uses keeps responses small on a mobile
      * connection and is what OFF asks clients to do — a full product document is very large and
      * most of it is irrelevant to a carbohydrate calculation.
      */
-    @GET("api/v2/product/{barcode}")
+    @GET("api/v3/product/{barcode}")
     suspend fun getProduct(
         @Path("barcode") barcode: String,
         @Query("fields") fields: String = REQUESTED_FIELDS,
@@ -31,6 +37,7 @@ interface OpenFoodFactsApi {
             "quantity",
             "nutriments",
             "image_front_small_url",
+            "serving_size",
         ).joinToString(",")
     }
 }

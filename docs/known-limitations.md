@@ -63,6 +63,47 @@ entry rather than failing.
 serves anything cached without a network call, so this is rare in normal use, and the resulting
 message is distinct from a generic failure.
 
+## Countable portions (2026-08-14)
+
+**A countable unit only appears when Open Food Facts' `serving_size` text is unambiguous, or when
+you add one yourself.** `serving_size` is free text with no guaranteed format — the parser only
+accepts strings that state an explicit count-to-quantity relationship ("1 slice (36 g)"). A bare
+weight ("35 g"), a unit word with no count ("portion 25 g"), or anything else ambiguous is rejected
+rather than guessed at. This means **most products will not get an automatic countable unit**, even
+ones a person would obviously describe by count — that is a deliberate false-negative bias (§5): a
+wrong per-item weight silently applied to every future calculation would be worse than asking the
+user to type grams, or to add their own unit.
+
+**A remote-suggested unit is not verified by the app.** Like the carbohydrate value itself, a unit
+parsed from `serving_size` is shown as *Online portion* until the user checks it against the
+package — the parser being cautious about *whether* to produce a unit says nothing about whether
+the specific number it produced is correct for the package in hand.
+
+**Not yet verified against a real Open Food Facts `serving_size` response.** Automated tests use
+fixtures; no live product with a countable-portion-shaped `serving_size` has been scanned and
+checked against real packaging. See `docs/manual-qa.md` §15a, currently unchecked.
+
+**One instrumented UI test is order-dependent flaky, not app-broken.**
+`CountablePortionScreenTest.addingAPortionUnitThroughTheInlineFormMakesItImmediatelyUsable` passes
+reliably run in isolation, and the same select-unit/read-equation behaviour it checks is covered
+reliably by five other tests in the same file — but it intermittently fails when run as part of the
+full 42-test instrumented suite. Investigated 2026-08-14: an explicit `waitUntil` poll times out
+rather than eventually succeeding, which rules out a simple recomposition-timing race and points at
+emulator-level IME/focus state carrying over between test-activity transitions. Left documented in
+the test itself rather than deleted, retried silently, or weakened.
+
+**The count field can be mistyped on first use.** It pre-fills `1`; typing without first clearing
+it appends rather than replaces (e.g. typing `2` over a pre-filled `1` gives `12`), because the
+field does not select-all on focus. The result panel itself is never affected by this — a wrong
+count just shows a wrong-but-visible result the user can see and correct. See the full write-up in
+[ux-critique-countable-portions.md](ux-critique-countable-portions.md).
+
+**Supporting content can scroll out of view while the keyboard is open.** The `2 slices × 36 g =
+72 g` equation text and the *+ Add portion unit* action live in the same scrollable region as the
+count field; with the on-screen keyboard open, they are not guaranteed to be visible without
+scrolling. The result panel itself is pinned outside this region and stays visible throughout — see
+[ux-critique-countable-portions.md](ux-critique-countable-portions.md).
+
 ## Scope — things this app deliberately does not do
 
 - **It does not calculate insulin**, an insulin-to-carb ratio, a correction factor, or any dose.
@@ -79,9 +120,11 @@ device-to-device transfer. This is a deliberate trade (§34): your food history 
 verified values and remembered portions - never leaves the device by that route. The cost is that a
 new phone starts empty, and verified values need re-entering.
 
-**Product images are displayed, and their licensing has not yet been reviewed.** Open Food Facts
-image licensing is not uniform and is distinct from the ODbL licence covering the database. See
-`docs/third-party-notices.md`; this is an open pre-publication action.
+**Product images are displayed under a confirmed licence, but in-app attribution wording is not yet
+updated for it.** Open Food Facts images are CC BY-SA — distinct from the ODbL licence covering the
+database itself, and confirmed against OFF's current terms of use (2026-08-14). The in-app
+attribution string still covers only the database licence. See `docs/third-party-notices.md`; this
+is an open pre-publication action.
 
 **There is no browse-all-products screen.** Products are reached through Recents and favourites. A
 product cleared from recent history remains in the database but is only re-reachable by scanning its

@@ -41,11 +41,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.carbscan.BuildConfig
 import app.carbscan.R
+import app.carbscan.domain.InputMode
 import app.carbscan.domain.Product
 import app.carbscan.domain.ResultFormatter
 import app.carbscan.domain.CarbCalculator
 import app.carbscan.ui.components.ProductThumbnail
 import app.carbscan.ui.components.FavoriteButton
+import app.carbscan.ui.product.unitLabel
 import app.carbscan.ui.theme.Space
 
 /**
@@ -60,7 +62,7 @@ import app.carbscan.ui.theme.Space
  */
 @Composable
 fun HomeScreen(
-    recents: List<Product>,
+    recents: List<RecentEntry>,
     onScan: () -> Unit,
     onManualEntry: () -> Unit,
     onOpenProduct: (String) -> Unit,
@@ -192,7 +194,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 
 @Composable
 private fun RecentList(
-    recents: List<Product>,
+    recents: List<RecentEntry>,
     onOpenProduct: (String) -> Unit,
     onToggleFavorite: (Product) -> Unit,
     modifier: Modifier = Modifier,
@@ -214,11 +216,11 @@ private fun RecentList(
                 modifier = Modifier.padding(vertical = Space.s).semantics { heading() },
             )
         }
-        items(items = recents, key = { it.barcode }) { product ->
+        items(items = recents, key = { it.product.barcode }) { entry ->
             RecentCard(
-                product = product,
-                onClick = { onOpenProduct(product.barcode) },
-                onToggleFavorite = { onToggleFavorite(product) },
+                entry = entry,
+                onClick = { onOpenProduct(entry.product.barcode) },
+                onToggleFavorite = { onToggleFavorite(entry.product) },
             )
         }
     }
@@ -231,14 +233,21 @@ private fun RecentList(
  * all of which would make this look like the diet tracker the app must not be (§2).
  */
 @Composable
-private fun RecentCard(product: Product, onClick: () -> Unit, onToggleFavorite: () -> Unit) {
+private fun RecentCard(entry: RecentEntry, onClick: () -> Unit, onToggleFavorite: () -> Unit) {
+    val product = entry.product
     // Recompute rather than store a display string, so a corrected carbs value is reflected in the
     // summary immediately instead of showing a figure derived from the old one.
     val summary = product.lastPortion?.let { portion ->
         val result = CarbCalculator.calculate(product.carbsPer100, portion, product.basis)
+        // Countable-portions brief §12: when the product was last used as "2 slices", Recents says
+        // so — not the gram amount the user never actually thought in.
+        val amountLabel = product.lastCount
+            ?.takeIf { entry.lastUnit != null && product.lastInputMode == InputMode.PORTION_UNIT }
+            ?.let { count -> "${count.stripTrailingZeros().toPlainString()} ${entry.lastUnit!!.unitLabel(count = 2)}" }
+            ?: "${portion.stripTrailingZeros().toPlainString()} ${product.portionUnit}"
         stringResource(
             R.string.recent_summary,
-            "${portion.stripTrailingZeros().toPlainString()} ${product.portionUnit}",
+            amountLabel,
             "${ResultFormatter.whole(result.wholeGrams)} g",
         )
     } ?: stringResource(R.string.recent_never_used)

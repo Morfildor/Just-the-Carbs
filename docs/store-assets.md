@@ -46,12 +46,18 @@ at default font size, with realistic Dutch supermarket products.
 |---|---|---|---|
 | 1 | Scanner | Live preview, subtle frame | *Scan the barcode* |
 | 2 | Calculator, portion typed | `48.2 g carbs / 100 g`, portion `65 g` | *Enter your portion* |
-| 3 | Calculator, result dominant | **31 g** with *31.3 g calculated* | *Read the carbs* |
+| 3 | Calculator, result dominant | **31.3 g** with *≈ 31 g whole grams* beneath | *Read the carbs* |
 | 4 | Verify dialog | Checking a value against the package | *Correct the data yourself* |
 | 5 | Home with recents | `65 g → 31 g` rows, one starred | *Repeat products in one tap* |
 
 **Screenshot 3 is the important one.** It is the whole product in a single image and should be the
-first frame a browsing user sees.
+first frame a browsing user sees. Decimal (`31.3 g`) is the dominant figure, not the whole gram —
+match whatever `ResultStyle` the capture device is actually set to (default: decimal-dominant).
+
+**Optional 6th screenshot (countable portions, 2026-08-14):** the calculator with **Slices**
+selected, a count of `2`, and the `2 slices × 36 g = 72 g` supporting line visible above the
+result — *No scale needed for a slice of bread*. Not required for launch; a natural addition once
+real screenshots are captured, since it is the newest and most visually distinct capability.
 
 ### Screenshot rules
 

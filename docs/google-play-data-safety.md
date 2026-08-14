@@ -15,7 +15,7 @@ template. Where the honest answer is "uncertain", it says so rather than guessin
 | Question | How it was checked |
 |---|---|
 | What permissions ship? | `app/build/intermediates/merged_manifest/.../AndroidManifest.xml` |
-| What leaves the device? | `OpenFoodFactsDataSource`, `NetworkModule`, `OpenFoodFactsApi` — one endpoint, one host |
+| What leaves the device? | `OpenFoodFactsDataSource`, `NetworkModule`, `OpenFoodFactsApi` — product-data requests to `world.openfoodfacts.org`, plus product-image requests to Open Food Facts' image host when a product has a photo (`ProductImageUrlValidator` restricts this to Open Food Facts hosts only) |
 | What is stored? | `ProductEntity`, `CarbScanDatabase`, `SettingsRepository` |
 | Are images kept? | `BarcodeAnalyzer`, `LabelAnalyzer` — every `ImageProxy` is closed; nothing is written |
 | Third-party SDKs | Gradle dependency tree and manifest-merger blame report |
@@ -59,18 +59,21 @@ listing and privacy policy:
 - Last portion per product and last-used timestamp
 - Favourites and settings
 
-## The one network request
+## The network requests
 
 | Field | Value |
 |---|---|
-| Endpoint | `GET https://world.openfoodfacts.org/api/v2/product/{barcode}` |
+| Endpoint | `GET https://world.openfoodfacts.org/api/v3/product/{barcode}` (product data) |
 | Trigger | Only for a barcode not already cached on the device |
 | Payload | Barcode number; User-Agent identifying app and version |
-| User identifiers sent | None. No account, device ID, or advertising ID exists to send |
+| Endpoint | `GET https://images.openfoodfacts.org/...` (product photo) |
+| Trigger | Only when the product-data response includes an image, and only once per image (Coil caches it after) |
+| Payload | Standard image request; no additional data attached |
+| User identifiers sent | None, on either request. No account, device ID, or advertising ID exists to send |
 | Encryption in transit | Yes — HTTPS only; cleartext disabled |
-| Third-party recipient | Open Food Facts (independent organisation) |
+| Third-party recipient | Open Food Facts (independent organisation) for both |
 
-A cached product is served with **no** network request.
+A cached product — and an already-loaded photo — is served with **no** new network request.
 
 ## ML Kit's data-transport component — investigated 2026-08-14
 

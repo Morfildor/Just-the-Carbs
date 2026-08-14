@@ -7,9 +7,13 @@ import app.carbscan.data.ProductRepository
 import app.carbscan.data.RefreshOutcome
 import app.carbscan.domain.CarbCalculator
 import app.carbscan.domain.CarbResult
+import app.carbscan.domain.InputMode
 import app.carbscan.domain.LookupError
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.PortionParser
+import app.carbscan.domain.PortionResolver
+import app.carbscan.domain.PortionUnit
+import app.carbscan.domain.PortionUnitKind
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductFetchResult
@@ -42,8 +46,18 @@ data class ProductUiState(
      * the life of the session.
      */
     val newerRemoteCarbs: BigDecimal? = null,
+    // ---- countable portions (brief §2, §9-§12) ----------------------------------------------
+    /** Frozen for the session once loaded — a background refresh never replaces this list. */
+    val portionUnits: List<PortionUnit> = emptyList(),
+    val inputMode: InputMode = InputMode.GRAMS,
+    val selectedPortionUnitId: Long? = null,
+    val countText: String = "",
+    val showAddPortionUnitForm: Boolean = false,
+    /** Same immutability rule as [newerRemoteCarbs], scoped to the unit currently in use (§9). */
+    val newerRemotePortionUnitAmount: BigDecimal? = null,
 ) {
     val canCalculate: Boolean get() = product != null
+    val selectedPortionUnit: PortionUnit? get() = portionUnits.firstOrNull { it.id == selectedPortionUnitId }
 }
 
 /** Every way the screen can fail to show a number, each with its own recovery (§13, §26, §36). */
@@ -126,28 +140,75 @@ class ProductViewModel(
     private fun onProductLoaded(product: Product) {
         // Pre-fill the portion the user chose last time, so a repeat product needs no typing at
         // all (§20) — but only if they have not already started typing in this session.
-        val restored = savedState.get<String>(KEY_PORTION)
-        val prefilled = restored
-            ?: product.lastPortion?.stripTrailingZeros()?.toPlainString()
-            ?: ""
+        val restoredPortion = savedState.get<String>(KEY_PORTION)
+        val restoredCount = savedState.get<String>(KEY_COUNT)
+        val restoredMode = savedState.get<String>(KEY_MODE)?.let(InputMode::valueOf)
+        val restoredSelectedId = savedState.get<Long>(KEY_SELECTED_UNIT)
 
-        _state.update {
-            it.copy(loading = false, product = product, portionText = prefilled, failure = null)
-        }
-        recalculate()
-
-        // Background refresh only, never on the path to a result: the value is already on screen
-        // by now (§10.2).
-        //
-        // CALCULATION-SESSION IMMUTABILITY (correction #5). The refresh must never replace the
-        // product this session is calculating with. Otherwise: the screen opens on 48.2, the user
-        // types 65, a refresh returns 51.0, and the answer changes under their hand while they are
-        // reading it. The newer figure is offered as a notice the user can accept.
         viewModelScope.launch {
+            // Portion units are fetched ONCE here, never re-subscribed to during the session — the
+            // same immutability discipline as the product's own carbs (§9). A background refresh
+            // below can only produce a notice, never replace this list.
+            val units = repository.findPortionUnits(product.barcode)
+
+            val mode = restoredMode ?: product.lastInputMode ?: InputMode.GRAMS
+            val candidateSelectedId = restoredSelectedId ?: product.lastSelectedPortionUnitId
+            val resolvedMode = if (mode == InputMode.PORTION_UNIT && units.none { it.id == candidateSelectedId }) {
+                InputMode.GRAMS
+            } else {
+                mode
+            }
+            val resolvedSelectedId = if (resolvedMode == InputMode.PORTION_UNIT) candidateSelectedId else null
+            val countText = restoredCount
+                ?: product.lastCount?.takeIf { resolvedMode == InputMode.PORTION_UNIT }?.stripTrailingZeros()?.toPlainString()
+                ?: ""
+
+            val portionText = if (resolvedMode == InputMode.PORTION_UNIT && resolvedSelectedId != null) {
+                val unit = units.first { it.id == resolvedSelectedId }
+                val count = PortionParser.parse(countText) ?: BigDecimal.ONE
+                PortionResolver.resolve(count, unit.amountPerUnit).stripTrailingZeros().toPlainString()
+            } else {
+                restoredPortion
+                    ?: product.lastPortion?.stripTrailingZeros()?.toPlainString()
+                    ?: ""
+            }
+
+            _state.update {
+                it.copy(
+                    loading = false,
+                    product = product,
+                    portionText = portionText,
+                    failure = null,
+                    portionUnits = units,
+                    inputMode = resolvedMode,
+                    selectedPortionUnitId = resolvedSelectedId,
+                    countText = countText,
+                )
+            }
+            recalculate()
+
+            // Background refresh only, never on the path to a result: the value is already on screen
+            // by now (§10.2).
+            //
+            // CALCULATION-SESSION IMMUTABILITY (correction #5). The refresh must never replace the
+            // product this session is calculating with. Otherwise: the screen opens on 48.2, the user
+            // types 65, a refresh returns 51.0, and the answer changes under their hand while they are
+            // reading it. The newer figure is offered as a notice the user can accept. Portion units
+            // follow the exact same rule (§9).
             when (val outcome = repository.refreshFromRemote(product.barcode)) {
                 is RefreshOutcome.RemoteDiffers ->
                     _state.update { it.copy(newerRemoteCarbs = outcome.latestRemoteCarbs) }
                 RefreshOutcome.Unchanged -> Unit
+            }
+
+            val frozenSelected = units.firstOrNull { it.id == resolvedSelectedId }
+            if (frozenSelected != null) {
+                val refreshed = repository.findPortionUnits(product.barcode)
+                    .firstOrNull { it.id == frozenSelected.id }
+                val latest = refreshed?.latestRemoteAmountPerUnit
+                if (latest != null && latest.compareTo(frozenSelected.amountPerUnit) != 0) {
+                    _state.update { it.copy(newerRemotePortionUnitAmount = latest) }
+                }
             }
         }
     }
@@ -167,6 +228,95 @@ class ProductViewModel(
 
     fun setPortion(amount: BigDecimal) =
         onPortionChanged(amount.stripTrailingZeros().toPlainString())
+
+    // ---- countable portions (brief §9-§12) -----------------------------------------------------
+
+    /** Immediate, per §12: the portion field keeps whatever grams it last resolved to. */
+    fun switchToGrams() {
+        savedState[KEY_MODE] = InputMode.GRAMS.name
+        savedState.remove<Long>(KEY_SELECTED_UNIT)
+        _state.update { it.copy(inputMode = InputMode.GRAMS, selectedPortionUnitId = null) }
+    }
+
+    fun switchToPortionUnit(unitId: Long) {
+        val unit = _state.value.portionUnits.firstOrNull { it.id == unitId } ?: return
+        val countText = _state.value.countText.ifBlank { "1" }
+        savedState[KEY_MODE] = InputMode.PORTION_UNIT.name
+        savedState[KEY_SELECTED_UNIT] = unitId
+        savedState[KEY_COUNT] = countText
+        _state.update {
+            it.copy(inputMode = InputMode.PORTION_UNIT, selectedPortionUnitId = unitId, countText = countText)
+        }
+        recalculateFromCount(unit, countText)
+    }
+
+    fun onCountChanged(text: String) {
+        savedState[KEY_COUNT] = text
+        _state.update { it.copy(countText = text) }
+        val unit = _state.value.selectedPortionUnit ?: return
+        recalculateFromCount(unit, text)
+    }
+
+    private fun recalculateFromCount(unit: PortionUnit, countText: String) {
+        val count = PortionParser.parse(countText)
+        if (count == null) {
+            _state.update { it.copy(result = null) }
+            return
+        }
+        val resolved = PortionResolver.resolve(count, unit.amountPerUnit)
+        savedState[KEY_PORTION] = resolved.stripTrailingZeros().toPlainString()
+        _state.update { it.copy(portionText = resolved.stripTrailingZeros().toPlainString()) }
+        recalculate()
+    }
+
+    fun showAddPortionUnitForm(show: Boolean) = _state.update { it.copy(showAddPortionUnitForm = show) }
+
+    /** A unit the user defines themselves (§6). Always saved as verified — they read their own scale. */
+    fun addPortionUnit(kind: PortionUnitKind, amountPerUnit: BigDecimal, customLabel: String?) {
+        val product = _state.value.product ?: return
+        if (product.barcode.isEmpty() || amountPerUnit.signum() <= 0) return
+        viewModelScope.launch {
+            val saved = repository.saveUserPortionUnit(
+                barcode = product.barcode,
+                kind = kind,
+                amountPerUnit = amountPerUnit,
+                basis = product.basis,
+                customLabel = customLabel,
+            )
+            _state.update { it.copy(portionUnits = it.portionUnits + saved, showAddPortionUnitForm = false) }
+            switchToPortionUnit(saved.id)
+        }
+    }
+
+    /** The user checked the currently selected unit against the package (§7). */
+    fun verifySelectedPortionUnit() {
+        val unit = _state.value.selectedPortionUnit ?: return
+        viewModelScope.launch {
+            val verified = repository.verifyPortionUnit(unit.id)
+            _state.update { st ->
+                st.copy(portionUnits = st.portionUnits.map { if (it.id == verified.id) verified else it })
+            }
+        }
+    }
+
+    /** Deliberate acceptance of a newer remote weight; only then does the session change (§9). */
+    fun applyNewerRemotePortionUnit() {
+        val unit = _state.value.selectedPortionUnit ?: return
+        viewModelScope.launch {
+            val applied = repository.applyLatestRemotePortionUnit(unit.id)
+            _state.update { st ->
+                st.copy(
+                    portionUnits = st.portionUnits.map { if (it.id == applied.id) applied else it },
+                    newerRemotePortionUnitAmount = null,
+                )
+            }
+            if (_state.value.selectedPortionUnitId == applied.id) {
+                recalculateFromCount(applied, _state.value.countText)
+            }
+        }
+    }
+
+    fun dismissNewerRemotePortionUnit() = _state.update { it.copy(newerRemotePortionUnitAmount = null) }
 
     private fun recalculate() {
         val product = _state.value.product
@@ -190,12 +340,22 @@ class ProductViewModel(
         }
     }
 
-    /** Remember the portion once the user has actually acted on the result (§20, §21). */
+    /** Remember the portion once the user has actually acted on the result (§20, §21, §11-§12). */
     fun rememberUsage() {
         val product = _state.value.product ?: return
         val portion = PortionParser.parse(_state.value.portionText) ?: return
         if (_state.value.unsaved || product.barcode.isEmpty()) return
-        viewModelScope.launch { repository.recordUse(product.barcode, portion) }
+        val mode = _state.value.inputMode
+        val count = if (mode == InputMode.PORTION_UNIT) PortionParser.parse(_state.value.countText) else null
+        viewModelScope.launch {
+            repository.recordUse(
+                product.barcode,
+                portion,
+                mode = mode,
+                portionUnitId = _state.value.selectedPortionUnitId,
+                count = count,
+            )
+        }
     }
 
     fun toggleFavorite() {
@@ -252,6 +412,9 @@ class ProductViewModel(
 
     private companion object {
         const val KEY_PORTION = "portion_text"
+        const val KEY_COUNT = "count_text"
+        const val KEY_MODE = "input_mode"
+        const val KEY_SELECTED_UNIT = "selected_portion_unit_id"
 
         /** Long enough to cover typing a three-digit portion, short enough to beat a fast exit. */
         const val PORTION_SETTLE_MS = 600L

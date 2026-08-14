@@ -8,6 +8,7 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import app.carbscan.data.ProductRepository
 import app.carbscan.data.local.CarbScanDatabase
+import app.carbscan.data.local.RoomPortionUnitDataSource
 import app.carbscan.data.local.RoomProductDataSource
 import app.carbscan.data.remote.NetworkModule
 import app.carbscan.data.remote.OpenFoodFactsDataSource
@@ -27,11 +28,21 @@ class AppContainer(context: Context) {
     private val database by lazy { CarbScanDatabase.build(appContext) }
 
     val localProducts by lazy { RoomProductDataSource(database.productDao()) }
+    val localPortionUnits by lazy { RoomPortionUnitDataSource(database.portionUnitDao()) }
+
+    /**
+     * The app's single OkHttp client instance (§15/§65) — Retrofit and Coil both build on this
+     * exact object, not on two separately-constructed clients with matching config, so they
+     * actually share timeouts, connection pool and the identifying User-Agent rather than merely
+     * looking alike.
+     */
+    val okHttpClient by lazy { NetworkModule.okHttpClient() }
 
     val productRepository by lazy {
         ProductRepository(
             local = localProducts,
-            remote = OpenFoodFactsDataSource(NetworkModule.openFoodFactsApi()),
+            remote = OpenFoodFactsDataSource(NetworkModule.openFoodFactsApi(okHttpClient)),
+            portionUnits = localPortionUnits,
         )
     }
 
@@ -51,8 +62,10 @@ class CarbScanApplication : Application(), SingletonImageLoader.Factory {
     /**
      * Image loading for product thumbnails (§31).
      *
-     * Shares the app's single OkHttp client, so product images inherit the same timeouts and the
-     * same identifying User-Agent rather than opening a second, differently-configured stack.
+     * Shares the app's single OkHttp client instance (`container.okHttpClient`), not a second
+     * client built from matching config — the two are not the same thing: only a genuinely shared
+     * instance also shares the connection pool, so images inherit the same timeouts and the same
+     * identifying User-Agent as every other request rather than opening a second, look-alike stack.
      *
      * Images are a nicety and nothing waits for them: the calculator renders and computes with no
      * regard for whether a thumbnail has arrived, and the app is fully usable with none at all.
@@ -60,7 +73,7 @@ class CarbScanApplication : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .components {
-                add(OkHttpNetworkFetcherFactory(callFactory = { NetworkModule.okHttpClient() }))
+                add(OkHttpNetworkFetcherFactory(callFactory = { container.okHttpClient }))
             }
             .build()
 }

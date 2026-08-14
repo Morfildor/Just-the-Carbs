@@ -76,6 +76,12 @@ data class Product(
     /** Pre-filled on next use so a repeat product is one tap away (§20). */
     val lastPortion: BigDecimal? = null,
     val favorite: Boolean = false,
+    /** Which amount field was last used — grams/ml, or a countable portion unit (§11). */
+    val lastInputMode: InputMode? = null,
+    /** The [PortionUnit.id] last selected, so switching back to it is immediate (§11, §12). */
+    val lastSelectedPortionUnitId: Long? = null,
+    /** The last countable count entered, e.g. `2` for "2 slices" (§11). */
+    val lastCount: BigDecimal? = null,
 ) {
     /** The unit the portion field is locked to. Never converted (§17, design decision 3.1). */
     val portionUnit: String get() = basis.unitLabel

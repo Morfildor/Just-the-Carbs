@@ -3,6 +3,7 @@ package app.carbscan.data.local
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import app.carbscan.domain.InputMode
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
@@ -44,6 +45,10 @@ data class ProductEntity(
     val lastUsedAt: Long?,
     val lastPortion: String?,
     val favorite: Boolean,
+    /** [app.carbscan.domain.InputMode] name, or null if never used with a countable portion. */
+    val lastInputMode: String?,
+    val lastSelectedPortionUnitId: Long?,
+    val lastCount: String?,
 )
 
 fun Product.toEntity(): ProductEntity = ProductEntity(
@@ -64,6 +69,9 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
     lastUsedAt = lastUsedAt?.toEpochMilli(),
     lastPortion = lastPortion?.toPlainString(),
     favorite = favorite,
+    lastInputMode = lastInputMode?.name,
+    lastSelectedPortionUnitId = lastSelectedPortionUnitId,
+    lastCount = lastCount?.toPlainString(),
 )
 
 fun ProductEntity.toDomain(): Product = Product(
@@ -84,4 +92,7 @@ fun ProductEntity.toDomain(): Product = Product(
     lastUsedAt = lastUsedAt?.let(Instant::ofEpochMilli),
     lastPortion = lastPortion?.let(::BigDecimal),
     favorite = favorite,
+    lastInputMode = lastInputMode?.let(InputMode::valueOf),
+    lastSelectedPortionUnitId = lastSelectedPortionUnitId,
+    lastCount = lastCount?.let(::BigDecimal),
 )

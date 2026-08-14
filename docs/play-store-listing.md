@@ -37,7 +37,8 @@ Scan the barcode. Type how much you are having. Read the number. That's it.
 HOW IT WORKS
 
 • Scan a barcode and CarbScan looks the product up
-• Enter your portion in grams or millilitres
+• Enter your portion in grams or millilitres — or, when a trustworthy per-item
+  weight exists, just say how many: "2 slices" works without a kitchen scale
 • The carbohydrate amount updates as you type — there is no Calculate button
 • Copy the number with one tap if you need it somewhere else
 
@@ -65,8 +66,9 @@ has never seen needs an internet connection.
 PRIVATE BY DEFAULT
 
 No account. No advertising. No analytics we added. No tracking. Your products,
-portions and verified values stay on your device. The only request CarbScan makes
-is looking up a barcode you scanned.
+portions and verified values stay on your device. CarbScan only ever requests a
+barcode lookup and, when a product has one, its photo — both from Open Food
+Facts, nowhere else.
 
 WHAT CARBSCAN DOES NOT DO
 

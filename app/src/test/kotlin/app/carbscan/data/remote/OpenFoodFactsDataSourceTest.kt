@@ -2,6 +2,7 @@ package app.carbscan.data.remote
 
 import app.carbscan.domain.LookupError
 import app.carbscan.domain.NutritionBasis
+import app.carbscan.domain.PortionUnitKind
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductFetchResult
 import app.carbscan.domain.VerificationStatus
@@ -107,7 +108,7 @@ class OpenFoodFactsDataSourceTest {
         dataSource.fetch(barcode)
 
         val path = server.takeRequest().path.orEmpty()
-        assertTrue("path was $path", path.contains("/api/v2/product/$barcode"))
+        assertTrue("path was $path", path.contains("/api/v3/product/$barcode"))
         assertTrue("path was $path", path.contains("fields="))
     }
 
@@ -181,6 +182,58 @@ class OpenFoodFactsDataSourceTest {
         respond("""{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":4820.0}}}""")
 
         assertEquals(ProductFetchResult.Unusable(barcode), dataSource.fetch(barcode))
+    }
+
+    // ---- countable-portions brief §7: serving_size --------------------------------------------
+
+    @Test
+    fun `a well-formed serving size becomes a portion unit candidate`() = runTest {
+        respond(
+            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0},
+               "serving_size":"1 slice (36 g)"}}""",
+        )
+
+        val result = dataSource.fetch(barcode) as ProductFetchResult.Found
+
+        val candidate = requireNotNull(result.portionUnitCandidate)
+        assertEquals(PortionUnitKind.SLICE, candidate.kind)
+        assertEquals(0, BigDecimal("36").compareTo(candidate.amountPerUnit))
+        assertEquals(NutritionBasis.PER_100_G, candidate.basis)
+        assertEquals("1 slice (36 g)", candidate.rawServingText)
+    }
+
+    @Test
+    fun `an ambiguous serving size yields no candidate, not a guess`() = runTest {
+        respond(
+            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0},
+               "serving_size":"approx. 35 g"}}""",
+        )
+
+        val result = dataSource.fetch(barcode) as ProductFetchResult.Found
+
+        assertNull(result.portionUnitCandidate)
+    }
+
+    @Test
+    fun `a serving size in the wrong basis is dropped rather than mixed with the product basis`() = runTest {
+        respond(
+            """{"product":{"product_name":"Juice","quantity":"1 l","nutriments":{"carbohydrates_100g":9.4},
+               "serving_size":"1 scoop (30 g)"}}""",
+        )
+
+        val result = dataSource.fetch(barcode) as ProductFetchResult.Found
+
+        assertEquals(NutritionBasis.PER_100_ML, result.product.basis)
+        assertNull("a gram serving on an ml product must not be mixed in", result.portionUnitCandidate)
+    }
+
+    @Test
+    fun `no serving_size field yields no candidate`() = runTest {
+        respond("""{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":1.0}}}""")
+
+        val result = dataSource.fetch(barcode) as ProductFetchResult.Found
+
+        assertNull(result.portionUnitCandidate)
     }
 
     @Test

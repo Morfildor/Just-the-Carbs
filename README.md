@@ -23,6 +23,19 @@ RECENT → PORTION → CARBS
 Everything in the app exists to make one of those two paths faster, safer or clearer. A feature that
 does not is left out.
 
+**Countable portions** (2026-08-14) let the portion step be a count instead of a weight, when a
+per-item weight is available and trustworthy:
+
+```
+SCAN → 2 slices → CARBS
+```
+
+`2 slices × 36 g = 72 g` is resolved by `PortionResolver`, a pure conversion layer — the app still
+has exactly one carbohydrate formula, `carbsPer100 × portion / 100`; a countable unit only ever
+supplies the `portion` value. Per-item weights come from Open Food Facts' `serving_size` text
+(parsed cautiously — a false negative is fine, a false positive mapping is not) or from the user
+directly. See [docs/superpowers/specs/2026-08-14-countable-portions-design.md](docs/superpowers/specs/2026-08-14-countable-portions-design.md).
+
 **Screenshots:** *(placeholders — capture from a physical device)*
 `docs/screenshots/01-home.png` · `02-scanner.png` · `03-calculator.png` · `04-verify.png` ·
 `05-manual-entry.png`
@@ -33,11 +46,13 @@ Deliberately flat. A small app does not need a clean-architecture framework.
 
 ```
 domain/    Pure Kotlin, zero Android imports — the safety-critical layer
+           PortionResolver, ServingSizeParser, PortionUnit, ProductImageUrlValidator
 data/
-  local/   Room: ProductEntity, ProductDao, RoomProductDataSource
-  remote/  Open Food Facts: Retrofit API, DTOs, OpenFoodFactsDataSource
+  local/   Room (v3): ProductEntity/Dao, PortionUnitEntity/Dao, RoomProductDataSource,
+           RoomPortionUnitDataSource
+  remote/  Open Food Facts v3: Retrofit API, DTOs, OpenFoodFactsDataSource
   settings/DataStore preferences
-  ProductRepository   ← owns the §10 lookup priority
+  ProductRepository   ← owns the §10 lookup priority and portion-unit persistence/verification
 ocr/       NutritionLabelParser (pure) + LabelAnalyzer (ML Kit)
 ui/        Compose screens + ViewModels, immutable state via StateFlow
 ```
@@ -95,17 +110,25 @@ protected even though its provenance is OFF.
 Once the calculator is open, a background refresh **never** changes the value being calculated
 with. It records the newer figure and shows an *Online value changed* notice the user can accept.
 Otherwise the screen could open on 48.2, the user types a portion, and the answer moves under their
-hand while they are reading it.
+hand while they are reading it. The same rule covers a selected countable portion unit: a refresh
+can update `PortionUnit.latestRemoteAmountPerUnit` for a notice, never the `amountPerUnit` the open
+session is calculating with.
 
 ## Privacy
 
 No account, no advertising, no analytics we added, no tracker. Permissions: `CAMERA` and `INTERNET`.
-Products, portions, favourites and verified values stay on-device; Android backup is disabled.
+Products, portions, countable portion units, favourites and verified values stay on-device; Android
+backup is disabled.
 
-The only request CarbScan's own code makes is a barcode lookup to Open Food Facts — the privacy
-policy says so explicitly rather than claiming "no data leaves your device", which would be false.
-ML Kit ships a Google telemetry transport we do not control; that is disclosed, not hidden. See
-[docs/privacy-policy.md](docs/privacy-policy.md).
+CarbScan's own code makes two kinds of request: a barcode lookup to Open Food Facts, and — when a
+product has one — a request for its photo, restricted to Open Food Facts' own image hosts
+(`ProductImageUrlValidator`). The privacy policy says so explicitly rather than claiming "no data
+leaves your device", which would be false. ML Kit ships a Google telemetry transport we do not
+control; that is disclosed, not hidden. See [docs/privacy-policy.md](docs/privacy-policy.md).
+
+Retrofit and Coil (images) share **one** `OkHttpClient` instance (`AppContainer.okHttpClient`), not
+two separately-constructed clients with matching config — both genuinely inherit the same
+connection pool, timeouts and identifying User-Agent.
 
 ## Build
 
@@ -113,10 +136,10 @@ ML Kit ships a Google telemetry transport we do not control; that is disclosed, 
 $env:JAVA_HOME="<path to JDK 21>"
 $env:ANDROID_HOME="C:\atools\sdk"
 
-.\gradlew.bat :app:testDebugUnitTest        # 116 JVM unit tests
+.\gradlew.bat :app:testDebugUnitTest        # 167 JVM unit tests
 .\gradlew.bat :app:lintDebug                # Android lint
 .\gradlew.bat :app:assembleDebug            # debug APK
-.\gradlew.bat :app:connectedDebugAndroidTest # 26 instrumented tests (needs a device)
+.\gradlew.bat :app:connectedDebugAndroidTest # instrumented tests (needs a device)
 ```
 
 Requires JDK 21, Android SDK platform **37** and build-tools 37. `compileSdk` is 37 because AndroidX
@@ -153,11 +176,16 @@ your upload key can be rotated if lost.
 | Value validation | null, NaN, infinity, negative, impossible magnitudes | 10 tests, passing |
 | Package quantity | g/ml/l/cl/kg, comma decimals, multipack refusal | 11 tests, passing |
 | Barcode | EAN-13/8, UPC-A check digits, normalisation | 10 tests, passing |
-| Repository | §10 priority, 7 provenance regressions, refresh rules | 22 tests, passing |
-| Open Food Facts | real HTTP via MockWebServer: malformed JSON, 429, 500, dropped connection | 17 tests, passing |
+| Repository | §10 priority, 7 provenance regressions, refresh rules, portion-unit persistence/verification/immutability | 40 tests, passing |
+| Open Food Facts | real HTTP via MockWebServer: malformed JSON, 429, 500, dropped connection, v3 endpoint, serving_size candidates | 21 tests, passing |
 | OCR parsing | Dutch/English, 100 g / 100 ml, sugars sub-line, ambiguity, failure | 14 tests, passing |
-| Room DAO | ordering, favourites float, TEXT decimal round-trip | 10 instrumented, passing |
-| Calculator UI (§60) | result on typing, no Calculate button, quick adjust, ml lock, provenance badges, pack shortcuts, double-rounding guard, long names, zero-carb, large and decimal portions | 16 instrumented, passing |
+| Portion resolution | count × amount-per-unit, zero, decimal, large, negative rejection | 7 tests, passing |
+| Serving size parsing | English + Dutch recognition, multi-count normalization, ambiguity rejection | 20 tests, passing |
+| Image URL validation | HTTPS + host allowlist, rejects unapproved/malformed URLs | 6 tests, passing |
+| Room DAO | ordering, favourites float, TEXT decimal round-trip | 10 instrumented |
+| Room v2→v3 migration | non-destructive, new columns/table, cascade delete | 4 instrumented |
+| Calculator UI (§60) | result on typing, no Calculate button, quick adjust, ml lock, provenance badges, pack shortcuts, double-rounding guard, long names, zero-carb, large and decimal portions | 16 instrumented |
+| Countable-portion UI (§22) | mode switching, derived-amount equation, user-defined units, session immutability | 10 instrumented |
 
 **Verified on hardware:** barcode decoding and label OCR. **Verified against the live API:**
 product lookup and images. **Not verified:** breadth of physical devices, and the release build on
@@ -188,8 +216,11 @@ anything with this app publicly.**
 | [play-health-declaration.md](docs/play-health-declaration.md) | Health policy declaration prep |
 | [play-store-listing.md](docs/play-store-listing.md) | Store copy |
 | [store-assets.md](docs/store-assets.md) | Required asset specs |
-| [third-party-notices.md](docs/third-party-notices.md) | Licences and ODbL attribution |
+| [third-party-notices.md](docs/third-party-notices.md) | Licences and ODbL/CC BY-SA attribution |
 | [manual-qa.md](docs/manual-qa.md) | Manual QA checklist |
+| [security-review.md](docs/security-review.md) | Permissions, network, backup, dependencies |
+| [ux-critique-countable-portions.md](docs/ux-critique-countable-portions.md) | §69-style critique of the countable-portions feature |
+| [superpowers/specs/2026-08-14-countable-portions-design.md](docs/superpowers/specs/2026-08-14-countable-portions-design.md) | Countable-portions design spec |
 | [MASTER-PROMPT.md](docs/MASTER-PROMPT.md) | The original requirements brief (§ references) |
 
 ## Licence

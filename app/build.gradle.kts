@@ -116,6 +116,14 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
+    // Room's MigrationTestHelper (androidTest) loads exported schema JSON from assets at runtime;
+    // without this it cannot find app.carbscan.data.local.CarbScanDatabase/<version>.json.
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDirs("$projectDir/schemas")
+        }
+    }
+
     lint {
         warningsAsErrors = false
         abortOnError = true
@@ -181,12 +189,12 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.room.testing)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.turbine)
 
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.room.testing)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)

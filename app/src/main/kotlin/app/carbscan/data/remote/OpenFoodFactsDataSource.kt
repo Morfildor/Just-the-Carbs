@@ -3,10 +3,12 @@ package app.carbscan.data.remote
 import app.carbscan.domain.LookupError
 import app.carbscan.domain.NutritionValueValidator
 import app.carbscan.domain.PackageQuantityParser
+import app.carbscan.domain.PortionUnitCandidate
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
+import app.carbscan.domain.ServingSizeParser
 import app.carbscan.domain.VerificationStatus
 import kotlinx.serialization.SerializationException
 import java.io.IOException
@@ -65,8 +67,23 @@ class OpenFoodFactsDataSource(private val api: OpenFoodFactsApi) : ProductDataSo
             basis = basis,
         ) ?: return ProductFetchResult.Unusable(barcode)
 
+        // A parsed serving size is only trustworthy if its basis matches the product's own — a
+        // countable unit measured in ml has no meaning for a product whose carbs are per 100 g, and
+        // the two never converting into each other (§17) rules out silently coercing one to the
+        // other here too.
+        val servingSize = ServingSizeParser.parse(remote.servingSize)
+            ?.takeIf { it.basis == basis }
+            ?.let {
+                PortionUnitCandidate(
+                    kind = it.kind,
+                    amountPerUnit = it.amountPerUnit,
+                    basis = it.basis,
+                    rawServingText = remote.servingSize.orEmpty(),
+                )
+            }
+
         return ProductFetchResult.Found(
-            Product(
+            product = Product(
                 barcode = barcode,
                 name = name,
                 carbsPer100 = carbs,
@@ -77,6 +94,7 @@ class OpenFoodFactsDataSource(private val api: OpenFoodFactsApi) : ProductDataSo
                 packageAmount = quantity?.amount,
                 imageUrl = remote.imageFrontSmallUrl?.takeIf { it.isNotBlank() },
             ),
+            portionUnitCandidate = servingSize,
         )
     }
 

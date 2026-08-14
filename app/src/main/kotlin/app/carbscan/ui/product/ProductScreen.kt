@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,10 +70,17 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.carbscan.R
 import app.carbscan.domain.AppSettings
+import app.carbscan.domain.InputMode
 import app.carbscan.domain.LookupError
+import app.carbscan.domain.NutritionBasis
+import app.carbscan.domain.PortionParser
+import app.carbscan.domain.PortionUnit
+import app.carbscan.domain.PortionUnitKind
 import app.carbscan.domain.Product
+import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ResultFormatter
 import app.carbscan.domain.ResultStyle
+import app.carbscan.domain.VerificationStatus
 import app.carbscan.ui.components.FavoriteButton
 import app.carbscan.ui.components.RecoveryPanel
 import app.carbscan.ui.components.SourceBadge
@@ -107,6 +115,14 @@ fun ProductScreen(
     onRetry: () -> Unit,
     onApplyNewerRemote: () -> Unit = {},
     onDismissNewerRemote: () -> Unit = {},
+    onSwitchToGrams: () -> Unit = {},
+    onSwitchToPortionUnit: (Long) -> Unit = {},
+    onCountChanged: (String) -> Unit = {},
+    onShowAddPortionUnitForm: (Boolean) -> Unit = {},
+    onAddPortionUnit: (PortionUnitKind, BigDecimal, String?) -> Unit = { _, _, _ -> },
+    onVerifyPortionUnit: () -> Unit = {},
+    onApplyNewerRemotePortionUnit: () -> Unit = {},
+    onDismissNewerRemotePortionUnit: () -> Unit = {},
 ) {
     if (state.showVerifyDialog && state.product != null) {
         VerifyDialog(
@@ -149,6 +165,14 @@ fun ProductScreen(
                 onSetPortion = onSetPortion,
                 onApplyNewerRemote = onApplyNewerRemote,
                 onDismissNewerRemote = onDismissNewerRemote,
+                onSwitchToGrams = onSwitchToGrams,
+                onSwitchToPortionUnit = onSwitchToPortionUnit,
+                onCountChanged = onCountChanged,
+                onShowAddPortionUnitForm = onShowAddPortionUnitForm,
+                onAddPortionUnit = onAddPortionUnit,
+                onVerifyPortionUnit = onVerifyPortionUnit,
+                onApplyNewerRemotePortionUnit = onApplyNewerRemotePortionUnit,
+                onDismissNewerRemotePortionUnit = onDismissNewerRemotePortionUnit,
             )
         }
     }
@@ -289,6 +313,14 @@ private fun CalculatorBody(
     onSetPortion: (BigDecimal) -> Unit,
     onApplyNewerRemote: () -> Unit = {},
     onDismissNewerRemote: () -> Unit = {},
+    onSwitchToGrams: () -> Unit = {},
+    onSwitchToPortionUnit: (Long) -> Unit = {},
+    onCountChanged: (String) -> Unit = {},
+    onShowAddPortionUnitForm: (Boolean) -> Unit = {},
+    onAddPortionUnit: (PortionUnitKind, BigDecimal, String?) -> Unit = { _, _, _ -> },
+    onVerifyPortionUnit: () -> Unit = {},
+    onApplyNewerRemotePortionUnit: () -> Unit = {},
+    onDismissNewerRemotePortionUnit: () -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -331,21 +363,63 @@ private fun CalculatorBody(
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(Space.m))
-            PortionField(
-                value = state.portionText,
-                unit = product.portionUnit,
-                onValueChange = onPortionChanged,
-            )
+            // Only rendered when countable units genuinely exist (§11 of the countable-portions
+            // brief) — a product with none keeps today's exact single-field layout, unchanged.
+            if (state.portionUnits.isNotEmpty()) {
+                Spacer(Modifier.height(Space.m))
+                PortionModeRow(
+                    units = state.portionUnits,
+                    selectedUnitId = state.selectedPortionUnitId,
+                    isGramsSelected = state.inputMode == InputMode.GRAMS,
+                    onSelectGrams = onSwitchToGrams,
+                    onSelectUnit = onSwitchToPortionUnit,
+                )
+            }
 
             Spacer(Modifier.height(Space.m))
-            QuickAdjustRow(onAdjust = onAdjust)
-
-            // Only offered when the package size was read confidently. A guessed pack size would
-            // be a wrong portion presented as a shortcut (§14, §13).
-            product.packageAmount?.let { pack ->
+            val selectedUnit = state.selectedPortionUnit
+            if (state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null) {
+                CountField(value = state.countText, unit = selectedUnit, onValueChange = onCountChanged)
                 Spacer(Modifier.height(Space.s))
-                PackShortcuts(pack = pack, onSetPortion = onSetPortion)
+                PortionEquationText(count = state.countText, unit = selectedUnit, resolvedGrams = state.portionText)
+                Spacer(Modifier.height(Space.s))
+                PortionUnitStatusRow(unit = selectedUnit, onVerify = onVerifyPortionUnit)
+                state.newerRemotePortionUnitAmount?.let { newer ->
+                    Spacer(Modifier.height(Space.s))
+                    PortionUnitChangedNotice(
+                        newerAmount = newer,
+                        unit = selectedUnit,
+                        onApply = onApplyNewerRemotePortionUnit,
+                        onDismiss = onDismissNewerRemotePortionUnit,
+                    )
+                }
+            } else {
+                PortionField(
+                    value = state.portionText,
+                    unit = product.portionUnit,
+                    onValueChange = onPortionChanged,
+                )
+
+                Spacer(Modifier.height(Space.m))
+                QuickAdjustRow(onAdjust = onAdjust)
+
+                // Only offered when the package size was read confidently. A guessed pack size
+                // would be a wrong portion presented as a shortcut (§14, §13).
+                product.packageAmount?.let { pack ->
+                    Spacer(Modifier.height(Space.s))
+                    PackShortcuts(pack = pack, onSetPortion = onSetPortion)
+                }
+            }
+
+            if (product.barcode.isNotEmpty()) {
+                Spacer(Modifier.height(Space.s))
+                AddPortionUnitAction(
+                    expanded = state.showAddPortionUnitForm,
+                    basisUnit = product.portionUnit,
+                    onExpand = { onShowAddPortionUnitForm(true) },
+                    onCancel = { onShowAddPortionUnitForm(false) },
+                    onSave = { kind, amount, label -> onAddPortionUnit(kind, amount, label) },
+                )
             }
 
             Spacer(Modifier.height(Space.l))
@@ -463,6 +537,238 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
             contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.s),
             modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
         ) { Text(stringResource(R.string.product_full_pack), textAlign = TextAlign.Center) }
+    }
+}
+
+/**
+ * Grams | <one chip per countable unit> (countable-portions brief §9, §11). Only rendered when
+ * the product has at least one countable unit — a plain product keeps today's single field.
+ */
+@Composable
+private fun PortionModeRow(
+    units: List<PortionUnit>,
+    selectedUnitId: Long?,
+    isGramsSelected: Boolean,
+    onSelectGrams: () -> Unit,
+    onSelectUnit: (Long) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Space.xs),
+    ) {
+        FilterChip(
+            selected = isGramsSelected,
+            onClick = onSelectGrams,
+            label = { Text(stringResource(R.string.product_mode_grams)) },
+            shape = RoundedCornerShape(Space.buttonRadius),
+        )
+        units.forEach { unit ->
+            FilterChip(
+                selected = !isGramsSelected && unit.id == selectedUnitId,
+                onClick = { onSelectUnit(unit.id) },
+                label = { Text(unit.chipLabel()) },
+                shape = RoundedCornerShape(Space.buttonRadius),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CountField(value: String, unit: PortionUnit, onValueChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        textStyle = NumberType.portion,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        suffix = { Text(text = unit.unitLabel(count = 2), style = MaterialTheme.typography.titleMedium) },
+        shape = RoundedCornerShape(Space.buttonRadius),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "" },
+    )
+}
+
+/**
+ * "2 slices × 36 g = 72 g" — the derived gram amount shown as supporting information, never as the
+ * dominant figure (brief §9, §11). Lets the user see where the calculation came from and quickly
+ * spot a wrong per-unit weight without doing the multiplication themselves.
+ */
+@Composable
+private fun PortionEquationText(count: String, unit: PortionUnit, resolvedGrams: String) {
+    if (resolvedGrams.isBlank()) return
+    // English pluralization: only exactly 1 is singular ("1 slice"); 0, 1.5, 2... are all plural
+    // ("0 slices", "1.5 slices", "2 slices") — the equation is read as a sentence, so getting this
+    // wrong reads as a typo, unlike the mode chip's fixed representative plural.
+    val pluralQuantity = if (PortionParser.parse(count)?.compareTo(BigDecimal.ONE) == 0) 1 else 2
+    Text(
+        text = stringResource(
+            R.string.product_count_equation,
+            count.ifBlank { "0" },
+            unit.unitLabel(count = pluralQuantity),
+            unit.amountPerUnit.stripTrailingZeros().toPlainString(),
+            unit.basis.unitLabel,
+            resolvedGrams,
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+        textAlign = TextAlign.Center,
+    )
+}
+
+/** Provenance/verification badge for the selected countable unit, mirroring [SourceBadge]. */
+@Composable
+private fun PortionUnitStatusRow(unit: PortionUnit, onVerify: () -> Unit) {
+    val isVerified = unit.verificationStatus == VerificationStatus.USER_VERIFIED
+    val isFromOff = unit.dataSource == ProductDataOrigin.OPEN_FOOD_FACTS
+
+    if (!isFromOff) return // user-defined units need no provenance badge — they are simply the user's own.
+
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        if (isVerified) {
+            Text(
+                text = stringResource(R.string.product_verified_portion),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            TextButton(onClick = onVerify) {
+                Text(stringResource(R.string.product_online_portion), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+/** Same immutability pattern as [RemoteChangedNotice], scoped to the countable unit in use (§9). */
+@Composable
+private fun PortionUnitChangedNotice(
+    newerAmount: BigDecimal,
+    unit: PortionUnit,
+    onApply: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Space.buttonRadius))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(Space.m),
+    ) {
+        Text(
+            text = stringResource(R.string.portion_changed_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(Space.xs))
+        Text(
+            text = stringResource(
+                R.string.portion_changed_body,
+                newerAmount.stripTrailingZeros().toPlainString(),
+                unit.basis.unitLabel,
+                unit.unitLabel(count = 1),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
+            TextButton(onClick = onApply) { Text(stringResource(R.string.portion_changed_apply)) }
+        }
+    }
+}
+
+/**
+ * "+ Add portion unit" (brief §6). A subtle text action that expands into a small inline form —
+ * deliberately not a new screen/route, so adding a unit never interrupts the calculator.
+ */
+@Composable
+private fun AddPortionUnitAction(
+    expanded: Boolean,
+    basisUnit: String,
+    onExpand: () -> Unit,
+    onCancel: () -> Unit,
+    onSave: (PortionUnitKind, BigDecimal, String?) -> Unit,
+) {
+    if (!expanded) {
+        TextButton(onClick = onExpand) {
+            Text(stringResource(R.string.product_add_portion_unit), style = MaterialTheme.typography.bodyMedium)
+        }
+        return
+    }
+
+    var kind by remember { mutableStateOf(PortionUnitKind.SLICE) }
+    var kindMenuOpen by remember { mutableStateOf(false) }
+    var customName by remember { mutableStateOf("") }
+    var amountText by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Space.buttonRadius))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(Space.m),
+    ) {
+        Text(
+            text = stringResource(R.string.product_add_portion_unit_title),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Spacer(Modifier.height(Space.s))
+
+        Text(
+            text = stringResource(R.string.product_portion_unit_type),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box {
+            OutlinedButton(onClick = { kindMenuOpen = true }, shape = RoundedCornerShape(Space.buttonRadius)) {
+                Text(if (kind == PortionUnitKind.CUSTOM) stringResource(R.string.product_portion_unit_custom_name) else kind.name)
+            }
+            DropdownMenu(expanded = kindMenuOpen, onDismissRequest = { kindMenuOpen = false }) {
+                PortionUnitKind.entries.forEach { candidate ->
+                    DropdownMenuItem(
+                        text = { Text(candidate.name) },
+                        onClick = { kind = candidate; kindMenuOpen = false },
+                    )
+                }
+            }
+        }
+
+        if (kind == PortionUnitKind.CUSTOM) {
+            Spacer(Modifier.height(Space.s))
+            OutlinedTextField(
+                value = customName,
+                onValueChange = { customName = it },
+                label = { Text(stringResource(R.string.product_portion_unit_custom_name)) },
+                singleLine = true,
+                shape = RoundedCornerShape(Space.buttonRadius),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        Spacer(Modifier.height(Space.s))
+        OutlinedTextField(
+            value = amountText,
+            onValueChange = { amountText = it },
+            label = { Text(stringResource(R.string.product_portion_unit_weighs, kind.name.lowercase())) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            suffix = { Text(basisUnit) },
+            shape = RoundedCornerShape(Space.buttonRadius),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(Space.s))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
+            TextButton(
+                onClick = {
+                    val amount = PortionParser.parse(amountText) ?: return@TextButton
+                    if (kind == PortionUnitKind.CUSTOM && customName.isBlank()) return@TextButton
+                    onSave(kind, amount, customName.ifBlank { null }.takeIf { kind == PortionUnitKind.CUSTOM })
+                },
+            ) { Text(stringResource(R.string.product_save)) }
+        }
     }
 }
 

@@ -22,9 +22,14 @@ These are verified against the code and can be relied on.
 
 ### What it does
 
-- Multiplies a declared carbohydrate value by a user-entered portion and divides by 100.
-- Displays the result as whole grams with a decimal beneath.
-- Stores products, portions, favourites and user-verified values on the device.
+- Multiplies a declared carbohydrate value by a user-entered portion and divides by 100. A
+  countable-portion entry (e.g. "2 slices") is resolved to that same gram/ml portion before the
+  identical calculation runs — there is one formula, never two.
+- Displays the result as a decimal (`31.3 g`) with a whole-gram figure beneath (`≈ 31 g`); the
+  decimal is the dominant figure, revised 2026-08-14 because the result is transcribed by hand
+  into a separate bolus calculator, where the lost precision of a whole-gram-only figure matters.
+- Stores products, portions, countable portion units, favourites and user-verified values on the
+  device.
 
 ### What it does not do
 
@@ -71,7 +76,7 @@ Read each against the current policy text and record the outcome.
 | Sensitive permissions | None |
 | Health data accessed | None |
 | Health data transmitted | None |
-| Data transmitted off-device | A scanned barcode, to Open Food Facts, only when uncached |
+| Data transmitted off-device | A scanned barcode, to Open Food Facts, only when uncached; and a request to Open Food Facts' image host for the product's photo, when one exists — see [privacy-policy.md](privacy-policy.md) |
 | User identifiers transmitted | None — no account or device identifier exists |
 | Analytics / advertising SDK added by us | None |
 | Third-party telemetry present | ML Kit's `com.google.android.datatransport` — see [google-play-data-safety.md](google-play-data-safety.md) |

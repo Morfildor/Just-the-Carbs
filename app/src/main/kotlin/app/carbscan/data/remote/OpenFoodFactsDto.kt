@@ -35,6 +35,14 @@ data class OffProduct(
     val quantity: String? = null,
     val nutriments: OffNutriments? = null,
     @SerialName("image_front_small_url") val imageFrontSmallUrl: String? = null,
+    /**
+     * Free text, e.g. "1 slice (36 g)". Feeds [app.carbscan.domain.ServingSizeParser] only —
+     * `serving_quantity`/`serving_quantity_unit` are deliberately not modelled here: OFF documents
+     * `serving_quantity` as its own normalized extraction from this same text, not an independently
+     * trustworthy "grams per countable unit" (countable-portions brief §7), so there is nothing this
+     * app would do with them that parsing this field directly does not already cover.
+     */
+    @SerialName("serving_size") val servingSize: String? = null,
 )
 
 @Serializable
