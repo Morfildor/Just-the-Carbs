@@ -1,9 +1,17 @@
 # Regulatory release checklist — CarbScan
 
-**Status: UNRESOLVED. This document blocks production publication (brief §44).**
+**Status: UNRESOLVED pending owner signature. This document blocks production publication
+(brief §44).**
 
 Nothing in this file is a regulatory determination. It is a list of questions the owner must
 answer, with evidence, before CarbScan is published to any public store.
+
+> **A drafted assessment now exists:**
+> [regulatory-qualification-assessment.md](regulatory-qualification-assessment.md) (2026-08-14).
+> It sets out the owner's position that CarbScan is **not** a medical device, with the reasoning,
+> the MDCG 2019-11 **rev.1** criteria, the verifiable facts it rests on, and — deliberately — the
+> strongest argument against it. **It is a draft and carries no weight until the owner signs §8.**
+> Items 2.1–2.3 below are drafted there; 2.4–2.7 remain open.
 
 ---
 
@@ -28,13 +36,17 @@ qualification assessment has to examine.
 
 | # | Action | Done | Evidence / date |
 |---|---|---|---|
-| 2.1 | Write the formal **intended purpose** statement, in the words that will appear in the store listing and in-app | ☐ | |
-| 2.2 | Assess qualification under **MDR 2017/745 Article 2(1)** against that intended purpose | ☐ | |
-| 2.3 | Assess against **current MDCG software qualification and classification guidance** (MDCG 2019-11 and any successor — confirm the current version before relying on it) | ☐ | |
-| 2.4 | If qualified as a device: determine **class**, conformity assessment route, and whether a notified body is required | ☐ | |
-| 2.5 | Assess the **Google Play Health Content and Services** policy as it currently reads | ☐ | |
-| 2.6 | Determine whether markets outside the EU are in scope, and assess each separately (UK MHRA, US FDA, etc.) | ☐ | |
-| 2.7 | Record the conclusion, the reasoning, and the date, and retain it | ☐ | |
+| 2.1 | Write the formal **intended purpose** statement, in the words that will appear in the store listing and in-app | ◐ | **Drafted** — assessment §1. Owner must adopt or amend it |
+| 2.2 | Assess qualification under **MDR 2017/745 Article 2(1)** against that intended purpose | ◐ | **Drafted** — assessment §3, concludes not a medical device |
+| 2.3 | Assess against **current MDCG software qualification and classification guidance** | ◐ | **Drafted** — assessment §4, against **MDCG 2019-11 rev.1 (June 2025)**, confirmed current 2026-08-14. Re-confirm at signing |
+| 2.4 | If qualified as a device: determine **class**, conformity assessment route, and whether a notified body is required | n/a | Not reached — conditional on 2.2/2.3 concluding otherwise |
+| 2.5 | Assess the **Google Play Health Content and Services** policy as it currently reads | ☐ | Separate gate. Play's "health app" definition is broader than MDR's device definition — being out of MDR scope does not settle this |
+| 2.6 | Determine whether markets outside the EU are in scope, and assess each separately (UK MHRA, US FDA, etc.) | ☐ | **Undecided.** Assessment covers the **EU only**. Geo-restrict the Play listing to the EU until decided |
+| 2.7 | Record the conclusion, the reasoning, and the date, and retain it | ☐ | **The signature is the deliverable.** Assessment §8 is unsigned |
+| 2.8 | Review **MDCG 2025-4** (June 2025) — safe making available of medical device software on online platforms | ☐ | New guidance, directly relevant to a Play release |
+| 2.9 | Consider an independent review by an EU MDR software consultant | ☐ | Recommended given the adjacency discussed in assessment §5 |
+
+Legend: ☐ open · ◐ drafted, awaiting owner adoption · ☑ complete
 
 ## 3. Decision record
 
