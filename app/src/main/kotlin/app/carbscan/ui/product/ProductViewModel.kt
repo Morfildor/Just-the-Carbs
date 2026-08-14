@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.carbscan.data.ProductRepository
+import app.carbscan.data.RefreshOutcome
 import app.carbscan.domain.CarbCalculator
 import app.carbscan.domain.CarbResult
 import app.carbscan.domain.LookupError
@@ -34,6 +35,13 @@ data class ProductUiState(
     /** True for a quick calculation that has not been saved as a product (§28). */
     val unsaved: Boolean = false,
     val showVerifyDialog: Boolean = false,
+    /**
+     * A newer online value seen during this session (corrections #5, #10).
+     *
+     * Held as a *notice*, not applied. The product being calculated with is a fixed snapshot for
+     * the life of the session.
+     */
+    val newerRemoteCarbs: BigDecimal? = null,
 ) {
     val canCalculate: Boolean get() = product != null
 }
@@ -128,14 +136,18 @@ class ProductViewModel(
         }
         recalculate()
 
-        // Only ever a background refresh, never on the path to a result: the value is already on
-        // screen by now (§10.2). A verified or user-authored product returns immediately.
+        // Background refresh only, never on the path to a result: the value is already on screen
+        // by now (§10.2).
+        //
+        // CALCULATION-SESSION IMMUTABILITY (correction #5). The refresh must never replace the
+        // product this session is calculating with. Otherwise: the screen opens on 48.2, the user
+        // types 65, a refresh returns 51.0, and the answer changes under their hand while they are
+        // reading it. The newer figure is offered as a notice the user can accept.
         viewModelScope.launch {
-            if (repository.refreshFromRemote(product.barcode)) {
-                (repository.lookup(product.barcode) as? ProductFetchResult.Found)?.let { fresh ->
-                    _state.update { it.copy(product = fresh.product) }
-                    recalculate()
-                }
+            when (val outcome = repository.refreshFromRemote(product.barcode)) {
+                is RefreshOutcome.RemoteDiffers ->
+                    _state.update { it.copy(newerRemoteCarbs = outcome.latestRemoteCarbs) }
+                RefreshOutcome.Unchanged -> Unit
             }
         }
     }
@@ -193,6 +205,21 @@ class ProductViewModel(
         _state.update { it.copy(product = product.copy(favorite = next)) }
         viewModelScope.launch { repository.setFavorite(product.barcode, next) }
     }
+
+    /** The user explicitly accepts the newer online value; only then does the session change. */
+    fun applyNewerRemoteValue() {
+        val product = _state.value.product ?: return
+        viewModelScope.launch {
+            repository.applyLatestRemoteValue(product.barcode)
+            (repository.lookup(product.barcode) as? ProductFetchResult.Found)?.let { updated ->
+                _state.update { it.copy(product = updated.product, newerRemoteCarbs = null) }
+                recalculate()
+            }
+        }
+    }
+
+    /** Dismissing keeps the session exactly as it is; the newer value stays recorded locally. */
+    fun dismissNewerRemoteValue() = _state.update { it.copy(newerRemoteCarbs = null) }
 
     fun showVerifyDialog(show: Boolean) = _state.update { it.copy(showVerifyDialog = show) }
 

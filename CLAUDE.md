@@ -45,11 +45,13 @@ GitHub: **https://github.com/Morfildor/CarbScan** — private, and staying priva
 - ✅ Room + `ProductRepository` owning the §10 lookup priority
 - ✅ Open Food Facts data source behind the `ProductDataSource` abstraction
 - ✅ Full UI: home, scanner, calculator, manual entry, verify dialog, label OCR, settings
-- ✅ **110 JVM unit tests + 10 instrumented tests passing, lint clean**
+- ✅ **116 JVM unit tests + 26 instrumented tests passing, lint clean**
 - ✅ Debug APK and minified release APK both build
 - ✅ §73 documentation set complete in `docs/`
 - ✅ CI workflow (`.github/workflows/ci.yml`)
-- ❌ Not done: §60 Compose UI tests, §69 UX critique pass, release signing, AAB
+- ✅ §60 Compose UI tests (16 behaviour tests on the calculator)
+- ✅ Manual barcode entry (§8); live Open Food Facts verified end to end incl. product images
+- ❌ Not done: release signing, AAB, systematic multi-device testing
 
 ### Verified by actually running it (API 36 emulator)
 
@@ -118,7 +120,10 @@ Note: `connectedAndroidTest` **uninstalls the app afterwards** — reinstall bef
 ## Owner's confirmed decisions
 
 1. **ml vs g** — portion locked to the product's basis unit. Never assume 1 ml = 1 g.
-2. **Rounding** — whole gram dominant (`31 g`), decimal legible beneath (`31.3 g calculated`).
+2. **Rounding** — **decimal dominant** (`31.3 g`), whole gram beneath (`≈ 31 g whole grams`).
+   Revised 2026-08-14 (correction #6): the result is transcribed into another calculator, so
+   leading with the rounded figure loses precision where it matters. `ResultStyle.WHOLE_DOMINANT`
+   restores the old hierarchy if a whole-gram-only destination is ever confirmed.
 3. **Regulatory** — build to the **stricter** standard (as if an accessory to a medical device).
 4. **Backup** — `allowBackup="false"`.
 5. **Provenance ≠ verification** (owner correction, 2026-08-13) — `dataSource`
@@ -127,6 +132,12 @@ Note: `connectedAndroidTest` **uninstalls the app afterwards** — reinstall bef
    provenance must be preserved. Do not "simplify" these back into one enum.
 6. Repo stays **private**; docs keep saying CarbQuick until the public name is decided.
 7. **No Robolectric** — DAO tests stay instrumented.
+8. **Calculation-session immutability** (correction #5) — once the calculator is open, a background
+   refresh must NEVER change the value being calculated with. It records the newer figure and shows
+   an *Online value changed* notice the user can accept. Regression-tested; do not "simplify".
+9. **Regulatory wording** — never describe the app as an accessory to a medical device, or as a
+   medical device, or as not one. Qualification is unresolved; the docs say only that the controls
+   are conservative while it is.
 
 ## Architecture
 
@@ -148,6 +159,9 @@ Key invariants, each pinned by a test:
 - `NutritionBasis` is a label, **never** a conversion factor.
 - `isRemoteRefreshable` = not user-authored **AND** unverified. Both conditions matter.
 - Carbohydrate values are stored as **TEXT** in SQLite, never REAL.
+- `ResultFormatter` sets `RoundingMode.HALF_UP` explicitly — `DecimalFormat` defaults to HALF_EVEN,
+  which made the app display a different decimal from the one it calculated (15.4 vs 15.5).
+- Room schema is at **v2**; `MIGRATION_1_2` adds `latestRemoteCarbs`. Never destructive.
 
 ## Working agreements
 
@@ -161,8 +175,13 @@ Key invariants, each pinned by a test:
 
 1. **§44 regulatory assessment is unresolved and blocks publication.** See
    `docs/regulatory-release-checklist.md`.
-2. **ML Kit ships Google telemetry.** `com.google.android.datatransport` arrives transitively and
-   merges `ACCESS_NETWORK_STATE`, against §9's two-permission rule and §34's "no telemetry SDK".
-   No opt-out constant exists in the shipped artifacts — **none was invented**. Owner must decide.
-3. Licence for the project not yet chosen.
-4. Contact email is still `REPLACE_ME@example.com` throughout.
+2. **ML Kit telemetry: investigated and settled as far as code can settle it (2026-08-14).**
+   `com.google.android.datatransport` comes from `com.google.mlkit:common` and **cannot be
+   excluded** — doing so fatally crashes the scanner (`NoClassDefFoundError: CCTDestination`),
+   verified on the emulator. No opt-out constant exists in the shipped artifacts; none was
+   invented. Disclosed in the privacy policy and Data Safety draft. Owner still owes a review of
+   Google's ML Kit disclosures and the Data Safety category choice.
+3. **Open Food Facts *image* licensing not yet reviewed** — images are now displayed, and image
+   licensing is distinct from the ODbL database licence.
+4. Licence for the project not yet chosen.
+5. Contact email is still `REPLACE_ME@example.com` throughout.

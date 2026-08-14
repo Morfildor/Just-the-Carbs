@@ -51,8 +51,10 @@ qualification assessment has to examine.
 
 ## 4. What the build already does to reduce risk
 
-The owner chose to build to the **stricter** standard while the assessment is outstanding — as if
-CarbScan were an accessory to a medical device. That decision is implemented, not merely asserted:
+While qualification is unresolved, the safety-critical paths are deliberately conservative. This is
+**not** a claim that CarbScan is, or is not, a medical device or an accessory to one - that is
+precisely what the assessment above must determine. These controls are implemented, not merely
+asserted:
 
 | Safeguard | Where it lives | Enforced by |
 |---|---|---|
@@ -73,6 +75,23 @@ These reduce risk. **They do not substitute for the assessment.**
 - No claim of medical approval, clinical validation, or regulatory clearance is made.
 - No clinical efficacy claim is made (§45): the copy states only what the software computes.
 - No affiliation with CamDiab, Ypsomed, CamAPS FX, Abbott or Libre is stated or implied (§51).
+
+## 5b. Publication gate checklist (correction #11)
+
+Publication requires **all** of the following, each matching the actually shipped implementation:
+
+| # | Gate | Done |
+|---|---|---|
+| 5b.1 | Google Play Health Apps declaration completed | ☐ |
+| 5b.2 | Data Safety form completed and matching the shipped build | ☐ |
+| 5b.3 | Privacy policy publicly reachable at a stable URL | ☐ |
+| 5b.4 | Required developer account type confirmed | ☐ |
+| 5b.5 | Final medical-device qualification decision recorded | ☐ |
+| 5b.6 | Final store wording reviewed against §45 / §51 | ☐ |
+| 5b.7 | Third-party SDK disclosures complete (incl. the ML Kit transport) | ☐ |
+| 5b.8 | Open Food Facts **database and image** attribution and licensing reviewed | ☐ |
+
+Nothing is auto-submitted, and no declaration answer is fabricated.
 
 ## 6. Play Console account (§47)
 

@@ -73,9 +73,15 @@ message is distinct from a generic failure.
 ## Data durability
 
 **Saved products do not survive a device migration.** Android backup is disabled
-(`allowBackup="false"`), a deliberate trade (§34): your food history never reaches a Google account,
-and the cached Open Food Facts data is never redistributed. The cost is that a new phone starts
-empty. Verified values would need re-entering.
+(`allowBackup="false"`) *and* explicit backup/data-extraction rules exclude the Room database, shared
+preferences and files (which is where DataStore lives) from **both** cloud backup and
+device-to-device transfer. This is a deliberate trade (§34): your food history - recents, favourites,
+verified values and remembered portions - never leaves the device by that route. The cost is that a
+new phone starts empty, and verified values need re-entering.
+
+**Product images are displayed, and their licensing has not yet been reviewed.** Open Food Facts
+image licensing is not uniform and is distinct from the ODbL licence covering the database. See
+`docs/third-party-notices.md`; this is an open pre-publication action.
 
 **There is no browse-all-products screen.** Products are reached through Recents and favourites. A
 product cleared from recent history remains in the database but is only re-reachable by scanning its
@@ -85,12 +91,12 @@ barcode again.
 
 | Area | State |
 |---|---|
-| Calculation, parsing, validation, repository, OCR parsing | 110 JVM unit tests, passing |
-| Room DAO ordering and decimal round-trip | 10 instrumented tests, passing on an API 36 emulator |
+| Calculation, parsing, validation, repository, OCR parsing | 116 JVM unit tests, passing |
+| Room DAO ordering and decimal round-trip, plus calculator UI behaviour | 26 instrumented tests, passing on an API 36 emulator |
 | Scan → portion → carbs, recents, manual entry, ml basis, dark mode, large font | Exercised by hand on an API 36 emulator |
 | Barcode decoding from a real barcode | **Verified on a physical device** (2026-08-14) |
 | Nutrition-label OCR against real packaging | **Verified on a physical device** (2026-08-14) |
-| Real Open Food Facts responses | Not verified against the live API; tested against recorded/synthetic responses over a local HTTP server |
+| Real Open Food Facts responses | **Verified against the live API** (2026-08-14): barcode 3017620422003 returned Nutella, 57.5 g/100 g, with its product image. Also covered by 17 tests over a local HTTP server |
 | Breadth of physical hardware, incl. Samsung Galaxy specifics | Only spot-checked; not systematically tested |
 | Release (R8/minified) build | Builds and runs on an emulator; Room, enums and ML Kit verified to survive minification. Not yet run on physical hardware, and not signed with production material |
 

@@ -128,6 +128,8 @@ fun CarbScanNavHost(
                 onScanLabel = { navController.navigate(Routes.labelScan(barcode)) },
                 onEnterManually = { navController.navigate(Routes.manual(barcode)) },
                 onRetry = { viewModel.load(barcode) },
+                onApplyNewerRemote = viewModel::applyNewerRemoteValue,
+                onDismissNewerRemote = viewModel::dismissNewerRemoteValue,
             )
         }
 

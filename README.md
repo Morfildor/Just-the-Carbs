@@ -51,12 +51,17 @@ calculation layer is exhaustively unit-testable on the JVM with no emulator, and
 carbohydrates = carbsPer100 × portion / 100
 ```
 
+Default display is **decimal-dominant** (`31.3 g`, with `≈ 31 g whole grams` beneath).
+
 Evaluated in `BigDecimal`, and divided using `movePointLeft(2)` — an exact scale shift that cannot
 round, cannot throw on a non-terminating quotient, and cannot lose a digit.
 
-The exact value is **never rounded internally**. The displayed decimal and the dominant whole gram
-are each derived from it independently, so nothing is rounded twice. `48.2 × 65 / 100 = 31.33` →
-displayed **31 g** with *31.3 g calculated* beneath.
+The exact value is **never rounded internally**. The displayed decimal and the whole gram are each
+derived from it independently, so nothing is rounded twice. `48.2 × 65 / 100 = 31.33` → displayed
+**31.3 g** with *≈ 31 g whole grams* beneath.
+
+`ResultFormatter` sets `RoundingMode.HALF_UP` explicitly, because `DecimalFormat` defaults to
+HALF_EVEN — without it the app displayed a different decimal from the one it calculated.
 
 **Grams and millilitres are never interconverted.** `NutritionBasis` is a label, not a factor. A
 per-100-ml product's portion field is locked to ml, because converting would require a density the
@@ -69,8 +74,9 @@ app does not have. A test pins this: identical numbers must produce identical re
 3. **Open Food Facts** — network
 4. **Fallback** — scan the label, or enter it by hand. The user never hits a dead end.
 
-Open Food Facts permits 15 reads/min/IP, which makes cache-first a correctness requirement rather
-than an optimisation.
+Open Food Facts permits 15 reads/min/IP. Cache-first is required for performance, offline
+capability, resilience, user experience and responsible API usage — a calculation is not invalid
+merely because the value arrived over the network.
 
 ### Provenance vs. verification
 
@@ -83,6 +89,13 @@ A product downloaded from Open Food Facts and later checked against the package 
 `isRemoteRefreshable` requires **both** not-user-authored **and** unverified, because the two
 exclude different cases: user-typed data is protected even when unverified, and verified data is
 protected even though its provenance is OFF.
+
+### Calculation-session immutability
+
+Once the calculator is open, a background refresh **never** changes the value being calculated
+with. It records the newer figure and shows an *Online value changed* notice the user can accept.
+Otherwise the screen could open on 48.2, the user types a portion, and the answer moves under their
+hand while they are reading it.
 
 ## Privacy
 
@@ -100,10 +113,10 @@ ML Kit ships a Google telemetry transport we do not control; that is disclosed, 
 $env:JAVA_HOME="<path to JDK 21>"
 $env:ANDROID_HOME="C:\atools\sdk"
 
-.\gradlew.bat :app:testDebugUnitTest        # 110 JVM unit tests
+.\gradlew.bat :app:testDebugUnitTest        # 116 JVM unit tests
 .\gradlew.bat :app:lintDebug                # Android lint
 .\gradlew.bat :app:assembleDebug            # debug APK
-.\gradlew.bat :app:connectedDebugAndroidTest # 10 instrumented tests (needs a device)
+.\gradlew.bat :app:connectedDebugAndroidTest # 26 instrumented tests (needs a device)
 ```
 
 Requires JDK 21, Android SDK platform **37** and build-tools 37. `compileSdk` is 37 because AndroidX
@@ -144,9 +157,11 @@ your upload key can be rotated if lost.
 | Open Food Facts | real HTTP via MockWebServer: malformed JSON, 429, 500, dropped connection | 17 tests, passing |
 | OCR parsing | Dutch/English, 100 g / 100 ml, sugars sub-line, ambiguity, failure | 14 tests, passing |
 | Room DAO | ordering, favourites float, TEXT decimal round-trip | 10 instrumented, passing |
+| Calculator UI (§60) | result on typing, no Calculate button, quick adjust, ml lock, provenance badges, pack shortcuts, double-rounding guard, long names, zero-carb, large and decimal portions | 16 instrumented, passing |
 
-**Not verified:** decoding a real barcode, OCR against a real package, live Open Food Facts
-responses, physical hardware, and the release (R8) build. See
+**Verified on hardware:** barcode decoding and label OCR. **Verified against the live API:**
+product lookup and images. **Not verified:** breadth of physical devices, and the release build on
+hardware. See
 [docs/known-limitations.md](docs/known-limitations.md).
 
 ## Regulatory status
@@ -155,8 +170,9 @@ responses, physical hardware, and the release (R8) build. See
 no medication — but qualification under EU MDR turns on intended purpose, not only on what the code
 computes, and a disclaimer must not be used to avoid the assessment.
 
-The build is written to the stricter standard in the meantime: OCR is never auto-accepted, verified
-data is never silently overwritten, and no value is shown when confidence is insufficient.
+The controls are deliberately conservative in the meantime: OCR is never auto-accepted, verified
+data is never silently overwritten, and no value is shown when confidence is insufficient. The docs
+deliberately make no claim either way about the app's regulatory classification.
 
 **Read [docs/regulatory-release-checklist.md](docs/regulatory-release-checklist.md) before doing
 anything with this app publicly.**

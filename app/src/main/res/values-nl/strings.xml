@@ -42,10 +42,14 @@
     <string name="product_source_manual">Door jou ingevoerd</string>
     <string name="product_source_ocr">Door jou van het label gelezen</string>
     <string name="product_verified_when">Gecontroleerd %1$s</string>
+    <string name="remote_changed_title">Onlinewaarde gewijzigd</string>
+    <string name="remote_changed_body">De database meldt nu %1$s g / 100 %2$s. Jouw huidige waarde is niet gewijzigd.</string>
+    <string name="remote_changed_apply">Nieuwe waarde gebruiken</string>
     <string name="product_portion_question">Hoeveel eet je?</string>
     <string name="product_portion_label">Portie in %1$s</string>
     <string name="product_result_label">KOOLHYDRATEN</string>
     <string name="product_result_calculated">%1$s g berekend</string>
+    <string name="product_result_whole">≈ %1$s g hele grammen</string>
     <string name="product_result_pending">Voer een portie in</string>
     <string name="product_half_pack">½ verpakking</string>
     <string name="product_full_pack">Hele verpakking</string>
@@ -122,6 +126,8 @@
     <string name="settings_results">Resultaten</string>
     <string name="settings_results_whole">Hele gram met decimaal</string>
     <string name="settings_results_decimal">Alleen decimaal</string>
+    <string name="settings_results_decimal_first">Decimale waarde, hele gram eronder</string>
+    <string name="settings_results_whole_first">Hele gram, decimaal eronder</string>
     <string name="settings_interaction">Interactie</string>
     <string name="settings_haptics">Haptische feedback</string>
     <string name="settings_data">Gegevens</string>

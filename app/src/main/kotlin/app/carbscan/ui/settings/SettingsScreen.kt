@@ -131,8 +131,8 @@ fun SettingsScreen(
                             Text(
                                 stringResource(
                                     when (style) {
-                                        ResultStyle.WHOLE_WITH_DECIMAL -> R.string.settings_results_whole
-                                        ResultStyle.DECIMAL_ONLY -> R.string.settings_results_decimal
+                                        ResultStyle.DECIMAL_DOMINANT -> R.string.settings_results_decimal_first
+                                        ResultStyle.WHOLE_DOMINANT -> R.string.settings_results_whole_first
                                     },
                                 ),
                             )

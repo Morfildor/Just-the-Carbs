@@ -8,6 +8,7 @@ import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.VerificationStatus
+import app.carbscan.data.RefreshOutcome
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -349,11 +350,15 @@ class ProductRepositoryTest {
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "99.9")))
         val repository = ProductRepository(local, remote, clock)
 
-        val changed = repository.refreshFromRemote(barcode)
+        val outcome = repository.refreshFromRemote(barcode)
 
-        assertEquals(false, changed)
+        // The difference is REPORTED (correction #10) but never applied: a hand-typed value is the
+        // user's, and a sync may not correct it.
+        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("99.9")), outcome)
         assertEquals(0, BigDecimal("12.0").compareTo(local.stored.getValue(barcode).carbsPer100))
-        assertEquals("a user-authored record must not cost a rate-limited request", 0, remote.calls)
+        assertEquals(UNVERIFIED_MANUAL, local.stored.getValue(barcode).provenance())
+        // The remote IS consulted now, so a reformulation can be detected (#10) — but the value
+        // in use is untouched, which is what the assertion above proves.
     }
 
     @Test
@@ -387,6 +392,83 @@ class ProductRepositoryTest {
         repository.saveUserAuthoredProduct(product(UNVERIFIED_MANUAL, "12.0"))
 
         assertEquals(now, local.stored.getValue(barcode).lastUsedAt)
+    }
+
+    // ---- corrections #5 / #10: reformulation is reported, never silently applied ---------------
+
+    /**
+     * The unsafe sequence this rule exists to prevent: the screen opens on 48.2, the user types a
+     * portion, a background refresh returns 51.0, and the answer changes under their hand.
+     */
+    @Test
+    fun `a refresh reports a changed online value without applying it to a verified product`() = runTest {
+        val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0")))
+        val repository = ProductRepository(local, remote, clock)
+
+        val outcome = repository.refreshFromRemote(barcode)
+
+        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("51.0")), outcome)
+        val stored = local.stored.getValue(barcode)
+        assertEquals("the value in use must not move", 0, BigDecimal("48.2").compareTo(stored.carbsPer100))
+        assertEquals("but the newer figure is recorded", 0, BigDecimal("51.0").compareTo(stored.latestRemoteCarbs!!))
+        assertEquals(VERIFIED_OFF, stored.provenance())
+    }
+
+    @Test
+    fun `a verified product whose online value moved is flagged as differing`() = runTest {
+        val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
+        val repository = ProductRepository(
+            local,
+            FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0"))),
+            clock,
+        )
+
+        repository.refreshFromRemote(barcode)
+
+        assertTrue(local.stored.getValue(barcode).remoteValueDiffers)
+    }
+
+    @Test
+    fun `an unchanged online value raises no notice`() = runTest {
+        val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
+        val repository = ProductRepository(
+            local,
+            FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "48.2"))),
+            clock,
+        )
+
+        assertEquals(RefreshOutcome.Unchanged, repository.refreshFromRemote(barcode))
+        assertEquals(false, local.stored.getValue(barcode).remoteValueDiffers)
+    }
+
+    /** Applying is a deliberate act, and it is reversible. */
+    @Test
+    fun `applying the newer online value keeps the previous figure recoverable`() = runTest {
+        val local = FakeLocal(
+            listOf(product(VERIFIED_OFF, "48.2").copy(latestRemoteCarbs = BigDecimal("51.0"))),
+        )
+        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), clock)
+
+        repository.applyLatestRemoteValue(barcode)
+
+        val stored = local.stored.getValue(barcode)
+        assertEquals(0, BigDecimal("51.0").compareTo(stored.carbsPer100))
+        assertEquals(0, BigDecimal("48.2").compareTo(stored.originalRemoteCarbs!!))
+        // The user has not checked THIS number against a package, so it is no longer verified.
+        assertEquals(VerificationStatus.UNVERIFIED, stored.verificationStatus)
+        assertEquals(ProductDataOrigin.OPEN_FOOD_FACTS, stored.dataSource)
+    }
+
+    @Test
+    fun `applying does nothing when there is no newer value`() = runTest {
+        val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
+        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), clock)
+
+        repository.applyLatestRemoteValue(barcode)
+
+        assertEquals(0, BigDecimal("48.2").compareTo(local.stored.getValue(barcode).carbsPer100))
+        assertEquals(VERIFIED_OFF, local.stored.getValue(barcode).provenance())
     }
 
     @Test

@@ -52,10 +52,14 @@
     <string name="product_source_manual">Entered by you</string>
     <string name="product_source_ocr">Read from label by you</string>
     <string name="product_verified_when">Verified %1$s</string>
+    <string name="remote_changed_title">Online value changed</string>
+    <string name="remote_changed_body">The database now reports %1$s g / 100 %2$s. Your current value is unchanged.</string>
+    <string name="remote_changed_apply">Use new value</string>
     <string name="product_portion_question">How much are you eating?</string>
     <string name="product_portion_label">Portion in %1$s</string>
     <string name="product_result_label">CARBOHYDRATES</string>
     <string name="product_result_calculated">%1$s g calculated</string>
+    <string name="product_result_whole">≈ %1$s g whole grams</string>
     <string name="product_result_pending">Enter a portion</string>
     <string name="product_half_pack">½ pack</string>
     <string name="product_full_pack">Full pack</string>
@@ -142,6 +146,8 @@
     <string name="settings_results">Results</string>
     <string name="settings_results_whole">Whole gram with decimal detail</string>
     <string name="settings_results_decimal">Decimal only</string>
+    <string name="settings_results_decimal_first">Decimal value, whole gram beneath</string>
+    <string name="settings_results_whole_first">Whole gram, decimal beneath</string>
     <string name="settings_interaction">Interaction</string>
     <string name="settings_haptics">Haptic feedback</string>
     <string name="settings_data">Data</string>

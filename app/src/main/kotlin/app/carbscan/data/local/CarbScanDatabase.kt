@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 
 /**
  * The on-device product store. Everything the user owns — verified values, manual products,
@@ -20,7 +23,7 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [ProductEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class CarbScanDatabase : RoomDatabase() {
@@ -30,8 +33,23 @@ abstract class CarbScanDatabase : RoomDatabase() {
     companion object {
         private const val NAME = "carbscan.db"
 
+        /**
+         * v1 → v2: records the latest remote carbohydrate value alongside the local one.
+         *
+         * A real migration rather than a destructive fallback, because installs of v1 already
+         * exist and may hold values the user verified against a package. Nullable with no default:
+         * "we have not asked the provider since the upgrade" is genuinely different from "the
+         * provider agrees with the stored value", and the two must not be conflated.
+         */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE products ADD COLUMN latestRemoteCarbs TEXT")
+            }
+        }
+
         fun build(context: Context): CarbScanDatabase =
             Room.databaseBuilder(context.applicationContext, CarbScanDatabase::class.java, NAME)
+                .addMigrations(MIGRATION_1_2)
                 .build()
     }
 }

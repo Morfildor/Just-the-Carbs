@@ -105,6 +105,8 @@ fun ProductScreen(
     onScanLabel: () -> Unit,
     onEnterManually: () -> Unit,
     onRetry: () -> Unit,
+    onApplyNewerRemote: () -> Unit = {},
+    onDismissNewerRemote: () -> Unit = {},
 ) {
     if (state.showVerifyDialog && state.product != null) {
         VerifyDialog(
@@ -145,6 +147,8 @@ fun ProductScreen(
                 onPortionChanged = onPortionChanged,
                 onAdjust = onAdjust,
                 onSetPortion = onSetPortion,
+                onApplyNewerRemote = onApplyNewerRemote,
+                onDismissNewerRemote = onDismissNewerRemote,
             )
         }
     }
@@ -230,6 +234,8 @@ private fun FailureBody(
     onScanLabel: () -> Unit,
     onEnterManually: () -> Unit,
     onRetry: () -> Unit,
+    onApplyNewerRemote: () -> Unit = {},
+    onDismissNewerRemote: () -> Unit = {},
 ) {
     val title = when (failure) {
         Failure.NotFound -> stringResource(R.string.notfound_title)
@@ -281,6 +287,8 @@ private fun CalculatorBody(
     onPortionChanged: (String) -> Unit,
     onAdjust: (Int) -> Unit,
     onSetPortion: (BigDecimal) -> Unit,
+    onApplyNewerRemote: () -> Unit = {},
+    onDismissNewerRemote: () -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -291,6 +299,18 @@ private fun CalculatorBody(
             product = product,
             modifier = Modifier.padding(horizontal = Space.screenEdge),
         )
+
+        // Correction #5/#10: a newer online figure is offered, never imposed. The calculation the
+        // user is looking at does not move unless they say so.
+        state.newerRemoteCarbs?.let { newer ->
+            RemoteChangedNotice(
+                newerCarbs = newer,
+                unit = product.portionUnit,
+                onApply = onApplyNewerRemote,
+                onDismiss = onDismissNewerRemote,
+                modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
+            )
+        }
 
         Column(
             modifier = Modifier
@@ -447,6 +467,49 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
 }
 
 /**
+ * An unobtrusive notice that the online figure has moved (§24, corrections #5 and #10).
+ *
+ * Deliberately not a dialog and not an error: the user may be holding the older packaging, and a
+ * changed database entry is information rather than a fault. It never blocks the calculation.
+ */
+@Composable
+private fun RemoteChangedNotice(
+    newerCarbs: BigDecimal,
+    unit: String,
+    onApply: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Space.buttonRadius))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(Space.m),
+    ) {
+        Text(
+            text = stringResource(R.string.remote_changed_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(Space.xs))
+        Text(
+            text = stringResource(
+                R.string.remote_changed_body,
+                newerCarbs.stripTrailingZeros().toPlainString(),
+                unit,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
+            TextButton(onClick = onApply) { Text(stringResource(R.string.remote_changed_apply)) }
+        }
+    }
+}
+
+/**
  * The persistent result (§14). Visually dominant, pinned above the keyboard, and always present —
  * it does not appear and disappear as the portion field is edited, because a result area that
  * moves is a result area the user has to hunt for.
@@ -500,9 +563,11 @@ private fun ResultPanel(state: ProductUiState, settings: AppSettings) {
                 )
             }
         } else {
+            // Both figures come from `exact`, independently. Neither is derived from the other,
+            // so swapping which one dominates cannot introduce a double rounding (§17).
             val dominant = when (settings.resultStyle) {
-                ResultStyle.WHOLE_WITH_DECIMAL -> "${ResultFormatter.whole(result.wholeGrams)} g"
-                ResultStyle.DECIMAL_ONLY -> "${ResultFormatter.decimal(result.exact)} g"
+                ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(result.exact)} g"
+                ResultStyle.WHOLE_DOMINANT -> "${ResultFormatter.whole(result.wholeGrams)} g"
             }
 
             Row(
@@ -553,17 +618,21 @@ private fun ResultPanel(state: ProductUiState, settings: AppSettings) {
                 }
             }
 
-            // The decimal is rendered legibly, not as a whisper (design decision 3.2).
-            if (settings.resultStyle == ResultStyle.WHOLE_WITH_DECIMAL) {
-                Text(
-                    text = stringResource(
+            // The supporting figure is rendered legibly, not as a whisper (design decision 3.2).
+            Text(
+                text = when (settings.resultStyle) {
+                    ResultStyle.DECIMAL_DOMINANT -> stringResource(
+                        R.string.product_result_whole,
+                        ResultFormatter.whole(result.wholeGrams),
+                    )
+                    ResultStyle.WHOLE_DOMINANT -> stringResource(
                         R.string.product_result_calculated,
                         ResultFormatter.decimal(result.exact),
-                    ),
-                    style = NumberType.supporting,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+                    )
+                },
+                style = NumberType.supporting,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

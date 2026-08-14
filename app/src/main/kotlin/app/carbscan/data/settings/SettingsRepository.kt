@@ -28,8 +28,8 @@ class SettingsRepository(private val context: Context) {
             AppSettings(
                 theme = prefs[THEME]?.toEnum(ThemeChoice.entries, ThemeChoice.SYSTEM)
                     ?: ThemeChoice.SYSTEM,
-                resultStyle = prefs[RESULT_STYLE]?.toEnum(ResultStyle.entries, ResultStyle.WHOLE_WITH_DECIMAL)
-                    ?: ResultStyle.WHOLE_WITH_DECIMAL,
+                resultStyle = prefs[RESULT_STYLE]?.toEnum(ResultStyle.entries, ResultStyle.DECIMAL_DOMINANT)
+                    ?: ResultStyle.DECIMAL_DOMINANT,
                 hapticsEnabled = prefs[HAPTICS] ?: true,
             )
         }

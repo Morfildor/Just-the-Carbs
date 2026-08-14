@@ -18,25 +18,37 @@ CarbScan retrieves product data from Open Food Facts.
 
 > Product data from Open Food Facts, used under the Open Database License (ODbL).
 
-### Why share-alike is not engaged by this build
+### Share-alike — requires review, not assumed resolved
 
-ODbL's share-alike obligation attaches to distributing a derivative *database*. CarbScan stores
-fetched products only in an app-private, on-device cache. That cache is never exported, shared,
-uploaded, or redistributed — and Android backup is disabled, so it is not copied to the user's Google
-account either.
+ODbL's share-alike obligation attaches to distributing a derivative *database*. As built, CarbScan
+stores fetched products only in an app-private, on-device cache that is never exported, shared,
+uploaded or redistributed, and Android backup is disabled.
 
-A purely on-device cache is not a distributed derivative database, so share-alike is not triggered.
-Attribution is provided regardless.
+**That is a description of the implementation, not a legal conclusion.** This project does not make
+a licensing determination (correction #3). Open Food Facts data and images remain subject to their
+applicable current licences, and a licence review is a release-checklist gate.
 
-> **If this ever changes** — if products are exported, synced, shared between users, or backed up —
-> the share-alike obligation must be reassessed *before* that feature ships. This is the single
-> licence condition most likely to be broken by an innocuous-looking feature.
+> **Anything that changes the distribution picture reopens the question** - export, sync, sharing
+> between users, server-side caching, or backup. This is the single licence condition most likely to
+> be broken by an innocuous-looking feature, so reassess *before* such a feature ships.
 
-### Product images
+☐ Licence review completed before publication - *(owner completes, with date)*
 
-Image display is currently **not implemented**. If it is added, the licence attached to each image
-must be checked and honoured; OFF image licensing is not uniform and is not covered by the ODbL
-attribution above.
+### Product images — now displayed, licensing NOT yet reviewed
+
+Product images from Open Food Facts **are displayed in the app** (product thumbnails on the home
+list and the calculator header).
+
+> **Open action.** Image licensing on Open Food Facts is **not uniform** and is **distinct from the
+> ODbL licence covering the structured database**. Individual images carry their own licences
+> (various Creative Commons terms) and may impose their own attribution requirements.
+>
+> The in-app attribution currently covers the *database*. Before publication the owner must review
+> Open Food Facts' current image attribution and licensing requirements and add whatever additional
+> attribution they require.
+
+☐ Current OFF image attribution/licensing requirements reviewed and satisfied - *(owner completes,
+with date and source URL)*
 
 ### API terms
 
@@ -82,8 +94,9 @@ camera-lifecycle, camera-view)
 
 ### Coil — Apache 2.0
 
-- `io.coil-kt.coil3:coil-compose`, `coil-network-okhttp` — declared for future product-image
-  loading; **not currently used by any code path.** Remove if image support is not implemented.
+- `io.coil-kt.coil3:coil-compose`, `coil-network-okhttp` — loads Open Food Facts product
+  thumbnails. Shares the app's single OkHttp client, so images inherit the same timeouts and
+  identifying User-Agent.
 
 ### Test-only dependencies (not shipped in the APK)
 

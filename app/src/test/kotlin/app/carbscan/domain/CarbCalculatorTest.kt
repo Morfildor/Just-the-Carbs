@@ -149,6 +149,27 @@ class CarbCalculatorTest {
         assertEquals(NutritionBasis.PER_100_ML, millilitres.basis)
     }
 
+    /**
+     * Regression: the formatter and the calculator must round identically.
+     *
+     * `DecimalFormat` defaults to HALF_EVEN, so 15.45 formatted naively becomes "15.4" while
+     * `CarbResult.decimal` (HALF_UP) is 15.5 — the app would show a different number from the one
+     * it calculated. Caught by a UI test; pinned here where it is cheap to run.
+     */
+    @Test
+    fun `the displayed decimal uses the same rounding as the calculation`() {
+        val result = CarbCalculator.calculate(
+            carbsPer100 = BigDecimal("51.5"),
+            portion = BigDecimal("30"),
+            basis = NutritionBasis.PER_100_G,
+        )
+
+        assertEquals(BigDecimal("15.5"), result.decimal)
+        assertEquals("15.5", ResultFormatter.decimal(result.exact, java.util.Locale.ROOT))
+        assertEquals(15, result.wholeGrams)
+        assertEquals("15", ResultFormatter.whole(result.wholeGrams, java.util.Locale.ROOT))
+    }
+
     @Test
     fun `a negative carbohydrate value is rejected rather than calculated`() {
         assertThrows(IllegalArgumentException::class.java) {

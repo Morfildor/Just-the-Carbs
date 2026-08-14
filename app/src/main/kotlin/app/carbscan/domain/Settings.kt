@@ -9,6 +9,6 @@ enum class ThemeChoice { SYSTEM, LIGHT, DARK }
  */
 data class AppSettings(
     val theme: ThemeChoice = ThemeChoice.SYSTEM,
-    val resultStyle: ResultStyle = ResultStyle.WHOLE_WITH_DECIMAL,
+    val resultStyle: ResultStyle = ResultStyle.DECIMAL_DOMINANT,
     val hapticsEnabled: Boolean = true,
 )

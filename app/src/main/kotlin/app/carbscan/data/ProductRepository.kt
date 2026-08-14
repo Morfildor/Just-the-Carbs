@@ -13,6 +13,20 @@ import java.time.Clock
 import java.time.Instant
 
 /**
+ * What a background refresh found (corrections #5, #10).
+ *
+ * Deliberately does NOT carry a product for the caller to install. An open calculator session uses
+ * an immutable snapshot; a refresh can inform the user that the online figure moved, but only the
+ * user decides whether the number they are working with changes.
+ */
+sealed interface RefreshOutcome {
+    data object Unchanged : RefreshOutcome
+
+    /** The provider now reports a different figure. Recorded locally; not applied. */
+    data class RemoteDiffers(val latestRemoteCarbs: java.math.BigDecimal) : RefreshOutcome
+}
+
+/**
  * Owns the lookup priority of brief §10 — the one place that decides which carbohydrate number the
  * user is shown.
  *
@@ -51,30 +65,44 @@ class ProductRepository(
     }
 
     /**
-     * Optional background refresh of a cached remote product (§10.2).
+     * Optional background refresh of a cached product (§10.2, corrections #5 and #10).
      *
-     * @return true if the stored record changed.
+     * Never returns a product for the caller to swap in mid-session. The calculator holds an
+     * immutable snapshot, so what a refresh produces is *information about* a change, which the
+     * user then chooses to act on or ignore.
      */
-    suspend fun refreshFromRemote(barcode: String): Boolean {
+    suspend fun refreshFromRemote(barcode: String): RefreshOutcome {
         val existing = (local.fetch(barcode) as? ProductFetchResult.Found)?.product
+            ?: return RefreshOutcome.Unchanged
 
-        // The whole point of §23: a verified or user-authored product belongs to the user and a
-        // sync may not touch it. Returning early — rather than fetching and then discarding — also
-        // spends no request against the 15/min rate limit.
-        if (existing != null && !existing.isRemoteRefreshable) return false
+        val fetched = (remote.fetch(barcode) as? ProductFetchResult.Found)?.product
+            ?: return RefreshOutcome.Unchanged
 
-        val fetched = remote.fetch(barcode) as? ProductFetchResult.Found ?: return false
+        val remoteCarbs = fetched.carbsPer100
+        val differs = remoteCarbs.compareTo(existing.carbsPer100) != 0
 
-        // Remote owns the product facts; the device owns how the user has been using it. Merging
-        // rather than replacing is what stops a refresh from silently clearing a favourite.
-        val merged = fetched.product.copy(
-            favorite = existing?.favorite ?: false,
-            lastPortion = existing?.lastPortion,
-            lastUsedAt = existing?.lastUsedAt,
-            remoteUpdatedAt = clock.instant(),
+        // §23: a verified or user-authored product belongs to the user. The newer remote figure is
+        // *recorded* so the app can mention that the product may have been reformulated (§24), but
+        // the value in use is never replaced.
+        if (!existing.isRemoteRefreshable) {
+            local.save(existing.copy(latestRemoteCarbs = remoteCarbs, remoteUpdatedAt = clock.instant()))
+            return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs) else RefreshOutcome.Unchanged
+        }
+
+        // Plain cached remote data: the cache may be brought up to date, because it is the
+        // provider's value either way and the user has not expressed an opinion about it.
+        // Remote owns the product facts; the device owns how the user has been using it, so
+        // merging rather than replacing stops a refresh from clearing a favourite.
+        local.save(
+            fetched.copy(
+                favorite = existing.favorite,
+                lastPortion = existing.lastPortion,
+                lastUsedAt = existing.lastUsedAt,
+                latestRemoteCarbs = remoteCarbs,
+                remoteUpdatedAt = clock.instant(),
+            ),
         )
-        local.save(merged)
-        return true
+        return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs) else RefreshOutcome.Unchanged
     }
 
     /**
@@ -111,6 +139,27 @@ class ProductRepository(
                 verificationStatus = VerificationStatus.USER_VERIFIED,
                 originalRemoteCarbs = onlineOriginal,
                 verifiedAt = clock.instant(),
+            ),
+        )
+    }
+
+    /**
+     * Apply a newer online value that the user has explicitly chosen to accept (corrections #5, #10).
+     *
+     * Only ever reached from a deliberate tap — never from a background refresh. The figure being
+     * replaced is preserved as the original online value if none is recorded yet, so the change
+     * stays auditable and reversible, and the record drops back to unverified: the user has not
+     * checked *this* number against a package.
+     */
+    suspend fun applyLatestRemoteValue(barcode: String) {
+        val existing = requireExisting(barcode)
+        val latest = existing.latestRemoteCarbs ?: return
+        local.save(
+            existing.copy(
+                carbsPer100 = latest,
+                originalRemoteCarbs = existing.originalRemoteCarbs ?: existing.carbsPer100,
+                verificationStatus = VerificationStatus.UNVERIFIED,
+                verifiedAt = null,
             ),
         )
     }

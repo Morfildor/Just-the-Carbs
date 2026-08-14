@@ -61,6 +61,14 @@ data class Product(
     val imageUrl: String? = null,
     /** Retained when the user overrides a remote value, so *Reset to online value* stays possible (§23). */
     val originalRemoteCarbs: BigDecimal? = null,
+    /**
+     * The most recent value the remote provider reported, recorded even when it is NOT applied.
+     *
+     * Products get reformulated while keeping the same barcode. Storing the latest remote figure
+     * next to the user's own lets the app notice the difference and mention it, without ever
+     * overwriting what the user verified against the package (§24, correction #10).
+     */
+    val latestRemoteCarbs: BigDecimal? = null,
     /** When the user last confirmed this against the package (§24). Never blocks calculation. */
     val verifiedAt: Instant? = null,
     val remoteUpdatedAt: Instant? = null,
@@ -88,4 +96,13 @@ data class Product(
 
     /** True once the user overrode an online figure, so *Reset to online value* can be offered (§23). */
     val canResetToOnlineValue: Boolean get() = originalRemoteCarbs != null
+
+    /**
+     * The remote provider now reports a different figure from the one in use.
+     *
+     * Surfaced as an unobtrusive notice, never as a block: a changed online value is information,
+     * not an error, and the user may well be holding the older packaging (§24).
+     */
+    val remoteValueDiffers: Boolean
+        get() = latestRemoteCarbs?.let { it.compareTo(carbsPer100) != 0 } == true
 }
