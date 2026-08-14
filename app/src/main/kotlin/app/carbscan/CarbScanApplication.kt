@@ -8,7 +8,9 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import app.carbscan.data.ProductRepository
 import app.carbscan.data.local.CarbScanDatabase
+import app.carbscan.data.local.RoomMealDataSource
 import app.carbscan.data.local.RoomPortionUnitDataSource
+import app.carbscan.data.local.RoomPortionUsageDataSource
 import app.carbscan.data.local.RoomProductDataSource
 import app.carbscan.data.remote.NetworkModule
 import app.carbscan.data.remote.OpenFoodFactsDataSource
@@ -29,6 +31,8 @@ class AppContainer(context: Context) {
 
     val localProducts by lazy { RoomProductDataSource(database.productDao()) }
     val localPortionUnits by lazy { RoomPortionUnitDataSource(database.portionUnitDao()) }
+    val localMeal by lazy { RoomMealDataSource(database.mealItemDao()) }
+    val localPortionUsage by lazy { RoomPortionUsageDataSource(database.portionUsageDao()) }
 
     /**
      * The app's single OkHttp client instance (§15/§65) — Retrofit and Coil both build on this
@@ -43,6 +47,8 @@ class AppContainer(context: Context) {
             local = localProducts,
             remote = OpenFoodFactsDataSource(NetworkModule.openFoodFactsApi(okHttpClient)),
             portionUnits = localPortionUnits,
+            meal = localMeal,
+            portionUsage = localPortionUsage,
         )
     }
 

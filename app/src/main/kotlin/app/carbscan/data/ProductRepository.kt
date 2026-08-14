@@ -2,20 +2,24 @@ package app.carbscan.data
 
 import app.carbscan.domain.InputMode
 import app.carbscan.domain.LocalProductDataSource
+import app.carbscan.domain.MealItem
+import app.carbscan.domain.MealStore
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.PortionUnit
 import app.carbscan.domain.PortionUnitCandidate
 import app.carbscan.domain.PortionUnitKind
 import app.carbscan.domain.PortionUnitStore
+import app.carbscan.domain.PortionUsage
+import app.carbscan.domain.PortionUsageStore
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
+import app.carbscan.domain.UsualPortionSelector
 import app.carbscan.domain.VerificationStatus
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.time.Clock
-import java.time.Instant
 
 /**
  * What a background refresh found (corrections #5, #10).
@@ -46,6 +50,8 @@ class ProductRepository(
     private val local: LocalProductDataSource,
     private val remote: ProductDataSource,
     private val portionUnits: PortionUnitStore,
+    private val meal: MealStore,
+    private val portionUsage: PortionUsageStore,
     private val clock: Clock = Clock.systemUTC(),
 ) {
 
@@ -246,6 +252,21 @@ class ProductRepository(
                 lastCount = if (mode == InputMode.GRAMS) null else count ?: existing.lastCount,
             ),
         )
+
+        // Feed *Usual* from the same event that already means "the user settled on this portion"
+        // (§13). The variant recorded is what the user actually chose — a count against a unit in
+        // countable mode, the raw amount in grams mode — never the resolved grams behind a count,
+        // which would make "2 slices" indistinguishable from having typed 72 g.
+        val effectiveMode = mode ?: existing.lastInputMode ?: InputMode.GRAMS
+        val variantAmount = if (effectiveMode == InputMode.PORTION_UNIT) count else portion
+        if (variantAmount != null) {
+            recordPortionUsage(
+                barcode = barcode,
+                inputMode = effectiveMode,
+                portionUnitId = portionUnitId ?: existing.lastSelectedPortionUnitId,
+                amount = variantAmount,
+            )
+        }
     }
 
     suspend fun setFavorite(barcode: String, favorite: Boolean) {
@@ -328,6 +349,111 @@ class ProductRepository(
     }
 
     suspend fun deletePortionUnit(unit: PortionUnit) = portionUnits.delete(unit)
+
+    // ---- temporary meal (development-pass brief §7-§10) ----------------------------------------
+
+    /**
+     * The current meal, in the order the user added things.
+     *
+     * There is exactly one meal and it lives only until [clearMeal]. Nothing here takes or returns a
+     * meal id, a date, or a name, because the app stores a working total — not a food diary (§8).
+     */
+    fun observeMealItems(): Flow<List<MealItem>> = meal.observeItems()
+
+    suspend fun findMealItems(): List<MealItem> = meal.findItems()
+
+    /**
+     * Add a completed calculation to the meal (§9).
+     *
+     * Takes the already-computed [exactCarbs] rather than recomputing from the product: the item is
+     * a snapshot of the number the user actually saw and accepted, and re-deriving it here would be
+     * a second place where a carbohydrate figure gets produced. The app keeps one formula, in
+     * [app.carbscan.domain.CarbCalculator], and this method only records its output.
+     */
+    suspend fun addMealItem(
+        productBarcode: String?,
+        displayName: String,
+        portionDescription: String,
+        resolvedAmount: BigDecimal,
+        basis: NutritionBasis,
+        carbsPer100: BigDecimal,
+        exactCarbs: BigDecimal,
+    ): MealItem = meal.add(
+        MealItem(
+            productBarcode = productBarcode?.takeIf { it.isNotEmpty() },
+            displayName = displayName,
+            portionDescription = portionDescription,
+            resolvedAmount = resolvedAmount,
+            basis = basis,
+            carbsPer100 = carbsPer100,
+            exactCarbs = exactCarbs,
+            addedAt = clock.instant(),
+        ),
+    )
+
+    /** Replace a line wholesale — the caller has recalculated it via `CarbCalculator` (§10). */
+    suspend fun updateMealItem(item: MealItem) = meal.update(item)
+
+    suspend fun removeMealItem(item: MealItem) = meal.remove(item)
+
+    /** End the meal. A `DELETE FROM`, not an archive — nothing is kept (§8). */
+    suspend fun clearMeal() = meal.clear()
+
+    // ---- usual portions (brief §13, §22) -------------------------------------------------------
+
+    /**
+     * The portions this product is usually eaten in, best first, or empty until a pattern exists.
+     *
+     * Delegates the entire decision to [UsualPortionSelector] so the "what counts as usual" rules
+     * live in one pure, JVM-testable place rather than in a SQL `ORDER BY`.
+     */
+    suspend fun usualPortions(barcode: String): List<PortionUsage> =
+        UsualPortionSelector.suggest(portionUsage.findByBarcode(barcode))
+
+    /**
+     * Count one use of one portion variant (§13).
+     *
+     * Increments an aggregate row; it never appends an event. Repeatedly eating two slices raises a
+     * counter from 1 to 2 to 3 — it does not accumulate three timestamps — so the table can answer
+     * "what is usual?" and remains structurally unable to answer "when did you eat?" (§22).
+     *
+     * Pruning runs here rather than on a schedule: the moment a product's usage changes is exactly
+     * when its low-value variants become identifiable, and doing it inline means the app has no
+     * background job quietly grooming a record of the user's meals.
+     */
+    suspend fun recordPortionUsage(
+        barcode: String,
+        inputMode: InputMode,
+        portionUnitId: Long?,
+        amount: BigDecimal,
+    ) {
+        if (barcode.isEmpty() || amount.signum() <= 0) return
+        // Normalised so "2", "2.0" and "2.00" are one variant, not three. The column is TEXT, so
+        // without this the unique index would treat them as distinct rows and nothing would ever
+        // reach the two-uses threshold.
+        val normalised = amount.stripTrailingZeros()
+        val unitId = portionUnitId.takeIf { inputMode == InputMode.PORTION_UNIT }
+        val now = clock.instant()
+
+        val existing = portionUsage.findVariant(barcode, inputMode, unitId, normalised)
+        if (existing == null) {
+            portionUsage.save(
+                PortionUsage(
+                    productBarcode = barcode,
+                    inputMode = inputMode,
+                    portionUnitId = unitId,
+                    amount = normalised,
+                    usageCount = 1,
+                    lastUsedAt = now,
+                ),
+            )
+        } else {
+            portionUsage.save(existing.copy(usageCount = existing.usageCount + 1, lastUsedAt = now))
+        }
+
+        UsualPortionSelector.prunable(portionUsage.findByBarcode(barcode))
+            .forEach { portionUsage.delete(it) }
+    }
 
     private fun newPortionUnitFromCandidate(barcode: String, candidate: PortionUnitCandidate): PortionUnit {
         val now = clock.instant()

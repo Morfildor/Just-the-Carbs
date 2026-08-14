@@ -3,11 +3,15 @@ package app.carbscan.data
 import app.carbscan.domain.InputMode
 import app.carbscan.domain.LocalProductDataSource
 import app.carbscan.domain.LookupError
+import app.carbscan.domain.MealItem
+import app.carbscan.domain.MealStore
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.PortionUnit
 import app.carbscan.domain.PortionUnitCandidate
 import app.carbscan.domain.PortionUnitKind
 import app.carbscan.domain.PortionUnitStore
+import app.carbscan.domain.PortionUsage
+import app.carbscan.domain.PortionUsageStore
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
@@ -125,13 +129,96 @@ class ProductRepositoryTest {
         }
     }
 
+    private class FakeMealStore : MealStore {
+        val stored = mutableListOf<MealItem>()
+        private var nextId = 1L
+
+        override fun observeItems(): Flow<List<MealItem>> = flowOf(stored.toList())
+
+        override suspend fun findItems(): List<MealItem> = stored.toList()
+
+        override suspend fun add(item: MealItem): MealItem {
+            val saved = item.copy(id = nextId++)
+            stored += saved
+            return saved
+        }
+
+        override suspend fun update(item: MealItem) {
+            val index = stored.indexOfFirst { it.id == item.id }
+            if (index >= 0) stored[index] = item
+        }
+
+        override suspend fun remove(item: MealItem) {
+            stored.removeAll { it.id == item.id }
+        }
+
+        override suspend fun clear() = stored.clear()
+    }
+
+    private class FakePortionUsageStore : PortionUsageStore {
+        val stored = mutableListOf<PortionUsage>()
+        private var nextId = 1L
+
+        override suspend fun findByBarcode(barcode: String): List<PortionUsage> =
+            stored.filter { it.productBarcode == barcode }
+
+        override suspend fun findVariant(
+            barcode: String,
+            inputMode: InputMode,
+            portionUnitId: Long?,
+            amount: BigDecimal,
+        ): PortionUsage? = stored.firstOrNull {
+            it.productBarcode == barcode &&
+                it.inputMode == inputMode &&
+                it.portionUnitId == portionUnitId &&
+                it.amount.compareTo(amount) == 0
+        }
+
+        override suspend fun save(usage: PortionUsage): PortionUsage {
+            if (usage.id != 0L) {
+                val index = stored.indexOfFirst { it.id == usage.id }
+                if (index >= 0) stored[index] = usage
+                return usage
+            }
+            val saved = usage.copy(id = nextId++)
+            stored += saved
+            return saved
+        }
+
+        override suspend fun delete(usage: PortionUsage) {
+            stored.removeAll { it.id == usage.id }
+        }
+    }
+
+    private val meal = FakeMealStore()
+    private val usage = FakePortionUsageStore()
+
+    /**
+     * One construction point for the repository under test, so adding a collaborator does not mean
+     * editing every test — and so no test can silently depend on positional argument order.
+     */
+    private fun repositoryOf(
+        local: LocalProductDataSource,
+        remote: ProductDataSource,
+        units: PortionUnitStore = portionUnits,
+        mealStore: MealStore = meal,
+        usageStore: PortionUsageStore = usage,
+    ) = ProductRepository(
+        local = local,
+        remote = remote,
+        portionUnits = units,
+        meal = mealStore,
+        portionUsage = usageStore,
+        clock = clock,
+    )
+
     // ---- priority 1: user-verified local ------------------------------------------------------
 
     @Test
     fun `a user-verified product is used without touching the network`() = runTest {
         val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "99.9")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         val result = repository.lookup(barcode)
 
@@ -144,7 +231,7 @@ class ProductRepositoryTest {
     fun `a manually created product is used without touching the network`() = runTest {
         val local = FakeLocal(listOf(product(MANUAL, "12.0")))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "99.9")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         val result = repository.lookup(barcode)
 
@@ -158,7 +245,7 @@ class ProductRepositoryTest {
     fun `a cached remote product is shown immediately without a network call`() = runTest {
         val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2")))
         val remote = FakeRemote(ProductFetchResult.Failed(LookupError.OFFLINE))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         val result = repository.lookup(barcode)
 
@@ -172,7 +259,7 @@ class ProductRepositoryTest {
     fun `an uncached barcode is fetched from the remote source and cached`() = runTest {
         val local = FakeLocal()
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "48.2")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         val result = repository.lookup(barcode)
 
@@ -185,7 +272,7 @@ class ProductRepositoryTest {
     fun `an unknown barcode reports not found rather than inventing a product`() = runTest {
         val local = FakeLocal()
         val remote = FakeRemote(ProductFetchResult.NotFound)
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         assertEquals(ProductFetchResult.NotFound, repository.lookup(barcode))
         assertNull(local.stored[barcode])
@@ -195,7 +282,7 @@ class ProductRepositoryTest {
     fun `a product whose carbohydrate value fails validation is never cached`() = runTest {
         val local = FakeLocal()
         val remote = FakeRemote(ProductFetchResult.Unusable(barcode))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         assertEquals(ProductFetchResult.Unusable(barcode), repository.lookup(barcode))
         assertNull("an unusable value must not enter the cache", local.stored[barcode])
@@ -205,7 +292,7 @@ class ProductRepositoryTest {
     fun `a network failure with nothing cached surfaces the error`() = runTest {
         val local = FakeLocal()
         val remote = FakeRemote(ProductFetchResult.Failed(LookupError.OFFLINE))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         val result = repository.lookup(barcode)
 
@@ -219,7 +306,7 @@ class ProductRepositoryTest {
         val verified = product(VERIFIED_OFF, "48.2", name = "Verified by owner")
         val local = FakeLocal(listOf(verified))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "99.9", "Remote name")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         repository.refreshFromRemote(barcode)
 
@@ -233,7 +320,7 @@ class ProductRepositoryTest {
     fun `a background refresh never overwrites a manually created product`() = runTest {
         val local = FakeLocal(listOf(product(MANUAL, "12.0")))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "99.9")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         repository.refreshFromRemote(barcode)
 
@@ -244,7 +331,7 @@ class ProductRepositoryTest {
     fun `a background refresh does update a cached remote product`() = runTest {
         val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2")))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "50.1")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         repository.refreshFromRemote(barcode)
 
@@ -260,7 +347,7 @@ class ProductRepositoryTest {
         )
         val local = FakeLocal(listOf(cached))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "50.1")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         repository.refreshFromRemote(barcode)
 
@@ -273,7 +360,7 @@ class ProductRepositoryTest {
     fun `verifying a product keeps the original online value and stamps the time`() = runTest {
         val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2")))
         val remote = FakeRemote(ProductFetchResult.NotFound)
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         repository.saveVerification(barcode, verifiedCarbsPer100 = BigDecimal("47.3"), basis = NutritionBasis.PER_100_G)
 
@@ -294,7 +381,7 @@ class ProductRepositoryTest {
                 ),
             ),
         )
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.resetToOnlineValue(barcode)
 
@@ -315,7 +402,7 @@ class ProductRepositoryTest {
     @Test
     fun `verifying an Open Food Facts product keeps its Open Food Facts provenance`() = runTest {
         val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2")))
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.saveVerification(barcode, BigDecimal("47.3"), NutritionBasis.PER_100_G)
 
@@ -328,7 +415,7 @@ class ProductRepositoryTest {
     @Test
     fun `verifying a manual product keeps its manual provenance`() = runTest {
         val local = FakeLocal(listOf(product(UNVERIFIED_MANUAL, "12.0")))
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.saveVerification(barcode, BigDecimal("12.5"), NutritionBasis.PER_100_G)
 
@@ -341,7 +428,7 @@ class ProductRepositoryTest {
     @Test
     fun `verifying a manual product records no original online value`() = runTest {
         val local = FakeLocal(listOf(product(UNVERIFIED_MANUAL, "12.0")))
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.saveVerification(barcode, BigDecimal("12.5"), NutritionBasis.PER_100_G)
 
@@ -359,7 +446,7 @@ class ProductRepositoryTest {
             ),
         )
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "50.1")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         repository.resetToOnlineValue(barcode)
         repository.refreshFromRemote(barcode)
@@ -377,7 +464,7 @@ class ProductRepositoryTest {
     fun `an unverified manual product is still never overwritten by remote data`() = runTest {
         val local = FakeLocal(listOf(product(UNVERIFIED_MANUAL, "12.0")))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "99.9")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         val outcome = repository.refreshFromRemote(barcode)
 
@@ -393,7 +480,7 @@ class ProductRepositoryTest {
     @Test
     fun `an OCR product is stored as OCR provenance and counts as verified`() = runTest {
         val local = FakeLocal()
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.saveUserAuthoredProduct(
             product(UNVERIFIED_MANUAL, "47.3"),
@@ -416,7 +503,7 @@ class ProductRepositoryTest {
     @Test
     fun `a user-authored product is immediately visible in recents`() = runTest {
         val local = FakeLocal()
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.saveUserAuthoredProduct(product(UNVERIFIED_MANUAL, "12.0"))
 
@@ -433,7 +520,7 @@ class ProductRepositoryTest {
     fun `a refresh reports a changed online value without applying it to a verified product`() = runTest {
         val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0")))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         val outcome = repository.refreshFromRemote(barcode)
 
@@ -447,11 +534,9 @@ class ProductRepositoryTest {
     @Test
     fun `a verified product whose online value moved is flagged as differing`() = runTest {
         val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
-        val repository = ProductRepository(
+        val repository = repositoryOf(
             local,
             FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0"))),
-            portionUnits,
-            clock,
         )
 
         repository.refreshFromRemote(barcode)
@@ -462,11 +547,9 @@ class ProductRepositoryTest {
     @Test
     fun `an unchanged online value raises no notice`() = runTest {
         val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
-        val repository = ProductRepository(
+        val repository = repositoryOf(
             local,
             FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "48.2"))),
-            portionUnits,
-            clock,
         )
 
         assertEquals(RefreshOutcome.Unchanged, repository.refreshFromRemote(barcode))
@@ -479,7 +562,7 @@ class ProductRepositoryTest {
         val local = FakeLocal(
             listOf(product(VERIFIED_OFF, "48.2").copy(latestRemoteCarbs = BigDecimal("51.0"))),
         )
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.applyLatestRemoteValue(barcode)
 
@@ -494,7 +577,7 @@ class ProductRepositoryTest {
     @Test
     fun `applying does nothing when there is no newer value`() = runTest {
         val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.applyLatestRemoteValue(barcode)
 
@@ -515,7 +598,7 @@ class ProductRepositoryTest {
     @Test
     fun `recording a portion stores it against the product with the current time`() = runTest {
         val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2")))
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.recordUse(barcode, BigDecimal("65"))
 
@@ -527,7 +610,7 @@ class ProductRepositoryTest {
     @Test
     fun `toggling a favourite does not disturb the carbohydrate value`() = runTest {
         val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.setFavorite(barcode, true)
 
@@ -544,7 +627,7 @@ class ProductRepositoryTest {
         val local = FakeLocal()
         val candidate = PortionUnitCandidate(PortionUnitKind.SLICE, BigDecimal("36"), NutritionBasis.PER_100_G, "1 slice (36 g)")
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "42"), candidate))
-        val repository = ProductRepository(local, remote, portionUnits, clock)
+        val repository = repositoryOf(local, remote)
 
         repository.lookup(barcode)
 
@@ -558,11 +641,9 @@ class ProductRepositoryTest {
 
     @Test
     fun `a user-defined portion unit is persisted as manual and verified`() = runTest {
-        val repository = ProductRepository(
+        val repository = repositoryOf(
             FakeLocal(listOf(product(PLAIN_OFF, "42"))),
             FakeRemote(ProductFetchResult.NotFound),
-            portionUnits,
-            clock,
         )
 
         val saved = repository.saveUserPortionUnit(
@@ -591,11 +672,10 @@ class ProductRepositoryTest {
             createdAt = now, updatedAt = now,
         )
         val seededUnits = FakePortionUnitStore(listOf(existing))
-        val repository = ProductRepository(
+        val repository = repositoryOf(
             FakeLocal(listOf(product(PLAIN_OFF, "42"))),
             FakeRemote(ProductFetchResult.NotFound),
-            seededUnits,
-            clock,
+            units = seededUnits,
         )
 
         val verified = repository.verifyPortionUnit(1, confirmedAmountPerUnit = BigDecimal("35"))
@@ -617,11 +697,10 @@ class ProductRepositoryTest {
         )
         val seededUnits = FakePortionUnitStore(listOf(verifiedUnit))
         val newCandidate = PortionUnitCandidate(PortionUnitKind.SLICE, BigDecimal("38"), NutritionBasis.PER_100_G, "1 slice (38 g)")
-        val repository = ProductRepository(
+        val repository = repositoryOf(
             FakeLocal(listOf(product(PLAIN_OFF, "42"))),
             FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "42"), newCandidate)),
-            seededUnits,
-            clock,
+            units = seededUnits,
         )
 
         repository.refreshFromRemote(barcode)
@@ -644,11 +723,10 @@ class ProductRepositoryTest {
         )
         val seededUnits = FakePortionUnitStore(listOf(unverifiedUnit))
         val newCandidate = PortionUnitCandidate(PortionUnitKind.SLICE, BigDecimal("38"), NutritionBasis.PER_100_G, "1 slice (38 g)")
-        val repository = ProductRepository(
+        val repository = repositoryOf(
             FakeLocal(listOf(product(PLAIN_OFF, "42"))),
             FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "42"), newCandidate)),
-            seededUnits,
-            clock,
+            units = seededUnits,
         )
 
         repository.refreshFromRemote(barcode)
@@ -661,11 +739,9 @@ class ProductRepositoryTest {
 
     @Test
     fun `a product can carry more than one portion unit`() = runTest {
-        val repository = ProductRepository(
+        val repository = repositoryOf(
             FakeLocal(listOf(product(PLAIN_OFF, "42"))),
             FakeRemote(ProductFetchResult.NotFound),
-            portionUnits,
-            clock,
         )
 
         repository.saveUserPortionUnit(barcode, PortionUnitKind.SLICE, BigDecimal("36"), NutritionBasis.PER_100_G)
@@ -688,7 +764,7 @@ class ProductRepositoryTest {
         val seededUnits = FakePortionUnitStore(listOf(cachedUnit))
         val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
         val remote = FakeRemote(ProductFetchResult.Failed(LookupError.OFFLINE))
-        val repository = ProductRepository(local, remote, seededUnits, clock)
+        val repository = repositoryOf(local, remote, units = seededUnits)
 
         val result = repository.lookup(barcode)
 
@@ -700,7 +776,7 @@ class ProductRepositoryTest {
     @Test
     fun `the last input mode, portion unit and count are remembered`() = runTest {
         val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.recordUse(
             barcode,
@@ -727,7 +803,7 @@ class ProductRepositoryTest {
                 ),
             ),
         )
-        val repository = ProductRepository(local, FakeRemote(ProductFetchResult.NotFound), portionUnits, clock)
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
         repository.recordUse(barcode, portion = BigDecimal("65"), mode = InputMode.GRAMS)
 
@@ -735,5 +811,173 @@ class ProductRepositoryTest {
         assertEquals(InputMode.GRAMS, stored.lastInputMode)
         assertNull(stored.lastSelectedPortionUnitId)
         assertNull(stored.lastCount)
+    }
+
+    // ---- temporary meal (development-pass brief §7-§10) ----------------------------------------
+
+    private suspend fun ProductRepository.addItem(
+        name: String,
+        description: String,
+        resolved: String,
+        carbs: String,
+        exact: String,
+    ) = addMealItem(
+        productBarcode = barcode,
+        displayName = name,
+        portionDescription = description,
+        resolvedAmount = BigDecimal(resolved),
+        basis = NutritionBasis.PER_100_G,
+        carbsPer100 = BigDecimal(carbs),
+        exactCarbs = BigDecimal(exact),
+    )
+
+    @Test
+    fun `a meal item keeps the portion in the words the user chose`() = runTest {
+        val repository = repositoryOf(FakeLocal(), FakeRemote(ProductFetchResult.NotFound))
+
+        val item = repository.addItem("Bread", "2 slices", "72", "48.2", "34.704")
+
+        assertEquals("2 slices", item.portionDescription)
+        assertEquals(0, BigDecimal("72").compareTo(item.resolvedAmount))
+    }
+
+    /**
+     * §9's whole point. The total must come from the unrounded figures, so it cannot be the sum of
+     * what the screen displayed — 18.65 and 21.65 display as 18.7 and 21.7, whose sum is 40.4, and
+     * as whole grams 19 + 22 = 41. Only the exact sum gives 40.30.
+     */
+    @Test
+    fun `the meal total sums unrounded values rather than displayed ones`() = runTest {
+        val repository = repositoryOf(FakeLocal(), FakeRemote(ProductFetchResult.NotFound))
+        repository.addItem("A", "50 g", "50", "37.3", "18.65")
+        repository.addItem("B", "50 g", "50", "43.3", "21.65")
+
+        val total = app.carbscan.domain.MealTotal.exact(repository.findMealItems())
+
+        assertEquals(0, BigDecimal("40.30").compareTo(total))
+    }
+
+    /**
+     * A meal line is a snapshot, not a live view. Re-verifying the product at a different value must
+     * leave an already-added line showing the number the user accepted at the time (§9).
+     */
+    @Test
+    fun `correcting a product afterwards does not change an item already in the meal`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+        repository.addItem("Bread", "2 slices", "72", "48.2", "34.704")
+
+        repository.saveVerification(barcode, BigDecimal("51.0"), NutritionBasis.PER_100_G)
+
+        val item = repository.findMealItems().single()
+        assertEquals(0, BigDecimal("48.2").compareTo(item.carbsPer100))
+        assertEquals(0, BigDecimal("34.704").compareTo(item.exactCarbs))
+    }
+
+    @Test
+    fun `clearing the meal leaves nothing behind`() = runTest {
+        val repository = repositoryOf(FakeLocal(), FakeRemote(ProductFetchResult.NotFound))
+        repository.addItem("A", "50 g", "50", "37.3", "18.65")
+        repository.addItem("B", "50 g", "50", "43.3", "21.65")
+
+        repository.clearMeal()
+
+        assertTrue(repository.findMealItems().isEmpty())
+    }
+
+    // ---- usual portions (brief §13, §22) -------------------------------------------------------
+
+    @Test
+    fun `one use of a portion is not yet a usual portion`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repository.recordUse(barcode, portion = BigDecimal("65"), mode = InputMode.GRAMS)
+
+        assertTrue(repository.usualPortions(barcode).isEmpty())
+    }
+
+    @Test
+    fun `a portion used twice becomes a usual portion`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repeat(2) { repository.recordUse(barcode, portion = BigDecimal("65"), mode = InputMode.GRAMS) }
+
+        val usual = repository.usualPortions(barcode).single()
+        assertEquals(2, usual.usageCount)
+        assertEquals(0, BigDecimal("65").compareTo(usual.amount))
+    }
+
+    /**
+     * The column is TEXT, so without normalisation "65" and "65.0" would be two rows and neither
+     * would ever reach the two-use threshold — the feature would silently never trigger.
+     */
+    @Test
+    fun `the same portion typed with and without a trailing zero counts as one variant`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repository.recordUse(barcode, portion = BigDecimal("65"), mode = InputMode.GRAMS)
+        repository.recordUse(barcode, portion = BigDecimal("65.0"), mode = InputMode.GRAMS)
+
+        assertEquals(2, repository.usualPortions(barcode).single().usageCount)
+    }
+
+    /**
+     * "2 slices" and "2 g" are different portions that happen to share a number. Recording the
+     * resolved grams instead of the count would merge them and offer the user a nonsense shortcut.
+     */
+    @Test
+    fun `a count against a unit is recorded as the count, not the resolved grams`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repeat(2) {
+            repository.recordUse(
+                barcode,
+                portion = BigDecimal("72"),
+                mode = InputMode.PORTION_UNIT,
+                portionUnitId = 7,
+                count = BigDecimal("2"),
+            )
+        }
+
+        val usual = repository.usualPortions(barcode).single()
+        assertEquals(InputMode.PORTION_UNIT, usual.inputMode)
+        assertEquals(7L, usual.portionUnitId)
+        assertEquals(0, BigDecimal("2").compareTo(usual.amount))
+    }
+
+    @Test
+    fun `a gram portion and an identical count against a unit stay separate variants`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repeat(2) { repository.recordUse(barcode, portion = BigDecimal("2"), mode = InputMode.GRAMS) }
+        repeat(2) {
+            repository.recordUse(
+                barcode,
+                portion = BigDecimal("72"),
+                mode = InputMode.PORTION_UNIT,
+                portionUnitId = 7,
+                count = BigDecimal("2"),
+            )
+        }
+
+        assertEquals(2, repository.usualPortions(barcode).size)
+    }
+
+    /** At most three, per §13 — a row of shortcuts the user has to read is not a shortcut. */
+    @Test
+    fun `no more than three usual portions are ever offered`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        listOf("30", "45", "60", "75").forEach { amount ->
+            repeat(2) { repository.recordUse(barcode, portion = BigDecimal(amount), mode = InputMode.GRAMS) }
+        }
+
+        assertEquals(3, repository.usualPortions(barcode).size)
     }
 }

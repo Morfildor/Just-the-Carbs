@@ -9,6 +9,8 @@ import app.carbscan.domain.CarbCalculator
 import app.carbscan.domain.CarbResult
 import app.carbscan.domain.InputMode
 import app.carbscan.domain.LookupError
+import app.carbscan.domain.MealItem
+import app.carbscan.domain.MealTotal
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.domain.PortionParser
 import app.carbscan.domain.PortionResolver
@@ -57,9 +59,17 @@ data class ProductUiState(
     val newerRemotePortionUnitAmount: BigDecimal? = null,
     /** The inline "1 slice = [36] g" correction form is open (development-pass brief §3.3). */
     val correctingPortionUnit: Boolean = false,
+    // ---- temporary meal (development-pass brief §7-§10) --------------------------------------
+    /** The current meal, live. Adding from this screen is what puts items here (§8). */
+    val mealItems: List<MealItem> = emptyList(),
+    /** Set for one collection after *Add & scan next*, so the screen knows to move on (§11). */
+    val addedToMeal: Boolean = false,
 ) {
     val canCalculate: Boolean get() = product != null
     val selectedPortionUnit: PortionUnit? get() = portionUnits.firstOrNull { it.id == selectedPortionUnitId }
+
+    /** Running total of the meal, or null when the meal is empty and the bar should not show. */
+    val mealTotal: CarbResult? get() = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems)
 }
 
 /** Every way the screen can fail to show a number, each with its own recovery (§13, §26, §36). */
@@ -104,6 +114,15 @@ class ProductViewModel(
                 .distinctUntilChanged()
                 .debounce(PORTION_SETTLE_MS)
                 .collect { rememberUsage() }
+        }
+
+        // The meal is shared state, not session state: another screen can clear it while this one
+        // is open, and the bar must reflect that. Unlike the product's carbs, nothing here feeds a
+        // calculation, so observing it live cannot violate session immutability (§9).
+        viewModelScope.launch {
+            repository.observeMealItems().collect { items ->
+                _state.update { it.copy(mealItems = items) }
+            }
         }
     }
 
@@ -348,6 +367,51 @@ class ProductViewModel(
     }
 
     fun dismissNewerRemotePortionUnit() = _state.update { it.copy(newerRemotePortionUnitAmount = null) }
+
+    // ---- temporary meal (development-pass brief §7-§11) ----------------------------------------
+
+    /**
+     * Add the calculation currently on screen to the meal (§9).
+     *
+     * [portionDescription] comes from the UI in the user's own words — "2 slices", "½ pack", "200
+     * ml" — because pluralised unit names live in resources and only a composable can read them.
+     * The ViewModel supplies the numbers; the screen supplies the wording.
+     *
+     * The stored carbohydrate figure is [ProductUiState.result]'s exact value: the number the user
+     * is looking at as they tap. Nothing is recomputed here, so the meal cannot disagree with the
+     * screen it was added from.
+     */
+    fun addCurrentToMeal(portionDescription: String) {
+        val product = _state.value.product ?: return
+        val result = _state.value.result ?: return
+        val resolved = PortionParser.parse(_state.value.portionText) ?: return
+        viewModelScope.launch {
+            repository.addMealItem(
+                productBarcode = product.barcode.takeIf { !_state.value.unsaved },
+                displayName = product.name,
+                portionDescription = portionDescription,
+                resolvedAmount = resolved,
+                basis = product.basis,
+                carbsPer100 = product.carbsPer100,
+                exactCarbs = result.exact,
+            )
+            // Adding to a meal is the strongest possible signal that this portion is real — stronger
+            // than the debounced typing signal — so it counts towards *Usual* too (§13).
+            rememberUsage()
+            _state.update { it.copy(addedToMeal = true) }
+        }
+    }
+
+    /** Consumed by the screen once it has acted on [ProductUiState.addedToMeal]. */
+    fun consumeAddedToMeal() = _state.update { it.copy(addedToMeal = false) }
+
+    fun removeMealItem(item: MealItem) {
+        viewModelScope.launch { repository.removeMealItem(item) }
+    }
+
+    fun clearMeal() {
+        viewModelScope.launch { repository.clearMeal() }
+    }
 
     private fun recalculate() {
         val product = _state.value.product
