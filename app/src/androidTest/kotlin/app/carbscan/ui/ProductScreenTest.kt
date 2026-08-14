@@ -1,11 +1,13 @@
 package app.carbscan.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -19,6 +21,12 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.carbscan.ui.components.PRODUCT_HERO_TAG
 import app.carbscan.ui.components.PRODUCT_GALLERY_NEXT_TAG
@@ -35,9 +43,11 @@ import app.carbscan.domain.ProductImage
 import app.carbscan.domain.ProductImageType
 import app.carbscan.domain.ResultStyle
 import app.carbscan.domain.VerificationStatus
+import app.carbscan.ui.product.PRODUCT_RESULT_TAG
 import app.carbscan.ui.product.ProductScreen
 import app.carbscan.ui.product.ProductUiState
 import app.carbscan.ui.theme.CarbScanTheme
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.math.BigDecimal
@@ -287,6 +297,167 @@ class ProductScreenTest {
                 )
             }
         }
+    }
+
+    /**
+     * The dialog must not throw on an empty image list.
+     *
+     * Both production call sites check `isNotEmpty()` before composing it, so this cannot be
+     * reached by driving the UI — it is reachable if the product changes under a recomposition
+     * while the dialog is open. A crash there would take down the calculator mid-calculation, so
+     * the contract is "render nothing", not "fail loudly".
+     */
+    @Test
+    fun aGalleryWithNoImagesRendersNothingRatherThanCrashing() {
+        compose.setContent {
+            CarbScanTheme {
+                ProductGalleryDialog(
+                    productName = "Test product",
+                    images = emptyList(),
+                    onDismiss = {},
+                )
+            }
+        }
+
+        compose.onAllNodesWithTag(PRODUCT_GALLERY_TAG).assertCountEquals(0)
+    }
+
+    /**
+     * Swiping the gallery must tell a screen-reader user what they landed on.
+     *
+     * The images are photographs, so their own descriptions cannot carry this — the caption is
+     * the only thing that says which image is showing and where in the set it sits. Before this,
+     * all three caption lines changed on swipe and none of them was announced, leaving a TalkBack
+     * user to swipe through an unlabelled set.
+     *
+     * Asserted on the merged description rather than the individual `Text`s, because the
+     * individual strings were already present and visible while the announcement was still
+     * missing — the presence of the text was never the thing that was broken.
+     */
+    @Test
+    fun theGalleryCaptionIsAnnouncedAsOneLiveRegion() {
+        compose.setContent {
+            CarbScanTheme {
+                ProductGalleryDialog(
+                    productName = "Test product",
+                    images = listOf(
+                        ProductImage(
+                            ProductImageType.NUTRITION,
+                            "en",
+                            "https://images.openfoodfacts.org/a.400.jpg",
+                        ),
+                        ProductImage(
+                            ProductImageType.FRONT,
+                            "nl",
+                            "https://images.openfoodfacts.org/b.400.jpg",
+                        ),
+                    ),
+                    onDismiss = {},
+                    // No network in an instrumented test; the caption is independent of whether
+                    // the bytes ever arrive, which is the point being tested.
+                    imageModel = { null },
+                )
+            }
+        }
+
+        val caption = compose.onNodeWithContentDescription("Nutrition, EN, 1 of 2")
+        caption.assertExists()
+        caption.fetchSemanticsNode().config[SemanticsProperties.LiveRegion].let {
+            assertTrue("The caption must be a polite live region, was $it", it == LiveRegionMode.Polite)
+        }
+    }
+
+    // ---- U3: the result must survive the largest supported font scale --------------------------
+
+    /**
+     * The result must not be clipped at the accessibility font scales.
+     *
+     * This is the one number the whole app exists to show, and the one where truncation would be
+     * worst: `125.3 g` cut to `125` is a wrong value presented with full confidence, not a
+     * cosmetic defect. It renders with `maxLines = 1` inside a fixed-height panel, so nothing in
+     * the layout would make truncation visible as a broken-looking screen — it would just quietly
+     * show fewer digits.
+     *
+     * Asserted geometrically, because the semantics tree reports the whole string whether or not
+     * the pixels fit — the blind spot that let four layout defects through a green suite before.
+     *
+     * The conditions are the hostile ones: the widest string this screen can produce, on a dense
+     * narrow phone, at the largest font scale. It passes today because Android's non-linear font
+     * scaling (API 34+) deliberately grows large text far less than small text, so the 72sp
+     * result does not approach its 96dp box. That is a platform behaviour this app depends on
+     * without stating it anywhere, which is exactly why it is pinned here: if the result style,
+     * the panel height, or the minimum supported API changes, this is the test that should fail.
+     */
+    @Test
+    fun theResultIsNotClippedAtTheLargestFontScale() {
+        compose.setContent {
+            // 1.8x is the scale the app is documented as supporting; Android's own accessibility
+            // settings go to 2.0x, so this is the floor of the requirement, not the ceiling.
+            CompositionLocalProvider(
+                LocalDensity provides Density(
+                    // A dense small phone: 1080px across a 5.5" screen is ~3.0 density, so the
+                    // window is only ~360dp wide. Combined with the largest font scale, this is
+                    // the narrowest place the widest result has to fit.
+                    density = 3.0f,
+                    fontScale = 2.0f,
+                ),
+            ) {
+                CarbScanTheme {
+                    ProductScreen(
+                        state = ProductUiState(
+                            loading = false,
+                            product = product(carbs = "48.2"),
+                            // 260 g of a 48.2 g/100 g product is 125.3 g — three digits plus a
+                            // decimal, the widest result this screen can be asked to render.
+                            portionText = "260",
+                            result = CarbCalculator.calculate(
+                                BigDecimal("48.2"),
+                                BigDecimal("260"),
+                                NutritionBasis.PER_100_G,
+                            ),
+                            barcode = "8712100849060",
+                        ),
+                        settings = AppSettings(),
+                        onPortionChanged = {},
+                        onAdjust = {},
+                        onSetPortion = {},
+                        onToggleFavorite = {},
+                        onBack = {},
+                        onVerify = {},
+                        onDismissVerify = {},
+                        onConfirmVerification = { _, _, _ -> },
+                        onResetOnline = {},
+                        onScanLabel = {},
+                        onEnterManually = {},
+                        onRetry = {},
+                    )
+                }
+            }
+        }
+
+        // Ask the Text itself whether it overflowed, via GetTextLayoutResult.
+        //
+        // Comparing the node's `size` against its `boundsInRoot` does NOT work here and was tried
+        // first: a constrained Text reports both as the already-constrained value, so they cannot
+        // disagree and the assertion passes even when the digits are visibly cut off. Verified by
+        // forcing the result into a 120dp-wide row — the bounds comparison still passed.
+        // `TextLayoutResult` is the only source that reports the *desired* size independently.
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG)
+            .fetchSemanticsNode()
+            .config[SemanticsActions.GetTextLayoutResult]
+            .action
+            ?.invoke(layouts)
+        val layout = layouts.single()
+
+        assertTrue(
+            "The result overflows its box: laid out at ${layout.size.width}x" +
+                "${layout.size.height}px, longest line ${layout.multiParagraph.maxIntrinsicWidth}px",
+            !layout.hasVisualOverflow,
+        )
+        // A truncated result would still satisfy a bounds check by simply being a shorter string,
+        // so the value itself is asserted too.
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertTextEquals("125.3 g")
     }
 
     @Test

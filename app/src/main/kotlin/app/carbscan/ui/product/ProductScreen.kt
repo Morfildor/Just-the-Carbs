@@ -113,6 +113,9 @@ const val PORTION_CORRECTION_FIELD_TAG = "portion_unit_correction_amount"
 /** Stable handle for the "add portion unit" form's amount field, used by instrumented tests. */
 const val ADD_PORTION_UNIT_FIELD_TAG = "add_portion_unit_amount"
 
+/** Stable handle for the dominant carbohydrate result, used by instrumented tests. */
+const val PRODUCT_RESULT_TAG = "product_result"
+
 /**
  * The calculator — the screen §14 says deserves the majority of the UI attention.
  *
@@ -246,7 +249,7 @@ fun ProductScreen(
                 onAddToMealAndScanNext = onAddToMealAndScanNext,
                 onOpenMeal = onOpenMeal,
                 onSelectUsualPortion = onSelectUsualPortion,
-                onOpenGallery = { galleryOpen = true },
+                onOpenGallery = { galleryOpen = true }.takeIf { galleryImages.isNotEmpty() },
             )
         }
     }
@@ -420,7 +423,8 @@ private fun CalculatorBody(
     onAddToMealAndScanNext: (String) -> Unit = {},
     onOpenMeal: () -> Unit = {},
     onSelectUsualPortion: (PortionUsage) -> Unit = {},
-    onOpenGallery: () -> Unit = {},
+    /** Null when the product has no safe gallery image, which is what removes the hero's tap. */
+    onOpenGallery: (() -> Unit)? = null,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -437,7 +441,7 @@ private fun CalculatorBody(
         ProductHeroImage(
             product = product,
             compact = imeVisible,
-            onClick = onOpenGallery.takeIf { ProductImageSelector.galleryImages(product).isNotEmpty() },
+            onClick = onOpenGallery,
             modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
         )
 
@@ -1363,9 +1367,14 @@ private fun ResultPanel(
                         style = NumberType.result,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
+                        // Shrinks rather than clips. See [NumberType.resultAutoSize] — a result
+                        // that loses digits still looks like a finished number.
+                        autoSize = NumberType.resultAutoSize,
                         // Announced as a live region so TalkBack reads the new result as the
                         // portion changes, instead of leaving a blind user to hunt for it (§39).
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        modifier = Modifier
+                            .testTag(PRODUCT_RESULT_TAG)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
 

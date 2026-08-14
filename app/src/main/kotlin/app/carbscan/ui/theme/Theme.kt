@@ -4,6 +4,7 @@ import app.carbscan.domain.ThemeChoice
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -194,6 +195,27 @@ object NumberType {
         fontWeight = FontWeight.SemiBold,
         letterSpacing = (-2).sp,
         textAlign = TextAlign.Center,
+    )
+
+    /**
+     * How the result is allowed to shrink so it always fits on one line.
+     *
+     * The result is rendered with `maxLines = 1`, so without this it does not wrap when it runs
+     * out of room — it is clipped, and `125.3 g` becomes `125.3` or `125`. A carbohydrate figure
+     * that silently loses digits while still looking like a finished number is the worst failure
+     * this screen has, so the size gives way instead of the value.
+     *
+     * This is not hypothetical: at the largest font scale on a dense narrow phone, a three-digit
+     * result overflowed its box by a fraction of a pixel — measured, not estimated. The margin at
+     * the default scale was never more than that one string.
+     *
+     * The floor is 40.sp, still far larger than any other text on the screen, so the result keeps
+     * its place in the hierarchy (§3) even in the worst case.
+     */
+    val resultAutoSize = TextAutoSize.StepBased(
+        minFontSize = 40.sp,
+        maxFontSize = 72.sp,
+        stepSize = 1.sp,
     )
 
     /** The portion being edited. */

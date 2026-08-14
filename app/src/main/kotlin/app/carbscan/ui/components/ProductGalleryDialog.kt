@@ -74,7 +74,10 @@ fun ProductGalleryDialog(
     imageLoader: ImageLoader = SingletonImageLoader.get(LocalContext.current),
     imageModel: (ProductImage) -> Any? = { it.displayUrl },
 ) {
-    require(images.isNotEmpty()) { "A product gallery needs at least one validated image" }
+    // Both call sites check this already, but a code invariant is not a runtime guarantee: the
+    // product can change under a recomposition while the dialog is open. Crashing here would take
+    // down the calculator mid-calculation, so an empty list renders nothing instead.
+    if (images.isEmpty()) return
 
     val pagerState = rememberPagerState(pageCount = images::size)
     val scope = rememberCoroutineScope()
@@ -133,8 +136,29 @@ fun ProductGalleryDialog(
 
                 val currentIndex = pagerState.currentPage.coerceIn(images.indices)
                 val current = images[currentIndex]
+
+                // The caption is announced as one unit when the page changes.
+                //
+                // Swiping the pager silently changed all three lines below — which image type,
+                // which language, which position — and told a screen-reader user none of it. The
+                // images themselves cannot fill that gap: they are photographs, so their
+                // description is the only thing that says what was landed on. Merged so TalkBack
+                // reads "Nutrition, EN, 2 of 4" rather than three separate fragments, and marked
+                // a live region so it is read on swipe rather than only when focused.
+                val caption = buildList {
+                    add(current.type.displayName())
+                    current.language?.takeIf(String::isNotBlank)?.let { add(it.uppercase(Locale.ROOT)) }
+                    if (images.size > 1) add(stringResource(R.string.gallery_page, currentIndex + 1, images.size))
+                }.joinToString(", ")
+
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Space.m, vertical = Space.s)
+                        .semantics(mergeDescendants = true) {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = caption
+                        },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(Space.xs),
                 ) {
@@ -261,7 +285,14 @@ private fun GalleryArrow(
         modifier = modifier
             .padding(Space.xs)
             .size(Space.minTouchTarget)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), RoundedCornerShape(50))
+            // Fully opaque, not the 0.92f it used to be.
+            //
+            // These arrows float over a product photo the app has never seen — the user's own
+            // packaging, which can be any colour. At 92% the remaining 8% was the photo, so the
+            // control's contrast against its own background depended on the image behind it, and
+            // WCAG's 3:1 for non-text controls could not be guaranteed for a bright label. The
+            // surface colour is a known quantity; the photograph is not.
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
             .testTag(if (previous) PRODUCT_GALLERY_PREVIOUS_TAG else PRODUCT_GALLERY_NEXT_TAG)
             .semantics { contentDescription = description },
     ) {

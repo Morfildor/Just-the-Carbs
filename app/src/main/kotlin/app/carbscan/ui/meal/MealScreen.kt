@@ -245,6 +245,10 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings) {
             style = NumberType.result,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
+            // Same reason as the calculator's result, and more pressing here: a meal total is the
+            // sum of several portions, so it reaches three and four digits sooner than any single
+            // product's result does.
+            autoSize = NumberType.resultAutoSize,
             modifier = Modifier.testTag(MEAL_TOTAL_TAG),
         )
 
