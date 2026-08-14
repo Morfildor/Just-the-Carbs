@@ -83,26 +83,21 @@ the specific number it produced is correct for the package in hand.
 fixtures; no live product with a countable-portion-shaped `serving_size` has been scanned and
 checked against real packaging. See `docs/manual-qa.md` §15a, currently unchecked.
 
-**One instrumented UI test is order-dependent flaky, not app-broken.**
-`CountablePortionScreenTest.addingAPortionUnitThroughTheInlineFormMakesItImmediatelyUsable` passes
-reliably run in isolation, and the same select-unit/read-equation behaviour it checks is covered
-reliably by five other tests in the same file — but it intermittently fails when run as part of the
-full 42-test instrumented suite. Investigated 2026-08-14: an explicit `waitUntil` poll times out
-rather than eventually succeeding, which rules out a simple recomposition-timing race and points at
-emulator-level IME/focus state carrying over between test-activity transitions. Left documented in
-the test itself rather than deleted, retried silently, or weakened.
+**The order-dependent flaky instrumented test is fixed (2026-08-14), and it was a test bug, not an
+app bug.** The earlier entry here recorded it as unexplained. The actual cause, found by reading
+the full-suite failure rather than re-reading the code: a control covered by the soft keyboard is
+not clickable, but `performClick()` on it does not throw — it clicks nothing, the expected state
+change never happens, and a later assertion fails for a reason unrelated to what it was checking.
+That also explains the odd symptom, a `waitUntil` timing out instead of eventually succeeding —
+nothing was ever going to change. The fix is per-interaction: controls that can sit below the fold
+with the keyboard open get `performScrollTo()` first. No retry, no sleep, no weakened assertion.
 
-**The count field can be mistyped on first use.** It pre-fills `1`; typing without first clearing
-it appends rather than replaces (e.g. typing `2` over a pre-filled `1` gives `12`), because the
-field does not select-all on focus. The result panel itself is never affected by this — a wrong
-count just shows a wrong-but-visible result the user can see and correct. See the full write-up in
-[ux-critique-countable-portions.md](ux-critique-countable-portions.md).
-
-**Supporting content can scroll out of view while the keyboard is open.** The `2 slices × 36 g =
-72 g` equation text and the *+ Add portion unit* action live in the same scrollable region as the
-count field; with the on-screen keyboard open, they are not guaranteed to be visible without
-scrolling. The result panel itself is pinned outside this region and stays visible throughout — see
-[ux-critique-countable-portions.md](ux-critique-countable-portions.md).
+**Fixed 2026-08-14 — the count field mistyping and the scrolled-away equation.** Both are listed
+here as resolved rather than deleted, because a reader who saw an earlier build should be able to
+tell whether what they hit is still true. The count field now selects its contents on focus, so
+typing `2` over a pre-filled `1` gives `2`; and the equation is now pinned with the result panel
+instead of living in the scrollable region, so it stays visible with the keyboard open. Both are
+regression-tested.
 
 ## Scope — things this app deliberately does not do
 
@@ -120,11 +115,11 @@ device-to-device transfer. This is a deliberate trade (§34): your food history 
 verified values and remembered portions - never leaves the device by that route. The cost is that a
 new phone starts empty, and verified values need re-entering.
 
-**Product images are displayed under a confirmed licence, but in-app attribution wording is not yet
-updated for it.** Open Food Facts images are CC BY-SA — distinct from the ODbL licence covering the
-database itself, and confirmed against OFF's current terms of use (2026-08-14). The in-app
-attribution string still covers only the database licence. See `docs/third-party-notices.md`; this
-is an open pre-publication action.
+**Image attribution is now in the app (2026-08-14).** Open Food Facts licenses its photographs
+under CC BY-SA 3.0, separately from the ODbL/DbCL covering the database, and Settings → About now
+carries a distinct credit line for each. What remains open is the *licence review* — whether the
+overall use of OFF data and images is compliant — which is a different question from whether the
+required credit is displayed. See `docs/third-party-notices.md`.
 
 **There is no browse-all-products screen.** Products are reached through Recents and favourites. A
 product cleared from recent history remains in the database but is only re-reachable by scanning its
@@ -132,10 +127,14 @@ barcode again.
 
 ## Verification status of this build
 
+Counts below are from the run of 2026-08-14, not from memory.
+
 | Area | State |
 |---|---|
-| Calculation, parsing, validation, repository, OCR parsing | 116 JVM unit tests, passing |
-| Room DAO ordering and decimal round-trip, plus calculator UI behaviour | 26 instrumented tests, passing on an API 36 emulator |
+| Calculation, parsing, validation, repository, OCR parsing, meal totals, label comparison, search | **225 JVM unit tests, all passing** |
+| Room DAO ordering and decimal round-trip, plus calculator, meal, label-verification, usual-portion and search UI behaviour | **89 instrumented tests, all passing** on an API 36 emulator |
+| Instrumented suite stability | The one previously order-dependent test now passes in the full suite; the cause was a keyboard-covered control, fixed per-interaction rather than retried |
+| Dependency vulnerabilities | **226 shipped artifacts scanned against OSV.dev, 0 known vulnerabilities** (2026-08-14, `tools/dependency-scan.sh`) — a point-in-time result, not a standing property |
 | Scan → portion → carbs, recents, manual entry, ml basis, dark mode, large font | Exercised by hand on an API 36 emulator |
 | Barcode decoding from a real barcode | **Verified on a physical device** (2026-08-14) |
 | Nutrition-label OCR against real packaging | **Verified on a physical device** (2026-08-14) |

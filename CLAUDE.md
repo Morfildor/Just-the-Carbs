@@ -17,10 +17,11 @@ A copy is kept on the Desktop as **`CarbScan-debug.apk`** — install that on a 
 Other useful tasks:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest         # 167 JVM tests
+.\gradlew.bat :app:testDebugUnitTest         # 225 JVM tests
 .\gradlew.bat :app:lintDebug                 # lint (clean)
 .\gradlew.bat :app:assembleRelease           # minified, UNSIGNED (~64 MB)
-.\gradlew.bat :app:connectedDebugAndroidTest # 42 instrumented tests, needs a device
+.\gradlew.bat :app:connectedDebugAndroidTest # 89 instrumented tests, needs a device
+bash tools/dependency-scan.sh                # CVE scan of the shipped dependency graph
 ```
 
 ## What this project is
@@ -56,9 +57,12 @@ GitHub: **https://github.com/Morfildor/CarbScan** — private, and staying priva
 - ✅ §60 Compose UI tests (16 behaviour tests on the calculator)
 - ✅ Manual barcode entry (§8); live Open Food Facts verified end to end incl. product images
 - ✅ **Countable portions** (2026-08-14) — see dedicated section below
-- ✅ **167 JVM unit tests, lint clean**
-- ✅ **41/42 instrumented tests passing**; 1 has documented order-dependent flakiness in the full
-  suite (passes reliably in isolation) — see "Countable portions" below, not a functional bug
+- ✅ **Product development pass** (2026-08-14) — see dedicated section below
+- ✅ **225 JVM unit tests, 89 instrumented tests, all passing; lint clean**
+- ✅ The previously flaky instrumented test is **fixed** — it was a test bug (a keyboard-covered
+  control that `performClick()` silently no-ops on), not app behaviour. Full suite is green.
+- ✅ **Dependency vulnerability scan run** — `tools/dependency-scan.sh`, 226 shipped artifacts,
+  0 known vulnerabilities (2026-08-14). Point-in-time; re-run before release.
 - ❌ Not done: release signing, AAB, systematic multi-device testing
 
 ## Countable portions (2026-08-14)
@@ -96,11 +100,10 @@ matching config, not a real shared instance.
    `PortionUnitDaoTest.deletingAProductCascadesToItsPortionUnits`, which uses
    `Room.inMemoryDatabaseBuilder` (the real production path) and passes. Trust the production-path
    test over the migration-harness one for this specific question.
-2. `CountablePortionScreenTest.addingAPortionUnitThroughTheInlineFormMakesItImmediatelyUsable` is
-   flaky specifically when run as part of the full 42-test suite (passes reliably alone, and the
-   same behaviour is covered reliably by 5 other tests). A `waitUntil` poll timing out rather than
-   eventually succeeding rules out simple recomposition-timing; likely emulator IME/focus state
-   carrying over between test-activity transitions. Documented in the test, not silently retried.
+2. ~~The flaky `CountablePortionScreenTest` case~~ — **root-caused and fixed** in the 2026-08-14
+   development pass; see that section below. It was never emulator flakiness: a control covered by
+   the soft keyboard is not clickable, and `performClick()` on it does not throw, it clicks
+   nothing. `performScrollTo()` before clicking is the fix.
 
 ### Verified by actually running it (API 36 emulator)
 
@@ -119,14 +122,61 @@ These were the two largest unknowns and are now closed. Do not re-list them as u
 
 ### NOT verified — do not claim otherwise
 
-- Live Open Food Facts responses end to end (tested against MockWebServer, not the real API).
 - Behaviour across a range of physical devices, incl. Samsung Galaxy specifics (§61 §14).
+- **Anything at all on a physical device beyond barcode scanning and label OCR.** Everything in
+  this pass — meal, label verification, usual portions, search, attribution — was verified on the
+  **emulator** only. That is the single biggest standing gap.
 - The release (R8) build on physical hardware — it runs on the emulator.
 - **Countable portions against a real OFF `serving_size` response.** All automated coverage uses
   fixtures; no live product with a countable-unit-shaped `serving_size` has been scanned and
   checked against real packaging. See `docs/manual-qa.md` §15a, currently unchecked.
 - Countable portions on a physical device at all — built and instrumented-tested on the emulator
   only, same caveat as the rest of this build.
+
+## Product development pass (2026-08-14)
+
+Four features plus a design-system pass. Full brief priorities P0→P4; **P3.3 (launcher shortcuts)
+was explicitly skipped by the owner.**
+
+**Temporary meal.** Add several calculated portions, read one total. The scope guarantee is
+structural, not a rule someone must remember: `MealStore` holds **one** meal and there is **no meal
+id anywhere in the codebase**, so "meal history" cannot be built without first adding the concept.
+No name, no date. It **does** persist across a restart (Room-backed, verified on the emulator by
+force-stopping and relaunching), which is deliberate — losing a half-built plate to an app switch
+would be a bug, not scope discipline. What makes it a scratchpad is that there is only ever *one*
+and no past meal can exist.
+
+**OCR label verification** (`LabelComparison`, pure domain). Scan a package to check a stored
+value. Differences show **both numbers side by side**; nothing is applied without a tap. A basis
+mismatch (per 100 ml vs per 100 g) offers **no apply path at all** rather than converting — the app
+has no density data and inventing one here would corrupt a stored value.
+
+**Usual portions.** Portions repeated for a specific product become one-tap shortcuts. Per-barcode
+only; `PortionUsageStore` deliberately has **no "all usage" accessor**, so a cross-product eating
+pattern cannot be assembled from it. No dates, no counts, nothing shown to the user but the
+portion. Amounts are normalized with `stripTrailingZeros()` before storage — the column is TEXT, so
+`65` and `65.0` would otherwise be different portions.
+
+**Search by name** (`cgi/search.pl`). A fallback from a failed barcode lookup, never the way in,
+and **not offered when the lookup failed for network reasons** — the same host is down. A
+`ProductSearchHit` is not a `Product` and cannot become one: no provenance, no verification status,
+no id. Selecting one runs an ordinary barcode lookup, so "no fuzzy match is auto-selected" holds
+because no code path could do it. A search failure is **never** rendered as "no matches" — the
+endpoint answered 503 three times during live verification while product reads stayed healthy.
+
+### What only running the app caught
+
+Four layout defects, none caught by any assertion — worth remembering before trusting a green
+suite as evidence that a screen is usable:
+
+- The meal bar broke the calculator in **three** different placements before the fourth worked
+  (fixed header clipped the portion question; scrolling zone made it invisible with the keyboard
+  open; full-size in the pinned panel grew upward over the portion field).
+- The Usual row made the portion zone taller and pushed *+ Add portion unit* half under the panel.
+
+Also: a geometric regression test I wrote was itself invalid — it compared before/after positions
+while `performTextInput` opened the IME, so it measured ~268 dp of keyboard, not layout movement.
+A single-layout `panelTop >= fieldBottom` assertion replaced it.
 
 ## Toolchain (installed — do NOT reinstall)
 
@@ -206,15 +256,17 @@ Note: `connectedAndroidTest` **uninstalls the app afterwards** — reinstall bef
 
 ```
 domain/    Pure Kotlin, ZERO Android imports — the safety-critical layer. Keep it that way.
-           PortionResolver, ServingSizeParser, PortionUnit(Kind), ProductImageUrlValidator
+           PortionResolver, ServingSizeParser, PortionUnit(Kind), ProductImageUrlValidator,
+           MealStore, PortionUsageStore, LabelComparison, ProductSearch
 data/
-  local/   Room (v3): ProductEntity/Dao, PortionUnitEntity/Dao, RoomProductDataSource,
-           RoomPortionUnitDataSource
-  remote/  Retrofit (OFF v3) + OpenFoodFactsDataSource
+  local/   Room (v4): ProductEntity/Dao, PortionUnitEntity/Dao, RoomProductDataSource,
+           RoomPortionUnitDataSource, RoomMealDataSource, RoomPortionUsageDataSource
+  remote/  Retrofit (OFF v3 read + cgi/search.pl) + OpenFoodFactsDataSource
   settings/DataStore
-  ProductRepository   ← owns the §10 lookup priority + portion-unit persistence/verification
+  ProductRepository   ← owns the §10 lookup priority, portion units, meal, usage, search
 ocr/       NutritionLabelParser (pure) + LabelAnalyzer (ML Kit)
 ui/        Compose screens + ViewModels, immutable state via StateFlow
+           product/, meal/, search/, components/ (shared design system)
 ```
 
 Key invariants, each pinned by a test:
@@ -227,10 +279,16 @@ Key invariants, each pinned by a test:
 - Carbohydrate values (and countable-portion weights) are stored as **TEXT** in SQLite, never REAL.
 - `ResultFormatter` sets `RoundingMode.HALF_UP` explicitly — `DecimalFormat` defaults to HALF_EVEN,
   which made the app display a different decimal from the one it calculated (15.4 vs 15.5).
-- Room schema is at **v3**; `MIGRATION_1_2` adds `latestRemoteCarbs`, `MIGRATION_2_3` adds
-  `portion_units` + three `products` columns for remembered countable-portion mode. Never
-  destructive. `MIGRATION_2_3`'s `ALTER TABLE ADD COLUMN` calls are guarded by a `PRAGMA
-  table_info` check — see "Countable portions" above for why.
+- Room schema is at **v4**; `MIGRATION_1_2` adds `latestRemoteCarbs`, `MIGRATION_2_3` adds
+  `portion_units` + three `products` columns for remembered countable-portion mode, `MIGRATION_3_4`
+  adds `current_meal_items` (the name is the scope guarantee: there is only ever a *current* meal)
+  and `portion_usage`. Never destructive. `MIGRATION_2_3`'s `ALTER TABLE ADD
+  COLUMN` calls are guarded by a `PRAGMA table_info` check — see "Countable portions" above for why.
+- `MealStore` has **no meal id** and `PortionUsageStore` has **no all-usage accessor**. Both
+  absences are the scope guarantee (§2) expressed structurally — adding either would make a food
+  diary buildable. Do not add them "for symmetry".
+- Countable-portion amounts and usage amounts are normalized with `stripTrailingZeros()` before
+  storage, because the columns are TEXT and `65` vs `65.0` would otherwise be distinct portions.
 - `PortionResolver` is the only place `count × amountPerUnit` happens; it never itself computes a
   carbohydrate value — that stays `CarbCalculator`'s job alone, keeping one formula in the app.
 
@@ -252,18 +310,28 @@ Key invariants, each pinned by a test:
    verified on the emulator. No opt-out constant exists in the shipped artifacts; none was
    invented. Disclosed in the privacy policy and Data Safety draft. Owner still owes a review of
    Google's ML Kit disclosures and the Data Safety category choice.
-3. **Open Food Facts *image* licensing: now confirmed as CC BY-SA** (2026-08-14, checked against
-   `world.openfoodfacts.org/terms-of-use`) — distinct from the database's ODbL/DbCL, as suspected.
-   Remaining owner action: the in-app attribution string only covers the database licence; CC
-   BY-SA's own attribution line has not been added. See `docs/third-party-notices.md`.
+3. **Open Food Facts licence review** — the *attribution* is now done (see below), but whether the
+   overall use of OFF data and images complies is a separate question and still the owner's. The
+   ODbL share-alike condition is the one most easily broken by an innocuous feature (export, sync,
+   sharing, server-side caching), so reassess before any such feature ships.
+   See `docs/third-party-notices.md`.
 4. Licence for the project not yet chosen.
 5. Contact email is still `REPLACE_ME@example.com` throughout — now also a concrete OFF User-Agent
    compliance gap (documented format is `AppName/Version (ContactEmail)`), not just a docs
-   placeholder.
-6. **Dependency vulnerability scanning has never been run** (identified during the 2026-08-14
-   security review) — no OWASP Dependency-Check / CVE-feed pass has ever been done on this
-   project's dependency graph. See `docs/security-review.md`.
-7. **Countable-portion UI follow-up**: correcting a wrong remote-suggested per-unit weight
-   currently means adding a new custom unit, not editing the existing one in place — the
-   repository already supports `verifyPortionUnit(unitId, confirmedAmountPerUnit)`, but no UI path
-   calls it with a correction yet. See `docs/ux-critique-countable-portions.md`.
+   placeholder. **No public address may be invented for this**; it needs one the owner controls.
+6. **Physical-device verification of everything built in the 2026-08-14 development pass.** Only
+   barcode scanning and label OCR have ever been confirmed on real hardware. Meal, label
+   verification, usual portions and search are emulator-only.
+7. **Countable portions against a real OFF `serving_size`.** Still fixture-only; no live product
+   with a countable-unit-shaped `serving_size` has been checked against real packaging.
+   `docs/manual-qa.md` §15a.
+
+### Closed in the 2026-08-14 development pass
+
+- ~~CC BY-SA attribution line missing~~ — added to Settings → About, verified rendering on device.
+- ~~Dependency vulnerability scanning never run~~ — `tools/dependency-scan.sh`, 226 artifacts,
+  0 known vulnerabilities. Re-run before release; a clean scan expires.
+- ~~No UI path to correct a wrong remote-suggested per-unit weight~~ — inline correction now calls
+  `verifyPortionUnit(unitId, confirmedAmountPerUnit)`.
+- ~~One order-dependent flaky instrumented test~~ — root-caused to a keyboard-covered control that
+  `performClick()` silently no-ops on. Fixed per-interaction; full suite green.

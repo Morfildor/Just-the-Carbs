@@ -12,8 +12,9 @@ This describes what the app actually does, verified against the source code (§4
 CarbScan has no account, no advertising, and no analytics we added. Your products, portions,
 favourites and verified values stay on your device. **It is not true that no data leaves your
 device:** when you scan a barcode the app has never seen, it sends that barcode to Open Food Facts
-to look up the product, and — when that product has a photo — requests the photo too. Those two
-requests are the only ones CarbScan itself makes.
+to look up the product, and — when that product has a photo — requests the photo too. If you use
+**Search by name**, the words you type are also sent to Open Food Facts, because that is how the
+search works. Those three requests are the only ones CarbScan itself makes.
 
 ## What stays on your device
 
@@ -25,21 +26,33 @@ Stored locally in an app-private database, readable by no other app:
 - Countable portion units (e.g. "1 slice = 36 g"), whether suggested by Open Food Facts or
   entered by you, and whether you have checked them against the package
 - The last portion or countable-unit count you used per product, and when you last used it
+- Portions you have used more than once for a product, so they can be offered as shortcuts. These
+  are kept per product; the app has no way to assemble them into a picture of what you eat overall
+- The items in your **current meal**, if you are using that feature. There is only ever one meal
+  and it has no name and no date. It stays until you clear it — including across a restart, so you
+  do not lose a half-built plate by switching apps — but the app has no way to store a *past* meal,
+  so it holds no record of meals you have eaten
 - Favourites, and your settings (theme, result style, haptics)
 
 There is no login, no cloud profile, and no synchronisation. Deleting the app deletes all of it.
 
 ## What leaves your device
 
-**Two things: a barcode lookup, and — only when the product has one — its photo.**
+**Three things: a barcode lookup, a product photo, and — only if you use it — a search you typed.**
 
 | Field | Value |
 |---|---|
 | Recipient | Open Food Facts, for product data (`world.openfoodfacts.org`) and product photos (`images.openfoodfacts.org`) |
-| When | Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts' own image host — the app checks this and will not load an image from any other address |
-| What is sent | The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo) |
+| When | Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts' own image host — the app checks this and will not load an image from any other address. Search text: only while you are typing on the search screen, which is reached from a failed lookup and never opened on its own |
+| What is sent | The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo); the search words themselves (search) |
 | What is *not* sent | Any identifier for you or your device, your portions, your results, your history, your verified values |
 | Transport | HTTPS only. Cleartext traffic is disabled at the platform level |
+
+**About the search text specifically.** Unlike a barcode, this is text you typed, so it deserves
+naming rather than folding into "product lookups". It is sent as you type (after a short pause) so
+results can appear live, it is sent with no identifier attached, and it is never stored on your
+device or anywhere else — the app keeps no search history. If you do not use Search by name,
+nothing of this kind is ever sent.
 
 Open Food Facts is an independent organisation and will receive your IP address as an unavoidable
 part of any internet request. Their handling of that is governed by their own privacy policy.

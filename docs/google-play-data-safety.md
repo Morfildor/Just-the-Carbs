@@ -15,7 +15,7 @@ template. Where the honest answer is "uncertain", it says so rather than guessin
 | Question | How it was checked |
 |---|---|
 | What permissions ship? | `app/build/intermediates/merged_manifest/.../AndroidManifest.xml` |
-| What leaves the device? | `OpenFoodFactsDataSource`, `NetworkModule`, `OpenFoodFactsApi` — product-data requests to `world.openfoodfacts.org`, plus product-image requests to Open Food Facts' image host when a product has a photo (`ProductImageUrlValidator` restricts this to Open Food Facts hosts only) |
+| What leaves the device? | `OpenFoodFactsDataSource`, `NetworkModule`, `OpenFoodFactsApi` — product-data requests to `world.openfoodfacts.org`, product-image requests to Open Food Facts' image host when a product has a photo (`ProductImageUrlValidator` restricts this to Open Food Facts hosts only), and **search text** when the user uses Search by name (added 2026-08-14) |
 | What is stored? | `ProductEntity`, `CarbScanDatabase`, `SettingsRepository` |
 | Are images kept? | `BarcodeAnalyzer`, `LabelAnalyzer` — every `ImageProxy` is closed; nothing is written |
 | Third-party SDKs | Gradle dependency tree and manifest-merger blame report |
@@ -43,7 +43,8 @@ permission is requested.
 | Health and fitness | **No** | No | No health data is transmitted. Carbohydrate values are product facts, stored on-device only |
 | Photos and videos | **No** | No | Camera frames are analysed in memory and discarded; nothing is stored or sent |
 | Files and docs | **No** | No | No storage access |
-| App activity | **No** *(see uncertainty below)* | — | CarbScan sends no analytics or usage events |
+| App activity — **in-app search** | **Owner decision required** | Not shared for any secondary purpose | Added 2026-08-14. Play's "App activity" category explicitly names in-app search history. CarbScan stores no search history, and the text is sent to Open Food Facts **only** to fetch the results the user asked for — which is Play's definition of processing that may be declarable as collection even when it is transient. Flagged rather than answered: a "No" here is a claim about Play's category boundaries, not about the code, and the code alone cannot settle it |
+| App activity — other | **No** | — | CarbScan sends no analytics or usage events |
 | Device or other IDs | **No** *(see uncertainty below)* | — | CarbScan reads no advertising ID or device identifier |
 | Purchases, financial info | **No** | No | No monetisation |
 | Contacts, calendar, SMS | **No** | No | Not requested |
@@ -57,7 +58,12 @@ listing and privacy policy:
 - Carbohydrate values, basis, package size
 - User-verified values, verification timestamps, and the original online value
 - Last portion per product and last-used timestamp
+- Repeated portions per product, used to offer one-tap shortcuts (per-barcode only)
+- The items in the single current meal (no name, no date shown, no past meals possible)
 - Favourites and settings
+
+Search text is deliberately **absent** from this list: it is never written to storage. See the
+in-app search row above, which is a question about Play's categories rather than about the code.
 
 ## The network requests
 
@@ -69,6 +75,9 @@ listing and privacy policy:
 | Endpoint | `GET https://images.openfoodfacts.org/...` (product photo) |
 | Trigger | Only when the product-data response includes an image, and only once per image (Coil caches it after) |
 | Payload | Standard image request; no additional data attached |
+| Endpoint | `GET https://world.openfoodfacts.org/cgi/search.pl` (search by name) |
+| Trigger | Only on the search screen, which is reachable only from a failed barcode lookup. Debounced ~400 ms and ignored below three characters, so keystrokes are not each a request |
+| Payload | The words the user typed; User-Agent identifying app and version. Never stored on the device |
 | User identifiers sent | None, on either request. No account, device ID, or advertising ID exists to send |
 | Encryption in transit | Yes — HTTPS only; cleartext disabled |
 | Third-party recipient | Open Food Facts (independent organisation) for both |

@@ -36,6 +36,21 @@ supplies the `portion` value. Per-item weights come from Open Food Facts' `servi
 (parsed cautiously — a false negative is fine, a false positive mapping is not) or from the user
 directly. See [docs/superpowers/specs/2026-08-14-countable-portions-design.md](docs/superpowers/specs/2026-08-14-countable-portions-design.md).
 
+**Added 2026-08-14**, all serving the same two paths rather than extending the app's purpose:
+
+- **Temporary meal** — add several calculated portions, read one total. One unnamed, undated list
+  that stays until you clear it, so a half-built plate survives switching apps. It is a scratchpad
+  for one plate of food, not a diary: there is no meal id anywhere in the code, so meal *history*
+  is not merely absent but unbuildable without adding the concept first.
+- **Label verification** — scan a package to check a value already stored. Differences are shown
+  as both numbers side by side and nothing is applied without a tap. A basis mismatch (per 100 ml
+  against per 100 g) refuses to compare rather than converting.
+- **Usual portions** — a portion you repeat for a product becomes a one-tap shortcut. Per product
+  only; no dates or usage counts are shown, and no cross-product pattern can be assembled.
+- **Search by name** — when a barcode is not in the database. A fallback from a failure, never the
+  way in, and not offered when the lookup failed because the network was down. Nothing is ever
+  auto-selected, even when a single result comes back.
+
 **Screenshots:** *(placeholders — capture from a physical device)*
 `docs/screenshots/01-home.png` · `02-scanner.png` · `03-calculator.png` · `04-verify.png` ·
 `05-manual-entry.png`
@@ -136,7 +151,7 @@ connection pool, timeouts and identifying User-Agent.
 $env:JAVA_HOME="<path to JDK 21>"
 $env:ANDROID_HOME="C:\atools\sdk"
 
-.\gradlew.bat :app:testDebugUnitTest        # 167 JVM unit tests
+.\gradlew.bat :app:testDebugUnitTest        # 225 JVM unit tests
 .\gradlew.bat :app:lintDebug                # Android lint
 .\gradlew.bat :app:assembleDebug            # debug APK
 .\gradlew.bat :app:connectedDebugAndroidTest # instrumented tests (needs a device)
@@ -182,15 +197,26 @@ your upload key can be rotated if lost.
 | Portion resolution | count × amount-per-unit, zero, decimal, large, negative rejection | 7 tests, passing |
 | Serving size parsing | English + Dutch recognition, multi-count normalization, ambiguity rejection | 20 tests, passing |
 | Image URL validation | HTTPS + host allowlist, rejects unapproved/malformed URLs | 6 tests, passing |
+| Label comparison | match, mismatch, basis mismatch refuses to convert | 6 tests, passing |
+| Product search | result mapping, missing carbs, 503 is not "no matches", offline | 9 tests, passing |
 | Room DAO | ordering, favourites float, TEXT decimal round-trip | 10 instrumented |
-| Room v2→v3 migration | non-destructive, new columns/table, cascade delete | 4 instrumented |
+| Room migrations | non-destructive, new columns/tables, cascade delete | instrumented |
 | Calculator UI (§60) | result on typing, no Calculate button, quick adjust, ml lock, provenance badges, pack shortcuts, double-rounding guard, long names, zero-carb, large and decimal portions | 16 instrumented |
 | Countable-portion UI (§22) | mode switching, derived-amount equation, user-defined units, session immutability | 10 instrumented |
+| Meal UI | add, add & scan next, remove, clear, running total, no dates anywhere | 13 instrumented |
+| Label verification UI | both values shown, nothing auto-applied, basis mismatch offers no apply path | 8 instrumented |
+| Usual portions UI | appears only on repetition, per-product, no history shown | 7 instrumented |
+| Search UI | never auto-selects, missing value stated in words, failure ≠ no matches | 9 instrumented |
 
-**Verified on hardware:** barcode decoding and label OCR. **Verified against the live API:**
-product lookup and images. **Not verified:** breadth of physical devices, and the release build on
-hardware. See
-[docs/known-limitations.md](docs/known-limitations.md).
+**Totals: 225 JVM unit tests and 89 instrumented tests, all passing; lint clean** (2026-08-14).
+
+**Dependency scan:** `bash tools/dependency-scan.sh` — 226 shipped artifacts checked against
+OSV.dev, 0 known vulnerabilities (2026-08-14). Point-in-time; re-run before release.
+
+**Verified on hardware:** barcode decoding and label OCR — nothing else. **Verified against the
+live API:** product lookup, images, and search by name. **Not verified:** everything added in the
+2026-08-14 pass on real hardware, breadth of physical devices, and the release build on hardware.
+See [docs/known-limitations.md](docs/known-limitations.md).
 
 ## Regulatory status
 

@@ -198,6 +198,68 @@ real Open Food Facts data (a real Dutch sliced-bread barcode) needs a human to c
 | 15a.16 | Keyboard open (typing a count): the result at the bottom of the screen stays visible | ☐ |
 | 15a.17 | A long product name combined with the mode row does not push the result off-screen | ☐ |
 
+## 16. Temporary meal (2026-08-14) — *not yet verified on hardware*
+
+The meal is deliberately one unnamed, undated list. If any check below reveals a date, a name, a
+*past* meal, or a second meal, that is a scope breach (§2), not a missing feature.
+
+| # | Check | Pass |
+|---|---|---|
+| 16.1 | Calculate a portion, tap **Add to meal**: the running total appears with that item | ☐ |
+| 16.2 | **Add & scan next** adds the item and opens the scanner in one tap | ☐ |
+| 16.3 | Add three products; the total equals the sum of the three individual results | ☐ |
+| 16.4 | Each meal row names the product *and* the portion used (`2 slices`, `65 g`) | ☐ |
+| 16.5 | Removing one item updates the total immediately and correctly | ☐ |
+| 16.6 | **Clear** empties the meal and asks first — no silent discard | ☐ |
+| 16.7 | The meal bar does not cover the portion field or the *+ Add portion unit* action, keyboard open or closed | ☐ |
+| 16.8 | Force-close and reopen the app: the meal is **still there**, so a half-built plate is not lost to an app switch | ☐ |
+| 16.9 | There is still no way to see a *past* meal — only the current one exists | ☐ |
+| 16.9 | Nowhere does a date, a time, a meal name, or a history of past meals appear | ☐ |
+
+## 17. Label verification against a saved value (2026-08-14) — *not yet verified on hardware*
+
+| # | Check | Pass |
+|---|---|---|
+| 17.1 | Open a saved product, choose **Scan label to verify**, scan the real package | ☐ |
+| 17.2 | Matching value: it says so plainly and offers to mark the product verified | ☐ |
+| 17.3 | Differing value: **both numbers are shown side by side**, and neither is applied until you choose | ☐ |
+| 17.4 | Choosing the package value updates the product; declining leaves it untouched | ☐ |
+| 17.5 | Scanning a label whose basis differs (per 100 ml vs per 100 g) refuses to compare rather than converting | ☐ |
+| 17.6 | An open calculation is never silently changed by a verification result | ☐ |
+
+## 18. Usual portions (2026-08-14) — *not yet verified on hardware*
+
+| # | Check | Pass |
+|---|---|---|
+| 18.1 | Use the same portion for one product several times; a **Usual** shortcut eventually appears | ☐ |
+| 18.2 | Tapping it fills that portion and produces the same result as typing it by hand | ☐ |
+| 18.3 | A portion used only once does **not** appear — restraint is the intended behaviour | ☐ |
+| 18.4 | Shortcuts are per product; another product does not inherit them | ☐ |
+| 18.5 | No dates, counts of use, or history are shown to the user anywhere | ☐ |
+
+## 19. Search by name (2026-08-14) — *partly verified on the emulator against live OFF*
+
+19.1–19.4 were verified on an API 36 emulator against the live API (unknown barcode
+`2777777777777` → search `hagelslag` → real Dutch results → selection loaded De Ruijter at
+67 g/100 g). They still need confirming on real hardware.
+
+| # | Check | Pass |
+|---|---|---|
+| 19.1 | Scan/enter a barcode OFF does not have: **Search by name** is offered | ☐ |
+| 19.2 | A real query returns recognisable products with brand and package quantity | ☐ |
+| 19.3 | Nothing is ever auto-selected, even when exactly one result comes back | ☐ |
+| 19.4 | Selecting a result loads it into the calculator like any scanned product | ☐ |
+| 19.5 | A result with no carbohydrate value says so in words — never `0 g` | ☐ |
+| 19.6 | In airplane mode, search is **not** offered on the failure screen (the same host is unreachable) | ☐ |
+| 19.7 | A search server error offers **Try again** and never reads as "no such product" | ☐ |
+
+## 20. Attribution (2026-08-14)
+
+| # | Check | Pass |
+|---|---|---|
+| 20.1 | Settings → About shows the ODbL/DbCL line for data **and** a separate CC BY-SA 3.0 line for photos | ☐ |
+| 20.2 | Neither line is clipped at the largest system font size | ☐ |
+
 ## 15. Safety acceptance (§71) — all must be true
 
 | # | Check | Pass |
