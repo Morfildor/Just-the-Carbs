@@ -18,10 +18,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.carbscan.AppContainer
 import app.carbscan.domain.AppSettings
+import app.carbscan.domain.MealTotal
 import app.carbscan.ui.home.HomeScreen
 import app.carbscan.ui.home.HomeViewModel
 import app.carbscan.ui.manual.ManualEntryScreen
 import app.carbscan.ui.manual.ManualEntryViewModel
+import app.carbscan.ui.meal.MealScreen
+import app.carbscan.ui.meal.MealViewModel
 import app.carbscan.ui.product.ProductScreen
 import app.carbscan.ui.product.ProductViewModel
 import app.carbscan.ui.scan.LabelScannerScreen
@@ -37,6 +40,7 @@ private object Routes {
     const val MANUAL = "manual?barcode={barcode}&carbs={carbs}&basis={basis}"
     const val LABEL_SCAN = "labelscan?barcode={barcode}"
     const val SETTINGS = "settings"
+    const val MEAL = "meal"
 
     fun product(barcode: String) = "product/$barcode"
 
@@ -63,6 +67,7 @@ fun CarbScanNavHost(
         composable(Routes.HOME) {
             val viewModel: HomeViewModel = viewModel(factory = factory { HomeViewModel(container.productRepository) })
             val recents by viewModel.recents.collectAsStateWithLifecycle()
+            val mealItems by viewModel.mealItems.collectAsStateWithLifecycle()
 
             HomeScreen(
                 recents = recents,
@@ -72,6 +77,9 @@ fun CarbScanNavHost(
                 onOpenProduct = { navController.navigate(Routes.product(it)) },
                 onToggleFavorite = viewModel::toggleFavorite,
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                mealItems = mealItems,
+                mealTotal = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems),
+                onOpenMeal = { navController.navigate(Routes.MEAL) },
             )
         }
 
@@ -141,6 +149,33 @@ fun CarbScanNavHost(
                 onDismissNewerRemotePortionUnit = viewModel::dismissNewerRemotePortionUnit,
                 onCorrectPortionUnit = viewModel::correctSelectedPortionUnit,
                 onCancelPortionUnitCorrection = viewModel::cancelPortionUnitCorrection,
+                onAddToMeal = viewModel::addCurrentToMeal,
+                onAddToMealAndScanNext = { description ->
+                    viewModel.addCurrentToMeal(description)
+                    // Straight back to the camera, with this product popped off the stack: after
+                    // adding a fourth item the user wants the scanner, not a four-deep back stack
+                    // of products they have already finished with (§11).
+                    navController.navigate(Routes.SCAN) {
+                        popUpTo(Routes.HOME)
+                    }
+                },
+                onOpenMeal = { navController.navigate(Routes.MEAL) },
+            )
+        }
+
+        composable(Routes.MEAL) {
+            val viewModel: MealViewModel = viewModel(
+                factory = factory { MealViewModel(container.productRepository) },
+            )
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            MealScreen(
+                state = state,
+                settings = settings,
+                onBack = { navController.popBackStack() },
+                onRemoveItem = viewModel::removeItem,
+                onClear = viewModel::clear,
+                onShowClearConfirmation = viewModel::showClearConfirmation,
             )
         }
 

@@ -47,8 +47,11 @@ import app.carbscan.domain.Product
 import app.carbscan.domain.ResultFormatter
 import app.carbscan.domain.ResultStyle
 import app.carbscan.domain.CarbCalculator
+import app.carbscan.domain.CarbResult
+import app.carbscan.domain.MealItem
 import app.carbscan.ui.components.ProductThumbnail
 import app.carbscan.ui.components.FavoriteButton
+import app.carbscan.ui.meal.MealBarIfPresent
 import app.carbscan.ui.product.unitLabel
 import app.carbscan.ui.theme.Space
 
@@ -71,6 +74,9 @@ fun HomeScreen(
     onOpenProduct: (String) -> Unit,
     onToggleFavorite: (Product) -> Unit,
     onOpenSettings: () -> Unit,
+    mealItems: List<MealItem> = emptyList(),
+    mealTotal: CarbResult? = null,
+    onOpenMeal: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -100,6 +106,16 @@ fun HomeScreen(
                 Icon(Icons.Filled.Settings, contentDescription = null)
             }
         }
+
+        // The meal in progress, if there is one (§10). Above recents rather than below, because a
+        // half-built meal is the thing the user is in the middle of; and absent entirely when the
+        // meal is empty, so Home's resting state is unchanged from before this feature existed.
+        MealBarIfPresent(
+            itemCount = mealItems.size,
+            total = mealTotal,
+            onClick = onOpenMeal,
+            modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
+        )
 
         // Recents take the scrollable middle; the primary action sits at the bottom where a thumb
         // actually reaches it (§40).

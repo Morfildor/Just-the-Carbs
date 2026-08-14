@@ -95,6 +95,8 @@ import app.carbscan.domain.VerificationStatus
 import app.carbscan.ui.components.FavoriteButton
 import app.carbscan.ui.components.RecoveryPanel
 import app.carbscan.ui.components.SourceBadge
+import app.carbscan.ui.meal.MealActions
+import app.carbscan.ui.meal.MealBarIfPresent
 import app.carbscan.ui.theme.NumberType
 import app.carbscan.ui.theme.Space
 import java.math.BigDecimal
@@ -142,6 +144,10 @@ fun ProductScreen(
     onDismissNewerRemotePortionUnit: () -> Unit = {},
     onCorrectPortionUnit: (BigDecimal) -> Unit = {},
     onCancelPortionUnitCorrection: () -> Unit = {},
+    /** Takes the portion in the user's own words ("2 slices"), which only a composable can build. */
+    onAddToMeal: (String) -> Unit = {},
+    onAddToMealAndScanNext: (String) -> Unit = {},
+    onOpenMeal: () -> Unit = {},
 ) {
     if (state.showVerifyDialog && state.product != null) {
         VerifyDialog(
@@ -194,6 +200,9 @@ fun ProductScreen(
                 onDismissNewerRemotePortionUnit = onDismissNewerRemotePortionUnit,
                 onCorrectPortionUnit = onCorrectPortionUnit,
                 onCancelPortionUnitCorrection = onCancelPortionUnitCorrection,
+                onAddToMeal = onAddToMeal,
+                onAddToMealAndScanNext = onAddToMealAndScanNext,
+                onOpenMeal = onOpenMeal,
             )
         }
     }
@@ -344,6 +353,9 @@ private fun CalculatorBody(
     onDismissNewerRemotePortionUnit: () -> Unit = {},
     onCorrectPortionUnit: (BigDecimal) -> Unit = {},
     onCancelPortionUnitCorrection: () -> Unit = {},
+    onAddToMeal: (String) -> Unit = {},
+    onAddToMealAndScanNext: (String) -> Unit = {},
+    onOpenMeal: () -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -478,12 +490,46 @@ private fun CalculatorBody(
         }
 
         // ZONE 3 — the equation and the result, in one pinned surface (brief §3.2).
+        //
+        // The portion description is built here rather than in the ViewModel because pluralised
+        // unit names ("slice"/"slices") live in resources and only a composable can read them.
+        // The ViewModel supplies the numbers; the screen supplies the wording.
+        val portionDescription = portionDescription(
+            state = state,
+            unit = selectedUnit.takeIf { countableActive },
+            basisUnit = product.portionUnit,
+        )
+
         ResultPanel(
             state = state,
             settings = settings,
             equationUnit = selectedUnit.takeIf { countableActive },
+            onAddToMeal = { onAddToMeal(portionDescription) },
+            onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription) },
+            onOpenMeal = onOpenMeal,
         )
     }
+}
+
+/**
+ * The portion in the user's own words, for a meal line (development-pass brief §10).
+ *
+ * "2 slices" rather than "72 g": a meal list of resolved gram figures would be unrecognisable as
+ * the food the user just scanned. Falls back to the raw amount plus its basis unit when no
+ * countable unit is in use, which is then genuinely how the user expressed it.
+ */
+@Composable
+private fun portionDescription(
+    state: ProductUiState,
+    unit: PortionUnit?,
+    basisUnit: String,
+): String = if (unit != null) {
+    val count = state.countText.ifBlank { "0" }
+    // Plural agreement follows the typed count, so "1 slice" and "2 slices" both read correctly.
+    val quantity = PortionParser.parse(count)?.toInt() ?: 0
+    "$count ${unit.unitLabel(count = quantity)}"
+} else {
+    "${state.portionText} $basisUnit"
 }
 
 /**
@@ -1058,6 +1104,9 @@ private fun ResultPanel(
     settings: AppSettings,
     /** Non-null when a countable unit is in use — draws the equation inside this same surface. */
     equationUnit: PortionUnit? = null,
+    onAddToMeal: () -> Unit = {},
+    onAddToMealAndScanNext: () -> Unit = {},
+    onOpenMeal: () -> Unit = {},
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -1081,9 +1130,36 @@ private fun ResultPanel(
             .clip(panelShape)
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .navigationBarsPadding()
-            .padding(horizontal = Space.screenEdge, vertical = Space.l),
+            .padding(
+                start = Space.screenEdge,
+                end = Space.screenEdge,
+                // The panel gives back the height the meal bar takes, rather than growing by it.
+                // Growing pushed the whole panel up over the portion field, so the user could no
+                // longer read the number they were typing — the third layout defect in this area
+                // that only running the app revealed.
+                top = if (state.mealItems.isEmpty()) Space.l else Space.s,
+                bottom = Space.l,
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // The running meal total, present only while a meal is actually in progress (§10). An
+        // always-visible "0 items" strip would make the app look like a tracker with a permanent
+        // dashboard, which is precisely what it is not.
+        //
+        // It belongs in this pinned surface, and finding that out took running the app three times.
+        // Placed in the fixed header above, its ~56 dp came straight out of the portion controls:
+        // "How much are you eating?" was clipped behind it and "+ Add portion unit" was pushed off
+        // the bottom of the screen. Moved into the scrolling zone, it was simply not on screen once
+        // the keyboard was open — a running total you cannot see is not a running total. Here it
+        // shares the one surface that is always visible, for the same reason the equation does,
+        // and in its compact form so the panel does not grow over the field above it.
+        MealBarIfPresent(
+            itemCount = state.mealItems.size,
+            total = state.mealTotal,
+            onClick = onOpenMeal,
+            compact = true,
+        )
+
         // The conversion equation lives INSIDE the result surface (brief §3.2).
         //
         // It is the user's sanity check — the one piece of UI answering "why is the answer that
@@ -1192,6 +1268,11 @@ private fun ResultPanel(
                 style = NumberType.supporting,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // Only once there is a number worth adding. Offered under the result, never in place
+            // of it: the app answers a carbohydrate question first and builds a meal second (§9).
+            Spacer(Modifier.height(Space.m))
+            MealActions(onAdd = onAddToMeal, onAddAndScanNext = onAddToMealAndScanNext)
         }
     }
 }

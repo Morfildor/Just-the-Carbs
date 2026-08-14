@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.carbscan.data.ProductRepository
 import app.carbscan.domain.InputMode
+import app.carbscan.domain.MealItem
 import app.carbscan.domain.PortionUnit
 import app.carbscan.domain.Product
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,6 +35,14 @@ class HomeViewModel(private val repository: ProductRepository) : ViewModel() {
                 RecentEntry(product, lastUnit)
             }
         }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
+        )
+
+    /** The meal in progress, for Home's running-total bar (§10). Empty most of the time. */
+    val mealItems: StateFlow<List<MealItem>> = repository.observeMealItems()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),

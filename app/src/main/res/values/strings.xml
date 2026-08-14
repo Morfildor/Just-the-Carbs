@@ -103,6 +103,33 @@
     <string name="portion_changed_body" tools:ignore="MissingTranslation">The database now reports %1$s %2$s per %3$s. Your current value is unchanged.</string>
     <string name="portion_changed_apply" tools:ignore="MissingTranslation">Use new value</string>
 
+    <!--
+      Temporary meal (development-pass brief §7-§10). English only, same reasoning as the
+      countable-portion strings above.
+
+      The wording is deliberately about a *total being built now*, never about a record being kept:
+      "Meal total", not "Today"; "Clear", not "Delete" or "Save". Nothing here is dated, named or
+      archived, because the app adds up a plate — it does not keep a food diary (§28).
+    -->
+    <string name="meal_add" tools:ignore="MissingTranslation">Add to meal</string>
+    <string name="meal_add_and_scan" tools:ignore="MissingTranslation">Add &amp; scan next</string>
+    <string name="meal_added" tools:ignore="MissingTranslation">Added to meal</string>
+    <string name="meal_bar_summary" tools:ignore="MissingTranslation">Meal · %1$s · %2$s g</string>
+    <string name="meal_title" tools:ignore="MissingTranslation">Meal total</string>
+    <string name="meal_total_label" tools:ignore="MissingTranslation">MEAL TOTAL</string>
+    <string name="meal_empty_title" tools:ignore="MissingTranslation">No items yet</string>
+    <string name="meal_empty_body" tools:ignore="MissingTranslation">Calculate a portion, then tap Add to meal.</string>
+    <string name="meal_clear" tools:ignore="MissingTranslation">Clear meal</string>
+    <string name="meal_clear_confirm" tools:ignore="MissingTranslation">Clear this meal? The items are not saved anywhere.</string>
+    <string name="meal_remove_item" tools:ignore="MissingTranslation">Remove %1$s</string>
+    <string name="meal_item_summary" tools:ignore="MissingTranslation">%1$s · %2$s g</string>
+    <string name="meal_open" tools:ignore="MissingTranslation">Open meal total</string>
+
+    <plurals name="meal_item_count" tools:ignore="MissingTranslation">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+
     <plurals name="portion_kind_slice" tools:ignore="MissingTranslation">
         <item quantity="one">slice</item>
         <item quantity="other">slices</item>
