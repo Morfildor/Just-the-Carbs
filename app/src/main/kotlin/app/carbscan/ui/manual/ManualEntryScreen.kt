@@ -2,6 +2,7 @@ package app.carbscan.ui.manual
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,16 +11,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import app.carbscan.R
 import app.carbscan.domain.NutritionBasis
 import app.carbscan.ui.theme.Space
+import app.carbscan.ui.theme.extendedColors
 
 /**
  * Manual product entry (§27) and the quick calculator (§28).
@@ -54,137 +59,151 @@ fun ManualEntryScreen(
     onSave: () -> Unit,
     onBack: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .imePadding(),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = Space.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.product_back),
-                )
-            }
-            Text(
-                text = stringResource(R.string.manual_title),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = Space.s).semantics { heading() },
-            )
-        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = (-80).dp, y = (-90).dp)
+                .size(200.dp)
+                .background(MaterialTheme.extendedColors.orangeSoft.copy(alpha = 0.9f), CircleShape),
+        )
 
         Column(
             modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Space.screenEdge),
-            verticalArrangement = Arrangement.spacedBy(Space.m),
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .imePadding(),
         ) {
-            // Shown, not editable: it came from the scan that got the user here, and retyping it
-            // would only be a chance to get it wrong (§26).
-            if (state.barcode.isNotBlank()) {
-                Text(
-                    text = stringResource(R.string.notfound_barcode, state.barcode),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            OutlinedTextField(
-                value = state.name,
-                onValueChange = onNameChanged,
-                label = { Text(stringResource(R.string.manual_name)) },
-                singleLine = true,
-                isError = state.nameError,
-                supportingText = if (state.nameError) {
-                    { Text(stringResource(R.string.manual_error_name)) }
-                } else {
-                    null
-                },
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            OutlinedTextField(
-                value = state.carbsPer100,
-                onValueChange = onCarbsChanged,
-                label = { Text(stringResource(R.string.manual_carbs)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                isError = state.carbsError != null,
-                supportingText = state.carbsError?.let { error ->
-                    {
-                        Text(
-                            stringResource(
-                                when (error) {
-                                    CarbsError.MALFORMED -> R.string.manual_error_carbs
-                                    CarbsError.OUT_OF_RANGE -> R.string.manual_error_carbs_range
-                                },
-                            ),
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Column {
-                Text(
-                    text = stringResource(R.string.manual_basis),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(Space.s))
-                Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                    // The basis is an explicit choice, never inferred from the number typed. It
-                    // decides the unit the portion is locked to, and the app never converts (§17).
-                    FilterChip(
-                        selected = state.basis == NutritionBasis.PER_100_G,
-                        onClick = { onBasisChanged(NutritionBasis.PER_100_G) },
-                        label = { Text(stringResource(R.string.manual_basis_g)) },
-                        modifier = Modifier.height(Space.minTouchTarget),
-                    )
-                    FilterChip(
-                        selected = state.basis == NutritionBasis.PER_100_ML,
-                        onClick = { onBasisChanged(NutritionBasis.PER_100_ML) },
-                        label = { Text(stringResource(R.string.manual_basis_ml)) },
-                        modifier = Modifier.height(Space.minTouchTarget),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = Space.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.product_back),
                     )
                 }
+                Text(
+                    text = stringResource(R.string.manual_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(start = Space.s).semantics { heading() },
+                )
             }
 
-            OutlinedTextField(
-                value = state.packageAmount,
-                onValueChange = onPackageChanged,
-                label = { Text(stringResource(R.string.manual_package)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = Space.screenEdge),
+                verticalArrangement = Arrangement.spacedBy(Space.m),
+            ) {
+                // Shown, not editable: it came from the scan that got the user here, and retyping it
+                // would only be a chance to get it wrong (§26).
+                if (state.barcode.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.notfound_barcode, state.barcode),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
 
-            Spacer(Modifier.height(Space.s))
-        }
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = onNameChanged,
+                    label = { Text(stringResource(R.string.manual_name)) },
+                    singleLine = true,
+                    isError = state.nameError,
+                    supportingText = if (state.nameError) {
+                        { Text(stringResource(R.string.manual_error_name)) }
+                    } else {
+                        null
+                    },
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                    modifier = Modifier.fillMaxWidth(),
+                )
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.screenEdge)
-                .padding(bottom = Space.m)
-                .navigationBarsPadding(),
-        ) {
-            Button(
-                onClick = onSave,
-                enabled = state.canSave,
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-            ) { Text(stringResource(R.string.manual_save)) }
+                OutlinedTextField(
+                    value = state.carbsPer100,
+                    onValueChange = onCarbsChanged,
+                    label = { Text(stringResource(R.string.manual_carbs)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = state.carbsError != null,
+                    supportingText = state.carbsError?.let { error ->
+                        {
+                            Text(
+                                stringResource(
+                                    when (error) {
+                                        CarbsError.MALFORMED -> R.string.manual_error_carbs
+                                        CarbsError.OUT_OF_RANGE -> R.string.manual_error_carbs_range
+                                    },
+                                ),
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Column {
+                    Text(
+                        text = stringResource(R.string.manual_basis),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(Space.s))
+                    Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                        // The basis is an explicit choice, never inferred from the number typed. It
+                        // decides the unit the portion is locked to, and the app never converts (§17).
+                        FilterChip(
+                            selected = state.basis == NutritionBasis.PER_100_G,
+                            onClick = { onBasisChanged(NutritionBasis.PER_100_G) },
+                            label = { Text(stringResource(R.string.manual_basis_g)) },
+                            modifier = Modifier.height(Space.minTouchTarget),
+                        )
+                        FilterChip(
+                            selected = state.basis == NutritionBasis.PER_100_ML,
+                            onClick = { onBasisChanged(NutritionBasis.PER_100_ML) },
+                            label = { Text(stringResource(R.string.manual_basis_ml)) },
+                            modifier = Modifier.height(Space.minTouchTarget),
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = state.packageAmount,
+                    onValueChange = onPackageChanged,
+                    label = { Text(stringResource(R.string.manual_package)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(Modifier.height(Space.s))
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.screenEdge)
+                    .padding(bottom = Space.m)
+                    .navigationBarsPadding(),
+            ) {
+                Button(
+                    onClick = onSave,
+                    enabled = state.canSave,
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                    colors = ButtonDefaults.buttonColors(
+                        disabledContainerColor = MaterialTheme.extendedColors.disabledButton,
+                        disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) { Text(stringResource(R.string.manual_save)) }
+            }
         }
     }
 }

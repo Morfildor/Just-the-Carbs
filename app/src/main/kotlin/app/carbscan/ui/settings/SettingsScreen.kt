@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -45,6 +46,7 @@ import app.carbscan.domain.ResultStyle
 import app.carbscan.domain.ThemeChoice
 import app.carbscan.ui.components.SectionLabel
 import app.carbscan.ui.theme.Space
+import app.carbscan.ui.theme.extendedColors
 
 /**
  * Settings (§43). Four sections, deliberately small.
@@ -177,15 +179,25 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = stringResource(R.string.settings_safety_title),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                text = stringResource(R.string.settings_safety_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Space.cardRadius))
+                    .background(MaterialTheme.extendedColors.orangeSoft)
+                    .padding(Space.m),
+                verticalArrangement = Arrangement.spacedBy(Space.s),
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_safety_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.extendedColors.onOrangeSoft,
+                )
+                Text(
+                    text = stringResource(R.string.settings_safety_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.extendedColors.onOrangeSoft,
+                )
+            }
             // Data and photographs carry separate licences (ODbL/DbCL and CC BY-SA 3.0), so each
             // gets its own credit line. The app displays OFF photos on every product screen, so the
             // image credit is not conditional.
