@@ -1,7 +1,7 @@
 ﻿# Resolved release dependencies
 
-Generated on **2026-08-14** from the exact eleaseRuntimeClasspath resolved by Gradle.
-The project permits only Google Maven and Maven Central in settings.gradle.kts.
+Generated on **2026-08-14** from the exact `releaseRuntimeClasspath` resolved by Gradle.
+The project permits only Google Maven and Maven Central in `settings.gradle.kts`.
 
 This is inventory evidence, not a legal opinion. A missing licence means the published Maven
 POM did not declare one; inspect the artifact's bundled notices or publisher terms before release.

@@ -26,8 +26,11 @@ documented reasoning, which is what MDR expects a manufacturer to hold.
 > enters, displaying the resulting carbohydrate quantity in grams.
 >
 > It is intended for anyone who wants to know the carbohydrate content of a portion of food —
-> including people cooking, managing their weight, following a low-carbohydrate diet, or with any
-> other dietary interest.
+> including people cooking, tracking nutrition for sport or training, managing their weight,
+> following a low-carbohydrate diet, or with any other dietary interest.
+>
+> It contains no feature specific to any disease or condition, and no feature that any one group of
+> users needs and others do not.
 >
 > **CarbScan does not calculate insulin or any other medication. It does not interpret blood
 > glucose. It does not provide diagnostic, therapeutic, monitoring, prediction or prognostic
@@ -124,6 +127,28 @@ comments and one design decision acknowledge this destination — most explicitl
 The clipboard value is formatted with `Locale.ROOT` for that reason. Owner decision #2
 (decimal-dominant results) rests on the same anticipated use.
 
+**The origin of those design decisions, stated for completeness.** The developer is himself an
+insulin pump user who uses a separate bolus calculator. CarbScan was written in the first instance
+because he wanted a faster way to get a carbohydrate figure, and the decisions above — exact
+decimals, `Locale.ROOT` formatting — come from that first-hand knowledge that such figures get
+retyped and that a comma decimal breaks a machine expecting a point.
+
+This is recorded rather than omitted, because it is the truthful explanation for the design and
+because a document that concealed it would be weaker, not stronger. Its regulatory weight is
+nevertheless **nil**:
+
+- **Intended purpose is a property of the product, not of its author.** MDR qualification turns on
+  the purpose the manufacturer assigns and markets, not on the manufacturer's own health or
+  personal motivation. A developer with diabetes who builds a general-purpose calculator has built
+  a general-purpose calculator.
+- **The knowledge produced a quality decision, not a clinical one.** Knowing that decimals get
+  transcribed led to formatting that resists transcription error. It did not lead to any dose
+  logic, any patient parameter, or any diabetes-specific feature — and the source tree confirms
+  none exists.
+- **The product has no feature that a person with diabetes needs and a person tracking carbohydrate
+  for sport or weight does not.** Every function serves both identically. There is no
+  diabetes-specific code path to point at, because there is no diabetes-specific code.
+
 **Why this does not make CarbScan a medical device:**
 
 1. **Foreseeable downstream use by a third party is not intended purpose.** MDR qualification turns
@@ -185,6 +210,17 @@ reopens the assessment before release.
 - State or imply affiliation with any medical device manufacturer (CamDiab, Ypsomed, CamAPS FX,
   Abbott, Libre or any other)
 - Use disease-related keywords in the store listing, including in ASO metadata
+
+> **The developer's own story must stay out of the listing.** The developer is an insulin pump
+> user, and the natural marketing instinct — *"as a pump user, I built this because…"* — is the
+> single most likely way this assessment gets breached in practice. It would be true, sympathetic,
+> and would tell every reader, in writing, on the page a regulator reads first, that the product is
+> for diabetes dosing. **That one sentence would change the intended purpose.**
+>
+> This is not an instruction to conceal anything. It is that personal use is not a product claim and
+> does not belong in the listing. The same applies to review replies, the app's About screen,
+> release notes, screenshots, social posts, and anything else published under the app's name.
+> "I built the app I wanted" is safe; "I built it for my bolus calculator" is not.
 
 **Development — the following would require a fresh assessment before shipping:**
 
