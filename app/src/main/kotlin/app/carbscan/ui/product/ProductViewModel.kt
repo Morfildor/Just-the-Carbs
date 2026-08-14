@@ -18,6 +18,7 @@ import app.carbscan.domain.PortionParser
 import app.carbscan.domain.PortionResolver
 import app.carbscan.domain.PortionUnit
 import app.carbscan.domain.PortionUnitKind
+import app.carbscan.domain.PortionUsage
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductFetchResult
@@ -74,6 +75,12 @@ data class ProductUiState(
      * when the two figures agree, because agreement is still a claim only the user can make.
      */
     val labelVerdict: LabelVerdict? = null,
+    /**
+     * Portions this product is usually eaten in (§13). Empty until a pattern exists, which is most
+     * of the time — a shortcut offered after one use would turn "I once weighed 63 g" into a
+     * standing recommendation.
+     */
+    val usualPortions: List<PortionUsage> = emptyList(),
 ) {
     val canCalculate: Boolean get() = product != null
     val selectedPortionUnit: PortionUnit? get() = portionUnits.firstOrNull { it.id == selectedPortionUnitId }
@@ -214,6 +221,7 @@ class ProductViewModel(
                     inputMode = resolvedMode,
                     selectedPortionUnitId = resolvedSelectedId,
                     countText = countText,
+                    usualPortions = repository.usualPortions(product.barcode),
                 )
             }
             recalculate()
@@ -485,6 +493,45 @@ class ProductViewModel(
 
     /** Dismissing keeps the session exactly as it is; the newer value stays recorded locally. */
     fun dismissNewerRemoteValue() = _state.update { it.copy(newerRemoteCarbs = null) }
+
+    // ---- usual portions (development-pass brief §13) --------------------------------------------
+
+    /**
+     * The user tapped a *Usual* shortcut (§13).
+     *
+     * Only ever reached from a deliberate tap. Nothing here runs on load, so a suggestion is never
+     * pre-applied — the app offers, the user chooses, and until they do the portion field is
+     * whatever it was.
+     *
+     * A countable variant restores both the unit and the count, so tapping "2 slices" puts the
+     * calculator back in countable mode rather than filling 72 g into a grams field and losing what
+     * the number meant.
+     */
+    fun applyUsualPortion(usage: PortionUsage) {
+        if (usage.inputMode == InputMode.PORTION_UNIT && usage.portionUnitId != null) {
+            val unit = _state.value.portionUnits.firstOrNull { it.id == usage.portionUnitId }
+            if (unit != null) {
+                savedState[KEY_MODE] = InputMode.PORTION_UNIT.name
+                savedState[KEY_SELECTED_UNIT] = unit.id
+                val countText = usage.amount.stripTrailingZeros().toPlainString()
+                savedState[KEY_COUNT] = countText
+                _state.update {
+                    it.copy(
+                        inputMode = InputMode.PORTION_UNIT,
+                        selectedPortionUnitId = unit.id,
+                        countText = countText,
+                    )
+                }
+                recalculateFromCount(unit, countText)
+                return
+            }
+            // The unit was deleted since the usage was recorded. Falling back to grams here would
+            // silently reinterpret a count as a weight, so the tap does nothing instead.
+            return
+        }
+        switchToGrams()
+        setPortion(usage.amount)
+    }
 
     // ---- integrated label verification (development-pass brief §12) -----------------------------
 

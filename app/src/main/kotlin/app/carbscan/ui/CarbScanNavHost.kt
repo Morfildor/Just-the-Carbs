@@ -208,6 +208,7 @@ fun CarbScanNavHost(
                     )
                 },
                 onDismissLabelVerdict = viewModel::dismissLabelVerdict,
+                onSelectUsualPortion = viewModel::applyUsualPortion,
             )
         }
 

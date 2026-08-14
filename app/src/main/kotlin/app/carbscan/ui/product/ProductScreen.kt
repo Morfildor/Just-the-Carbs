@@ -95,6 +95,7 @@ import app.carbscan.domain.VerificationStatus
 import app.carbscan.ui.components.FavoriteButton
 import app.carbscan.ui.components.RecoveryPanel
 import app.carbscan.ui.components.SourceBadge
+import app.carbscan.domain.PortionUsage
 import app.carbscan.ui.meal.MealActions
 import app.carbscan.ui.meal.MealBarIfPresent
 import app.carbscan.ui.theme.NumberType
@@ -153,6 +154,7 @@ fun ProductScreen(
     onUseDetectedLabelValue: (BigDecimal) -> Unit = {},
     onEditDetectedLabelValue: (BigDecimal) -> Unit = {},
     onDismissLabelVerdict: () -> Unit = {},
+    onSelectUsualPortion: (PortionUsage) -> Unit = {},
 ) {
     if (state.showVerifyDialog && state.product != null) {
         VerifyDialog(
@@ -224,6 +226,7 @@ fun ProductScreen(
                 onAddToMeal = onAddToMeal,
                 onAddToMealAndScanNext = onAddToMealAndScanNext,
                 onOpenMeal = onOpenMeal,
+                onSelectUsualPortion = onSelectUsualPortion,
             )
         }
     }
@@ -385,6 +388,7 @@ private fun CalculatorBody(
     onAddToMeal: (String) -> Unit = {},
     onAddToMealAndScanNext: (String) -> Unit = {},
     onOpenMeal: () -> Unit = {},
+    onSelectUsualPortion: (PortionUsage) -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -466,6 +470,19 @@ private fun CalculatorBody(
                 )
             }
 
+            // Usual portions, above the input rather than below it: they are an alternative to
+            // typing, so they have to be seen before the user starts (§13). Absent entirely until a
+            // portion has been used twice, which is most of the time.
+            if (state.usualPortions.isNotEmpty()) {
+                Spacer(Modifier.height(Space.m))
+                UsualPortionRow(
+                    usages = state.usualPortions,
+                    units = state.portionUnits,
+                    basisUnit = product.portionUnit,
+                    onSelect = onSelectUsualPortion,
+                )
+            }
+
             Spacer(Modifier.height(Space.m))
             if (countableActive) {
                 CountField(value = state.countText, unit = selectedUnit!!, onValueChange = onCountChanged)
@@ -515,7 +532,12 @@ private fun CalculatorBody(
                 )
             }
 
-            Spacer(Modifier.height(Space.m))
+            // Enough trailing room that the last control can be scrolled clear of the pinned
+            // result panel below. At 16 dp the final row came to rest half-underneath it — legible
+            // enough to read but cut through mid-glyph, which looks like a rendering fault rather
+            // than like more content below. Found by looking at the screen once the Usual row had
+            // made this zone taller; the panel's shadow needs clearing too, not just its edge.
+            Spacer(Modifier.height(Space.xl))
         }
 
         // ZONE 3 — the equation and the result, in one pinned surface (brief §3.2).
@@ -694,6 +716,62 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                 )
+            }
+        }
+    }
+}
+
+/** Stable handle for the usual-portions row, used by instrumented tests. */
+const val USUAL_PORTION_ROW_TAG = "usual_portion_row"
+
+/**
+ * *Usual* — the portions this product has actually been eaten in (development-pass brief §13).
+ *
+ * A report, not a recommendation. The app is saying "you have used this twice", not "you should
+ * eat this", which is why the label is *Usual* rather than *Suggested* or *For you*, and why
+ * nothing here is ever pre-selected: a tap sets the portion, and without a tap the field is
+ * untouched. An app that pre-filled its own guess would be making a dietary suggestion, which §28
+ * rules out entirely.
+ *
+ * Countable variants keep their words — "2 slices", not the 72 g behind it — so the shortcut is
+ * recognisable as the thing the user did last time.
+ */
+@Composable
+private fun UsualPortionRow(
+    usages: List<PortionUsage>,
+    units: List<PortionUnit>,
+    basisUnit: String,
+    onSelect: (PortionUsage) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().testTag(USUAL_PORTION_ROW_TAG)) {
+        Text(
+            text = stringResource(R.string.product_usual_label),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(Space.xs))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Space.s),
+        ) {
+            usages.forEach { usage ->
+                val unit = usage.portionUnitId?.let { id -> units.firstOrNull { it.id == id } }
+                val amount = usage.amount.stripTrailingZeros().toPlainString()
+                val label = if (unit != null) {
+                    val quantity = usage.amount.toInt()
+                    stringResource(R.string.product_usual_count, amount, unit.unitLabel(quantity))
+                } else {
+                    stringResource(R.string.product_usual_grams, amount, basisUnit)
+                }
+
+                OutlinedButton(
+                    onClick = { onSelect(usage) },
+                    shape = RoundedCornerShape(Space.chipRadius),
+                    contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.xs),
+                    modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
+                ) {
+                    Text(text = label, textAlign = TextAlign.Center, maxLines = 1)
+                }
             }
         }
     }

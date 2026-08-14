@@ -152,6 +152,17 @@
     <string name="verify_label_rescan" tools:ignore="MissingTranslation">Scan again</string>
     <string name="product_verify_typed" tools:ignore="MissingTranslation">Enter label value</string>
 
+    <!--
+      Usual portions (development-pass brief §13). English only, as above.
+
+      "Usual" and not "Suggested", "Recommended" or "For you": the app is reporting a fact about
+      what this user has done before, not making a recommendation about what to eat. The
+      distinction is the whole reason this is a shortcut rather than advice.
+    -->
+    <string name="product_usual_label" tools:ignore="MissingTranslation">Usual</string>
+    <string name="product_usual_grams" tools:ignore="MissingTranslation">%1$s %2$s</string>
+    <string name="product_usual_count" tools:ignore="MissingTranslation">%1$s %2$s</string>
+
     <plurals name="portion_kind_slice" tools:ignore="MissingTranslation">
         <item quantity="one">slice</item>
         <item quantity="other">slices</item>
