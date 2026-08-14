@@ -63,7 +63,7 @@ is never sold, and never shared for advertising.
 
 CarbScan uses **Google ML Kit** for barcode and label recognition. ML Kit runs its recognition
 on-device, but it ships with a Google data-transport component (`com.google.android.datatransport`)
-that we did not add and do not control, and which adds the `ACCESS_NETWORK_STATE` permission. Google
+that we did not add, do not control, and **cannot remove without breaking barcode scanning entirely** (we tested this), and which adds the `ACCESS_NETWORK_STATE` permission. Google
 may receive diagnostic information about ML Kit usage through it. We disclose this rather than claim
 a purity we cannot demonstrate. See
 [google-play-data-safety.md](google-play-data-safety.md).

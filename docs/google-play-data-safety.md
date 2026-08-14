@@ -72,25 +72,37 @@ listing and privacy policy:
 
 A cached product is served with **no** network request.
 
-## ⚠️ Uncertainty requiring owner confirmation
+## ML Kit's data-transport component — investigated 2026-08-14
 
-**ML Kit's data-transport component.** `com.google.android.datatransport:transport-backend-cct`
-arrives transitively with ML Kit and merges `ACCESS_NETWORK_STATE`. It is Google's logging/telemetry
-transport. CarbScan neither invokes nor configures it.
+`com.google.android.datatransport:transport-backend-cct` (Google's CCT logging/telemetry transport)
+ships inside the APK and is what merges `ACCESS_NETWORK_STATE` into the manifest. CarbScan neither
+invokes nor configures it.
 
-This means the app cannot truthfully claim that the Open Food Facts request is the *only* traffic
-the process can generate — only that it is the only request CarbScan's own code makes.
+**This was investigated empirically rather than assumed. Findings:**
 
-The owner must, before submission:
+| Question | Finding | How it was established |
+|---|---|---|
+| What pulls it in? | **`com.google.mlkit:common`** — the core module that *both* barcode scanning and text recognition depend on. Not an optional analytics add-on | `gradlew :app:dependencyInsight --dependency transport-backend-cct` |
+| Is it actually in the shipped APK? | **Yes** — 223 classes incl. `CctTransportBackend`, `CCTDestination`, `CctBackendFactory` | dex scan of the built APK |
+| Is there a documented opt-out? | **None found.** The ML Kit AAR manifests contain only `ComponentRegistrar` meta-data — no logging flag. No `firebase_ml*` or ML-Kit logging constant exists anywhere in the shipped artifacts | Read every ML Kit `AndroidManifest.xml` and scanned the dex for logging flags |
+| Can it be excluded? | **No.** Excluding it builds successfully but **fatally crashes the scanner** at runtime: `NoClassDefFoundError: com.google.android.datatransport.cct.CCTDestination`, escalating to `AndroidRuntime` the moment the scanner opens | Built with the exclusion, installed on an API 36 emulator, opened the scanner, read logcat |
+| Is a telemetry endpoint visible? | **No URL is greppable in the APK.** CCT ships a `StringMerger` class, which assembles its endpoint from split strings — the absence of a plain URL is by design, not evidence of absence | dex string + base64 scan |
+| Does the app configure Firebase? | **No.** There is no `google-services.json` and no Firebase SDK is declared, so no Firebase project identifies this app | Repository inspection |
 
-1. Confirm against **current official ML Kit documentation** whether usage logging occurs and
-   whether a supported opt-out exists. *(No opt-out constant was found in the shipped artifacts, so
-   none has been invented here.)*
-2. Decide whether any resulting diagnostic data must be declared under **App activity** or
-   **Device or other IDs**.
-3. Record the decision and its basis.
+**Conclusion: the telemetry transport cannot be disabled without destroying the app's two headline
+features.** It is a hard dependency, not optional analytics. The honest position is disclosure, and
+the exclusion has been documented in `app/build.gradle.kts` so nobody re-attempts it.
 
-☐ Confirmed — *(owner completes, with date and source)*
+**Proposed Data Safety treatment.** CarbScan itself collects nothing. However, the app cannot
+truthfully claim the Open Food Facts request is the *only* traffic the process can generate — only
+that it is the only request CarbScan's own code makes. The owner should therefore:
+
+1. Review Google's own ML Kit terms and privacy documentation for what Google states it collects
+   through this component, and declare accordingly.
+2. Decide whether resulting diagnostic data belongs under **App activity** or **Device or other IDs**.
+3. Record the decision, its basis, and the date.
+
+☐ Declaration decided — *(owner completes, with date and source)*
 
 ## Security practices — proposed answers
 

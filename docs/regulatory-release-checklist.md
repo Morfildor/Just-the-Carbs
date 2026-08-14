@@ -84,14 +84,21 @@ current Play Console requirements at the time of submission.
 
 ## 7. Open finding requiring a decision
 
-**ML Kit ships a Google telemetry transport.** `com.google.android.datatransport` arrives
-transitively with ML Kit and merges `ACCESS_NETWORK_STATE` into the manifest. §34 states the app
-uses no telemetry SDK; that is true of code written for CarbScan, but not of this transitive
-dependency, whose behaviour the app does not control.
+**ML Kit ships a Google telemetry transport, and it cannot be removed.** Investigated empirically
+on 2026-08-14 rather than assumed — full evidence in
+[google-play-data-safety.md](google-play-data-safety.md).
 
-No opt-out constant was found in the shipped ML Kit artifacts, so **none has been invented**. The
-owner must decide between: accepting and disclosing it, confirming a supported opt-out against
-current official ML Kit documentation, or replacing the dependency. It must be disclosed accurately
-in the Data Safety form either way (§49).
+`com.google.android.datatransport` arrives via `com.google.mlkit:common`, the core module both
+barcode scanning and OCR depend on. Excluding it builds fine but **fatally crashes the scanner**
+(`NoClassDefFoundError: CCTDestination`). No opt-out constant exists in the shipped artifacts, so
+none was invented. It is a hard dependency, not optional analytics.
 
-☐ Decision recorded — *(owner completes)*
+§34 states the app uses no telemetry SDK. That remains true of code written for CarbScan, but is
+**not** true of this transitive dependency. The remaining choices are to accept and disclose it, or
+to replace ML Kit entirely — which would mean rebuilding both headline features on a different
+recognition stack.
+
+Disclosure is in place (privacy policy + Data Safety draft). What the owner still owes:
+
+☐ Review Google's ML Kit terms/privacy documentation and record what Google states it collects
+☐ Decide the Data Safety declaration category, and record the basis and date

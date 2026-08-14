@@ -162,6 +162,11 @@ dependencies {
     implementation(libs.camera.view) {
         exclude(group = "androidx.camera", module = "camera-video")
     }
+    // ML Kit. NOTE: com.google.android.datatransport (Google's CCT telemetry transport) arrives
+    // transitively via com.google.mlkit:common and CANNOT be excluded. Tested 2026-08-14: removing
+    // it produces a fatal NoClassDefFoundError on CCTDestination the moment the scanner opens, so
+    // it is load-bearing rather than optional analytics. It is disclosed in the privacy policy and
+    // the Data Safety draft instead of being silently accepted. Do not re-attempt the exclusion.
     implementation(libs.mlkit.barcode)
     implementation(libs.mlkit.text)
 
