@@ -24,6 +24,22 @@ data class OffProductResponse(
     val product: OffProduct? = null,
 )
 
+/**
+ * `cgi/search.pl?json=1` response (spec §9).
+ *
+ * The products carry the same shape as a single-product read — verified live on 2026-08-14 against
+ * `search_terms=hagelslag`, which returned code, name, brands, quantity, `image_front_url` and
+ * `nutriments.carbohydrates_100g` for each hit — so [OffProduct] is reused rather than duplicated.
+ *
+ * `count` is the total number of matches upstream, not the number returned; the app requests a
+ * small page and never paginates, because this is a disambiguation list, not a catalogue.
+ */
+@Serializable
+data class OffSearchResponse(
+    val count: Int? = null,
+    val products: List<OffProduct> = emptyList(),
+)
+
 @Serializable
 data class OffProduct(
     val code: String? = null,

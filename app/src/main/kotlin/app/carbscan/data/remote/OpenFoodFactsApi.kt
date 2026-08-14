@@ -26,8 +26,31 @@ interface OpenFoodFactsApi {
         @Query("fields") fields: String = REQUESTED_FIELDS,
     ): Response<OffProductResponse>
 
+    /**
+     * Free-text product search — the fallback when a barcode does not resolve (spec §9).
+     *
+     * `cgi/search.pl`, not `api/v2/search`: verified live on 2026-08-14, v2's search endpoint is a
+     * facet/filter API that does not accept `search_terms` and answers with an HTML error page. The
+     * CGI endpoint returns code, name, brands, quantity, the 400 px image and nutriments in a
+     * single call, so a result card can show enough for the user to recognise their package before
+     * relying on the number.
+     *
+     * [pageSize] is deliberately small. This is a disambiguation list the user reads, not a catalogue
+     * to browse, and OFF's read budget is 15 requests/min/IP.
+     */
+    @GET("cgi/search.pl")
+    suspend fun search(
+        @Query("search_terms") terms: String,
+        @Query("fields") fields: String = REQUESTED_FIELDS,
+        @Query("page_size") pageSize: Int = SEARCH_PAGE_SIZE,
+        @Query("json") json: Int = 1,
+    ): Response<OffSearchResponse>
+
     companion object {
         const val BASE_URL = "https://world.openfoodfacts.org/"
+
+        /** Enough to disambiguate a product, few enough to read without scrolling far (§15). */
+        const val SEARCH_PAGE_SIZE = 20
 
         val REQUESTED_FIELDS = listOf(
             "code",

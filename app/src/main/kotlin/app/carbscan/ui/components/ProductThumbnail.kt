@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductImageSelector
+import app.carbscan.domain.ProductImageUrlValidator
 import app.carbscan.ui.theme.Motion
 import app.carbscan.ui.theme.Space
 import coil3.compose.AsyncImage
@@ -100,10 +101,70 @@ fun ProductThumbnail(
 }
 
 /**
+ * The same tile for a search hit, which is not a [Product] and deliberately never becomes one until
+ * the user picks it (spec §9).
+ *
+ * The URL is validated by the identical [ProductImageUrlValidator] rule, not a relaxed one: a
+ * search result is *more* untrusted than a cached product, not less, since nothing about it has
+ * been through a lookup yet.
+ */
+@Composable
+fun SearchThumbnail(
+    imageUrl: String?,
+    name: String,
+    modifier: Modifier = Modifier,
+    size: Dp = Space.thumbnail,
+) {
+    val shape = RoundedCornerShape(Space.cardRadius)
+    val safeImageUrl = remember(imageUrl) { ProductImageUrlValidator.validate(imageUrl) }
+    var imageLoaded by remember(safeImageUrl) { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clearAndSetSemantics { },
+        contentAlignment = Alignment.Center,
+    ) {
+        Crossfade(
+            targetState = imageLoaded,
+            animationSpec = tween(Motion.STANDARD_MS),
+            label = "searchThumbnail",
+        ) { loaded ->
+            if (!loaded) {
+                Text(
+                    text = monogramOf(name),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = (size.value * 0.34f).sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (safeImageUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                    .data(safeImageUrl)
+                    .crossfade(Motion.STANDARD_MS)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                onSuccess = { imageLoaded = true },
+                modifier = Modifier.size(size).clip(shape),
+            )
+        }
+    }
+}
+
+/**
  * Up to two initials from the product name — "Hagelslag puur" becomes "HP".
  * Digits and punctuation are skipped so a name like "7Up" does not render as "7".
  */
-private fun Product.monogram(): String =
+private fun Product.monogram(): String = monogramOf(name)
+
+private fun monogramOf(name: String): String =
     name.split(' ', '-', '/')
         .mapNotNull { word -> word.firstOrNull { it.isLetter() }?.uppercaseChar() }
         .take(2)

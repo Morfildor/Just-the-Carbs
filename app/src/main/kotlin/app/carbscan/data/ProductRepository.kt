@@ -15,6 +15,8 @@ import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
+import app.carbscan.domain.ProductSearchResult
+import app.carbscan.domain.ProductSearchSource
 import app.carbscan.domain.UsualPortionSelector
 import app.carbscan.domain.VerificationStatus
 import kotlinx.coroutines.flow.Flow
@@ -52,6 +54,7 @@ class ProductRepository(
     private val portionUnits: PortionUnitStore,
     private val meal: MealStore,
     private val portionUsage: PortionUsageStore,
+    private val searchSource: ProductSearchSource,
     private val clock: Clock = Clock.systemUTC(),
 ) {
 
@@ -275,6 +278,15 @@ class ProductRepository(
     }
 
     fun observeRecents(limit: Int): Flow<List<Product>> = local.observeRecents(limit)
+
+    /**
+     * Free-text product search — the fallback when a barcode does not resolve (spec §9).
+     *
+     * Returns candidates only. Selecting one goes through [lookup] like any other barcode, so a
+     * searched product is cached, validated and given provenance by exactly the same path as a
+     * scanned one — there is no second way for a product to enter this app.
+     */
+    suspend fun search(terms: String): ProductSearchResult = searchSource.search(terms)
 
     // ---- countable portions (brief §2, §6-§9) --------------------------------------------------
 

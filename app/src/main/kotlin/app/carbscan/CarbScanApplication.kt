@@ -42,13 +42,22 @@ class AppContainer(context: Context) {
      */
     val okHttpClient by lazy { NetworkModule.okHttpClient() }
 
+    /**
+     * One Open Food Facts instance serving both roles — it is both the product source and the
+     * search source, and constructing it twice would open two paths to the same host.
+     */
+    private val openFoodFacts by lazy {
+        OpenFoodFactsDataSource(NetworkModule.openFoodFactsApi(okHttpClient))
+    }
+
     val productRepository by lazy {
         ProductRepository(
             local = localProducts,
-            remote = OpenFoodFactsDataSource(NetworkModule.openFoodFactsApi(okHttpClient)),
+            remote = openFoodFacts,
             portionUnits = localPortionUnits,
             meal = localMeal,
             portionUsage = localPortionUsage,
+            searchSource = openFoodFacts,
         )
     }
 

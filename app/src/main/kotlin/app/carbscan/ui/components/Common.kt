@@ -2,6 +2,10 @@ package app.carbscan.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -145,6 +149,30 @@ fun RecoveryPanel(
             content = { actions() },
         )
     }
+}
+
+/**
+ * The two action shapes a [RecoveryPanel] offers: one obvious way forward, and the alternatives.
+ *
+ * They live here rather than beside the calculator because every recovery panel in the app uses the
+ * same pair, and a second copy would be the point at which two dead-end screens start to drift
+ * apart in size and emphasis.
+ */
+@Composable
+fun PrimaryAction(text: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(Space.buttonRadius),
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+    ) { Text(text) }
+}
+
+@Composable
+fun SecondaryAction(text: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+    ) { Text(text) }
 }
 
 /** A section heading, announced as one so TalkBack can navigate by structure (§39). */

@@ -27,6 +27,8 @@ import app.carbscan.ui.manual.ManualEntryScreen
 import app.carbscan.ui.manual.ManualEntryViewModel
 import app.carbscan.ui.meal.MealScreen
 import app.carbscan.ui.meal.MealViewModel
+import app.carbscan.ui.search.SearchScreen
+import app.carbscan.ui.search.SearchViewModel
 import app.carbscan.ui.product.ProductScreen
 import app.carbscan.ui.product.ProductViewModel
 import app.carbscan.ui.scan.LabelScannerScreen
@@ -53,6 +55,7 @@ private object Routes {
     const val LABEL_SCAN = "labelscan?barcode={barcode}"
     const val SETTINGS = "settings"
     const val MEAL = "meal"
+    const val SEARCH = "search"
 
     fun product(barcode: String) = "product/$barcode"
 
@@ -170,6 +173,7 @@ fun CarbScanNavHost(
                 onScanLabel = { navController.navigate(Routes.labelScan(barcode)) },
                 onEnterManually = { navController.navigate(Routes.manual(barcode)) },
                 onRetry = { viewModel.load(barcode) },
+                onSearch = { navController.navigate(Routes.SEARCH) },
                 onApplyNewerRemote = viewModel::applyNewerRemoteValue,
                 onDismissNewerRemote = viewModel::dismissNewerRemoteValue,
                 onSwitchToGrams = viewModel::switchToGrams,
@@ -209,6 +213,39 @@ fun CarbScanNavHost(
                 },
                 onDismissLabelVerdict = viewModel::dismissLabelVerdict,
                 onSelectUsualPortion = viewModel::applyUsualPortion,
+            )
+        }
+
+        composable(Routes.SEARCH) {
+            val viewModel: SearchViewModel = viewModel(
+                factory = factory { SearchViewModel(container.productRepository) },
+            )
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            SearchScreen(
+                state = state,
+                onQueryChanged = viewModel::onQueryChanged,
+                onSelect = { hit ->
+                    // Selecting a result runs an ordinary barcode lookup, so a searched product is
+                    // cached, validated and given provenance by exactly the same path as a scanned
+                    // one. The search screen is popped: it was a way through, not a place to return
+                    // to with a stale query.
+                    navController.navigate(Routes.product(hit.barcode)) {
+                        popUpTo(Routes.SEARCH) { inclusive = true }
+                    }
+                },
+                onScanLabel = {
+                    navController.navigate(Routes.labelScan()) {
+                        popUpTo(Routes.SEARCH) { inclusive = true }
+                    }
+                },
+                onEnterManually = {
+                    navController.navigate(Routes.manual()) {
+                        popUpTo(Routes.SEARCH) { inclusive = true }
+                    }
+                },
+                onRetry = viewModel::retry,
+                onBack = { navController.popBackStack() },
             )
         }
 

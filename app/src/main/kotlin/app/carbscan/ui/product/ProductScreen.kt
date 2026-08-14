@@ -93,7 +93,9 @@ import app.carbscan.domain.ResultFormatter
 import app.carbscan.domain.ResultStyle
 import app.carbscan.domain.VerificationStatus
 import app.carbscan.ui.components.FavoriteButton
+import app.carbscan.ui.components.PrimaryAction
 import app.carbscan.ui.components.RecoveryPanel
+import app.carbscan.ui.components.SecondaryAction
 import app.carbscan.ui.components.SourceBadge
 import app.carbscan.domain.PortionUsage
 import app.carbscan.ui.meal.MealActions
@@ -134,6 +136,7 @@ fun ProductScreen(
     onScanLabel: () -> Unit,
     onEnterManually: () -> Unit,
     onRetry: () -> Unit,
+    onSearch: () -> Unit = {},
     onApplyNewerRemote: () -> Unit = {},
     onDismissNewerRemote: () -> Unit = {},
     onSwitchToGrams: () -> Unit = {},
@@ -203,6 +206,7 @@ fun ProductScreen(
                 onScanLabel = onScanLabel,
                 onEnterManually = onEnterManually,
                 onRetry = onRetry,
+                onSearch = onSearch,
             )
             state.product != null -> CalculatorBody(
                 product = state.product,
@@ -320,6 +324,7 @@ private fun FailureBody(
     onScanLabel: () -> Unit,
     onEnterManually: () -> Unit,
     onRetry: () -> Unit,
+    onSearch: () -> Unit = {},
     onApplyNewerRemote: () -> Unit = {},
     onDismissNewerRemote: () -> Unit = {},
 ) {
@@ -348,7 +353,17 @@ private fun FailureBody(
         RecoveryPanel(title = title, body = body) {
             // Every failure offers a way to get a number anyway. The user never hits a dead end
             // (§10, §26, §32).
-            PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+            //
+            // Search sits first in the recovery order for a *missing* barcode specifically: the
+            // product may well be in the database under a different code, and finding it there
+            // beats retyping a label the database already has. For a network failure it is
+            // pointless — the same host is down — so it is not offered there (spec §9).
+            if (failure is Failure.NotFound) {
+                PrimaryAction(text = stringResource(R.string.search_action), onClick = onSearch)
+                SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+            } else {
+                PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+            }
             SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
             if (failure is Failure.Lookup) {
                 SecondaryAction(text = stringResource(R.string.error_retry), onClick = onRetry)
@@ -1384,19 +1399,5 @@ private fun ResultPanel(
     }
 }
 
-@Composable
-private fun PrimaryAction(text: String, onClick: () -> Unit) {
-    androidx.compose.material3.Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(Space.buttonRadius),
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-    ) { Text(text) }
-}
-
-@Composable
-private fun SecondaryAction(text: String, onClick: () -> Unit) {
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
-    ) { Text(text) }
-}
+// PrimaryAction / SecondaryAction moved to ui.components alongside RecoveryPanel, which they are
+// only ever used inside — the search screen needs the same pair for the same panel.

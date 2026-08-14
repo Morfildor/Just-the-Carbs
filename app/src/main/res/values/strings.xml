@@ -163,6 +163,24 @@
     <string name="product_usual_grams" tools:ignore="MissingTranslation">%1$s %2$s</string>
     <string name="product_usual_count" tools:ignore="MissingTranslation">%1$s %2$s</string>
 
+    <!--
+      Product search (spec §9). English only, as above.
+
+      A fallback, never the primary workflow, and the wording keeps it that way: "Search for a
+      product" is offered after a barcode fails, never as an invitation to browse. Results are
+      candidates the user recognises, so the card says what is known and stays silent about what
+      is not — "No carbohydrate value", never a zero.
+    -->
+    <string name="search_title" tools:ignore="MissingTranslation">Search for a product</string>
+    <string name="search_hint" tools:ignore="MissingTranslation">Product or brand name</string>
+    <string name="search_action" tools:ignore="MissingTranslation">Search by name</string>
+    <string name="search_prompt" tools:ignore="MissingTranslation">Type a product name to search Open Food Facts.</string>
+    <string name="search_no_matches" tools:ignore="MissingTranslation">No products found for “%1$s”. You can scan the label or enter it yourself.</string>
+    <string name="search_carbs" tools:ignore="MissingTranslation">%1$s g carbs / 100 %2$s</string>
+    <string name="search_no_carbs" tools:ignore="MissingTranslation">No carbohydrate value — check the package</string>
+    <string name="search_result" tools:ignore="MissingTranslation">%1$s. %2$s</string>
+    <string name="search_clear" tools:ignore="MissingTranslation">Clear search</string>
+
     <plurals name="portion_kind_slice" tools:ignore="MissingTranslation">
         <item quantity="one">slice</item>
         <item quantity="other">slices</item>

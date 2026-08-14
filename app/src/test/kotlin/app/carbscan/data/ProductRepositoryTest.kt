@@ -15,6 +15,8 @@ import app.carbscan.domain.PortionUsageStore
 import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
+import app.carbscan.domain.ProductSearchResult
+import app.carbscan.domain.ProductSearchSource
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.VerificationStatus
 import app.carbscan.data.RefreshOutcome
@@ -193,6 +195,11 @@ class ProductRepositoryTest {
     private val meal = FakeMealStore()
     private val usage = FakePortionUsageStore()
 
+    /** Search is a separate capability; these tests are about the lookup priority, not about it. */
+    private val noSearch = object : ProductSearchSource {
+        override suspend fun search(terms: String) = ProductSearchResult.NoMatches
+    }
+
     /**
      * One construction point for the repository under test, so adding a collaborator does not mean
      * editing every test — and so no test can silently depend on positional argument order.
@@ -209,6 +216,7 @@ class ProductRepositoryTest {
         portionUnits = units,
         meal = mealStore,
         portionUsage = usageStore,
+        searchSource = noSearch,
         clock = clock,
     )
 

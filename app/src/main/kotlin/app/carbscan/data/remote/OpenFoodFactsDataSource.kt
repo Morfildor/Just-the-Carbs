@@ -8,6 +8,9 @@ import app.carbscan.domain.Product
 import app.carbscan.domain.ProductDataOrigin
 import app.carbscan.domain.ProductDataSource
 import app.carbscan.domain.ProductFetchResult
+import app.carbscan.domain.ProductSearchHit
+import app.carbscan.domain.ProductSearchResult
+import app.carbscan.domain.ProductSearchSource
 import app.carbscan.domain.ServingSizeParser
 import app.carbscan.domain.VerificationStatus
 import kotlinx.serialization.SerializationException
@@ -24,7 +27,80 @@ import java.net.UnknownHostException
  * Every remote value passes through [NutritionValueValidator] before it can become a [Product]:
  * this is the boundary where untrusted data stops being trusted (§13).
  */
-class OpenFoodFactsDataSource(private val api: OpenFoodFactsApi) : ProductDataSource {
+class OpenFoodFactsDataSource(private val api: OpenFoodFactsApi) : ProductDataSource, ProductSearchSource {
+
+    /**
+     * Free-text search (spec §9).
+     *
+     * Hits are mapped leniently on purpose: a record missing its carbohydrate value still appears,
+     * because the user may well recognise the package and can verify it from the label afterwards.
+     * That is the opposite of [fetch]'s rule, and deliberately so — [fetch] returns something the
+     * app is about to calculate with, while a hit is only something the user is being asked to
+     * recognise. Nothing here can become a stored product without an explicit tap and a normal
+     * barcode lookup.
+     *
+     * A hit with no barcode or no name is dropped: neither can be selected usefully, and a blank
+     * row in a disambiguation list is worse than a shorter list.
+     */
+    override suspend fun search(terms: String): ProductSearchResult {
+        val query = terms.trim()
+        if (query.isEmpty()) return ProductSearchResult.NoMatches
+
+        return try {
+            val response = api.search(query)
+            when {
+                response.code() == HTTP_TOO_MANY_REQUESTS ->
+                    ProductSearchResult.Failed(LookupError.RATE_LIMITED)
+                // Observed live on 2026-08-14: this endpoint intermittently answers 503 with an
+                // HTML "temporarily unavailable" page while the product-read endpoint is fine.
+                // Reported as a server problem the user can retry, never as "no matches" — telling
+                // someone their product does not exist because a search host was busy would send
+                // them off to type in a label they did not need to.
+                !response.isSuccessful -> ProductSearchResult.Failed(LookupError.SERVER)
+                else -> toSearchResult(response.body())
+            }
+        } catch (_: UnknownHostException) {
+            ProductSearchResult.Failed(LookupError.OFFLINE)
+        } catch (_: SocketTimeoutException) {
+            ProductSearchResult.Failed(LookupError.TIMEOUT)
+        } catch (_: SerializationException) {
+            ProductSearchResult.Failed(LookupError.MALFORMED)
+        } catch (_: IOException) {
+            ProductSearchResult.Failed(LookupError.OFFLINE)
+        }
+    }
+
+    private fun toSearchResult(body: OffSearchResponse?): ProductSearchResult {
+        val hits = body?.products.orEmpty().mapNotNull { it.toHit() }
+        return if (hits.isEmpty()) ProductSearchResult.NoMatches else ProductSearchResult.Found(hits)
+    }
+
+    private fun OffProduct.toHit(): ProductSearchHit? {
+        val barcode = code?.takeIf { it.isNotBlank() } ?: return null
+        val displayName = listOfNotNull(productNameNl, productName)
+            .firstOrNull { it.isNotBlank() }
+            ?.trim()
+            ?: return null
+
+        val parsedQuantity = PackageQuantityParser.parse(quantity)
+        val basis = parsedQuantity?.basis ?: PackageQuantityParser.inferBasis(quantity)
+
+        return ProductSearchHit(
+            barcode = barcode,
+            name = displayName,
+            brand = brands?.takeIf { it.isNotBlank() }?.substringBefore(',')?.trim(),
+            packageQuantity = quantity?.takeIf { it.isNotBlank() }?.trim(),
+            // Still validated: an out-of-range figure is shown as "no value" rather than as a
+            // number, so a card can never display something the calculator would refuse (§13).
+            carbsPer100 = NutritionValueValidator.validateCarbsPer100(
+                raw = nutriments?.carbohydrates100g,
+                basis = basis,
+            ),
+            basis = basis,
+            imageUrl = imageFrontUrl?.takeIf { it.isNotBlank() }
+                ?: imageFrontSmallUrl?.takeIf { it.isNotBlank() },
+        )
+    }
 
     override suspend fun fetch(barcode: String): ProductFetchResult = try {
         val response = api.getProduct(barcode)
