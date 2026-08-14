@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Roboto:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:FILL@1">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>body{margin:0;background:#EAE6DD;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Space Grotesk',sans-serif}
+@keyframes pop{0%{transform:scale(0.94)}60%{transform:scale(1.02)}100%{transform:scale(1)}}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:4px;background:#E4DFD3}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#2F8FE0;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.2);cursor:pointer;margin-top:-9px}
+</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel" src="./android-frame.jsx"></script>
+<script type="text/babel">
+const BLUE='#2F8FE0', BLUE_SOFT='#E4F1FC', RED='#FF5C5C', ORANGE='#FFA94D', ORANGE_SOFT='#FFEEDC', CREAM='#FFF6EE', INK='#181A1E', INK_MUTED='#6B6A72';
+
+function IconBtn({icon,onClick,tone='ink'}){
+  const bg = tone==='violet' ? BLUE_SOFT : 'rgba(24,26,30,0.06)';
+  const color = tone==='violet' ? BLUE : INK;
+  return <button onClick={onClick} style={{width:44,height:44,borderRadius:'50%',border:'none',background:bg,color,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+    <span className="material-symbols-outlined" style={{fontSize:22,fontVariationSettings:"'FILL' 1"}}>{icon}</span>
+  </button>;
+}
+
+function StepBtn({label,onClick}){
+  return <button onClick={onClick} style={{flex:1,height:44,borderRadius:14,border:'1px solid #E4DFD3',background:'#fff',color:INK,fontFamily:'Space Grotesk',fontSize:15,fontWeight:600,cursor:'pointer'}}>{label}</button>;
+}
+
+function PresetChip({children,active,onClick}){
+  return <button onClick={onClick} style={{
+    height:40,padding:'0 16px',borderRadius:999,border:'1.5px solid '+(active?BLUE:'#E4DFD3'),
+    background:active?BLUE_SOFT:'#fff',color:active?BLUE:INK_MUTED,
+    fontFamily:'Space Grotesk',fontSize:13.5,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>{children}</button>;
+}
+
+function ResultScreen(){
+  const [portion,setPortion]=React.useState(65);
+  const [fav,setFav]=React.useState(true);
+  const [preset,setPreset]=React.useState(null);
+  const carbsPer100=41.2;
+  const exact=(carbsPer100*portion/100);
+  const [flash,setFlash]=React.useState(0);
+  React.useEffect(()=>{setFlash(f=>f+1)},[portion]);
+  return (
+    <div style={{position:'relative',height:'100%',display:'flex',flexDirection:'column',background:CREAM,fontFamily:'Space Grotesk',overflow:'hidden'}}>
+      <div style={{position:'absolute',top:-90,right:-70,width:220,height:220,borderRadius:'50%',background:BLUE_SOFT,opacity:0.7}}/>
+
+      <div style={{display:'flex',alignItems:'center',padding:'14px 16px 0',position:'relative',zIndex:1}}>
+        <IconBtn icon="arrow_back"/>
+        <div style={{flex:1,textAlign:'center',fontSize:15,fontWeight:600,color:INK,padding:'0 8px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>Volkoren brood</div>
+        <IconBtn icon="star" tone={fav?'violet':'ink'} onClick={()=>setFav(!fav)}/>
+      </div>
+
+      <div style={{flex:1,overflow:'auto',padding:'18px 20px 0',position:'relative',zIndex:1,display:'flex',flexDirection:'column',gap:18}}>
+        <div style={{background:'#fff',borderRadius:22,padding:14,boxShadow:'0 6px 18px rgba(24,26,30,0.06)',display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{height:168,borderRadius:16,background:BLUE_SOFT,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{color:BLUE,fontWeight:700,fontSize:44,letterSpacing:'-1px'}}>VB</div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:15,fontWeight:600,color:INK,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>Volkoren brood</div>
+              <div style={{fontSize:13,color:INK_MUTED,fontFamily:'Roboto',marginTop:2}}>{carbsPer100}g carbs / 100g</div>
+            </div>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:'0.4px',color:'#B5710B',background:ORANGE_SOFT,padding:'6px 10px',borderRadius:999,whiteSpace:'nowrap'}}>ONLINE</div>
+          </div>
+        </div>
+
+        <div>
+          <div style={{fontFamily:'Roboto',fontSize:13,color:INK_MUTED,marginBottom:10,textAlign:'center'}}>How much are you having?</div>
+          <div style={{display:'flex',alignItems:'baseline',justifyContent:'center',gap:6,marginBottom:10}}>
+            <input value={portion} onChange={e=>setPortion(parseFloat(e.target.value)||0)} inputMode="numeric" style={{
+              width:110,border:'none',background:'none',outline:'none',textAlign:'right',
+              fontFamily:'Space Grotesk',fontSize:48,fontWeight:700,letterSpacing:'-1.5px',color:INK}}/>
+            <span style={{fontSize:20,fontWeight:600,color:INK_MUTED}}>g</span>
+          </div>
+          <input type="range" min="0" max="200" value={portion} onChange={e=>setPortion(parseFloat(e.target.value))}/>
+          <div style={{display:'flex',gap:8,marginTop:14}}>
+            <StepBtn label="−10" onClick={()=>setPortion(p=>Math.max(0,p-10))}/>
+            <StepBtn label="−5" onClick={()=>setPortion(p=>Math.max(0,p-5))}/>
+            <StepBtn label="+5" onClick={()=>setPortion(p=>p+5)}/>
+            <StepBtn label="+10" onClick={()=>setPortion(p=>p+10)}/>
+          </div>
+          <div style={{display:'flex',gap:8,marginTop:10,overflowX:'auto',paddingBottom:2}}>
+            <PresetChip active={preset==='q'} onClick={()=>{setPreset('q');setPortion(125);}}>¼ pack</PresetChip>
+            <PresetChip active={preset==='h'} onClick={()=>{setPreset('h');setPortion(250);}}>½ pack</PresetChip>
+            <PresetChip active={preset==='f'} onClick={()=>{setPreset('f');setPortion(500);}}>Full pack</PresetChip>
+            <PresetChip active={preset==='s'} onClick={()=>{setPreset('s');setPortion(30);}}>1 slice</PresetChip>
+          </div>
+        </div>
+      </div>
+
+      <div style={{position:'relative',zIndex:1,background:'#fff',borderTopLeftRadius:32,borderTopRightRadius:32,padding:'22px 24px 28px',boxShadow:'0 -8px 24px rgba(24,26,30,0.06)',display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
+        <div key={flash} style={{display:'flex',flexDirection:'column',alignItems:'center',animation:'pop 260ms cubic-bezier(.2,0,0,1)'}}>
+          <div style={{fontFamily:'Space Grotesk',fontSize:64,fontWeight:700,letterSpacing:'-2px',lineHeight:'1',color:RED}}>{exact.toFixed(1)}<span style={{fontSize:28}}>g</span></div>
+          <div style={{fontFamily:'Roboto',fontSize:15,color:INK_MUTED,marginTop:6}}>≈ {Math.round(exact)}g whole grams · carbs</div>
+        </div>
+        <div style={{display:'flex',gap:10,width:'100%',marginTop:4}}>
+          <button style={{flex:1,height:52,borderRadius:16,border:'1.5px solid #E4DFD3',background:'#fff',color:INK,fontFamily:'Space Grotesk',fontSize:15,fontWeight:700,cursor:'pointer'}}>Add to meal</button>
+          <button style={{flex:1.3,height:52,borderRadius:16,border:'none',background:BLUE,color:'#fff',fontFamily:'Space Grotesk',fontSize:15,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+            Scan next <span style={{fontSize:17}}>→</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Fit({children}){
+  const ref=React.useRef(null);
+  const [scale,setScale]=React.useState(1);
+  React.useLayoutEffect(()=>{
+    const fit=()=>{
+      const pad=24;
+      const s=Math.min((window.innerWidth-pad*2)/412,(window.innerHeight-pad*2)/892,1);
+      setScale(s);
+    };
+    fit();
+    window.addEventListener('resize',fit);
+    return ()=>window.removeEventListener('resize',fit);
+  },[]);
+  return <div style={{width:412*scale,height:892*scale,overflow:'hidden'}}>
+    <div style={{width:412,height:892,transform:`scale(${scale})`,transformOrigin:'top left'}}>{children}</div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <Fit><window.AndroidDevice width={412} height={892}><ResultScreen/></window.AndroidDevice></Fit>
+);
+</script>
+</body></html>

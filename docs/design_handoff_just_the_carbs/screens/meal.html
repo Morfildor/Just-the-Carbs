@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Roboto:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:FILL@1">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>body{margin:0;background:#EAE6DD;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Space Grotesk',sans-serif}</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel" src="./android-frame.jsx"></script>
+<script type="text/babel">
+const BLUE='#2F8FE0', ORANGE_SOFT='#FFEEDC', RED='#FF5C5C', CREAM='#FFF6EE', INK='#181A1E', INK_MUTED='#6B6A72';
+
+function Fit({children}){
+  const [scale,setScale]=React.useState(1);
+  React.useLayoutEffect(()=>{
+    const fit=()=>setScale(Math.min((window.innerWidth-48)/412,(window.innerHeight-48)/892,1));
+    fit(); window.addEventListener('resize',fit); return ()=>window.removeEventListener('resize',fit);
+  },[]);
+  return <div style={{width:412*scale,height:892*scale,overflow:'hidden'}}>
+    <div style={{width:412,height:892,transform:`scale(${scale})`,transformOrigin:'top left'}}>{children}</div>
+  </div>;
+}
+
+const ITEMS=[{n:'Volkoren brood',p:'2 slices',c:'29.7'},{n:'Halfvolle melk',p:'250ml',c:'12.0'}];
+
+function Meal(){
+  const total=ITEMS.reduce((s,i)=>s+parseFloat(i.c),0).toFixed(1);
+  return (
+    <div style={{position:'relative',height:'100%',display:'flex',flexDirection:'column',background:CREAM,fontFamily:'Space Grotesk',overflow:'hidden'}}>
+      <div style={{position:'absolute',top:-90,right:-80,width:200,height:200,borderRadius:'50%',background:ORANGE_SOFT,opacity:0.9}}/>
+      <div style={{display:'flex',alignItems:'center',padding:'14px 16px 0',position:'relative',zIndex:1}}>
+        <button style={{width:44,height:44,borderRadius:'50%',border:'none',background:'rgba(24,26,30,0.06)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <span className="material-symbols-outlined" style={{fontSize:22,color:INK}}>arrow_back</span>
+        </button>
+        <div style={{flex:1,fontSize:18,fontWeight:700,color:INK,padding:'0 10px'}}>Meal</div>
+        <button style={{background:'none',border:'none',color:BLUE,fontFamily:'Space Grotesk',fontWeight:700,fontSize:14,cursor:'pointer',padding:'0 6px'}}>Clear</button>
+      </div>
+      <div style={{flex:1,overflow:'auto',padding:'12px 20px',display:'flex',flexDirection:'column',gap:10,position:'relative',zIndex:1}}>
+        {ITEMS.map((it,i)=>(
+          <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderRadius:16,background:'#fff',boxShadow:'0 4px 14px rgba(24,26,30,0.05)'}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:15,fontWeight:600,color:INK}}>{it.n}</div>
+              <div style={{fontSize:13,color:INK_MUTED,fontFamily:'Roboto',marginTop:2}}>{it.p} · {it.c}g</div>
+            </div>
+            <button aria-label="Remove" style={{width:34,height:34,borderRadius:'50%',border:'none',background:'rgba(24,26,30,0.05)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+              <span className="material-symbols-outlined" style={{fontSize:18,color:INK_MUTED}}>close</span>
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{position:'relative',zIndex:1,background:'#fff',borderTopLeftRadius:32,borderTopRightRadius:32,padding:'24px 24px 30px',boxShadow:'0 -8px 24px rgba(24,26,30,0.06)',display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+        <div style={{fontSize:12,fontWeight:700,letterSpacing:'1.6px',color:INK_MUTED,textTransform:'uppercase'}}>Meal total</div>
+        <div style={{fontSize:60,fontWeight:700,letterSpacing:'-2px',color:RED,lineHeight:'1'}}>{total}<span style={{fontSize:26}}>g</span></div>
+        <div style={{fontSize:14,color:INK_MUTED,fontFamily:'Roboto',marginBottom:10}}>≈ {Math.round(total)}g whole grams</div>
+        <button style={{width:'100%',height:54,borderRadius:16,border:'none',background:BLUE,color:'#fff',fontFamily:'Space Grotesk',fontWeight:700,fontSize:15,cursor:'pointer'}}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <Fit><window.AndroidDevice width={412} height={892}><Meal/></window.AndroidDevice></Fit>
+);
+</script>
+</body></html>
