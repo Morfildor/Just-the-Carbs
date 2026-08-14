@@ -12,15 +12,30 @@ CarbScan retrieves product data from Open Food Facts.
 
 - **Database licence:** Open Database License (ODbL) v1.0
 - **Individual contents licence:** Database Contents License (DbCL) v1.0
-- **Product images:** Creative Commons Attribution-ShareAlike (CC BY-SA) — per Open Food Facts'
+- **Product images:** Creative Commons Attribution-ShareAlike **3.0** (CC BY-SA 3.0) — the version
+  matters and is easy to lose: OFF's terms link specifically to
+  `creativecommons.org/licenses/by-sa/3.0/`, not the 4.0 most people assume. Per Open Food Facts'
   own terms of use (`world.openfoodfacts.org/terms-of-use`, checked 2026-08-14), a separate
   licence from the database's ODbL/DbCL. OFF's terms also note images "may contain graphical
   elements subject to copyright or other rights" belonging to the photographed product's own
   packaging — a real nuance OFF does not claim to have cleared, not boilerplate.
 
-**Attribution shown in-app** (Settings → About):
+**Attribution shown in-app** (Settings → About) — two lines, because the data and the photographs
+are licensed separately and one ODbL sentence leaves the images uncredited:
 
-> Product data from Open Food Facts, used under the Open Database License (ODbL).
+> Product data from Open Food Facts (openfoodfacts.org), used under the Open Database License
+> (ODbL). Individual records are under the Database Contents License (DbCL).
+
+> Product photos from Open Food Facts (openfoodfacts.org), used under the Creative Commons
+> Attribution-ShareAlike 3.0 licence (CC BY-SA 3.0). A photo may also show packaging artwork owned
+> by its manufacturer.
+
+Both name the licence and credit Open Food Facts with its address, which is what OFF's terms
+actually ask of re-users ("mention the licence and … attribute the authorship to Open Food Facts
+with a link to https://openfoodfacts.org", re-checked live 2026-08-14). The image line's closing
+sentence is not boilerplate: OFF's terms state plainly that a photo may contain graphical elements
+owned by someone else, and that the CC licence covers the photograph, not the packaging design in
+it.
 
 ### Share-alike — requires review, not assumed resolved
 
@@ -53,14 +68,15 @@ list and the calculator header). As of the countable-portions work (2026-08-14):
   instance** — previously two separately-constructed clients with matching configuration, not one
   shared object; both now inherit the same connection pool, timeouts, and identifying User-Agent.
 
-> **Remaining open action.** The in-app attribution string (Settings → About) currently covers only
-> the *database* licence (ODbL). CC BY-SA's own attribution requirement — credit Open Food Facts,
-> link to openfoodfacts.org, and (per CC BY-SA's share-alike term) note the licence — has not yet
-> been added as a distinct line. This is wording the owner should add before publication, not a
-> licensing determination left unmade.
+**Done (2026-08-14).** The in-app About screen now carries a distinct CC BY-SA 3.0 credit line for
+photographs alongside the ODbL/DbCL line for data — see the wording above. Adding the required
+credit is a factual step, not a licensing determination, so it is closed here; whether the overall
+use of OFF data and images is compliant remains the licence review below, which is still open.
 
-☐ CC BY-SA attribution wording added to in-app About / store listing - *(owner completes, with
-date)*
+☑ CC BY-SA attribution wording added to in-app About - *(done 2026-08-14; source:
+world.openfoodfacts.org/terms-of-use, re-checked live the same day)*
+
+☐ Store-listing attribution - *(owner completes when the listing is written)*
 
 ### API terms
 

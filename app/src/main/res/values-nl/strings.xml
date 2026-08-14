@@ -140,7 +140,7 @@
     <string name="settings_cancel">Annuleren</string>
     <string name="settings_about">Over</string>
     <string name="settings_version">Versie %1$s</string>
-    <string name="settings_attribution">Productgegevens van Open Food Facts, gebruikt onder de Open Database License (ODbL).</string>
+    <string name="settings_attribution">Productgegevens van Open Food Facts (openfoodfacts.org), gebruikt onder de Open Database License (ODbL). Individuele records vallen onder de Database Contents License (DbCL).</string>
     <string name="settings_safety_title">Belangrijk</string>
     <string name="settings_safety_body">CarbScan berekent het koolhydraatgehalte van een portie. De app berekent geen insuline of andere medicatie en vervangt niet de informatie op de verpakking. Controleer altijd de verpakking als een waarde niet klopt.</string>
 

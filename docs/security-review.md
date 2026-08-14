@@ -160,11 +160,36 @@ neither invokes nor configures it.
 Dependency list and licences are maintained in
 [third-party-notices.md](third-party-notices.md). All are established, actively-maintained
 libraries (AndroidX/Jetpack, Retrofit, OkHttp, Coil, kotlinx.serialization, ML Kit) with no
-known-vulnerable version pinned as of the versions recorded in `gradle/libs.versions.toml`
-(verified against Google Maven/Maven Central at the time each was added — see `CLAUDE.md`'s
-working agreements). This review did not run a dependency-vulnerability scanner (e.g. OWASP
-Dependency-Check, `gradle-versions-plugin` with a CVE feed) — that is a real gap, not an
-oversight elided from this document, and belongs on the release checklist below.
+known-vulnerable version pinned.
+
+### Dependency vulnerability scan — performed 2026-08-14
+
+A real scan has now been run: `tools/dependency-scan.sh` resolves `releaseRuntimeClasspath` and
+queries every artifact that actually ships against **OSV.dev**, the advisory database behind
+GitHub's and Google's own alerts.
+
+**Result: 226 resolved artifacts, 0 with known vulnerabilities.**
+
+Three things about this scan are worth stating, because each is a way the same exercise commonly
+produces a false all-clear:
+
+1. **It scans resolved versions, not requested ones.** The first run reported two vulnerable
+   artifacts — `kotlin-stdlib 1.3.71` and `play-services-basement 18.0.0`, both pulled in by ML
+   Kit. Both were false positives: Gradle's output prints the *requested* version before the
+   `-> resolved` arrow, and those versions are upgraded to 2.4.0 and 18.4.0 respectively before
+   anything ships. Scanning the left-hand side reports vulnerabilities in code that is not in the
+   APK. The script takes the right-hand side.
+2. **It fails loudly rather than silently.** An all-empty response is indistinguishable from a
+   malformed query, so the script issues a control query for a coordinate with a known advisory
+   (`okhttp 4.9.1` → `GHSA-3cqm-mf7h-prrj`) and exits non-zero if that comes back clean. Without
+   the control, a future change to OSV's request format would quietly turn every run into a pass.
+3. **OWASP Dependency-Check was not used**, because it cannot be installed on this machine (no
+   admin rights; `winget install` blocks on an unanswerable UAC prompt). OSV covers the same
+   Maven advisory data over an API needing no install or key. A `./gradlew :app:dependencies`
+   listing on its own would *not* have been a scan and is not presented as one.
+
+A clean scan is a point-in-time result, not a durable property: it says nothing about advisories
+published tomorrow, and re-running it stays a release-checklist item.
 
 ## Findings summary
 
@@ -179,14 +204,16 @@ oversight elided from this document, and belongs on the release checklist below.
 | Logging | No logging statements exist | Already correct, unchanged |
 | Clipboard | Copies only the numeric value | Already correct, unchanged |
 | Secrets | None committed; release signing fails closed | Already correct, unchanged |
-| Dependency vulnerability scanning | Not performed | **Open gap** — add to release checklist |
+| Dependency vulnerability scanning | Was never performed | **Done 2026-08-14**: `tools/dependency-scan.sh`, 226 artifacts, 0 known vulnerabilities — re-run before each release |
 | Independent/third-party security audit | Not performed | **Open gap** — owner decision, not a code fix |
 
 ## Release-checklist additions
 
-- ☐ Run a dependency-vulnerability scan (e.g. `./gradlew :app:dependencies` reconciled against a
-  current CVE feed, or the GitHub Dependabot alerts if the repo's visibility allows it) before
-  publication, and on a recurring cadence afterward.
+- ☑ Run a dependency-vulnerability scan — *done 2026-08-14, `bash tools/dependency-scan.sh`, clean
+  across 226 artifacts.*
+- ☐ **Re-run** `tools/dependency-scan.sh` immediately before publication and on a recurring cadence
+  afterward. The 2026-08-14 result expires the moment a new advisory lands; a clean scan from
+  months earlier is not evidence about the build being shipped.
 - ☐ Decide whether an independent security review is warranted before publication, given the
   unresolved §44 regulatory question — a decision for the owner, not something this review can
   make on its own.

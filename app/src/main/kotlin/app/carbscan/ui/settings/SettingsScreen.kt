@@ -186,10 +186,19 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Data and photographs carry separate licences (ODbL/DbCL and CC BY-SA 3.0), so each
+            // gets its own credit line. The app displays OFF photos on every product screen, so the
+            // image credit is not conditional.
             Text(
                 text = stringResource(R.string.settings_attribution),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.settings_attribution_images),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Space.xs),
             )
             Spacer(Modifier.height(Space.l))
         }

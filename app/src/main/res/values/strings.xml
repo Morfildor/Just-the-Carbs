@@ -299,7 +299,13 @@
     <string name="settings_cancel">Cancel</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Version %1$s</string>
-    <string name="settings_attribution">Product data from Open Food Facts, used under the Open Database License (ODbL).</string>
+    <!--
+      Two licences, two lines: the database and the photographs are licensed separately by Open
+      Food Facts, and one sentence covering only ODbL leaves the images uncredited. Both name the
+      licence and link to openfoodfacts.org, which is what OFF's terms of use actually ask for.
+    -->
+    <string name="settings_attribution">Product data from Open Food Facts (openfoodfacts.org), used under the Open Database License (ODbL). Individual records are under the Database Contents License (DbCL).</string>
+    <string name="settings_attribution_images" tools:ignore="MissingTranslation">Product photos from Open Food Facts (openfoodfacts.org), used under the Creative Commons Attribution-ShareAlike 3.0 licence (CC BY-SA 3.0). A photo may also show packaging artwork owned by its manufacturer.</string>
     <string name="settings_safety_title">Important</string>
     <!-- §45: describes only what the software does. No efficacy or approval claim. -->
     <string name="settings_safety_body">CarbScan calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
