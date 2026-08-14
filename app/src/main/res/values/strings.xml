@@ -94,6 +94,10 @@
     <string name="product_save" tools:ignore="MissingTranslation">Save</string>
     <string name="product_online_portion" tools:ignore="MissingTranslation">Online portion</string>
     <string name="product_verified_portion" tools:ignore="MissingTranslation">✓ Verified by you</string>
+    <string name="product_edit_portion" tools:ignore="MissingTranslation">Edit</string>
+    <string name="product_correct_portion_title" tools:ignore="MissingTranslation">Check against the package</string>
+    <string name="product_one_unit_equals" tools:ignore="MissingTranslation">1 %1$s =</string>
+    <string name="product_save_verified" tools:ignore="MissingTranslation">Save as verified</string>
     <string name="portion_changed_title" tools:ignore="MissingTranslation">Online portion changed</string>
     <string name="portion_changed_body" tools:ignore="MissingTranslation">The database now reports %1$s %2$s per %3$s. Your current value is unchanged.</string>
     <string name="portion_changed_apply" tools:ignore="MissingTranslation">Use new value</string>

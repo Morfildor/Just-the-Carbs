@@ -138,6 +138,8 @@ fun CarbScanNavHost(
                 onVerifyPortionUnit = viewModel::verifySelectedPortionUnit,
                 onApplyNewerRemotePortionUnit = viewModel::applyNewerRemotePortionUnit,
                 onDismissNewerRemotePortionUnit = viewModel::dismissNewerRemotePortionUnit,
+                onCorrectPortionUnit = viewModel::correctSelectedPortionUnit,
+                onCancelPortionUnitCorrection = viewModel::cancelPortionUnitCorrection,
             )
         }
 

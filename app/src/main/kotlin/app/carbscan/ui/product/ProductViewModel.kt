@@ -55,6 +55,8 @@ data class ProductUiState(
     val showAddPortionUnitForm: Boolean = false,
     /** Same immutability rule as [newerRemoteCarbs], scoped to the unit currently in use (§9). */
     val newerRemotePortionUnitAmount: BigDecimal? = null,
+    /** The inline "1 slice = [36] g" correction form is open (development-pass brief §3.3). */
+    val correctingPortionUnit: Boolean = false,
 ) {
     val canCalculate: Boolean get() = product != null
     val selectedPortionUnit: PortionUnit? get() = portionUnits.firstOrNull { it.id == selectedPortionUnitId }
@@ -288,13 +290,42 @@ class ProductViewModel(
         }
     }
 
-    /** The user checked the currently selected unit against the package (§7). */
+    /**
+     * The user tapped *Online portion* / *Edit* — open the inline correction form (§3.3).
+     *
+     * Opening the form is deliberately NOT the same as verifying. Previously this tap verified the
+     * remote weight as-is, which quietly asserted "the package agrees" on behalf of a user who had
+     * not yet looked. Now the tap asks, and [correctSelectedPortionUnit] answers.
+     */
     fun verifySelectedPortionUnit() {
+        if (_state.value.selectedPortionUnit == null) return
+        _state.update { it.copy(correctingPortionUnit = true) }
+    }
+
+    fun cancelPortionUnitCorrection() = _state.update { it.copy(correctingPortionUnit = false) }
+
+    /**
+     * The user confirmed the per-unit weight against the package, possibly correcting it (§3.3).
+     *
+     * Routes to `verifyPortionUnit(unitId, confirmedAmountPerUnit)`, so a corrected weight keeps the
+     * unit's Open Food Facts provenance and its `originalRemoteAmountPerUnit` — it does not become a
+     * second, competing user-defined unit.
+     */
+    fun correctSelectedPortionUnit(confirmedAmountPerUnit: BigDecimal) {
         val unit = _state.value.selectedPortionUnit ?: return
+        if (confirmedAmountPerUnit.signum() <= 0) return
         viewModelScope.launch {
-            val verified = repository.verifyPortionUnit(unit.id)
+            val verified = repository.verifyPortionUnit(unit.id, confirmedAmountPerUnit)
             _state.update { st ->
-                st.copy(portionUnits = st.portionUnits.map { if (it.id == verified.id) verified else it })
+                st.copy(
+                    portionUnits = st.portionUnits.map { if (it.id == verified.id) verified else it },
+                    correctingPortionUnit = false,
+                )
+            }
+            // The corrected weight is a deliberate user action, so unlike a background refresh it
+            // *should* move the open session's result (§9 protects against surprise, not intent).
+            if (_state.value.selectedPortionUnitId == verified.id) {
+                recalculateFromCount(verified, _state.value.countText)
             }
         }
     }

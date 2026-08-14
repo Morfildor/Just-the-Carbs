@@ -54,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -63,8 +64,11 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -88,6 +92,12 @@ import app.carbscan.ui.theme.NumberType
 import app.carbscan.ui.theme.Space
 import java.math.BigDecimal
 import java.math.RoundingMode
+
+/** Stable handle for the inline portion-unit correction field, used by instrumented tests. */
+const val PORTION_CORRECTION_FIELD_TAG = "portion_unit_correction_amount"
+
+/** Stable handle for the "add portion unit" form's amount field, used by instrumented tests. */
+const val ADD_PORTION_UNIT_FIELD_TAG = "add_portion_unit_amount"
 
 /**
  * The calculator — the screen §14 says deserves the majority of the UI attention.
@@ -123,6 +133,8 @@ fun ProductScreen(
     onVerifyPortionUnit: () -> Unit = {},
     onApplyNewerRemotePortionUnit: () -> Unit = {},
     onDismissNewerRemotePortionUnit: () -> Unit = {},
+    onCorrectPortionUnit: (BigDecimal) -> Unit = {},
+    onCancelPortionUnitCorrection: () -> Unit = {},
 ) {
     if (state.showVerifyDialog && state.product != null) {
         VerifyDialog(
@@ -173,6 +185,8 @@ fun ProductScreen(
                 onVerifyPortionUnit = onVerifyPortionUnit,
                 onApplyNewerRemotePortionUnit = onApplyNewerRemotePortionUnit,
                 onDismissNewerRemotePortionUnit = onDismissNewerRemotePortionUnit,
+                onCorrectPortionUnit = onCorrectPortionUnit,
+                onCancelPortionUnitCorrection = onCancelPortionUnitCorrection,
             )
         }
     }
@@ -321,6 +335,8 @@ private fun CalculatorBody(
     onVerifyPortionUnit: () -> Unit = {},
     onApplyNewerRemotePortionUnit: () -> Unit = {},
     onDismissNewerRemotePortionUnit: () -> Unit = {},
+    onCorrectPortionUnit: (BigDecimal) -> Unit = {},
+    onCancelPortionUnitCorrection: () -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -344,10 +360,25 @@ private fun CalculatorBody(
             )
         }
 
+        val selectedUnit = state.selectedPortionUnit
+        val countableActive = state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null
+
+        // ZONE 2 — portion controls. Scrollable, and deliberately holds only what the user can
+        // afford to scroll for: the mode row, the input field itself, and the secondary shortcuts.
+        //
+        // When the content is taller than the viewport (keyboard open, large font, or an expanded
+        // inline form), a scroll region starts at the TOP — which silently defeats
+        // Arrangement.Bottom and hides exactly the controls the user just opened. Following the
+        // content's growth keeps "anchored to the bottom" true at every viewport height instead of
+        // only when everything happens to fit.
+        val portionScroll = rememberScrollState()
+        LaunchedEffect(portionScroll.maxValue, state.correctingPortionUnit, state.showAddPortionUnitForm) {
+            if (portionScroll.maxValue > 0) portionScroll.scrollTo(portionScroll.maxValue)
+        }
         Column(
             modifier = Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(portionScroll)
                 .padding(horizontal = Space.screenEdge),
             // Anchored to the bottom, immediately above the result. §40 assumes the user is
             // standing in a kitchen holding food in the other hand, so the controls belong within
@@ -377,13 +408,16 @@ private fun CalculatorBody(
             }
 
             Spacer(Modifier.height(Space.m))
-            val selectedUnit = state.selectedPortionUnit
-            if (state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null) {
-                CountField(value = state.countText, unit = selectedUnit, onValueChange = onCountChanged)
+            if (countableActive) {
+                CountField(value = state.countText, unit = selectedUnit!!, onValueChange = onCountChanged)
                 Spacer(Modifier.height(Space.s))
-                PortionEquationText(count = state.countText, unit = selectedUnit, resolvedGrams = state.portionText)
-                Spacer(Modifier.height(Space.s))
-                PortionUnitStatusRow(unit = selectedUnit, onVerify = onVerifyPortionUnit)
+                PortionUnitStatusRow(
+                    unit = selectedUnit,
+                    onVerify = onVerifyPortionUnit,
+                    onCorrect = onCorrectPortionUnit,
+                    correcting = state.correctingPortionUnit,
+                    onCancelCorrection = onCancelPortionUnitCorrection,
+                )
                 state.newerRemotePortionUnitAmount?.let { newer ->
                     Spacer(Modifier.height(Space.s))
                     PortionUnitChangedNotice(
@@ -422,10 +456,15 @@ private fun CalculatorBody(
                 )
             }
 
-            Spacer(Modifier.height(Space.l))
+            Spacer(Modifier.height(Space.m))
         }
 
-        ResultPanel(state = state, settings = settings)
+        // ZONE 3 — the equation and the result, in one pinned surface (brief §3.2).
+        ResultPanel(
+            state = state,
+            settings = settings,
+            equationUnit = selectedUnit.takeIf { countableActive },
+        )
     }
 }
 
@@ -573,11 +612,36 @@ private fun PortionModeRow(
     }
 }
 
+/**
+ * The count field, e.g. `2` slices.
+ *
+ * Held as a [TextFieldValue] rather than a plain String purely so the selection can be controlled:
+ * the field pre-fills with `1`, and **the whole value is selected the first time the field takes
+ * focus**, so a user who taps in and types `2` gets `2` rather than `12` (brief §3.1). Android text
+ * fields do not select-all on focus by default; without this the pre-filled `1` is a live value the
+ * next keystroke appends to.
+ *
+ * Selection is applied once per focus gain, not on every recomposition — otherwise the caret would
+ * jump back to a full selection while the user was still editing, which breaks ordinary cursor
+ * editing (the fix must not trade one input bug for another).
+ */
 @Composable
 private fun CountField(value: String, unit: PortionUnit, onValueChange: (String) -> Unit) {
+    // The composable owns the selection; the caller still owns the text. Whenever the incoming
+    // value differs from what we last emitted (mode switch, unit change, restored state), the
+    // field's text is resynchronised while leaving the caret at the end.
+    var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    if (fieldValue.text != value) {
+        fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
+    }
+    var hasFocus by remember { mutableStateOf(false) }
+
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = fieldValue,
+        onValueChange = {
+            fieldValue = it
+            onValueChange(it.text)
+        },
         textStyle = NumberType.portion,
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -585,6 +649,14 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
         shape = RoundedCornerShape(Space.buttonRadius),
         modifier = Modifier
             .fillMaxWidth()
+            .onFocusChanged { focus ->
+                // Only on the transition into focus. Re-selecting on every focused recomposition
+                // would fight the user's own caret placement mid-edit.
+                if (focus.isFocused && !hasFocus) {
+                    fieldValue = fieldValue.copy(selection = TextRange(0, fieldValue.text.length))
+                }
+                hasFocus = focus.isFocused
+            }
             .semantics { contentDescription = "" },
     )
 }
@@ -595,7 +667,12 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
  * spot a wrong per-unit weight without doing the multiplication themselves.
  */
 @Composable
-private fun PortionEquationText(count: String, unit: PortionUnit, resolvedGrams: String) {
+private fun PortionEquationText(
+    count: String,
+    unit: PortionUnit,
+    resolvedGrams: String,
+    modifier: Modifier = Modifier,
+) {
     if (resolvedGrams.isBlank()) return
     // English pluralization: only exactly 1 is singular ("1 slice"); 0, 1.5, 2... are all plural
     // ("0 slices", "1.5 slices", "2 slices") — the equation is read as a sentence, so getting this
@@ -612,30 +689,131 @@ private fun PortionEquationText(count: String, unit: PortionUnit, resolvedGrams:
         ),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         textAlign = TextAlign.Center,
     )
 }
 
-/** Provenance/verification badge for the selected countable unit, mirroring [SourceBadge]. */
+/**
+ * Provenance/verification badge for the selected countable unit, mirroring [SourceBadge] — and the
+ * entry point for correcting a wrong remote weight in place (development-pass brief §3.3).
+ *
+ * Before this, a user whose loaf really had 38 g slices while Open Food Facts said 36 g had no way
+ * to *correct* the online unit: they could only add a second, competing custom unit. The repository
+ * already supported the correction (`verifyPortionUnit(unitId, confirmedAmountPerUnit)`); this is
+ * the UI path that finally calls it with a value.
+ *
+ * Verifying and correcting are the same gesture on purpose. The user is looking at the package
+ * either way; whether the number matches is what they discover while looking.
+ */
 @Composable
-private fun PortionUnitStatusRow(unit: PortionUnit, onVerify: () -> Unit) {
+private fun PortionUnitStatusRow(
+    unit: PortionUnit,
+    onVerify: () -> Unit,
+    onCorrect: (BigDecimal) -> Unit = {},
+    correcting: Boolean = false,
+    onCancelCorrection: () -> Unit = {},
+) {
     val isVerified = unit.verificationStatus == VerificationStatus.USER_VERIFIED
     val isFromOff = unit.dataSource == ProductDataOrigin.OPEN_FOOD_FACTS
 
     if (!isFromOff) return // user-defined units need no provenance badge — they are simply the user's own.
 
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+    if (correcting) {
+        PortionUnitCorrectionForm(unit = unit, onSave = onCorrect, onCancel = onCancelCorrection)
+        return
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         if (isVerified) {
             Text(
                 text = stringResource(R.string.product_verified_portion),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // A verified weight can still be wrong — the user may have verified against a
+            // different loaf. Editing stays reachable rather than being a one-way door.
+            TextButton(onClick = onVerify) {
+                Text(stringResource(R.string.product_edit_portion), style = MaterialTheme.typography.bodySmall)
+            }
         } else {
             TextButton(onClick = onVerify) {
                 Text(stringResource(R.string.product_online_portion), style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+}
+
+/**
+ * `1 slice = [36] g` → **Save as verified** (brief §3.3).
+ *
+ * Pre-filled with the current amount, so confirming an already-correct weight is one tap and
+ * correcting a wrong one is a single edit. Saving routes to
+ * `ProductRepository.verifyPortionUnit(unitId, confirmedAmountPerUnit)`, which preserves the remote
+ * provenance and the original remote amount while recording the corrected effective value.
+ */
+@Composable
+private fun PortionUnitCorrectionForm(
+    unit: PortionUnit,
+    onSave: (BigDecimal) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var amountText by remember(unit.id) {
+        mutableStateOf(unit.amountPerUnit.stripTrailingZeros().toPlainString())
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Space.buttonRadius))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(Space.m),
+    ) {
+        Text(
+            text = stringResource(R.string.product_correct_portion_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(Space.s))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(R.string.product_one_unit_equals, unit.unitLabel(count = 1)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(Space.s))
+            OutlinedTextField(
+                value = amountText,
+                onValueChange = { amountText = it },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                suffix = { Text(unit.basis.unitLabel) },
+                shape = RoundedCornerShape(Space.buttonRadius),
+                // Tagged so UI tests can address this field directly. The alternative — indexing
+                // into "every text field on screen" — silently targets the wrong field as soon as
+                // the screen gains another one, which is exactly how a test starts failing for a
+                // reason unrelated to what it checks.
+                modifier = Modifier.weight(1f).testTag(PORTION_CORRECTION_FIELD_TAG),
+            )
+        }
+
+        Spacer(Modifier.height(Space.s))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
+            TextButton(
+                onClick = {
+                    // A blank or unparseable amount is not a correction. Silently doing nothing is
+                    // right here: the field is still on screen showing what the user typed.
+                    val amount = PortionParser.parse(amountText) ?: return@TextButton
+                    if (amount.signum() <= 0) return@TextButton
+                    onSave(amount)
+                },
+            ) { Text(stringResource(R.string.product_save_verified)) }
         }
     }
 }
@@ -755,7 +933,7 @@ private fun AddPortionUnitAction(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             suffix = { Text(basisUnit) },
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag(ADD_PORTION_UNIT_FIELD_TAG),
         )
 
         Spacer(Modifier.height(Space.s))
@@ -821,7 +999,12 @@ private fun RemoteChangedNotice(
  * moves is a result area the user has to hunt for.
  */
 @Composable
-private fun ResultPanel(state: ProductUiState, settings: AppSettings) {
+private fun ResultPanel(
+    state: ProductUiState,
+    settings: AppSettings,
+    /** Non-null when a countable unit is in use — draws the equation inside this same surface. */
+    equationUnit: PortionUnit? = null,
+) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -847,6 +1030,22 @@ private fun ResultPanel(state: ProductUiState, settings: AppSettings) {
             .padding(horizontal = Space.screenEdge, vertical = Space.l),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // The conversion equation lives INSIDE the result surface (brief §3.2).
+        //
+        // It is the user's sanity check — the one piece of UI answering "why is the answer that
+        // number?" — and it used to sit in the scrollable region above, where an open keyboard
+        // could push it out of view at exactly the moment it was wanted. Sharing the result's own
+        // pinned surface makes "visible whenever the result is visible" a structural guarantee
+        // rather than a property of how tall the screen happens to be.
+        if (equationUnit != null) {
+            PortionEquationText(
+                count = state.countText,
+                unit = equationUnit,
+                resolvedGrams = state.portionText,
+                modifier = Modifier.padding(bottom = Space.s),
+            )
+        }
+
         Text(
             text = stringResource(R.string.product_result_label),
             style = MaterialTheme.typography.labelSmall,
