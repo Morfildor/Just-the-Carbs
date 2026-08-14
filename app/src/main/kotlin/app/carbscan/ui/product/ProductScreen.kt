@@ -26,11 +26,13 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -104,6 +106,7 @@ import app.carbscan.ui.meal.MealActions
 import app.carbscan.ui.meal.MealBarIfPresent
 import app.carbscan.ui.theme.NumberType
 import app.carbscan.ui.theme.Space
+import app.carbscan.ui.theme.extendedColors
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -112,6 +115,9 @@ const val PORTION_CORRECTION_FIELD_TAG = "portion_unit_correction_amount"
 
 /** Stable handle for the "add portion unit" form's amount field, used by instrumented tests. */
 const val ADD_PORTION_UNIT_FIELD_TAG = "add_portion_unit_amount"
+
+/** Stable handle for the dominant result figure, used by instrumented tests. */
+const val PRODUCT_RESULT_TAG = "product_result"
 
 /**
  * The calculator — the screen §14 says deserves the majority of the UI attention.
@@ -197,57 +203,69 @@ fun ProductScreen(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .imePadding(),
-    ) {
-        ProductTopBar(
-            product = state.product,
-            onBack = onBack,
-            onToggleFavorite = onToggleFavorite,
-            onVerify = onVerify,
-            onVerifyByTyping = onVerifyByTyping,
-            onResetOnline = onResetOnline,
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Doc's decorative blue-soft circle, bleeding off the top-right corner (result.html).
+        // Purely decorative — sits behind all content, never intercepts touches.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 70.dp, y = (-90).dp)
+                .size(220.dp)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f), CircleShape),
         )
 
-        when {
-            state.loading -> LoadingBody()
-            state.failure != null -> FailureBody(
-                failure = state.failure,
-                barcode = state.barcode,
-                onScanLabel = onScanLabel,
-                onEnterManually = onEnterManually,
-                onRetry = onRetry,
-                onSearch = onSearch,
-            )
-            state.product != null -> CalculatorBody(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .imePadding(),
+        ) {
+            ProductTopBar(
                 product = state.product,
-                state = state,
-                settings = settings,
-                onPortionChanged = onPortionChanged,
-                onAdjust = onAdjust,
-                onSetPortion = onSetPortion,
-                onApplyNewerRemote = onApplyNewerRemote,
-                onDismissNewerRemote = onDismissNewerRemote,
-                onSwitchToGrams = onSwitchToGrams,
-                onSwitchToPortionUnit = onSwitchToPortionUnit,
-                onCountChanged = onCountChanged,
-                onShowAddPortionUnitForm = onShowAddPortionUnitForm,
-                onAddPortionUnit = onAddPortionUnit,
-                onVerifyPortionUnit = onVerifyPortionUnit,
-                onApplyNewerRemotePortionUnit = onApplyNewerRemotePortionUnit,
-                onDismissNewerRemotePortionUnit = onDismissNewerRemotePortionUnit,
-                onCorrectPortionUnit = onCorrectPortionUnit,
-                onCancelPortionUnitCorrection = onCancelPortionUnitCorrection,
-                onAddToMeal = onAddToMeal,
-                onAddToMealAndScanNext = onAddToMealAndScanNext,
-                onOpenMeal = onOpenMeal,
-                onSelectUsualPortion = onSelectUsualPortion,
-                onOpenGallery = { galleryOpen = true },
+                onBack = onBack,
+                onToggleFavorite = onToggleFavorite,
+                onVerify = onVerify,
+                onVerifyByTyping = onVerifyByTyping,
+                onResetOnline = onResetOnline,
             )
+
+            when {
+                state.loading -> LoadingBody()
+                state.failure != null -> FailureBody(
+                    failure = state.failure,
+                    barcode = state.barcode,
+                    onScanLabel = onScanLabel,
+                    onEnterManually = onEnterManually,
+                    onRetry = onRetry,
+                    onSearch = onSearch,
+                )
+                state.product != null -> CalculatorBody(
+                    product = state.product,
+                    state = state,
+                    settings = settings,
+                    onPortionChanged = onPortionChanged,
+                    onAdjust = onAdjust,
+                    onSetPortion = onSetPortion,
+                    onApplyNewerRemote = onApplyNewerRemote,
+                    onDismissNewerRemote = onDismissNewerRemote,
+                    onSwitchToGrams = onSwitchToGrams,
+                    onSwitchToPortionUnit = onSwitchToPortionUnit,
+                    onCountChanged = onCountChanged,
+                    onShowAddPortionUnitForm = onShowAddPortionUnitForm,
+                    onAddPortionUnit = onAddPortionUnit,
+                    onVerifyPortionUnit = onVerifyPortionUnit,
+                    onApplyNewerRemotePortionUnit = onApplyNewerRemotePortionUnit,
+                    onDismissNewerRemotePortionUnit = onDismissNewerRemotePortionUnit,
+                    onCorrectPortionUnit = onCorrectPortionUnit,
+                    onCancelPortionUnitCorrection = onCancelPortionUnitCorrection,
+                    onAddToMeal = onAddToMeal,
+                    onAddToMealAndScanNext = onAddToMealAndScanNext,
+                    onOpenMeal = onOpenMeal,
+                    onSelectUsualPortion = onSelectUsualPortion,
+                    onOpenGallery = { galleryOpen = true },
+                )
+            }
         }
     }
 }
@@ -1258,7 +1276,7 @@ private fun ResultPanel(
     val copiedValue = result?.let { ResultFormatter.clipboardValue(it, settings.resultStyle) }
     val copiedMessage = copiedValue?.let { stringResource(R.string.product_copied, it) }
 
-    val panelShape = RoundedCornerShape(topStart = Space.xl, topEnd = Space.xl)
+    val panelShape = RoundedCornerShape(topStart = Space.sheetTopRadius, topEnd = Space.sheetTopRadius)
 
     Column(
         modifier = Modifier
@@ -1361,11 +1379,14 @@ private fun ResultPanel(
                     Text(
                         text = value,
                         style = NumberType.result,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.extendedColors.result,
                         maxLines = 1,
+                        autoSize = NumberType.resultAutoSize,
                         // Announced as a live region so TalkBack reads the new result as the
                         // portion changes, instead of leaving a blind user to hunt for it (§39).
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        modifier = Modifier
+                            .testTag(PRODUCT_RESULT_TAG)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
 
