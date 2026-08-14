@@ -36,11 +36,12 @@
 <body>
 
 <h1>Privacy policy — CarbScan</h1>
-<p class="meta">Last updated: 13 August 2026 · Contact: albinogorillassupport@gmail.com</p>
+<p class="meta">Last updated: 14 August 2026 · Contact: albinogorillassupport@gmail.com</p>
 
 <div class="callout">
-  <strong>In one paragraph.</strong> CarbScan has no account, no advertising, and no analytics we
-  added. Your products, portions, favourites and verified values stay on your device. It is
+  <strong>In one paragraph.</strong> CarbScan has no account, no advertising, and no
+  developer-configured analytics service. Your products, portions, favourites and verified values
+  stay on your device. It is
   <em>not</em> true that no data leaves your device: when you scan a barcode the app has never seen,
   it sends that barcode to Open Food Facts to look up the product, and &mdash; when that product has
   a photo &mdash; requests the photo too. If you use <strong>Search by name</strong>, the words you
@@ -73,18 +74,20 @@
   search you typed.</strong>
 </p>
 <table>
-  <tr><th>Recipient</th><td>Open Food Facts, for product data (<code>world.openfoodfacts.org</code>) and product photos (<code>images.openfoodfacts.org</code>)</td></tr>
+  <tr><th>Recipient</th><td>Open Food Facts, for product data/search (<code>world.openfoodfacts.org</code>) and product photos (<code>images.openfoodfacts.org</code> or <code>static.openfoodfacts.org</code>)</td></tr>
   <tr><th>When</th><td>Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts&rsquo; own image host &mdash; the app checks this and will not load an image from any other address. Search text: only while you are typing on the search screen, which is reached from a failed lookup and never opened on its own</td></tr>
   <tr><th>What is sent</th><td>The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo); the search words themselves (search)</td></tr>
-  <tr><th>What is not sent</th><td>Any identifier for you or your device, your portions, your results, your history, your verified values</td></tr>
+  <tr><th>What CarbScan does not attach</th><td>An account/user ID, advertising ID, your portions, results, history, or verified values. The recipient still receives normal network metadata such as IP address</td></tr>
   <tr><th>Transport</th><td>HTTPS only; cleartext traffic is disabled at the platform level</td></tr>
 </table>
 <p>
   <strong>About the search text specifically.</strong> Unlike a barcode, this is text you typed, so
   it deserves naming rather than folding into &ldquo;product lookups&rdquo;. It is sent as you type
-  (after a short pause) so results can appear live, it is sent with no identifier attached, and it is
-  never stored on your device or anywhere else &mdash; the app keeps no search history. If you do not
-  use Search by name, nothing of this kind is ever sent.
+  (after a short pause) so results can appear live, it is sent with no app-supplied user identifier,
+  and CarbScan does not store it on your device or on a CarbScan server &mdash; the app keeps no search
+  history and has no server. Open Food Facts&rsquo; own retention of search requests was not
+  established by a primary source in the 14 August 2026 review. If you do not use Search by name,
+  nothing of this kind is sent by CarbScan.
 </p>
 <p>
   Open Food Facts is an independent organisation and will receive your IP address as an unavoidable
@@ -103,18 +106,28 @@
 
 <h2>What CarbScan does not contain</h2>
 <p>
-  No advertising SDK. No advertising ID. No analytics SDK we added. No crash-reporting SDK. No
-  third-party tracker. No social login. No Health Connect. No Bluetooth. No location access. Your
-  data is never sold and never shared for advertising.
+  No advertising SDK. No advertising ID. No developer-configured analytics or crash-reporting
+  service. No social login. No Health Connect. No Bluetooth. No location permission or location
+  feature. CarbScan does not sell data or share it for advertising. ML Kit&rsquo;s SDK metrics are
+  described separately below.
 </p>
 
 <h2>One thing we want to be precise about</h2>
 <p>
-  CarbScan uses Google ML Kit for barcode and label recognition. ML Kit runs recognition on-device,
-  but ships with a Google data-transport component (<code>com.google.android.datatransport</code>)
-  that we did not add, do not control, and cannot remove without breaking barcode scanning
-  entirely (we tested this), and which adds the <code>ACCESS_NETWORK_STATE</code> permission. Google may receive diagnostic information about ML Kit usage through it. We disclose
-  this rather than claim a purity we cannot demonstrate.
+  CarbScan uses Google ML Kit for barcode and label recognition. Google states that camera input
+  and recognition results are processed on-device and are not sent to Google. Google also states
+  that the SDK collects device and app information, per-installation identifiers, performance
+  metrics, API configuration, feature events and errors for diagnostics and usage analytics. It
+  says this data is encrypted in transit and not transferred to third parties. See Google&rsquo;s
+  <a href="https://developers.google.com/ml-kit/android-data-disclosure">ML Kit disclosure</a> and
+  <a href="https://developers.google.com/ml-kit/terms">Terms &amp; Privacy</a>, checked
+  14 August 2026.
+</p>
+<p>
+  The SDK&rsquo;s <code>com.google.android.datatransport</code> component cannot be removed without
+  breaking barcode scanning (verified in an emulator experiment) and adds the
+  <code>ACCESS_NETWORK_STATE</code> permission. CarbScan does not control Google&rsquo;s retention of
+  those metrics.
 </p>
 
 <h2>Backup</h2>
@@ -134,7 +147,11 @@
 <p>There is no account to delete, because there is no account.</p>
 
 <h2>Children</h2>
-<p>CarbScan is not directed at children and collects nothing that could identify anyone, of any age.</p>
+<p>
+  CarbScan is not directed at children. It has no child-oriented design, account, advertising, or
+  public user content. The same Open Food Facts requests and ML Kit collection described above
+  apply regardless of a user&rsquo;s age; no separate claim of zero collection is made for children.
+</p>
 
 <h2>Changes</h2>
 <p>

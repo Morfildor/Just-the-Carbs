@@ -1,141 +1,119 @@
 # Google Play Data Safety — proposed answers
 
-**Status: draft for owner review. Nothing here has been submitted (§49).**
+**Draft for owner review; nothing submitted. Evidence date: 2026-08-14.**
 
-Answers below were derived by **reading the actual code and the merged manifest**, not from a
-template. Where the honest answer is "uncertain", it says so rather than guessing.
+Google defines collection as transmitting user data off-device, including transmission by an SDK.
+It explicitly says ephemeral processing must still be included in the form response. Its data-type
+table defines in-app search history as information about what a user searched for in the app.
 
-> Confirm each answer against the Data Safety form as it reads at submission time. The form's
-> wording and categories change.
+Primary sources checked:
 
----
+- [Google Play Data Safety guidance](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en)
+- [ML Kit Android data disclosure](https://developers.google.com/ml-kit/android-data-disclosure)
+- [ML Kit Terms & Privacy](https://developers.google.com/ml-kit/terms)
 
-## Evidence this was based on
+## Form-level answers
 
-| Question | How it was checked |
-|---|---|
-| What permissions ship? | `app/build/intermediates/merged_manifest/.../AndroidManifest.xml` |
-| What leaves the device? | `OpenFoodFactsDataSource`, `NetworkModule`, `OpenFoodFactsApi` — product-data requests to `world.openfoodfacts.org`, product-image requests to Open Food Facts' image host when a product has a photo (`ProductImageUrlValidator` restricts this to Open Food Facts hosts only), and **search text** when the user uses Search by name (added 2026-08-14) |
-| What is stored? | `ProductEntity`, `CarbScanDatabase`, `SettingsRepository` |
-| Are images kept? | `BarcodeAnalyzer`, `LabelAnalyzer` — every `ImageProxy` is closed; nothing is written |
-| Third-party SDKs | Gradle dependency tree and manifest-merger blame report |
+| Question | Proposed answer | Evidence |
+|---|---|---|
+| Does the app collect or share any required user data types? | **Yes — collects** | Search text is sent to Open Food Facts. ML Kit's official disclosure says its Android SDK collects diagnostics/usage data and identifiers. |
+| Is all collected data encrypted in transit? | **Yes** | App traffic is HTTPS-only and `usesCleartextTraffic="false"`; ML Kit states its collected data uses HTTPS. |
+| Does the app provide account creation? | **No** | No authentication or account model exists. |
+| Can users request server-side deletion? | **No mechanism provided by CarbScan** | Settings deletes all local records; the app controls no Open Food Facts or Google server record. Re-check the exact form wording for ephemeral/SDK data. |
+| Independent security review? | **No** | No qualifying independent audit was performed. |
 
-## Permissions actually declared in the merged manifest
+Do **not** submit the former “nothing collected” position. Google’s current ML Kit disclosure closes
+that uncertainty.
+
+## Data-type answers
+
+The table is intentionally conservative. The owner must compare the current form labels at
+submission; Google notes that final categorization can depend on the developer's interpretation.
+
+| Play data type | Collected? | Shared? | Required/optional | Purpose | Basis |
+|---|---|---|---|---|---|
+| App activity → In-app search history | **Yes** | **No, proposed under user-initiated-action exception** | Optional; the app works without name search | App functionality | A user types a product name and the app sends it to Open Food Facts after a debounce. The UI names Open Food Facts, so the transfer is expected. Google says a transfer caused by a specific user action that the user reasonably expects need not be marked shared. |
+| App activity → App interactions | **Yes** | No | Required when ML Kit features are used | Analytics | ML Kit lists feature initialization, detection, model download, resource release, and other event types as collected for diagnostics and usage analytics. |
+| App info and performance → Diagnostics | **Yes** | No | Required when ML Kit features are used | Analytics | ML Kit lists device/app information, performance metrics, API configuration, input/output size, feature version, and error codes. |
+| Device or other IDs | **Yes** | No | Required when ML Kit features are used | Analytics | For bundled features, ML Kit lists per-installation identifiers not intended to uniquely identify a user or physical device. |
+| Approximate location | **Owner confirmation required; declare Yes conservatively if request IP is retained/used to infer location** | Proposed No under user action/service handling | Network features optional | App functionality / security | Open Food Facts and Google necessarily receive a network address, but no fetched primary Open Food Facts source established retention or location inference. Google says location inferred from IP belongs here. Record the service evidence used for the final answer. |
+| Health info / fitness info | **No** | No | — | — | No health data is transmitted. Product carbohydrate facts and local portion calculations are not sent as a user health record. |
+| Photos and videos | **No** | No | — | — | Camera frames are processed in memory. ML Kit states feature input and result data remain on-device; the app saves/uploads no camera image. Product images are downloaded, not uploaded user photos. |
+| Name, email, user IDs | **No** | No | — | — | No account. The identifying User-Agent contains the developer support email, not a user's email. |
+| Financial info, purchases | **No** | No | — | — | No billing or monetization. |
+| Messages, contacts, calendar, files | **No** | No | — | — | No such APIs or permissions. |
+| Other app activity | **No beyond ML Kit events above** | No | — | — | No developer-added analytics or usage-event pipeline. |
+
+### Search text recommendation
+
+Answer **Yes, collected, In-app search history, optional, app functionality**. Do not silently answer
+No because the app keeps no local history: Google’s definition is transmission off-device, not local
+storage. Marking it ephemeral is only supportable if Open Food Facts confirms that the terms are
+held in memory no longer than necessary for the real-time response. That service-side fact was not
+verified here, so the conservative draft does not claim ephemeral processing.
+
+For “shared,” the proposed **No** relies on Google's documented user-initiated-action exception:
+the user opens Search by name, sees that it searches Open Food Facts, and types the query to request
+those results. The owner should preserve screenshots of that disclosure and the form wording.
+
+## Network inventory
+
+| Recipient / endpoint | Trigger | Data |
+|---|---|---|
+| `https://world.openfoodfacts.org/api/v3/product/{barcode}` | Uncached barcode lookup | Barcode; app/version/developer-contact User-Agent; normal network metadata |
+| `https://world.openfoodfacts.org/cgi/search.pl` | User performs name search; ≥3 characters, ~400 ms debounce | Search words; User-Agent; normal network metadata |
+| `https://images.openfoodfacts.org/...` or `https://static.openfoodfacts.org/...` | A returned product has an allowlisted HTTPS image URL | Standard image request; User-Agent; normal network metadata |
+| Google ML Kit endpoints | SDK diagnostics/maintenance behavior | Data types listed by Google's ML Kit disclosure; not camera input or recognized result |
+
+`ProductImageUrlValidator` permits only HTTPS and the two exact Open Food Facts image hosts. Retrofit
+and Coil use the same `OkHttpClient`. No developer endpoint, account server, analytics service, ad
+network, or cloud sync exists.
+
+## Permissions in the merged release manifest
 
 | Permission | Origin | Purpose |
 |---|---|---|
 | `CAMERA` | CarbScan | Barcode and nutrition-label scanning |
-| `INTERNET` | CarbScan | Open Food Facts product lookup |
-| `ACCESS_NETWORK_STATE` | **Transitive**, `com.google.android.datatransport` via ML Kit | Not used by CarbScan code |
-| `<pkg>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | Transitive, `androidx.core` | Internal AndroidX signature permission; not a user-facing capability |
+| `INTERNET` | CarbScan | Open Food Facts and SDK networking |
+| `ACCESS_NETWORK_STATE` | ML Kit → `com.google.android.datatransport` | Transitive SDK network/transport support |
+| `<package>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | AndroidX | Internal signature permission |
 
-No location, contacts, storage, photo-library, Bluetooth, phone state, SMS, or Health Connect
-permission is requested.
+No location, contacts, storage/photo-library, Bluetooth, phone, SMS, advertising ID, or Health
+Connect permission is requested.
 
-## Data collection — proposed answers
+## Data stored only on-device
 
-"Collection" in Play's sense means data transmitted off the device.
+- Barcodes, product names, carbohydrate values, basis, package size, source and verification state
+- Portion units, remembered portions, favourites, and settings
+- Per-product usual portions
+- Items in the single current meal; no past meal or diary exists
 
-| Data type | Collected? | Shared? | Answer rationale |
-|---|---|---|---|
-| Name, email, user IDs | **No** | No | No account exists anywhere in the app |
-| Location | **No** | No | No location permission or API used |
-| Health and fitness | **No** | No | No health data is transmitted. Carbohydrate values are product facts, stored on-device only |
-| Photos and videos | **No** | No | Camera frames are analysed in memory and discarded; nothing is stored or sent |
-| Files and docs | **No** | No | No storage access |
-| App activity — **in-app search** | **Owner decision required** | Not shared for any secondary purpose | Added 2026-08-14. Play's "App activity" category explicitly names in-app search history. CarbScan stores no search history, and the text is sent to Open Food Facts **only** to fetch the results the user asked for — which is Play's definition of processing that may be declarable as collection even when it is transient. Flagged rather than answered: a "No" here is a claim about Play's category boundaries, not about the code, and the code alone cannot settle it |
-| App activity — other | **No** | — | CarbScan sends no analytics or usage events |
-| Device or other IDs | **No** *(see uncertainty below)* | — | CarbScan reads no advertising ID or device identifier |
-| Purchases, financial info | **No** | No | No monetisation |
-| Contacts, calendar, SMS | **No** | No | Not requested |
+Android backup is disabled and the backup/data-transfer rules exclude app data. Settings can clear
+recent usage or all saved products; uninstalling removes the app-private data.
 
-## Data stored on-device but not collected
+## ML Kit resolution
 
-Play's form does not treat these as collection, but they should be described accurately in the
-listing and privacy policy:
+The shipped `com.google.mlkit:barcode-scanning` and `text-recognition` APIs process images and
+recognized outputs on-device. Separately, Google's disclosure says ML Kit collects:
 
-- Scanned barcodes and product names
-- Carbohydrate values, basis, package size
-- User-verified values, verification timestamps, and the original online value
-- Last portion per product and last-used timestamp
-- Repeated portions per product, used to offer one-tap shortcuts (per-barcode only)
-- The items in the single current meal (no name, no date shown, no past meals possible)
-- Favourites and settings
+- device manufacturer/model, OS/build, and ML accelerators;
+- package name and app version;
+- per-installation identifiers for bundled features;
+- latency/performance, API configuration, input/output size, feature version, events, and errors.
 
-Search text is deliberately **absent** from this list: it is never written to storage. See the
-in-app search row above, which is a question about Play's categories rather than about the code.
+Google states these are used for diagnostics and usage analytics, encrypted with HTTPS, and not
+transferred to third parties. CarbScan does not enable barcode auto-zoom, so the additional
+auto-zoom session ID, zoom events, and predicted bounding-box collection is not applicable.
 
-## The network requests
+The transport cannot be excluded: a prior emulator experiment produced
+`NoClassDefFoundError: com.google.android.datatransport.cct.CCTDestination` when opening the scanner.
+Disclosure is therefore required; “we did not add analytics” is not a basis for answering No.
 
-| Field | Value |
+## Owner submission record
+
+| Decision | Value / source / date |
 |---|---|
-| Endpoint | `GET https://world.openfoodfacts.org/api/v3/product/{barcode}` (product data) |
-| Trigger | Only for a barcode not already cached on the device |
-| Payload | Barcode number; User-Agent identifying app and version |
-| Endpoint | `GET https://images.openfoodfacts.org/...` (product photo) |
-| Trigger | Only when the product-data response includes an image, and only once per image (Coil caches it after) |
-| Payload | Standard image request; no additional data attached |
-| Endpoint | `GET https://world.openfoodfacts.org/cgi/search.pl` (search by name) |
-| Trigger | Only on the search screen, which is reachable only from a failed barcode lookup. Debounced ~400 ms and ignored below three characters, so keystrokes are not each a request |
-| Payload | The words the user typed; User-Agent identifying app and version. Never stored on the device |
-| User identifiers sent | None, on either request. No account, device ID, or advertising ID exists to send |
-| Encryption in transit | Yes — HTTPS only; cleartext disabled |
-| Third-party recipient | Open Food Facts (independent organisation) for both |
-
-A cached product — and an already-loaded photo — is served with **no** new network request.
-
-## ML Kit's data-transport component — investigated 2026-08-14
-
-`com.google.android.datatransport:transport-backend-cct` (Google's CCT logging/telemetry transport)
-ships inside the APK and is what merges `ACCESS_NETWORK_STATE` into the manifest. CarbScan neither
-invokes nor configures it.
-
-**This was investigated empirically rather than assumed. Findings:**
-
-| Question | Finding | How it was established |
-|---|---|---|
-| What pulls it in? | **`com.google.mlkit:common`** — the core module that *both* barcode scanning and text recognition depend on. Not an optional analytics add-on | `gradlew :app:dependencyInsight --dependency transport-backend-cct` |
-| Is it actually in the shipped APK? | **Yes** — 223 classes incl. `CctTransportBackend`, `CCTDestination`, `CctBackendFactory` | dex scan of the built APK |
-| Is there a documented opt-out? | **None found.** The ML Kit AAR manifests contain only `ComponentRegistrar` meta-data — no logging flag. No `firebase_ml*` or ML-Kit logging constant exists anywhere in the shipped artifacts | Read every ML Kit `AndroidManifest.xml` and scanned the dex for logging flags |
-| Can it be excluded? | **No.** Excluding it builds successfully but **fatally crashes the scanner** at runtime: `NoClassDefFoundError: com.google.android.datatransport.cct.CCTDestination`, escalating to `AndroidRuntime` the moment the scanner opens | Built with the exclusion, installed on an API 36 emulator, opened the scanner, read logcat |
-| Is a telemetry endpoint visible? | **No URL is greppable in the APK.** CCT ships a `StringMerger` class, which assembles its endpoint from split strings — the absence of a plain URL is by design, not evidence of absence | dex string + base64 scan |
-| Does the app configure Firebase? | **No.** There is no `google-services.json` and no Firebase SDK is declared, so no Firebase project identifies this app | Repository inspection |
-
-**Conclusion: the telemetry transport cannot be disabled without destroying the app's two headline
-features.** It is a hard dependency, not optional analytics. The honest position is disclosure, and
-the exclusion has been documented in `app/build.gradle.kts` so nobody re-attempts it.
-
-**Proposed Data Safety treatment.** CarbScan itself collects nothing. However, the app cannot
-truthfully claim the Open Food Facts request is the *only* traffic the process can generate — only
-that it is the only request CarbScan's own code makes. The owner should therefore:
-
-1. Review Google's own ML Kit terms and privacy documentation for what Google states it collects
-   through this component, and declare accordingly.
-2. Decide whether resulting diagnostic data belongs under **App activity** or **Device or other IDs**.
-3. Record the decision, its basis, and the date.
-
-☐ Declaration decided — *(owner completes, with date and source)*
-
-## Security practices — proposed answers
-
-| Question | Answer | Basis |
-|---|---|---|
-| Is data encrypted in transit? | **Yes** | HTTPS only; `usesCleartextTraffic="false"` |
-| Can users request data deletion? | **Yes** | Settings → Clear saved products; uninstalling removes everything. No server-side data exists |
-| Is there a data deletion mechanism? | **In-app** | No account, so no server-side deletion request applies |
-| Committed to Play Families policy? | N/A | Not directed at children |
-| Independent security review? | **No** | None performed |
-
-## Backup
-
-`android:allowBackup="false"`, with explicit `backup_rules.xml` and `data_extraction_rules.xml`
-excluding database, shared preferences and files from both cloud backup and device transfer. Local
-usage history therefore never reaches the user's Google account.
-
-## Health declaration cross-reference
-
-Whether CarbScan falls into a Play health-app category depends on the unresolved §44 assessment. See
-[regulatory-release-checklist.md](regulatory-release-checklist.md) and
-[play-health-declaration.md](play-health-declaration.md).
-
-**Do not declare the app non-medical while that assessment is incomplete.**
+| Open Food Facts search retention; ephemeral eligible? | *(owner obtains primary service statement)* |
+| Request IP retained or used for approximate location? | *(owner obtains primary service statement; otherwise use conservative Yes)* |
+| Current Play form data-type mapping confirmed | *(owner)* |
+| Submitted answers exported and retained at | *(owner)* |

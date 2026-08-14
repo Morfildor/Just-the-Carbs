@@ -95,43 +95,29 @@ placeholder that identified nobody.
 
 ## Software dependencies
 
-All Apache License 2.0 unless noted.
+The definitive 2026-08-14 release inventory is
+[resolved-release-dependencies.md](resolved-release-dependencies.md). It contains **226 exact
+resolved Maven coordinates** from `releaseRuntimeClasspath`, not the shorter set of direct
+dependencies. Gradle was configured to resolve only from Google Maven and Maven Central.
 
-### AndroidX / Jetpack — Apache 2.0, The Android Open Source Project
+Published-POM licence declarations break down as follows:
 
-`androidx.core:core-ktx` · `androidx.core:core-splashscreen` · `androidx.activity:activity-compose` ·
-`androidx.compose:compose-bom` and Compose UI, Foundation, Material3, Material Icons ·
-`androidx.lifecycle:*` · `androidx.navigation:navigation-compose` · `androidx.room:*` ·
-`androidx.datastore:datastore-preferences` · `androidx.camera:*` (camera-core, camera2,
-camera-lifecycle, camera-view)
+| Published declaration | Artifacts |
+|---|---:|
+| Apache licence (publisher spelling variants) | 208 |
+| ML Kit Terms of Service | 10 |
+| Android Software Development Kit License | 4 |
+| BSD-3-Clause only | 1 |
+| BSD-3-Clause and Apache 2.0 | 1 |
+| No licence declared in published POM | 2 |
 
-### Google — Apache 2.0
+The two missing POM declarations are `com.google.auto.value:auto-value-annotations:1.6.3` and
+`com.google.guava:listenablefuture:1.0`; absence from a POM is not a conclusion that no licence
+applies. Inspect publisher/bundled notices during the owner licence review.
 
-- `com.google.mlkit:barcode-scanning` — on-device barcode recognition
-- `com.google.mlkit:text-recognition` — on-device text recognition
-
-> ML Kit transitively includes Google Play services components and
-> `com.google.android.datatransport`, a Google logging/telemetry transport that CarbScan does not
-> invoke or configure. It is disclosed in [google-play-data-safety.md](google-play-data-safety.md)
-> and the privacy policy rather than left implicit. ML Kit is additionally subject to Google's own
-> terms of service, which the owner should review before release.
-
-### Square — Apache 2.0
-
-- `com.squareup.okhttp3:okhttp` — HTTP client
-- `com.squareup.retrofit2:retrofit` and `converter-kotlinx-serialization`
-
-### JetBrains — Apache 2.0
-
-- `org.jetbrains.kotlin:*` — Kotlin standard library and compiler
-- `org.jetbrains.kotlinx:kotlinx-serialization-json`
-- `org.jetbrains.kotlinx:kotlinx-coroutines-android`
-
-### Coil — Apache 2.0
-
-- `io.coil-kt.coil3:coil-compose`, `coil-network-okhttp` — loads Open Food Facts product
-  thumbnails. Shares the app's single OkHttp client, so images inherit the same timeouts and
-  identifying User-Agent.
+ML Kit and its transitive transport are also governed by Google's
+[ML Kit Terms](https://developers.google.com/ml-kit/terms). Its collection is disclosed in
+[google-play-data-safety.md](google-play-data-safety.md) and the privacy policy.
 
 ### Test-only dependencies (not shipped in the APK)
 
@@ -143,20 +129,28 @@ camera-lifecycle, camera-view)
 
 ---
 
-## Generating the definitive notice list
+## Regenerating the definitive notice list
 
-The table above is maintained by hand and can drift. Before release, generate the authoritative list
-from the resolved dependency graph:
+Run after any dependency change and on the exact release commit:
 
 ```powershell
-.\gradlew.bat :app:dependencies --configuration releaseRuntimeClasspath
+.\tools\generate-release-dependency-notices.ps1
 ```
 
 ML Kit and Play services artifacts also ship machine-readable notices inside their AARs
-(`third_party_licenses.txt`), which must be surfaced if Play services libraries remain in the final
-build.
+(`third_party_licenses.txt`). The owner licence review must decide how those notices must be
+surfaced; the generated inventory is evidence, not legal advice.
 
-☐ Definitive notice list regenerated and reconciled before release — *(owner completes)*
+**DONE 2026-08-14:** resolved inventory regenerated (226 artifacts).
+
+**OPEN — Owner:** complete the third-party licence review, including Open Food Facts share-alike,
+the two POM gaps, Google/ML Kit terms, bundled notices, and the final method of distribution.
+
+## CarbScan project licence
+
+**OPEN — Owner:** no licence has been chosen for CarbScan itself. This document does not choose one.
+Record either the selected licence and copyright owner or an explicit all-rights-reserved decision
+before publication.
 
 ---
 

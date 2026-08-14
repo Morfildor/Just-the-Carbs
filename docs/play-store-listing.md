@@ -4,9 +4,8 @@
 
 Tone: precise, simple, factual. No efficacy claim, no medical claim, no keyword stuffing.
 
-> ⚠️ **Character limits and required fields change.** Verify the current Play Console limits before
-> submission. The counts below reflect the limits as understood at drafting and are marked for
-> re-checking.
+Limits re-checked against Google's [Create and set up your app](https://support.google.com/googleplay/android-developer/answer/9859152?hl=en)
+on 2026-08-14: app name 30, short description 80, full description 4,000 characters.
 
 ---
 
@@ -16,7 +15,7 @@ Tone: precise, simple, factual. No efficacy claim, no medical claim, no keyword 
 CarbScan
 ```
 
-*(9 characters. Contains no third-party trademark — §5, §51.)*
+*(8 characters; 30-character limit. Contains no third-party trademark — §5, §51.)*
 
 ## Short description
 
@@ -24,7 +23,7 @@ CarbScan
 Scan a barcode, enter your portion, read the carbohydrate grams. Nothing else.
 ```
 
-*(77 characters — verify against the current limit, believed 80.)*
+*(78 characters as counted from the exact code block on 2026-08-14; 80-character limit.)*
 
 ## Full description
 
@@ -65,10 +64,11 @@ has never seen needs an internet connection.
 
 PRIVATE BY DEFAULT
 
-No account. No advertising. No analytics we added. No tracking. Your products,
-portions and verified values stay on your device. CarbScan only ever requests a
-barcode lookup and, when a product has one, its photo — both from Open Food
-Facts, nowhere else.
+No account. No advertising. Your products, portions and verified values stay on
+your device. CarbScan sends an uncached barcode or a name you search for to Open
+Food Facts, and loads a product photo from its allowlisted image hosts when one
+exists. Google ML Kit processes camera input on-device and collects diagnostic
+and usage metrics described in the privacy policy.
 
 WHAT CARBSCAN DOES NOT DO
 
@@ -77,8 +77,7 @@ WHAT CARBSCAN DOES NOT DO
 • It does not connect to pumps or monitors
 • It is not a diet tracker: no calories, no macros, no food diary, no daily totals
 
-CarbScan gives you a carbohydrate number. What you do with it is between you and
-the people who advise you.
+CarbScan gives you a carbohydrate number and nothing more.
 
 Always check the package if a value looks wrong. Product recipes change, and
 public food databases can be out of date.
@@ -86,31 +85,31 @@ public food databases can be out of date.
 Product data from Open Food Facts, used under the Open Database License (ODbL).
 ```
 
-*(Verify against the current full-description limit, believed 4000 characters.)*
+*(2,214 characters as counted from the exact code block on 2026-08-14; within the current
+4,000-character limit before any conditional health-policy wording is inserted. Recount the final
+submitted text.)*
 
 ## Category and tags
 
 | Field | Proposed | Note |
 |---|---|---|
-| Category | **Tools** or **Food & Drink** | ⚠️ Depends on the §44 outcome. Do **not** select a Medical or Health & Fitness category before that assessment concludes |
-| Content rating | Everyone | Complete the questionnaire honestly |
+| Category | **Tools** or **Food & Drink** | Depends on the §44/Play outcome. Do not select a health/medical category merely for discoverability |
+| Content rating | **Not yet assigned** | IARC assigns it from the submitted questionnaire; do not pre-claim Everyone |
 | Contains ads | No | |
 | In-app purchases | No | |
 | Target audience | Adults | Not directed at children |
 
 ## ⚠️ Required health disclaimer (§50)
 
-**Deliberately left blank.**
+If the §44 assessment places CarbScan in the non-regulated health/medical-app branch, Google's
+current [Health Content and Services policy](https://support.google.com/googleplay/android-developer/answer/16679511?hl=en)
+(checked 2026-08-14) requires this wording in the description:
 
-If the §44 assessment places CarbScan in a Play category that requires the non-medical-device
-disclaimer, **Google's own required wording must be used verbatim**, taken from the Health Content
-and Services policy as it reads at submission.
+> not a medical device and does not diagnose, treat, cure, or prevent any medical condition.
 
-That wording is **not reproduced here from memory**, because inventing it — or paraphrasing it — is
-exactly the failure mode §50 warns against.
-
-☐ Current policy text retrieved and the required wording inserted — *(owner completes, with date and
-source URL)*
+This is a conditional Play-policy draft, not a §44 conclusion. Re-check the source on submission;
+insert it only if the signed assessment selects that branch. A regulated-app branch requires
+regulatory proof instead and must not use this sentence as a workaround.
 
 ## Claims audit
 
@@ -132,5 +131,5 @@ It also makes no affiliation claim with CamDiab, Ypsomed, CamAPS FX, Abbott or L
 - ☐ Privacy policy publicly hosted at a stable URL
 - ☐ Data Safety form completed from [google-play-data-safety.md](google-play-data-safety.md)
 - ☐ Play Console account type verified (§47)
-- ☐ Contact email replaced throughout
-- ☐ Character limits re-verified against current Play Console
+- ☑ Contact email replaced throughout — 2026-08-14
+- ☑ Character limits re-verified against current Play documentation — 2026-08-14

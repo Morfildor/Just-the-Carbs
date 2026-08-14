@@ -1,6 +1,6 @@
 # Privacy policy — CarbScan
 
-**Last updated:** 2026-08-13
+**Last updated:** 2026-08-14
 **Contact:** albinogorillassupport@gmail.com
 
 This describes what the app actually does, verified against the source code (§48).
@@ -9,7 +9,7 @@ This describes what the app actually does, verified against the source code (§4
 
 ## In one paragraph
 
-CarbScan has no account, no advertising, and no analytics we added. Your products, portions,
+CarbScan has no account, no advertising, and no developer-configured analytics service. Your products, portions,
 favourites and verified values stay on your device. **It is not true that no data leaves your
 device:** when you scan a barcode the app has never seen, it sends that barcode to Open Food Facts
 to look up the product, and — when that product has a photo — requests the photo too. If you use
@@ -42,17 +42,18 @@ There is no login, no cloud profile, and no synchronisation. Deleting the app de
 
 | Field | Value |
 |---|---|
-| Recipient | Open Food Facts, for product data (`world.openfoodfacts.org`) and product photos (`images.openfoodfacts.org`) |
+| Recipient | Open Food Facts, for product data/search (`world.openfoodfacts.org`) and product photos (`images.openfoodfacts.org` or `static.openfoodfacts.org`) |
 | When | Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts' own image host — the app checks this and will not load an image from any other address. Search text: only while you are typing on the search screen, which is reached from a failed lookup and never opened on its own |
 | What is sent | The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo); the search words themselves (search) |
-| What is *not* sent | Any identifier for you or your device, your portions, your results, your history, your verified values |
+| What CarbScan does not attach to these requests | An account/user ID, advertising ID, your portions, results, history, or verified values. The recipient still receives normal network metadata such as IP address |
 | Transport | HTTPS only. Cleartext traffic is disabled at the platform level |
 
 **About the search text specifically.** Unlike a barcode, this is text you typed, so it deserves
 naming rather than folding into "product lookups". It is sent as you type (after a short pause) so
-results can appear live, it is sent with no identifier attached, and it is never stored on your
-device or anywhere else — the app keeps no search history. If you do not use Search by name,
-nothing of this kind is ever sent.
+results can appear live, it is sent with no app-supplied user identifier, and CarbScan does not
+store it on your device or on a CarbScan server — the app keeps no search history and has no server.
+Open Food Facts' own retention of search requests was not established by a primary source in the
+2026-08-14 review. If you do not use Search by name, nothing of this kind is sent by CarbScan.
 
 Open Food Facts is an independent organisation and will receive your IP address as an unavoidable
 part of any internet request. Their handling of that is governed by their own privacy policy.
@@ -72,17 +73,24 @@ The camera is used for two things: reading barcodes, and reading nutrition label
 
 ## What CarbScan does not contain
 
-No advertising SDK. No advertising ID. No analytics SDK we added. No crash-reporting SDK. No
-third-party tracker. No social login. No Health Connect. No Bluetooth. No location access. Your data
-is never sold, and never shared for advertising.
+No advertising SDK. No advertising ID. No developer-configured analytics or crash-reporting
+service. No social login. No Health Connect. No Bluetooth. No location permission or location
+feature. CarbScan does not sell data or share it for advertising. ML Kit's SDK metrics are described
+separately below.
 
 ## One thing we want to be precise about
 
-CarbScan uses **Google ML Kit** for barcode and label recognition. ML Kit runs its recognition
-on-device, but it ships with a Google data-transport component (`com.google.android.datatransport`)
-that we did not add, do not control, and **cannot remove without breaking barcode scanning entirely** (we tested this), and which adds the `ACCESS_NETWORK_STATE` permission. Google
-may receive diagnostic information about ML Kit usage through it. We disclose this rather than claim
-a purity we cannot demonstrate. See
+CarbScan uses **Google ML Kit** for barcode and label recognition. Google states that camera input
+and recognition results are processed on-device and are not sent to Google. Google also states that
+the SDK collects device and app information, per-installation identifiers, performance metrics,
+API configuration, feature events and errors for diagnostics and usage analytics. Google says this
+data is encrypted in transit and not transferred to third parties. See Google's
+[ML Kit disclosure](https://developers.google.com/ml-kit/android-data-disclosure) and
+[Terms & Privacy](https://developers.google.com/ml-kit/terms), checked 2026-08-14.
+
+The SDK's `com.google.android.datatransport` component cannot be removed without breaking barcode
+scanning (verified in an emulator experiment) and adds `ACCESS_NETWORK_STATE`. CarbScan does not
+control Google's retention of those metrics. The proposed Play declarations are in
 [google-play-data-safety.md](google-play-data-safety.md).
 
 ## Backup
@@ -103,7 +111,9 @@ There is no account to delete, because there is no account.
 
 ## Children
 
-CarbScan is not directed at children and collects nothing that could identify anyone, of any age.
+CarbScan is not directed at children. It has no child-oriented design, account, advertising, or
+public user content. The same Open Food Facts requests and ML Kit collection described above apply
+regardless of a user's age; no separate claim of zero collection is made for children.
 
 ## Changes
 

@@ -34,7 +34,20 @@ fun secret(key: String, env: String): String? =
     keystoreProps.getProperty(key) ?: System.getenv(env)
 
 val releaseStoreFile = secret("storeFile", "CARBSCAN_STORE_FILE")
-val hasSigningMaterial = releaseStoreFile != null && file(releaseStoreFile).exists()
+val releaseStorePassword = secret("storePassword", "CARBSCAN_STORE_PASSWORD")
+val releaseKeyAlias = secret("keyAlias", "CARBSCAN_KEY_ALIAS")
+val releaseKeyPassword = secret("keyPassword", "CARBSCAN_KEY_PASSWORD")
+val resolvedReleaseStoreFile = releaseStoreFile?.let(rootProject::file)
+val missingSigningMaterial = buildList {
+    if (releaseStoreFile.isNullOrBlank()) add("storeFile / CARBSCAN_STORE_FILE")
+    if (releaseStorePassword.isNullOrBlank()) add("storePassword / CARBSCAN_STORE_PASSWORD")
+    if (releaseKeyAlias.isNullOrBlank()) add("keyAlias / CARBSCAN_KEY_ALIAS")
+    if (releaseKeyPassword.isNullOrBlank()) add("keyPassword / CARBSCAN_KEY_PASSWORD")
+    if (resolvedReleaseStoreFile != null && !resolvedReleaseStoreFile.exists()) {
+        add("signing file does not exist: ${resolvedReleaseStoreFile.absolutePath}")
+    }
+}
+val hasSigningMaterial = missingSigningMaterial.isEmpty()
 
 android {
     namespace = brandNamespace
@@ -63,10 +76,10 @@ android {
     signingConfigs {
         if (hasSigningMaterial) {
             create("release") {
-                storeFile = file(releaseStoreFile!!)
-                storePassword = secret("storePassword", "CARBSCAN_STORE_PASSWORD")
-                keyAlias = secret("keyAlias", "CARBSCAN_KEY_ALIAS")
-                keyPassword = secret("keyPassword", "CARBSCAN_KEY_PASSWORD")
+                storeFile = resolvedReleaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -128,6 +141,25 @@ android {
         warningsAsErrors = false
         abortOnError = true
         checkDependencies = true
+    }
+}
+
+// A release packaging task without all four secrets used to succeed and leave an unsigned
+// artifact in build/outputs. That is too easy to mistake for something uploadable. Dependency
+// reports and release-unit-test compilation remain available without a key, but every task graph
+// that packages, signs, installs, assembles or bundles the release variant fails before execution.
+gradle.taskGraph.whenReady {
+    val packagesRelease = allTasks.any { task ->
+        task.project == project &&
+            task.name.contains("Release") &&
+            listOf("assemble", "bundle", "package", "sign", "install").any(task.name::startsWith)
+    }
+    if (packagesRelease && !hasSigningMaterial) {
+        throw GradleException(
+            "Release signing is incomplete; refusing to create an unsigned release artifact. " +
+                "Missing: ${missingSigningMaterial.joinToString()}. " +
+                "Provide keystore.properties or the CARBSCAN_* environment variables."
+        )
     }
 }
 

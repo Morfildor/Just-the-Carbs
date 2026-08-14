@@ -116,9 +116,10 @@ three columns to `products` — no new backup surface, since the existing rule e
 `buildTypes.release` sets `isDebuggable = false` explicitly (`app/build.gradle.kts`) — not merely
 relying on AGP's default, which is the same value but not guaranteed to stay that way across a
 Gradle/AGP upgrade. `isMinifyEnabled` and `isShrinkResources` are both `true` for release. The
-signing config is attached **only** when real signing material is present (`hasSigningMaterial`
-check) and **never** falls back to the debug key — a release APK either has a real signature or
-none at all, never a debug-signed one masquerading as release.
+signing config is attached **only** when all four signing inputs are present and the keystore file
+exists (`hasSigningMaterial` check). It never falls back to the debug key. Packaging, assembling,
+bundling, or installing a release now fails before task execution when an input is absent, so
+Gradle no longer leaves an unsigned release artifact that could be mistaken for uploadable output.
 
 ## Logs
 
@@ -142,8 +143,9 @@ action cannot itself carry more information than the single number the user aske
 No API key, client secret, or credential exists anywhere in the checked-in source (Open Food Facts'
 read API requires none). Release signing material is read exclusively from `keystore.properties`
 (gitignored) or environment variables (`CARBSCAN_STORE_FILE`, `CARBSCAN_STORE_PASSWORD`,
-`CARBSCAN_KEY_ALIAS`, `CARBSCAN_KEY_PASSWORD`) — never committed, and the build fails closed
-(unsigned release, not a fallback debug-signed one) when that material is absent.
+`CARBSCAN_KEY_ALIAS`, `CARBSCAN_KEY_PASSWORD`) — never committed. The build fails closed with no
+release artifact when any signing input is absent (verified 2026-08-14). A disposable test key can
+exercise the path but must never be uploaded.
 
 ## ML Kit behaviour
 
@@ -151,9 +153,12 @@ Covered in depth in [google-play-data-safety.md](google-play-data-safety.md) —
 completeness: `com.google.android.datatransport` (Google's CCT telemetry transport) ships
 transitively via `com.google.mlkit:common` and **cannot be excluded** without a fatal
 `NoClassDefFoundError` crashing the scanner, verified empirically on the emulator (2026-08-14). No
-opt-out constant exists in the shipped artifacts. This is disclosed in the privacy policy and Data
-Safety draft as third-party (Google) telemetry, explicitly not CarbScan's own analytics — the app
-neither invokes nor configures it.
+opt-out constant exists in the shipped artifacts. Google's current
+[ML Kit disclosure](https://developers.google.com/ml-kit/android-data-disclosure), fetched
+2026-08-14, says the SDK collects device/app information, per-installation identifiers,
+performance/configuration metrics, feature events, and errors for diagnostics and usage analytics.
+Those types are now explicitly drafted in Data Safety rather than left as an owner guess. The app
+does not configure a separate analytics product, but SDK collection still counts under Play.
 
 ## Third-party dependencies and independent review
 

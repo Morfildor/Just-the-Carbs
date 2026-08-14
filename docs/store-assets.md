@@ -2,15 +2,15 @@
 
 Asset plan for the Play listing (§55).
 
-> ⚠️ **Play's asset requirements change.** Every dimension below must be re-verified against the
-> current Play Console requirements before upload. They are recorded here as the plan, not as
-> authority.
+Requirements re-checked on 2026-08-14 against Google's
+[preview asset guidance](https://support.google.com/googleplay/android-developer/answer/9866151?hl=en).
 
 ---
 
 ## Launcher icon — done
 
-Already implemented as vector XML, no raster export needed:
+The adaptive launcher icon is implemented as vector XML, but Google Play still requires a separate
+512×512 PNG upload:
 
 | File | Role |
 |---|---|
@@ -29,13 +29,13 @@ bathroom scale. The app is a calculator for packaged food and the icon must not 
 
 ## Store assets to produce
 
-| Asset | Spec (verify) | Status |
+| Asset | Current specification | Status |
 |---|---|---|
-| Store icon | 512 × 512 PNG, 32-bit | ☐ |
-| Feature graphic | 1024 × 500 PNG/JPEG, no alpha | ☐ |
-| Phone screenshots | 2–8 required; 16:9 or 9:16; min 320px, max 3840px on any side | ☐ |
-| Tablet screenshots | Only if tablet support is declared | ☐ |
-| Promo video | Optional — recommended to skip | ☐ |
+| Store icon | 512 × 512, 32-bit PNG with alpha, ≤1,024 KB | **MISSING** |
+| Feature graphic | 1024 × 500 JPEG or 24-bit PNG, no alpha | **MISSING** |
+| Phone screenshots | Produce at least 2; JPEG/24-bit PNG, no alpha; each side 320–3,840 px; long side ≤2× short side | **MISSING** |
+| Tablet screenshots | Not a universal publication minimum; use real tablet captures if tablet quality/distribution is claimed | **OPEN owner scope decision** |
+| Promo video | Optional — recommended to skip | **SKIP for first release** |
 
 ## Screenshot sequence
 

@@ -1,112 +1,80 @@
-# Play health declaration — preparation
+# Play Health Apps declaration — owner draft
 
-**Draft for owner completion. Nothing has been submitted (§46).**
+**Status: BLOCKED by §44. Nothing has been submitted. Source check: 2026-08-14.**
 
-> ⚠️ **This document does not quote the Google Play Health Content and Services policy.** That
-> policy changes, and reproducing remembered wording would create a false impression of compliance.
-> The owner must read the policy as it currently stands and complete the answers below against it.
+Google requires every published app to complete the Health Apps declaration, even an app that
+offers no health feature. The relevant current categories and follow-up fields are documented in
+[Provide information for the Health Apps declaration](https://support.google.com/googleplay/android-developer/answer/14738291?hl=en)
+and the requirements are in [Health Content and Services](https://support.google.com/googleplay/android-developer/answer/16679511?hl=en).
 
----
+## Facts that do not depend on §44
 
-## Blocking dependency
+CarbScan multiplies a product's carbohydrate value per 100 g or 100 ml by a user-entered portion
+and divides by 100. A count is first resolved to a gram/ml portion and then uses the same formula.
 
-**Every answer here depends on the §44 regulatory assessment**, which is unresolved. See
-[regulatory-release-checklist.md](regulatory-release-checklist.md).
-
-> **Do NOT declare CarbScan non-medical while that assessment is incomplete (§46).** A declaration
-> is a factual statement to Google, not a preference.
-
-## Facts about the app, for whoever completes the form
-
-These are verified against the code and can be relied on.
-
-### What it does
-
-- Multiplies a declared carbohydrate value by a user-entered portion and divides by 100. A
-  countable-portion entry (e.g. "2 slices") is resolved to that same gram/ml portion before the
-  identical calculation runs — there is one formula, never two.
-- Displays the result as a decimal (`31.3 g`) with a whole-gram figure beneath (`≈ 31 g`); the
-  decimal is the dominant figure, revised 2026-08-14 because the result is transcribed by hand
-  into a separate bolus calculator, where the lost precision of a whole-gram-only figure matters.
-- Stores products, portions, countable portion units, favourites and user-verified values on the
-  device.
-
-### What it does not do
-
-| Capability | Present? |
+| Capability | Build fact |
 |---|---|
-| Insulin dose calculation | **No** |
-| Insulin-to-carb ratio, correction factor, IOB | **No** |
-| Glucose entry, storage, or interpretation | **No** |
-| Pump or CGM communication | **No** |
-| Treatment or medication recommendation | **No** |
-| Diagnosis, triage, or symptom assessment | **No** |
-| Health Connect integration | **No** |
-| Telehealth, prescriptions, pharmacy | **No** |
-| User health-data collection or transmission | **No** |
+| Insulin/medication dose, I:C ratio, correction, IOB | Absent |
+| Glucose entry, storage, interpretation | Absent |
+| Pump/CGM communication | Absent |
+| Diagnosis, symptom assessment, treatment recommendation | Absent |
+| Health Connect or health permission | Absent |
+| Account, cloud sync, ads | Absent |
+| Camera use | Barcode and nutrition-label recognition; images processed on-device and discarded |
+| Network use | Open Food Facts product/search/image requests; ML Kit diagnostics/usage collection described in the Data Safety draft |
+| Local storage | Products, portions, verification state, usual portions, one current-meal scratchpad, settings |
 
-There is no dose, ratio, correction, glucose, or medication concept anywhere in the codebase.
+The intended-use context immediately before a separate bolus calculator is part of the owner’s
+assessment and must not be hidden or minimized.
 
-### Intended-purpose context — the part that matters
+## Form answer decision tree
 
-CarbScan is positioned for use **immediately before** a separate bolus calculator. That adjacency is
-the whole reason §44 exists and must be disclosed accurately in any assessment. It should not be
-minimised on the form to obtain a simpler category.
+Current form action: **open the declaration and save it as a draft. Do not submit a category until
+the signed §44 assessment supplies the branch.**
 
-## Policy categories to assess
+| §44 / Play conclusion | Draft declaration answer | Follow-up |
+|---|---|---|
+| Regulated in a market where offered | Select **Medical Device Apps** | Complete every requested legal, compliance, operating, manufacturer, intended-purpose, warning, eIFU, UDI and certificate field that applies. Do not invent or leave required fields unsupported. |
+| Not regulated, but Play classifies the intended purpose as condition management | Assess/select **Diseases and Conditions Management** | Record why that category matches. Apply the non-regulated health-app policy requirements below. |
+| Not regulated and Play classifies it as no health feature | Select **My app doesn’t provide any health features** | Retain the written analysis supporting that answer. Absence of Health Connect data alone is not a sufficient basis. |
 
-Read each against the current policy text and record the outcome.
+Do not select **Nutrition and Weight Management** merely because the calculation uses carbohydrate
+facts. Google's category covers dietary-intake tracking, meal planning, diet/weight management, or
+specific dietary goals. CarbScan performs none of those and has no diary or daily totals.
 
-| # | Question | Answer | Basis |
-|---|---|---|---|
-| 1 | Does the app fall under Health Content and Services at all? | ☐ | |
-| 2 | Is it a "health app" in the policy's terms? | ☐ | |
-| 3 | Does it require the non-medical-device disclaimer? | ☐ | |
-| 4 | Does it require a professional-advice statement? | ☐ | |
-| 5 | Any medical-device declaration required in Play Console? | ☐ | |
-| 6 | Any additional documentation or attestation required? | ☐ | |
-| 7 | Is an Organization Play Console account required (§47)? | ☐ | |
+Do not select **Clinical Decision Support** based on adjacency to another calculator. Google's
+examples include professional decision support and drug dosage calculators; CarbScan contains
+neither. If a qualified assessor reaches a different classification, record their reasoning rather
+than altering the code description.
 
-## Permissions and data — for the form
+## Policy-dependent listing and in-app work
 
-| Item | Answer |
+Google’s current policy says:
+
+- regulated apps must be declared and provide regulatory proof on request;
+- other health/medical apps must include this clear description in the app description:
+  **“not a medical device and does not diagnose, treat, cure, or prevent any medical condition.”**
+- a health app must link its privacy policy in Play Console and provide a privacy-policy link or
+  text in the app; the URL must be active, public, non-geofenced, non-editable, and not a PDF.
+
+This section does not choose which branch applies. If the signed §44/Play assessment selects the
+non-regulated health-app branch, insert Google's wording exactly in the full description and any
+in-app location the then-current policy requires. If it selects the regulated branch, do not use
+the non-regulated disclaimer as a substitute for regulatory evidence.
+
+## Organization account dependency
+
+[Play Console Requirements](https://support.google.com/googleplay/android-developer/answer/10788890?hl=en)
+states that developers providing health apps, such as medical apps, must register as an
+Organization. Record the final category and account result:
+
+| Field | Owner record |
 |---|---|
-| Permissions requested by CarbScan | `CAMERA`, `INTERNET` |
-| Permission merged transitively | `ACCESS_NETWORK_STATE` (via ML Kit's `datatransport`) |
-| Sensitive permissions | None |
-| Health data accessed | None |
-| Health data transmitted | None |
-| Data transmitted off-device | A scanned barcode, to Open Food Facts, only when uncached; and a request to Open Food Facts' image host for the product's photo, when one exists — see [privacy-policy.md](privacy-policy.md) |
-| User identifiers transmitted | None — no account or device identifier exists |
-| Analytics / advertising SDK added by us | None |
-| Third-party telemetry present | ML Kit's `com.google.android.datatransport` — see [google-play-data-safety.md](google-play-data-safety.md) |
-| Backup | Disabled |
-
-## Regulatory status field — owner must confirm
-
-| Field | Value |
-|---|---|
-| Regulatory status | ☐ Not a medical device ☐ Medical device ☐ Accessory to a medical device ☐ **Not yet assessed** |
-| Assessed by | *(owner)* |
-| Date | *(owner)* |
-| Evidence retained at | *(owner)* |
-
-**Current value: Not yet assessed.**
-
-## Required wording (§50)
-
-If the assessment concludes a disclaimer is required, insert **Google's exact required language**,
-retrieved from the current policy, into:
-
-1. The store listing full description
-2. Any in-app location the policy specifies
-
-Do not paraphrase it. Do not write your own version.
-
-☐ Wording retrieved from current policy and inserted — *(owner completes, with source URL and date)*
-
-## Submission rules observed
-
-- Nothing is submitted automatically by this project.
-- No declaration is pre-filled on the owner's behalf.
-- No claim of medical approval or certification appears anywhere in the app or listing.
+| §44 assessor / date | *(owner)* |
+| Markets assessed | *(owner)* |
+| Regulatory conclusion | *(owner)* |
+| Play category selected | *(owner)* |
+| Developer account type and verification | *(owner)* |
+| Required proof/disclaimer branch | *(owner)* |
+| Privacy-policy URL verified in Console and app | *(owner)* |
+| Declaration submission/export retained at | *(owner)* |
