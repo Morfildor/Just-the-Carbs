@@ -302,8 +302,14 @@ Key invariants, each pinned by a test:
 
 ## Open findings needing the owner
 
-1. **§44 regulatory assessment is unresolved and blocks publication.** See
-   `docs/regulatory-release-checklist.md`.
+1. **§44 regulatory assessment is drafted but unsigned, and still blocks publication.** The
+   manufacturer's assessment is `docs/regulatory-qualification-assessment.md` (conclusion: **not a
+   medical device**, EU only, conditional on its §7 marketing constraints); a PDF export exists for
+   signature. Signing it closes checklist rows A1/A3 — **A2 (independent review), A5 (non-EU
+   markets) and A6 (listing wording) stay open**, so publication remains NO-GO. Gate rows are in
+   `docs/regulatory-release-checklist.md`; the release order is `docs/play-release-readiness.md`.
+   §7.1 forbids marketing the app for diabetes and forbids the owner's personal pump use appearing
+   in any published material — that constraint is binding on store copy and review replies.
 2. **ML Kit telemetry: investigated and settled as far as code can settle it (2026-08-14).**
    `com.google.android.datatransport` comes from `com.google.mlkit:common` and **cannot be
    excluded** — doing so fatally crashes the scanner (`NoClassDefFoundError: CCTDestination`),

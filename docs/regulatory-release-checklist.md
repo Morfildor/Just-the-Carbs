@@ -1,135 +1,121 @@
-# Regulatory release checklist — CarbScan
+# Regulatory release gate — CarbScan
 
-**Status: UNRESOLVED pending owner signature. This document blocks production publication
-(brief §44).**
+**NO-GO. Every OPEN row blocks public publication.** This document records engineering evidence
+and owner actions; it is not a regulatory determination. Last engineering review: 2026-08-14.
 
-Nothing in this file is a regulatory determination. It is a list of questions the owner must
-answer, with evidence, before CarbScan is published to any public store.
+Status vocabulary is strict:
 
-> **A drafted assessment now exists:**
-> [regulatory-qualification-assessment.md](regulatory-qualification-assessment.md) (2026-08-14).
-> It sets out the owner's position that CarbScan is **not** a medical device, with the reasoning,
-> the MDCG 2019-11 **rev.1** criteria, the verifiable facts it rests on, and — deliberately — the
-> strongest argument against it. **It is a draft and carries no weight until the owner signs §8.**
-> Items 2.1–2.3 below are drafted there; 2.4–2.7 remain open.
+- **DONE** includes dated evidence.
+- **OPEN — Owner** names the decision or evidence the owner must obtain.
+- **DRAFTED — Owner signature required** means the written record exists but is unsigned. It is
+  **not** a completed row and blocks release exactly as OPEN does; it exists only so the owner can
+  see which rows need a signature rather than new work.
+- **NOT REACHED** means the row is conditional on a row above that has not concluded.
+- There is no “in progress,” implied completion, or disclaimer-based bypass. A drafted record
+  confers no permission to publish.
 
----
+## A. Qualification decision — all rows block release
 
-## 1. The gate
+A manufacturer's assessment has been **drafted** and is held at
+[regulatory-qualification-assessment.md](regulatory-qualification-assessment.md) (exported to
+`regulatory-qualification-assessment.pdf` for signature). Its conclusion is **not a medical device**.
+Rows below record what that document does and does not settle. A drafted assessment is not a signed
+one, and a self-assessment is not an independent one.
 
-CarbScan calculates the carbohydrate content of a portion of packaged food. It does **not**
-calculate insulin, interpret glucose, or communicate with a pump or CGM.
-
-That does not by itself settle its regulatory status. Under EU MDR 2017/745, qualification turns on
-the **intended purpose** the manufacturer assigns — including marketing claims and the context of
-use — not solely on what the code computes. CarbScan's intended purpose positions it for use
-immediately *before* a separate bolus calculator, and that adjacency is precisely what a
-qualification assessment has to examine.
-
-> **A disclaimer must not be used to avoid this assessment (§44).** If the assessment concludes
-> that CarbScan qualifies as a medical device or as an accessory to one, it must stop being treated
-> as a wellness app and the additional compliance work must be identified and completed.
-
-**Owner action required. This cannot be delegated to the development process.**
-
-## 2. What the owner must perform and document
-
-| # | Action | Done | Evidence / date |
+| ID | Status | Required record | Evidence / date |
 |---|---|---|---|
-| 2.1 | Write the formal **intended purpose** statement, in the words that will appear in the store listing and in-app | ◐ | **Drafted** — assessment §1. Owner must adopt or amend it |
-| 2.2 | Assess qualification under **MDR 2017/745 Article 2(1)** against that intended purpose | ◐ | **Drafted** — assessment §3, concludes not a medical device |
-| 2.3 | Assess against **current MDCG software qualification and classification guidance** | ◐ | **Drafted** — assessment §4, against **MDCG 2019-11 rev.1 (June 2025)**, confirmed current 2026-08-14. Re-confirm at signing |
-| 2.4 | If qualified as a device: determine **class**, conformity assessment route, and whether a notified body is required | n/a | Not reached — conditional on 2.2/2.3 concluding otherwise |
-| 2.5 | Assess the **Google Play Health Content and Services** policy as it currently reads | ☐ | Separate gate. Play's "health app" definition is broader than MDR's device definition — being out of MDR scope does not settle this |
-| 2.6 | Determine whether markets outside the EU are in scope, and assess each separately (UK MHRA, US FDA, etc.) | ☐ | **Undecided.** Assessment covers the **EU only**. Geo-restrict the Play listing to the EU until decided |
-| 2.7 | Record the conclusion, the reasoning, and the date, and retain it | ☐ | **The signature is the deliverable.** Assessment §8 is unsigned |
-| 2.8 | Review **MDCG 2025-4** (June 2025) — safe making available of medical device software on online platforms | ☐ | New guidance, directly relevant to a Play release |
-| 2.9 | Consider an independent review by an EU MDR software consultant | ☐ | Recommended given the adjacency discussed in assessment §5 |
+| A1 | **DRAFTED — Owner signature required** | Define the exact intended purpose, intended users, use environment, markets, and public claims | Assessment §1 (intended purpose), §7.1 (marketing constraints), Annex A.1 (EU only). Becomes DONE when §9 is signed and dated |
+| A2 | **OPEN — Owner** | Obtain a competent qualification assessment against Regulation (EU) 2017/745 Article 2 and the actual intended purpose | Assessment §3 is a **manufacturer self-assessment**; no assessor competence is recorded. Independent review is Annex A.6 and remains outstanding — see note below |
+| A3 | **DRAFTED — Owner signature required** | Assess current software guidance: MDCG 2019-11 rev.1 (June 2025) | Assessment §4 analyses the current revision, confirmed live 2026-08-14. Annex A.2 requires reconfirming the revision at signature |
+| A4 | **NOT REACHED** | If qualification applies, determine classification using current guidance, including MDCG 2021-24 rev.1 (April 2026), and determine conformity route | Conditional on A2. The drafted assessment concludes qualification does not apply, so no class, rule or conformity route is determined. If A2 overturns that conclusion, this row reopens as OPEN — Owner |
+| A5 | **OPEN — Owner** | Assess every distribution market separately; EU work does not answer UK/US/other markets | Assessment covers the **EU only** (Annex A.1). UK (MHRA) and US (FDA) are unassessed. Distribution must be restricted to the EU until this is done |
+| A6 | **OPEN — Owner** | Record the final conclusion and approve matching app/listing wording | Assessment §8 states a conclusion but is unsigned; listing wording review against §7.1 is Annex A.5 and is not done. See B |
 
-Legend: ☐ open · ◐ drafted, awaiting owner adoption · ☑ complete
+Primary sources retrieved 2026-08-14:
 
-## 3. Decision record
+- [Regulation (EU) 2017/745](https://eur-lex.europa.eu/eli/reg/2017/745/oj?locale=en)
+- [MDCG 2019-11 rev.1 — software qualification and classification](https://health.ec.europa.eu/latest-updates/update-mdcg-2019-11-rev1-qualification-and-classification-software-regulation-eu-2017745-and-2025-06-17_en)
+- [MDCG 2021-24 rev.1 — classification of medical devices](https://health.ec.europa.eu/latest-updates/update-mdcg-2021-24-rev1-guidance-classification-medical-devices-april-2026-2026-04-20_en)
+- [MDCG 2025-4 — medical-device software apps on online platforms](https://health.ec.europa.eu/latest-updates/mdcg-2025-4-guidance-safe-making-available-medical-device-software-mdsw-apps-online-platforms-june-2025-06-16_en)
 
-| Field | Value |
+A disclaimer cannot complete A1–A6. The software’s limited feature set also cannot decide them by
+itself.
+
+**Why A2 remains OPEN even though an assessment exists.** The drafted assessment is the
+manufacturer's own. Under the MDR the manufacturer is the party responsible for qualification, so a
+self-assessment is a legitimate and expected record — but it is not evidence of assessor competence,
+which is what A2 asks for. The assessment itself identifies its adjacency to insulin dosing (§5.4)
+as the point on which a competent authority could most plausibly disagree, and recommends
+independent review (Annex A.6). Given the app's proximity to the owner's own insulin dosing, that
+review is the conservative course. A2 closes when either an independent reviewer records an opinion,
+or the owner records a reasoned decision to proceed on the self-assessment alone, with competence
+basis stated.
+
+## B. Owner decision record — drafted, unsigned
+
+Source: [regulatory-qualification-assessment.md](regulatory-qualification-assessment.md). This table
+summarises; the assessment governs.
+
+| Field | Owner record |
 |---|---|
-| Assessment performed by | *(name — owner completes)* |
-| Date | *(owner completes)* |
-| Intended purpose statement | *(owner completes)* |
-| Conclusion | ☐ Not a medical device ☐ Medical device ☐ Accessory to a medical device |
-| Basis for conclusion | *(owner completes)* |
-| If a device: class and route | *(owner completes)* |
+| Assessor name and role | *(OPEN — Owner)* — assessment §9 is unsigned; role stated as Manufacturer (self-assessment) |
+| Assessment date/version | *(OPEN — Owner)* — document covers version 1.0.0 (version code 1); date field blank pending signature |
+| Intended purpose | **Drafted** — general-purpose calculator for the carbohydrate content of a portion of packaged food; assessment §1 |
+| Intended users/use environment | **Drafted** — anyone wanting a portion's carbohydrate content (cooking, sport, weight, low-carb); no condition-specific feature; assessment §1 |
+| Markets | **European Union only.** UK and US unassessed; assessment Annex A.1 |
+| Conclusion and legal basis | **Drafted** — not a medical device and not an accessory, under MDR Article 2(1) and MDCG 2019-11 rev.1; assessment §8. **Unsigned, and conditional on §7** |
+| If applicable: class/rule/conformity route | Not reached — conclusion is that qualification does not apply |
+| Approved public wording | *(OPEN — Owner)* — §7.1 sets binding constraints; the listing has not been reviewed against them (Annex A.5) |
+| Owner signature/date | *(OPEN — Owner)* — **this is the gate; nothing above is in force until signed** |
 
-**Until this table is completed and signed, CarbScan must not be published.**
+## C. Google Play regulatory consequences
 
-## 4. What the build already does to reduce risk
+| ID | Status | Gate | Evidence / action |
+|---|---|---|---|
+| C1 | **DONE** | Current Health Content and Services policy fetched | Google primary source, 2026-08-14; linked in `play-release-readiness.md` |
+| C2 | **DONE** | Current Health Apps declaration categories fetched | Google primary source, 2026-08-14; conditional branches in `play-health-declaration.md` |
+| C3 | **OPEN — Owner** | Select the accurate Health Apps branch | Depends on A1–A6; save form as draft meanwhile |
+| C4 | **OPEN — Owner** | Provide regulatory proof/fields if the regulated branch applies | Use only documents from the completed legal route |
+| C5 | **OPEN — Owner** | Insert Google's current disclaimer if the non-regulated health-app branch applies | Use exact sourced text; do not use it to influence A1–A6 |
+| C6 | **OPEN — Owner** | Confirm Organization developer account | Google says health-app providers must register as an Organization; final category/account evidence required |
+| C7 | **OPEN — Owner** | Host privacy policy and add Play Console + in-app links | Public URL and release-build evidence required |
+| C8 | **OPEN — Owner** | Submit/export the final Health Apps declaration | Retain submitted answers and date |
 
-While qualification is unresolved, the safety-critical paths are deliberately conservative. This is
-**not** a claim that CarbScan is, or is not, a medical device or an accessory to one - that is
-precisely what the assessment above must determine. These controls are implemented, not merely
-asserted:
+## D. Implemented scope and safety controls
 
-| Safeguard | Where it lives | Enforced by |
-|---|---|---|
-| OCR output is never auto-accepted | `LabelScannerScreen` — values are proposals with *Use* / *Edit* | `NutritionLabelParserTest` |
-| Ambiguous label readings are never resolved by the app | `NutritionLabelParser` returns `Ambiguous` | `reports ambiguity when two different carbohydrate values appear` |
-| The sugars sub-line is never read as total carbohydrate | `NutritionLabelParser` excludes `waarvan suikers` / `of which sugars` | `never mistakes the sugars sub-line for the total` |
-| Verified data is never silently overwritten | `Product.isRemoteRefreshable` | 7 provenance regression tests |
-| No value is shown when confidence is insufficient | `NutritionValueValidator` returns null; UI shows *Carbohydrate value unavailable* | `NutritionValueValidatorTest` |
-| Never assumes 1 ml = 1 g | `NutritionBasis` is a label, never a factor | `the basis never applies a density conversion` |
-| No double rounding of the displayed gram | `CarbResult` derives both values from `exact` | `the whole gram is rounded from the exact value...` |
-| No insulin calculation anywhere | — | Absence of any dose, ratio, correction or glucose concept in the codebase |
+These facts reduce misuse risk but do not answer qualification.
 
-These reduce risk. **They do not substitute for the assessment.**
+| ID | Status | Build fact | Evidence / date |
+|---|---|---|---|
+| D1 | **DONE** | One carbohydrate formula; countable portions resolve to g/ml before that formula | `PortionResolver`, `CarbCalculator`; code inspection 2026-08-14 |
+| D2 | **DONE** | No insulin/dose/ratio/correction/glucose calculation or pump/CGM communication | Source search and app architecture; 2026-08-14 |
+| D3 | **DONE** | OCR proposals require explicit user acceptance; ambiguity yields no value | `NutritionLabelParser`, label UI; code inspection 2026-08-14 |
+| D4 | **DONE** | Sugars sub-lines are not substituted for total carbohydrate | Parser implementation/test inventory; 2026-08-14 |
+| D5 | **DONE** | User-verified values are not silently replaced and source provenance remains separate | `Product.isRemoteRefreshable`, repository; code inspection 2026-08-14 |
+| D6 | **DONE** | g and ml are never interconverted | `NutritionBasis`, `CarbCalculator`; code inspection 2026-08-14 |
+| D7 | **DONE** | Invalid/negative/non-finite remote values are rejected | `NutritionValueValidator`; code inspection 2026-08-14 |
+| D8 | **DONE** | Rounding is explicit and derived from the exact result, never double-rounded | `CarbResult`, `ResultFormatter`; code inspection 2026-08-14 |
+| D9 | **DONE** | Camera may be denied; manual entry is a first-class path | Manifest camera optional; home/manual navigation; code inspection 2026-08-14 |
+| D10 | **DONE** | Backup and cleartext traffic disabled; product images restricted to HTTPS allowlisted hosts | Manifest, backup rules, `ProductImageUrlValidator`; code inspection 2026-08-14 |
 
-## 5. Explicit prohibitions observed
+## E. Public-copy controls
 
-- No CE mark is applied anywhere in the app, the icon, the store listing, or this repository.
-- No claim of medical approval, clinical validation, or regulatory clearance is made.
-- No clinical efficacy claim is made (§45): the copy states only what the software computes.
-- No affiliation with CamDiab, Ypsomed, CamAPS FX, Abbott or Libre is stated or implied (§51).
+| ID | Status | Gate | Evidence / action |
+|---|---|---|---|
+| E1 | **DONE** | Draft copy contains no efficacy, clinical validation, regulatory approval, or accuracy claim | `play-store-listing.md` claim audit, 2026-08-14 |
+| E2 | **DONE** | Draft assets forbid device-manufacturer trademarks and medical/certification imagery | `store-assets.md`, 2026-08-14 |
+| E3 | **DONE** | In-app safety text states the calculation boundary without a qualification claim | `settings_safety_body`, reviewed 2026-08-14 |
+| E4 | **OPEN — Owner** | Final name, intended-purpose wording, listing, screenshots, and disclaimer branch approved together | Signed copy review after A1–A6 |
+| E5 | **OPEN — Owner** | Open Food Facts data/image licence review | Record reviewer, conclusion, source versions, date; engineering attribution is not a legal conclusion |
+| E6 | **OPEN — Owner** | Project licence disposition chosen | Record licence or all-rights-reserved decision |
 
-## 5b. Publication gate checklist (correction #11)
+## F. Final gate sign-off
 
-Publication requires **all** of the following, each matching the actually shipped implementation:
+The owner may change the decision below to GO only when every OPEN row above has evidence.
 
-| # | Gate | Done |
-|---|---|---|
-| 5b.1 | Google Play Health Apps declaration completed | ☐ |
-| 5b.2 | Data Safety form completed and matching the shipped build | ☐ |
-| 5b.3 | Privacy policy publicly reachable at a stable URL | ☐ |
-| 5b.4 | Required developer account type confirmed | ☐ |
-| 5b.5 | Final medical-device qualification decision recorded | ☐ |
-| 5b.6 | Final store wording reviewed against §45 / §51 | ☐ |
-| 5b.7 | Third-party SDK disclosures complete (incl. the ML Kit transport) | ☐ |
-| 5b.8 | Open Food Facts **database and image** attribution and licensing reviewed | ☐ |
-
-Nothing is auto-submitted, and no declaration answer is fabricated.
-
-## 6. Play Console account (§47)
-
-The owner must verify whether an **Organization** Play Console account is required for the final
-health-app category. Do not assume a personal developer account is sufficient. Confirm against the
-current Play Console requirements at the time of submission.
-
-☐ Verified account type requirement — *(owner completes, with date)*
-
-## 7. Open finding requiring a decision
-
-**ML Kit ships a Google telemetry transport, and it cannot be removed.** Investigated empirically
-on 2026-08-14 rather than assumed — full evidence in
-[google-play-data-safety.md](google-play-data-safety.md).
-
-`com.google.android.datatransport` arrives via `com.google.mlkit:common`, the core module both
-barcode scanning and OCR depend on. Excluding it builds fine but **fatally crashes the scanner**
-(`NoClassDefFoundError: CCTDestination`). No opt-out constant exists in the shipped artifacts, so
-none was invented. It is a hard dependency, not optional analytics.
-
-§34 states the app uses no telemetry SDK. That remains true of code written for CarbScan, but is
-**not** true of this transitive dependency. The remaining choices are to accept and disclose it, or
-to replace ML Kit entirely — which would mean rebuilding both headline features on a different
-recognition stack.
-
-Disclosure is in place (privacy policy + Data Safety draft). What the owner still owes:
-
-☐ Review Google's ML Kit terms/privacy documentation and record what Google states it collects
-☐ Decide the Data Safety declaration category, and record the basis and date
+| Field | Current value |
+|---|---|
+| Decision | **NO-GO** |
+| Open blocking rows | A1 and A3 (drafted, awaiting signature); A2, A5, A6; B signature; C3–C8; E4–E6 |
+| Owner approval | *(OPEN — Owner)* |
+| Date | *(OPEN — Owner)* |
