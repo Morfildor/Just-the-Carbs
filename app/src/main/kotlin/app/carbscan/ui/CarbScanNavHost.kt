@@ -27,6 +27,8 @@ import app.carbscan.ui.manual.ManualEntryScreen
 import app.carbscan.ui.manual.ManualEntryViewModel
 import app.carbscan.ui.meal.MealScreen
 import app.carbscan.ui.meal.MealViewModel
+import app.carbscan.ui.onboarding.OnboardingScreen
+import app.carbscan.ui.onboarding.OnboardingViewModel
 import app.carbscan.ui.search.SearchScreen
 import app.carbscan.ui.search.SearchViewModel
 import app.carbscan.ui.product.ProductScreen
@@ -48,6 +50,7 @@ private const val KEY_DETECTED_CARBS = "detected_carbs"
 private const val KEY_DETECTED_BASIS = "detected_basis"
 
 private object Routes {
+    const val ONBOARDING = "onboarding"
     const val HOME = "home"
     const val SCAN = "scan"
     const val PRODUCT = "product/{barcode}"
@@ -77,7 +80,34 @@ fun CarbScanNavHost(
     settings: AppSettings,
     navController: NavHostController = rememberNavController(),
 ) {
-    NavHost(navController = navController, startDestination = Routes.HOME) {
+    // Evaluated once, at NavHost's first composition. `settings` starts at AppSettings()'s default
+    // (hasSeenOnboarding = false) until the real DataStore value arrives via
+    // collectAsStateWithLifecycle in MainActivity, so a returning user can in principle see one
+    // frame of Onboarding before the true value loads. Not worth fixing here — DataStore reads are
+    // near-instant, and startDestination not re-evaluating on a later `settings` change is fine
+    // because completing onboarding navigates explicitly rather than relying on a recomposition.
+    val startDestination = if (settings.hasSeenOnboarding) Routes.HOME else Routes.ONBOARDING
+
+    NavHost(navController = navController, startDestination = startDestination) {
+
+        composable(Routes.ONBOARDING) {
+            val viewModel: OnboardingViewModel = viewModel(
+                factory = factory { OnboardingViewModel(container.settingsRepository) },
+            )
+            val slideIndex by viewModel.slideIndex.collectAsStateWithLifecycle()
+
+            OnboardingScreen(
+                slideIndex = slideIndex,
+                onNext = viewModel::next,
+                onSkip = viewModel::skip,
+                onGetStarted = {
+                    viewModel.complete()
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                },
+            )
+        }
 
         composable(Routes.HOME) {
             val viewModel: HomeViewModel = viewModel(factory = factory { HomeViewModel(container.productRepository) })

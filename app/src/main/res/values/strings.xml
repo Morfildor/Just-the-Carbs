@@ -338,6 +338,20 @@
     <!-- §45: describes only what the software does. No efficacy or approval claim. -->
     <string name="settings_safety_body">This app calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
 
+    <!-- Onboarding (first-launch carousel) -->
+    <string name="onboarding_skip" tools:ignore="MissingTranslation">Skip</string>
+    <string name="onboarding_step_1" tools:ignore="MissingTranslation">STEP 1</string>
+    <string name="onboarding_step_2" tools:ignore="MissingTranslation">STEP 2</string>
+    <string name="onboarding_step_3" tools:ignore="MissingTranslation">STEP 3</string>
+    <string name="onboarding_title_1" tools:ignore="MissingTranslation">Scan it.</string>
+    <string name="onboarding_body_1" tools:ignore="MissingTranslation">Point your camera at any barcode. No searching, no typing a product name.</string>
+    <string name="onboarding_title_2" tools:ignore="MissingTranslation">Size the portion.</string>
+    <string name="onboarding_body_2" tools:ignore="MissingTranslation">Drag, type, or tap a preset. Grams, slices, whatever makes sense for the food.</string>
+    <string name="onboarding_title_3" tools:ignore="MissingTranslation">Get the number.</string>
+    <string name="onboarding_body_3" tools:ignore="MissingTranslation">Just the carbs. Nothing else on screen competes with it.</string>
+    <string name="onboarding_next" tools:ignore="MissingTranslation">Next</string>
+    <string name="onboarding_get_started" tools:ignore="MissingTranslation">Get started</string>
+
     <!-- Generic -->
     <string name="action_done">Done</string>
     <string name="action_cancel">Cancel</string>
