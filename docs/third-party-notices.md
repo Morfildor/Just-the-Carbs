@@ -86,9 +86,10 @@ endpoint (`api/v3/product/{barcode}`) — CarbScan migrated off v2 as part of th
 work, since v2 is documented as deprecated-but-supported and the fields this app reads are
 unchanged between the two. Rate limit remains 15 reads/min/IP, and an identifying `User-Agent` is
 mandatory (documented format: `AppName/Version (ContactEmail)`). CarbScan sends
-`CarbScan/<version> (Android; <contact>)`, generated from `branding.gradle.kts` — note the contact
-email is still the `REPLACE_ME@example.com` placeholder (tracked in CLAUDE.md), which is a real
-compliance gap against OFF's documented User-Agent format, not just an unfinished docs field.
+`CarbScan/<version> (Android; <contact>)`, generated from `branding.gradle.kts`. The contact address
+is `albinogorillassupport@gmail.com`, supplied by the owner on 2026-08-14 — this closes what was a
+real compliance gap against OFF's documented User-Agent format, since the previous value was a
+placeholder that identified nobody.
 
 ---
 

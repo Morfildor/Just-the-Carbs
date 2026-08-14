@@ -316,13 +316,10 @@ Key invariants, each pinned by a test:
    sharing, server-side caching), so reassess before any such feature ships.
    See `docs/third-party-notices.md`.
 4. Licence for the project not yet chosen.
-5. Contact email is still `REPLACE_ME@example.com` throughout — now also a concrete OFF User-Agent
-   compliance gap (documented format is `AppName/Version (ContactEmail)`), not just a docs
-   placeholder. **No public address may be invented for this**; it needs one the owner controls.
-6. **Physical-device verification of everything built in the 2026-08-14 development pass.** Only
+5. **Physical-device verification of everything built in the 2026-08-14 development pass.** Only
    barcode scanning and label OCR have ever been confirmed on real hardware. Meal, label
    verification, usual portions and search are emulator-only.
-7. **Countable portions against a real OFF `serving_size`.** Still fixture-only; no live product
+6. **Countable portions against a real OFF `serving_size`.** Still fixture-only; no live product
    with a countable-unit-shaped `serving_size` has been checked against real packaging.
    `docs/manual-qa.md` §15a.
 
@@ -333,5 +330,8 @@ Key invariants, each pinned by a test:
   0 known vulnerabilities. Re-run before release; a clean scan expires.
 - ~~No UI path to correct a wrong remote-suggested per-unit weight~~ — inline correction now calls
   `verifyPortionUnit(unitId, confirmedAmountPerUnit)`.
+- ~~Contact email was the `REPLACE_ME@example.com` placeholder~~ — owner supplied
+  `albinogorillassupport@gmail.com` (2026-08-14). It now feeds the mandatory OFF User-Agent from
+  `branding.gradle.kts`, closing a real compliance gap: the previous value identified nobody.
 - ~~One order-dependent flaky instrumented test~~ — root-caused to a keyboard-covered control that
   `performClick()` silently no-ops on. Fixed per-interaction; full suite green.

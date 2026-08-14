@@ -246,6 +246,7 @@ anything with this app publicly.**
 | [manual-qa.md](docs/manual-qa.md) | Manual QA checklist |
 | [security-review.md](docs/security-review.md) | Permissions, network, backup, dependencies |
 | [ux-critique-countable-portions.md](docs/ux-critique-countable-portions.md) | §69-style critique of the countable-portions feature |
+| [ux-critique.md](docs/ux-critique.md) | §69-style critique of the 2026-08-14 pass — meal, label verification, usual portions, search — including the four layout defects no test caught |
 | [superpowers/specs/2026-08-14-countable-portions-design.md](docs/superpowers/specs/2026-08-14-countable-portions-design.md) | Countable-portions design spec |
 | [MASTER-PROMPT.md](docs/MASTER-PROMPT.md) | The original requirements brief (§ references) |
 

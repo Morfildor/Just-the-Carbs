@@ -1,7 +1,7 @@
 # Privacy policy — CarbScan
 
 **Last updated:** 2026-08-13
-**Contact:** REPLACE_ME@example.com *(owner must replace before publication)*
+**Contact:** albinogorillassupport@gmail.com
 
 This describes what the app actually does, verified against the source code (§48).
 
@@ -112,7 +112,7 @@ app release that introduces them.
 
 ## Contact
 
-**REPLACE_ME@example.com** *(owner must replace before publication)*
+**albinogorillassupport@gmail.com**
 
 ---
 

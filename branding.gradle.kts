@@ -26,7 +26,7 @@ extra["brandApplicationId"] = "app.carbscan"
 extra["brandNamespace"] = "app.carbscan"
 
 /** Contact placeholder — OWNER MUST REPLACE before publication (also used in the OFF User-Agent). */
-extra["brandContactEmail"] = "REPLACE_ME@example.com"
+extra["brandContactEmail"] = "albinogorillassupport@gmail.com"
 
 extra["brandVersionCode"] = 1
 extra["brandVersionName"] = "1.0.0"
