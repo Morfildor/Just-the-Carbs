@@ -145,7 +145,7 @@
     <string name="verify_label_value" tools:ignore="MissingTranslation">%1$s g / 100 %2$s</string>
     <string name="verify_label_match" tools:ignore="MissingTranslation">✓ Values match</string>
     <string name="verify_label_mismatch" tools:ignore="MissingTranslation">These do not match. Which is right?</string>
-    <string name="verify_label_basis_mismatch" tools:ignore="MissingTranslation">The package is measured per 100 %1$s, but this product is measured per 100 %2$s. CarbScan does not convert between them.</string>
+    <string name="verify_label_basis_mismatch" tools:ignore="MissingTranslation">The package is measured per 100 %1$s, but this product is measured per 100 %2$s. this app does not convert between them.</string>
     <string name="verify_label_confirm" tools:ignore="MissingTranslation">Confirm</string>
     <string name="verify_label_use_package" tools:ignore="MissingTranslation">Use package value</string>
     <string name="verify_label_edit" tools:ignore="MissingTranslation">Edit detected value</string>

@@ -4,7 +4,7 @@ package app.carbscan.domain
 enum class ThemeChoice { SYSTEM, LIGHT, DARK }
 
 /**
- * The whole of the app's settings (§43). Intentionally four values: anything that does not make
+ * The whole of the app's settings (§43). Intentionally five values: anything that does not make
  * scan → portion → carbs faster, safer or clearer does not belong here (§74).
  */
 data class AppSettings(
