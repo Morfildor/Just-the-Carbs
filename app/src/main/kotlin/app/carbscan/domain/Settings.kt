@@ -11,4 +11,5 @@ data class AppSettings(
     val theme: ThemeChoice = ThemeChoice.SYSTEM,
     val resultStyle: ResultStyle = ResultStyle.DECIMAL_DOMINANT,
     val hapticsEnabled: Boolean = true,
+    val hasSeenOnboarding: Boolean = false,
 )
