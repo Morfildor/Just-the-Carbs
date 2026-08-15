@@ -238,7 +238,8 @@ before cell association ever runs. No column resolved at all → `NotFound`.
 ```kotlin
 data class ServingCarbCandidate(
     val carbsPerServing: BigDecimal,
-    val descriptor: String?,   // e.g. "per slice", "per portion" header text, diagnostics/display only
+    val descriptor: ServingDescriptor?,   // normalized kind/count from the header text; null if unresolved
+    val rawHeaderText: String,            // e.g. "per portion", "per 2 slices" — diagnostics/display only
 )
 
 data class NutritionParseReport(
@@ -247,14 +248,29 @@ data class NutritionParseReport(
 )
 ```
 
+`ServingDescriptor` (defined in §6-10 below, alongside `ServingSizeParser`) is reused
+here rather than introduced twice — the OCR column header text ("per slice", "per 2
+slices") is run through the same descriptor-recognition vocabulary
+(`ServingSizeParser`'s unit-word table) that free-text `serving_size` strings use, so
+the header yields a typed `ServingDescriptor(kind, count, weightOrVolume = null, ...)`
+once at parse time. This is what makes §17's save flow able to derive
+`DirectCarbs(carbsPerServing / descriptor.count)` directly from typed fields — no
+second text-parsing pass over the header string at the UI/persistence boundary.
+`descriptor` is `null` when the header carries a recognizable "per serving/portion"
+column but no countable unit word is present in it (a valid per-serving figure with no
+countable descriptor to attach it to); `rawHeaderText` is always kept for diagnostics
+and display regardless of whether it was normalized successfully.
+
 The live-scan confidence/stability behavior in `LabelAnalyzer`/`AmbiguityStabilityTracker`
 continues to key off `reading` only; `servingCandidate` is additional metadata a
 verification screen can offer to save (§17), never a replacement for the canonical
 per-100 result and never itself gating live-scan stability.
 
-A serving-per-N-slices column (e.g. "per 2 slices") only yields a per-unit figure
-(`carbsPerServing / count`) when the count is explicitly and confidently read from the
-header text itself (a leading digit before the unit word) — never inferred.
+A serving-per-N-slices column (e.g. "per 2 slices") only yields a non-null
+`descriptor.count` above 1 when that count is explicitly and confidently read from the
+header text itself (a leading digit before the unit word) — never inferred. Absent an
+explicit leading count, `descriptor.count` is `1` (a bare "per slice"/"per portion"
+header).
 
 ---
 
@@ -442,21 +458,47 @@ IDs, FKs, `customLabel`, `kind`, `dataSource`, `verificationStatus`, `verifiedAt
 `portion_usage` (FK's target `portion_units.id`) needs no changes at all — IDs are
 preserved by the copy. No `fallbackToDestructiveMigration`.
 
-`current_meal_items` — additive guarded `ALTER TABLE ADD COLUMN` (same
-`hasColumn`-guarded pattern as `MIGRATION_2_3`/`MIGRATION_4_5`), all nullable:
+`current_meal_items` also needs `resolvedAmount`, `basis`, and `carbsPer100` to become
+nullable — a `DIRECT_CARBS` row has none of those, and per the domain model
+(`MealItem`) those fields must be `null`, never a sentinel like `0`/`""`/`-1`, for a
+direct-carb item. SQLite can't drop `NOT NULL` in place, so this table is
+rebuilt-and-copied in the same `MIGRATION_5_6`, alongside `portion_units`:
 
 ```sql
-ALTER TABLE current_meal_items ADD COLUMN itemKind TEXT;      -- NULL = legacy row = WEIGHT_BASED
-ALTER TABLE current_meal_items ADD COLUMN count TEXT;
-ALTER TABLE current_meal_items ADD COLUMN carbsPerUnit TEXT;
+CREATE TABLE current_meal_items_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  productBarcode TEXT,
+  displayName TEXT NOT NULL,
+  portionDescription TEXT NOT NULL,
+  itemKind TEXT NOT NULL,          -- 'WEIGHT_BASED' | 'DIRECT_CARBS'
+  resolvedAmount TEXT,             -- WEIGHT_BASED only, NULL for DIRECT_CARBS
+  basis TEXT,                      -- WEIGHT_BASED only, NULL for DIRECT_CARBS
+  carbsPer100 TEXT,                -- WEIGHT_BASED only, NULL for DIRECT_CARBS
+  count TEXT,                      -- DIRECT_CARBS only, NULL for WEIGHT_BASED
+  carbsPerUnit TEXT,               -- DIRECT_CARBS only, NULL for WEIGHT_BASED
+  exactCarbs TEXT NOT NULL,
+  addedAt INTEGER NOT NULL
+);
+-- copy: itemKind='WEIGHT_BASED' for every existing row (resolvedAmount/basis/carbsPer100
+--       carry over unchanged; count/carbsPerUnit stay NULL — no pre-migration row has a
+--       direct-carb shape, since DIRECT_CARBS didn't exist before this migration)
+INSERT INTO current_meal_items_new
+  (id, productBarcode, displayName, portionDescription, itemKind,
+   resolvedAmount, basis, carbsPer100, count, carbsPerUnit, exactCarbs, addedAt)
+  SELECT id, productBarcode, displayName, portionDescription, 'WEIGHT_BASED',
+         resolvedAmount, basis, carbsPer100, NULL, NULL, exactCarbs, addedAt
+  FROM current_meal_items;
+DROP TABLE current_meal_items;
+ALTER TABLE current_meal_items_new RENAME TO current_meal_items;
 ```
 
-Existing `resolvedAmount`/`basis`/`carbsPer100` stay `NOT NULL` — still correct for
-every pre-migration row, which are all `WEIGHT_BASED` by construction. The
-entity-to-domain mapper treats `itemKind IS NULL` as `WEIGHT_BASED` for backward
-compatibility with rows written before this migration.
+Every pre-migration row gets `itemKind = 'WEIGHT_BASED'` explicitly (not left `NULL`
+for the mapper to infer) — the domain mapper never needs an "absent means legacy
+weight-based" special case; `itemKind` is always present and always authoritative.
+`id` values are preserved by the copy, so nothing referencing a meal item by id needs
+to change (today nothing does — `current_meal_items` has no incoming FK).
 
-Both table changes ship in one `MIGRATION_5_6`, registered alongside the existing
+Both table rebuilds ship in one `MIGRATION_5_6`, registered alongside the existing
 migrations. Schema JSON exported to `app/schemas/.../6.json`.
 
 ### Migration test
@@ -464,11 +506,17 @@ migrations. Schema JSON exported to `app/schemas/.../6.json`.
 New test(s) in `JustTheCarbsDatabaseMigrationTest.kt`: seed a v5 database with a
 representative mix (an unverified OFF-sourced weight unit, a user-verified weight
 unit with `originalRemoteAmountPerUnit` set and diverging `latestRemoteAmountPerUnit`,
-a manually-entered weight unit, plus an existing `current_meal_items` row and a
+a manually-entered weight unit, an existing `current_meal_items` row, and a
 `portion_usage` row referencing one of the portion unit IDs) → run `MIGRATION_5_6` →
-assert every row survives with the same id, the weight fields losslessly reflected as
-`conversionKind='WEIGHT'` with matching value/basis, remote-diff fields correctly
-carried over, and the `portion_usage` FK still resolves to the same portion unit id.
+assert every row survives with the same id; portion units' weight fields are
+losslessly reflected as `conversionKind='WEIGHT'` with matching value/basis and
+remote-diff fields carried over; the `portion_usage` FK still resolves to the same
+portion unit id; and the meal item row now reads `itemKind='WEIGHT_BASED'` with its
+`resolvedAmount`/`basis`/`carbsPer100` unchanged and `count`/`carbsPerUnit` both
+`NULL`. Add a second assertion inserting a fresh post-migration `DIRECT_CARBS` row
+(via the DAO, not raw SQL) with `resolvedAmount`/`basis`/`carbsPer100` all `null` and
+`count`/`carbsPerUnit` populated, confirming the nullable columns actually accept that
+shape.
 
 ---
 
@@ -507,17 +555,19 @@ being replaced/verified through the same freeze-aware repository methods.
 The label-scanner/verification screen (wherever `LabelReading`/`NutritionParseReport`
 currently surfaces its result for accept/correct) gains a "Save as portion unit"
 affordance, shown only when `servingCandidate` is present on a `Confident` report and
-the descriptor's unit count was explicitly read (not inferred). Tapping it is the
-explicit-acceptance step — same pattern as existing OCR label-verification
-accept/correct flows — that constructs a `PortionUnit` with
-`dataSource = ProductDataOrigin.OCR`:
+`servingCandidate.descriptor` is non-null (i.e. the header text normalized to a typed
+`ServingDescriptor`, so its `kind`/`count` are already known — not re-parsed from
+`rawHeaderText` at this boundary). Tapping it is the explicit-acceptance step — same
+pattern as existing OCR label-verification accept/correct flows — that constructs a
+`PortionUnit` with `dataSource = ProductDataOrigin.OCR`, using
+`servingCandidate.descriptor.kind` directly as the unit kind:
 
 - if the same OCR pass also confidently read a countable descriptor with a weight
   (e.g. a "per slice" column alongside a legible "2 slices (70 g)"-shaped label
   elsewhere on the same capture) and the weight/serving figures agree within normal
-  rounding, save `WeightBased`;
-- otherwise, from `servingCandidate.carbsPerServing` and the explicitly-read count,
-  save `DirectCarbs(carbsPerServing / count)`.
+  rounding, save `WeightBased` using that weight-descriptor's typed fields;
+- otherwise, save `DirectCarbs(servingCandidate.carbsPerServing / servingCandidate.descriptor.count)`,
+  reading `count` straight off the typed descriptor rather than re-deriving it from text.
 
 Never auto-saved from a live camera frame — only from a still capture that has passed
 through the existing explicit accept step, matching the "never silently persist a
