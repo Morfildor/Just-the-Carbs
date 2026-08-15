@@ -24,6 +24,7 @@ class LabelAnalyzer(
     private val inFlight = AtomicBoolean(false)
     private val pendingStill = AtomicReference<StillRequest?>(null)
     private val closed = AtomicBoolean(false)
+    private val stability = AmbiguityStabilityTracker()
 
     @Volatile
     private var paused = false
@@ -37,6 +38,7 @@ class LabelAnalyzer(
     }
 
     fun resume() {
+        stability.reset()
         paused = false
     }
 
@@ -59,7 +61,8 @@ class LabelAnalyzer(
         recognizer.process(input)
             .addOnSuccessListener { text ->
                 val report = parse(text, imageProxy.width, imageProxy.height, started)
-                if (!paused && report.reading !is LabelReading.NotFound) onReading(report.reading)
+                val toSurface = stability.onFrame(report.reading, System.nanoTime())
+                if (!paused && toSurface != null) onReading(toSurface)
             }
             .addOnFailureListener { OcrDiagnosticsLogger.failure("Live OCR failed", it) }
             .addOnCompleteListener {

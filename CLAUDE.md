@@ -17,10 +17,10 @@ A copy is kept on the Desktop as **`JustTheCarbs-debug.apk`** — install that o
 Other useful tasks:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest         # 237 JVM tests
+.\gradlew.bat :app:testDebugUnitTest         # 259 JVM tests
 .\gradlew.bat :app:lintDebug                 # lint (clean)
-.\gradlew.bat :app:assembleRelease           # minified, UNSIGNED (~64 MB)
-.\gradlew.bat :app:connectedDebugAndroidTest # 95 instrumented tests, needs a device
+.\gradlew.bat :app:assembleRelease           # minified, UNSIGNED unless keystore.properties exists (~65 MB)
+.\gradlew.bat :app:connectedDebugAndroidTest # 106 instrumented tests, needs a device
 bash tools/dependency-scan.sh                # CVE scan of the shipped dependency graph
 ```
 
@@ -44,6 +44,40 @@ decisions made under the earlier working names — do not sweep those.
 
 GitHub: **https://github.com/Morfildor/Just-the-Carbs** — private, and staying private for now.
 
+## Post-rebrand hardening pass (2026-08-15)
+
+The 2026-08-14 rebrand commit renamed Kotlin identifiers and docs but **missed
+`app/proguard-rules.pro`**, which still referenced `app.carbscan.**` throughout — every R8 keep
+rule for kotlinx.serialization, Retrofit, Room and domain enums was silently matching nothing.
+Confirmed by building a minified release **before** the fix: it still ran, because none of those
+reflection paths happened to get stripped by R8's own analysis this time — but the rules were
+dead weight and the same gap would eventually break the OFF response parser, Room, or the enum
+`valueOf()` calls in a future release build. Fixed alongside `keystore.properties.example`
+(pointed at `CarbScan-upload.jks`/`carbscan-upload`). Repo-wide search confirmed `app/src/**`,
+build files, CI and resources were otherwise already clean; only prose in historical
+`docs/superpowers/**`, `docs/design_handoff_just_the_carbs/README.md` and
+`.claude/docs/ai/carbscan/` remains, deliberately unswept.
+
+Also in this pass: OCR ambiguity restored (the UI no longer collapses `LabelReading.Ambiguous` to
+`candidates.first()` — see `AmbiguousCard` in `LabelScannerScreen.kt`, up to 3 shown for explicit
+choice); a live-frame `AmbiguityStabilityTracker` (pure Kotlin, `ocr/`) so a single incomplete
+frame doesn't pause live scanning — ambiguity must repeat for 3 frames or persist ~800ms before it
+surfaces, `Confident`/`NotFound` are unaffected, still captures bypass the tracker entirely; a
+restrained corner-bracket `ScanRegionOverlay` on the label scanner (visual guide only, OCR still
+processes the full frame); `ProductImageSelector.galleryImages()` now synthesizes a `FRONT` entry
+from `largeImageUrl`/`imageUrl` when no structured `selected_images` exist, so the gallery opens
+whenever the hero photo shows (legacy/cached and search-result products); `OpenFoodFactsApi` split
+into `PRODUCT_FIELDS` (unchanged, includes gallery/serving metadata) and `SEARCH_FIELDS` (lean —
+search results never needed `selected_images`/`serving_size`); the empty Home state redesigned
+from two lines of text into a branded "Scan. Portion. Carbs." composition with a compact 3-step
+icon strip and a "Scan nutrition label" tertiary action, still no dashboard content.
+
+Verified by installing the minified release (fresh disposable local test key, never committed)
+and driving it on the emulator: launch, live OFF search, live product lookup + gallery, Room
+persistence, the redesigned empty Home — zero `ClassNotFoundException` /
+`NoClassDefFoundError` / serialization failures in logcat. 259 JVM tests (up from 237), 106
+instrumented tests (up from 95), lint clean.
+
 ## Status (2026-08-14)
 
 - ✅ Domain calculation engine, TDD — `CarbCalculator`, `NutritionBasis`, `PortionParser`,
@@ -51,8 +85,9 @@ GitHub: **https://github.com/Morfildor/Just-the-Carbs** — private, and staying
 - ✅ Room + `ProductRepository` owning the §10 lookup priority
 - ✅ Open Food Facts data source behind the `ProductDataSource` abstraction
 - ✅ Full UI: home, scanner, calculator, manual entry, verify dialog, spatial label OCR, product gallery, settings
-- ✅ Debug APK and minified release APK both build; release smoke-tested (launches, no crash) on
-  the emulator with a debug-signed copy — the committed release artifact stays unsigned
+- ✅ Debug APK and minified release APK both build; release smoke-tested on the emulator with a
+  fresh disposable local test key (2026-08-15) — no crash, live OFF search/lookup, gallery, Room
+  persistence all verified. The committed release artifact stays unsigned; nothing signed is committed
 - ✅ §73 documentation set complete in `docs/`, incl. new `security-review.md` and
   `ux-critique-countable-portions.md`
 - ✅ CI workflow (`.github/workflows/ci.yml`)
@@ -60,7 +95,8 @@ GitHub: **https://github.com/Morfildor/Just-the-Carbs** — private, and staying
 - ✅ Manual barcode entry (§8); live Open Food Facts verified end to end incl. product images
 - ✅ **Countable portions** (2026-08-14) — see dedicated section below
 - ✅ **Product development pass** (2026-08-14) — see dedicated section below
-- ✅ **237 JVM unit tests, 95 instrumented tests, all passing; lint clean**
+- ✅ **259 JVM unit tests, 106 instrumented tests, all passing; lint clean** (post-rebrand-hardening
+  count, 2026-08-15 — see that section above)
 - ✅ The previously flaky instrumented test is **fixed** — it was a test bug (a keyboard-covered
   control that `performClick()` silently no-ops on), not app behaviour. Full suite is green.
 - ✅ **Dependency vulnerability scan run** — `tools/dependency-scan.sh`, 226 shipped artifacts,
@@ -234,13 +270,17 @@ Note: `connectedAndroidTest` **uninstalls the app afterwards** — reinstall bef
    Revised 2026-08-14 (correction #6): the result is transcribed into another calculator, so
    leading with the rounded figure loses precision where it matters. `ResultStyle.WHOLE_DOMINANT`
    restores the old hierarchy if a whole-gram-only destination is ever confirmed.
-3. **Regulatory** — build to the **stricter** standard (as if an accessory to a medical device).
+3. **Regulatory** — build to the **stricter** standard while qualification is unresolved. Never
+   state the app is, is not, or is "as if" an MDR accessory/medical device (see decision 9).
 4. **Backup** — `allowBackup="false"`.
 5. **Provenance ≠ verification** (owner correction, 2026-08-13) — `dataSource`
    (`OPEN_FOOD_FACTS`/`MANUAL`/`OCR`) and `verificationStatus` (`UNVERIFIED`/`USER_VERIFIED`) are
    **separate fields and must stay separate**. A product can come from OFF *and* be verified; that
    provenance must be preserved. Do not "simplify" these back into one enum.
-6. Repo stays **private**; docs keep saying CarbQuick until the public name is decided.
+6. Repo stays **private**. **Just the Carbs** (`app.justthecarbs`) is the current, decided public
+   name and namespace (2026-08-14) — see the header above. Historical docs under
+   `docs/superpowers/**` intentionally keep their original CarbScan/CarbQuick prose as a dated
+   record; that is not an open decision, just an unswept historical record.
 7. **No Robolectric** — DAO tests stay instrumented.
 8. **Calculation-session immutability** (correction #5) — once the calculator is open, a background
    refresh must NEVER change the value being calculated with. It records the newer figure and shows
@@ -344,3 +384,18 @@ Key invariants, each pinned by a test:
   `branding.gradle.kts`, closing a real compliance gap: the previous value identified nobody.
 - ~~One order-dependent flaky instrumented test~~ — root-caused to a keyboard-covered control that
   `performClick()` silently no-ops on. Fixed per-interaction; full suite green.
+
+### Closed in the 2026-08-15 post-rebrand hardening pass
+
+- ~~`proguard-rules.pro` still referenced `app.carbscan.**`~~ — every R8 keep rule updated to
+  `app.justthecarbs.**`; see that section above.
+- ~~`LabelScannerScreen` silently promoted `LabelReading.Ambiguous.candidates.first()` to a
+  confident-looking answer~~ — now shows up to 3 distinct candidates for explicit choice.
+- ~~Live OCR could pause scanning on the very first ambiguous frame~~ — `AmbiguityStabilityTracker`
+  requires the interpretation to repeat for 3 frames or ~800ms before surfacing it.
+- ~~Legacy/cached products with a hero photo but no structured gallery had no way to open it~~ —
+  `ProductImageSelector.galleryImages()` synthesizes the missing `FRONT` entry.
+- ~~OFF search requested the same gallery/serving fields as a full product lookup~~ — split into
+  `PRODUCT_FIELDS`/`SEARCH_FIELDS`.
+- ~~Empty Home was two lines of text in a large void~~ — redesigned into a branded
+  "Scan. Portion. Carbs." composition.

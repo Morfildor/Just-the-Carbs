@@ -16,6 +16,7 @@ import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,7 +54,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -286,6 +290,8 @@ private fun LabelCamera(
             },
         )
 
+        ScanRegionOverlay(modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(Space.l))
+
         Row(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(Space.s),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -325,19 +331,57 @@ private fun LabelCamera(
                     onEdit = onEditManually,
                     onRetry = ::resumeLive,
                 )
-                // Multiple rows/bases were plausible, but the app picks for the user rather than
-                // asking them to judge OCR geometry: `candidates` is already sorted by score, so the
-                // first entry is the parser's best guess. The one case still requiring a tap is a
-                // resolved row with an unresolved basis (g vs ml) — that is a genuine unknown the
-                // app cannot infer, not a candidate the user should have to pick between.
-                is LabelReading.Ambiguous -> ProposalCard(
-                    candidate = current.candidates.first(),
+                // Insufficient evidence to pick one interpretation: showing the top-ranked
+                // candidate as if it were confident would fabricate certainty the parser doesn't
+                // have. Surface up to 3 distinct candidates and let the user choose explicitly.
+                is LabelReading.Ambiguous -> AmbiguousCard(
+                    candidates = current.candidates.take(3),
                     onUse = onUseValue,
                     onCapture = ::captureLabel,
                     onEdit = onEditManually,
                     onRetry = ::resumeLive,
                 )
                 LabelReading.NotFound -> NotFoundCard(::captureLabel, onEditManually, ::resumeLive)
+            }
+        }
+    }
+}
+
+/**
+ * Restrained corner-bracket frame showing roughly where the nutrition table should sit. Purely a
+ * visual guide — OCR still processes the full frame, since cropping to this region has no
+ * demonstrated recognition benefit and would only add risk.
+ */
+@Composable
+private fun ScanRegionOverlay(modifier: Modifier = Modifier) {
+    val strokeColor = Color.White.copy(alpha = 0.85f)
+    val shadowColor = Color.Black.copy(alpha = 0.35f)
+    Canvas(modifier = modifier.aspectRatio(0.8f)) {
+        val bracket = size.minDimension * 0.14f
+        val corners = listOf(
+            Pair(0f, 0f) to Pair(1, 1),
+            Pair(size.width, 0f) to Pair(-1, 1),
+            Pair(0f, size.height) to Pair(1, -1),
+            Pair(size.width, size.height) to Pair(-1, -1),
+        )
+        corners.forEach { (origin, direction) ->
+            val (ox, oy) = origin
+            val (dx, dy) = direction
+            listOf(shadowColor to 6f, strokeColor to 3f).forEach { (color, width) ->
+                drawLine(
+                    color = color,
+                    start = Offset(ox, oy),
+                    end = Offset(ox + bracket * dx, oy),
+                    strokeWidth = width,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(ox, oy),
+                    end = Offset(ox, oy + bracket * dy),
+                    strokeWidth = width,
+                    cap = StrokeCap.Round,
+                )
             }
         }
     }
@@ -382,49 +426,79 @@ private fun ProposalCard(
     onRetry: () -> Unit,
 ) {
     ScannerCard {
-        val display = candidate.value.stripTrailingZeros().toPlainString()
-        val basis = candidate.basis
-        if (basis != null) {
-            Text(
-                text = stringResource(
-                    R.string.ocr_detected,
-                    candidate.label,
-                    "$display g",
-                    basis.unitLabel,
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = { onUse(candidate.value, basis) },
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
-            ) { Text(stringResource(R.string.ocr_use, display)) }
-        } else {
-            // The row is trustworthy but the printed per-100 basis was never spatially established
-            // — a genuine unknown the app cannot guess, unlike which row is the carbohydrate total.
-            Text(
-                text = stringResource(R.string.ocr_detected_basis_unknown, candidate.label, "$display g"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Space.s),
-            ) {
-                OutlinedButton(
-                    onClick = { onUse(candidate.value, NutritionBasis.PER_100_G) },
-                    modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                    shape = RoundedCornerShape(Space.buttonRadius),
-                ) { Text(stringResource(R.string.ocr_use_per_100_g)) }
-                OutlinedButton(
-                    onClick = { onUse(candidate.value, NutritionBasis.PER_100_ML) },
-                    modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                    shape = RoundedCornerShape(Space.buttonRadius),
-                ) { Text(stringResource(R.string.ocr_use_per_100_ml)) }
-            }
-        }
+        CandidateChoice(candidate, onUse)
         SecondaryScannerActions(onCapture, onEdit, onRetry)
+    }
+}
+
+/**
+ * Insufficient evidence to pick one interpretation. Shows up to 3 distinct candidates (the caller
+ * already truncated the list) so the user chooses explicitly, rather than the app silently
+ * promoting the highest-scored one to a confident answer.
+ */
+@Composable
+private fun AmbiguousCard(
+    candidates: List<CarbCandidate>,
+    onUse: (BigDecimal, NutritionBasis) -> Unit,
+    onCapture: () -> Unit,
+    onEdit: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    ScannerCard {
+        Text(stringResource(R.string.ocr_ambiguous_title), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.ocr_ambiguous_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        candidates.forEach { candidate -> CandidateChoice(candidate, onUse) }
+        SecondaryScannerActions(onCapture, onEdit, onRetry)
+    }
+}
+
+@Composable
+private fun CandidateChoice(candidate: CarbCandidate, onUse: (BigDecimal, NutritionBasis) -> Unit) {
+    val display = candidate.value.stripTrailingZeros().toPlainString()
+    val basis = candidate.basis
+    if (basis != null) {
+        Text(
+            text = stringResource(
+                R.string.ocr_detected,
+                candidate.label,
+                "$display g",
+                basis.unitLabel,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(
+            onClick = { onUse(candidate.value, basis) },
+            shape = RoundedCornerShape(Space.buttonRadius),
+            modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+        ) { Text(stringResource(R.string.ocr_use, display)) }
+    } else {
+        // The row is trustworthy but the printed per-100 basis was never spatially established
+        // — a genuine unknown the app cannot guess, unlike which row is the carbohydrate total.
+        Text(
+            text = stringResource(R.string.ocr_detected_basis_unknown, candidate.label, "$display g"),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Space.s),
+        ) {
+            OutlinedButton(
+                onClick = { onUse(candidate.value, NutritionBasis.PER_100_G) },
+                modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) { Text(stringResource(R.string.ocr_use_per_100_g)) }
+            OutlinedButton(
+                onClick = { onUse(candidate.value, NutritionBasis.PER_100_ML) },
+                modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) { Text(stringResource(R.string.ocr_use_per_100_ml)) }
+        }
     }
 }
 

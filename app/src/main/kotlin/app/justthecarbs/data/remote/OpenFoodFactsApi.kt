@@ -23,7 +23,7 @@ interface OpenFoodFactsApi {
     @GET("api/v3/product/{barcode}")
     suspend fun getProduct(
         @Path("barcode") barcode: String,
-        @Query("fields") fields: String = REQUESTED_FIELDS,
+        @Query("fields") fields: String = PRODUCT_FIELDS,
     ): Response<OffProductResponse>
 
     /**
@@ -37,11 +37,15 @@ interface OpenFoodFactsApi {
      *
      * [pageSize] is deliberately small. This is a disambiguation list the user reads, not a catalogue
      * to browse, and OFF's read budget is 15 requests/min/IP.
+     *
+     * Uses [SEARCH_FIELDS], not [PRODUCT_FIELDS]: up to 20 hits only need enough to recognise and
+     * select a result, not gallery/serving metadata that a full product lookup fetches separately
+     * the moment the user picks one (§5, §6).
      */
     @GET("cgi/search.pl")
     suspend fun search(
         @Query("search_terms") terms: String,
-        @Query("fields") fields: String = REQUESTED_FIELDS,
+        @Query("fields") fields: String = SEARCH_FIELDS,
         @Query("page_size") pageSize: Int = SEARCH_PAGE_SIZE,
         @Query("json") json: Int = 1,
     ): Response<OffSearchResponse>
@@ -52,7 +56,7 @@ interface OpenFoodFactsApi {
         /** Enough to disambiguate a product, few enough to read without scrolling far (§15). */
         const val SEARCH_PAGE_SIZE = 20
 
-        val REQUESTED_FIELDS = listOf(
+        private val COMMON_FIELDS = listOf(
             "code",
             "lang",
             "product_name",
@@ -65,8 +69,16 @@ interface OpenFoodFactsApi {
             // string to the response is negligible next to the identification value of an image
             // the user can actually recognise their package in.
             "image_front_url",
-            "selected_images",
-            "serving_size",
-        ).joinToString(",")
+        )
+
+        /** Full product lookup: everything a search result needs, plus gallery and serving metadata. */
+        val PRODUCT_FIELDS = (COMMON_FIELDS + listOf("selected_images", "serving_size")).joinToString(",")
+
+        /**
+         * Search results: barcode, name, brand, quantity, carb value and a compact/front image —
+         * exactly what a result card needs to let the user recognise and select a product. No
+         * gallery or serving metadata; a selected result gets a full [getProduct] lookup anyway.
+         */
+        val SEARCH_FIELDS = COMMON_FIELDS.joinToString(",")
     }
 }

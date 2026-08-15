@@ -195,4 +195,22 @@ class OpenFoodFactsSearchTest {
 
         assertEquals(LookupError.RATE_LIMITED, (result as ProductSearchResult.Failed).error)
     }
+
+    /**
+     * Lean search response (rebrand hardening pass §6): up to 20 hits don't need gallery/serving
+     * metadata a result card never shows, so the request must not ask OFF for it.
+     */
+    @Test
+    fun `search requests the lean SEARCH_FIELDS, not gallery or serving metadata`() = runTest {
+        respond(liveShapedResponse)
+
+        dataSource.search("hagelslag")
+
+        val fields = server.takeRequest().requestUrl!!.queryParameter("fields")!!
+        assertEquals(OpenFoodFactsApi.SEARCH_FIELDS, fields)
+        assertTrue(
+            "search fields must not request gallery/serving metadata",
+            !fields.contains("selected_images") && !fields.contains("serving_size"),
+        )
+    }
 }

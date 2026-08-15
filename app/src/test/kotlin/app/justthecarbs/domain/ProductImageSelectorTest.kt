@@ -133,4 +133,72 @@ class ProductImageSelectorTest {
     fun `a thumbnail is null when the product has no image`() {
         assertNull(ProductImageSelector.thumbnailUrl(product()))
     }
+
+    // ---- gallery fallback (rebrand hardening pass §5): the gallery must open whenever the hero
+    // photo can be shown, including for legacy/cached products with no structured selected_images.
+
+    @Test
+    fun `gallery synthesizes a front entry from the large image when no structured gallery exists`() {
+        val images = ProductImageSelector.galleryImages(product(imageUrl = small, largeImageUrl = large))
+
+        assertEquals(1, images.size)
+        assertEquals(ProductImageType.FRONT, images.single().type)
+        assertEquals(large, images.single().displayUrl)
+    }
+
+    @Test
+    fun `gallery synthesizes a front entry from the small image when no large image exists either`() {
+        val images = ProductImageSelector.galleryImages(product(imageUrl = small, largeImageUrl = null))
+
+        assertEquals(1, images.size)
+        assertEquals(small, images.single().displayUrl)
+    }
+
+    @Test
+    fun `gallery stays empty when neither the structured gallery nor a fallback image is safe`() {
+        assertTrue(ProductImageSelector.galleryImages(product()).isEmpty())
+    }
+
+    @Test
+    fun `gallery does not synthesize a duplicate when the structured gallery already has a front image`() {
+        val selected = ProductImage(ProductImageType.FRONT, "nl", large)
+
+        val images = ProductImageSelector.galleryImages(
+            product(imageUrl = small, largeImageUrl = large, images = listOf(selected)),
+        )
+
+        assertEquals(listOf(selected), images)
+    }
+
+    @Test
+    fun `gallery does not synthesize a duplicate when the fallback URL matches a non-front structured entry`() {
+        val nutrition = ProductImage(ProductImageType.NUTRITION, "en", large)
+
+        val images = ProductImageSelector.galleryImages(
+            product(imageUrl = small, largeImageUrl = large, images = listOf(nutrition)),
+        )
+
+        // The fallback would duplicate the same URL already present under a different role, so it
+        // is not added again — but the existing NUTRITION entry is preserved.
+        assertEquals(listOf(nutrition), images)
+    }
+
+    @Test
+    fun `an unsafe fallback image is not synthesized into the gallery`() {
+        val images = ProductImageSelector.galleryImages(
+            product(imageUrl = "https://evil.example.com/small.jpg", largeImageUrl = null),
+        )
+
+        assertTrue(images.isEmpty())
+    }
+
+    @Test
+    fun `whenever the hero has a photo the gallery can open it`() {
+        val product = product(imageUrl = small, largeImageUrl = large)
+
+        val hero = ProductImageSelector.heroImageUrl(product)
+        val gallery = ProductImageSelector.galleryImages(product)
+
+        assertEquals(hero, gallery.firstOrNull { it.type == ProductImageType.FRONT }?.displayUrl)
+    }
 }

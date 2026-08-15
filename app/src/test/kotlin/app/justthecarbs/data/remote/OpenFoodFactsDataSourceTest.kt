@@ -92,6 +92,23 @@ class OpenFoodFactsDataSourceTest {
         assertEquals(VerificationStatus.UNVERIFIED, product.verificationStatus)
     }
 
+    /**
+     * Full product lookup (rebrand hardening pass §6): unlike search, a single-product read still
+     * needs gallery and serving metadata — the calculator's gallery and countable-portion parsing
+     * both depend on it.
+     */
+    @Test
+    fun `product lookup requests PRODUCT_FIELDS, including gallery and serving metadata`() = runTest {
+        respond("""{"code":"$barcode","product":{"product_name":"Hagelslag puur"}}""")
+
+        dataSource.fetch(barcode)
+
+        val fields = server.takeRequest().requestUrl!!.queryParameter("fields")!!
+        assertEquals(OpenFoodFactsApi.PRODUCT_FIELDS, fields)
+        assertTrue(fields.contains("selected_images"))
+        assertTrue(fields.contains("serving_size"))
+    }
+
     @Test
     fun `selected images prefer device then product then English and keep one safe image per type`() = runTest {
         respond(

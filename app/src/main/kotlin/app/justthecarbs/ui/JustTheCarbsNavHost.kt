@@ -138,6 +138,7 @@ fun JustTheCarbsNavHost(
                 onOpenProduct = { navController.navigate(Routes.product(it)) },
                 onToggleFavorite = viewModel::toggleFavorite,
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onScanLabel = { navController.navigate(Routes.labelScan()) },
                 mealItems = mealItems,
                 mealTotal = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems),
                 onOpenMeal = { navController.navigate(Routes.MEAL) },

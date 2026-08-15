@@ -14,8 +14,12 @@
     <string name="home_scan_button">Scan barcode</string>
     <string name="home_manual_button">Enter manually</string>
     <string name="home_recent_title">Recent</string>
-    <string name="home_empty_title">Scan a barcode to begin</string>
-    <string name="home_empty_body">Products you use appear here for one-tap access.</string>
+    <string name="home_empty_headline">Scan. Portion. Carbs.</string>
+    <string name="home_empty_body">Scan the barcode, choose how much you\'re having, and get the carbohydrate amount.</string>
+    <string name="home_empty_step_scan">Scan</string>
+    <string name="home_empty_step_portion">Portion</string>
+    <string name="home_empty_step_carbs">Carbs</string>
+    <string name="home_empty_scan_label">Scan nutrition label</string>
     <string name="home_settings">Settings</string>
 
     <!-- Recents list -->
@@ -285,6 +289,8 @@
     <string name="ocr_use_per_100_g">Use / 100 g</string>
     <string name="ocr_use_per_100_ml">Use / 100 ml</string>
     <string name="ocr_edit">Edit</string>
+    <string name="ocr_ambiguous_title">Multiple possible matches</string>
+    <string name="ocr_ambiguous_body">Not sure which value is right. Choose the one that matches the package.</string>
 
     <!-- Product image gallery -->
     <string name="gallery_open">View product images</string>

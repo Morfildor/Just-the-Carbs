@@ -16,15 +16,22 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Scale
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -74,6 +81,7 @@ import app.justthecarbs.ui.meal.MealBarIfPresent
 import app.justthecarbs.ui.product.unitLabel
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 
 /** Stable handles for instrumented tests. */
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
@@ -98,6 +106,7 @@ fun HomeScreen(
     onOpenProduct: (String) -> Unit,
     onToggleFavorite: (Product) -> Unit,
     onOpenSettings: () -> Unit,
+    onScanLabel: () -> Unit = {},
     mealItems: List<MealItem> = emptyList(),
     mealTotal: CarbResult? = null,
     onOpenMeal: () -> Unit = {},
@@ -184,7 +193,7 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                 )
             } else if (recents.isEmpty()) {
-                EmptyState(modifier = Modifier.weight(1f))
+                EmptyState(onScanLabel = onScanLabel, modifier = Modifier.weight(1f))
             } else {
                 RecentList(
                     recents = recents,
@@ -236,25 +245,29 @@ fun HomeScreen(
 }
 
 /**
- * The empty state (§3).
+ * The empty state (§7 product-development brief, redesigned 2026-08-15).
  *
  * Previously two lines of text floating in a large void, which read as unfinished rather than as
- * calm. It now carries the app's own mark — the package-and-scan-beam from the launcher icon — at a
- * size and opacity that furnishes the space without competing with the primary action below it.
+ * calm. It now furnishes the space with the app's own mark, the "Scan. Portion. Carbs." headline,
+ * and a compact graphical 3-step strip echoing the onboarding identity — still a utility screen,
+ * not a dashboard: no stats, no fake recents, no tips.
  */
 @Composable
-private fun EmptyState(modifier: Modifier = Modifier) {
+private fun EmptyState(onScanLabel: () -> Unit, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = Space.xl),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = Space.xl)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Box(
             modifier = Modifier
-                .size(112.dp)
+                .size(88.dp)
                 .background(
                     color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(32.dp),
+                    shape = RoundedCornerShape(28.dp),
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -264,14 +277,14 @@ private fun EmptyState(modifier: Modifier = Modifier) {
                 painter = painterResource(R.drawable.ic_launcher_foreground),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(92.dp),
+                modifier = Modifier.size(72.dp),
             )
         }
 
         Spacer(Modifier.height(Space.l))
         Text(
-            text = stringResource(R.string.home_empty_title),
-            style = MaterialTheme.typography.titleMedium,
+            text = stringResource(R.string.home_empty_headline),
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
         )
@@ -281,7 +294,66 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 300.dp),
         )
+
+        Spacer(Modifier.height(Space.l))
+        EmptyStateStepStrip()
+
+        Spacer(Modifier.height(Space.m))
+        TextButton(onClick = onScanLabel) {
+            Icon(Icons.Filled.DocumentScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.size(Space.xs))
+            Text(stringResource(R.string.home_empty_scan_label))
+        }
+    }
+}
+
+/**
+ * Compact graphical Scan → Portion → Carbs strip. Three small icon roundels joined by connector
+ * lines — deliberately not three large cards, which would read as feature tiles rather than a
+ * single at-a-glance sequence.
+ */
+@Composable
+private fun EmptyStateStepStrip(modifier: Modifier = Modifier) {
+    val steps = listOf(
+        Triple(Icons.Filled.QrCodeScanner, R.string.home_empty_step_scan, MaterialTheme.colorScheme.primary),
+        Triple(Icons.Filled.Scale, R.string.home_empty_step_portion, MaterialTheme.colorScheme.tertiary),
+        Triple(Icons.Filled.Calculate, R.string.home_empty_step_carbs, MaterialTheme.extendedColors.result),
+    )
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        steps.forEachIndexed { index, (icon, labelRes, tint) ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(tint.copy(alpha = 0.14f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+                }
+                Spacer(Modifier.height(Space.xs))
+                Text(
+                    text = stringResource(labelRes),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (index != steps.lastIndex) {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = Space.xs)
+                        .padding(bottom = Space.l)
+                        .width(20.dp)
+                        .height(2.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant),
+                )
+            }
+        }
     }
 }
 

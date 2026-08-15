@@ -26,13 +26,33 @@ package app.justthecarbs.domain
  */
 object ProductImageSelector {
 
-    /** Safe, de-duplicated gallery images with at most one entry for each semantic role. */
-    fun galleryImages(product: Product): List<ProductImage> = product.images
-        .mapNotNull { image ->
-            ProductImageUrlValidator.validate(image.displayUrl)?.let { image.copy(displayUrl = it) }
-        }
-        .distinctBy { it.type }
-        .distinctBy { it.displayUrl }
+    /**
+     * Safe, de-duplicated gallery images with at most one entry for each semantic role.
+     *
+     * Legacy/cached products predating structured `selected_images` (or search-result products,
+     * which never carry gallery metadata — see [OpenFoodFactsApi.SEARCH_FIELDS]) can still have a
+     * safe [Product.largeImageUrl]/[Product.imageUrl]. If [heroImageUrl] can show that photo, the
+     * gallery must be able to open it too: a synthesized [ProductImageType.FRONT] entry is added
+     * when the structured gallery has none, so "can I see a hero photo" and "can I tap it open"
+     * never disagree.
+     */
+    fun galleryImages(product: Product): List<ProductImage> {
+        val structured = product.images
+            .mapNotNull { image ->
+                ProductImageUrlValidator.validate(image.displayUrl)?.let { image.copy(displayUrl = it) }
+            }
+            .distinctBy { it.type }
+            .distinctBy { it.displayUrl }
+
+        if (structured.any { it.type == ProductImageType.FRONT }) return structured
+
+        val fallbackUrl = ProductImageUrlValidator.validate(product.largeImageUrl)
+            ?: ProductImageUrlValidator.validate(product.imageUrl)
+            ?: return structured
+        if (structured.any { it.displayUrl == fallbackUrl }) return structured
+
+        return structured + ProductImage(type = ProductImageType.FRONT, language = null, displayUrl = fallbackUrl)
+    }
 
     /**
      * The best safe image for a large, identification-grade display.

@@ -15,14 +15,14 @@
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
 
--keepclassmembers class app.carbscan.** {
+-keepclassmembers class app.justthecarbs.** {
     *** Companion;
 }
--keepclasseswithmembers class app.carbscan.** {
+-keepclasseswithmembers class app.justthecarbs.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep,includedescriptorclasses class app.carbscan.data.remote.**$$serializer { *; }
--keep,includedescriptorclasses class app.carbscan.data.remote.** {
+-keep,includedescriptorclasses class app.justthecarbs.data.remote.**$$serializer { *; }
+-keep,includedescriptorclasses class app.justthecarbs.data.remote.** {
     *;
 }
 
@@ -30,7 +30,7 @@
 # The API is a dynamic proxy over an interface; the generic return types must survive or the
 # converter cannot work out what to deserialize into.
 -keepattributes Signature, Exceptions, RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
--keep,allowobfuscation interface app.carbscan.data.remote.OpenFoodFactsApi
+-keep,allowobfuscation interface app.justthecarbs.data.remote.OpenFoodFactsApi
 -keep,allowobfuscation,allowshrinking interface retrofit2.Call
 -keep,allowobfuscation,allowshrinking class retrofit2.Response
 
@@ -61,13 +61,13 @@
 
 # ---- Room ------------------------------------------------------------------------------------
 # Room's generated implementation is instantiated by name.
--keep class app.carbscan.data.local.CarbScanDatabase_Impl { *; }
+-keep class app.justthecarbs.data.local.JustTheCarbsDatabase_Impl { *; }
 
 # ---- Domain ----------------------------------------------------------------------------------
 # Enum values are looked up by name when reading them back out of the database
 # (NutritionBasis.valueOf, ProductDataOrigin.valueOf, VerificationStatus.valueOf). Obfuscating
 # the constant names would break every stored row.
--keepclassmembers enum app.carbscan.domain.** {
+-keepclassmembers enum app.justthecarbs.domain.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }

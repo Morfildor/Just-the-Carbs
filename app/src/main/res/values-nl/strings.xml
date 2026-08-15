@@ -8,8 +8,12 @@
     <string name="home_scan_button">Streepjescode scannen</string>
     <string name="home_manual_button">Handmatig invoeren</string>
     <string name="home_recent_title">Recent</string>
-    <string name="home_empty_title">Scan een streepjescode om te beginnen</string>
-    <string name="home_empty_body">Producten die je gebruikt verschijnen hier.</string>
+    <string name="home_empty_headline">Scannen. Portie. Koolhydraten.</string>
+    <string name="home_empty_body">Scan de streepjescode, kies hoeveel je neemt en krijg de hoeveelheid koolhydraten.</string>
+    <string name="home_empty_step_scan">Scannen</string>
+    <string name="home_empty_step_portion">Portie</string>
+    <string name="home_empty_step_carbs">Koolhydraten</string>
+    <string name="home_empty_scan_label">Voedingswaardelabel scannen</string>
     <string name="home_settings">Instellingen</string>
 
     <string name="recent_summary">%1$s → %2$s</string>
@@ -127,6 +131,8 @@
     <string name="ocr_use_per_100_g">Gebruik / 100 g</string>
     <string name="ocr_use_per_100_ml">Gebruik / 100 ml</string>
     <string name="ocr_edit">Bewerken</string>
+    <string name="ocr_ambiguous_title">Meerdere mogelijke overeenkomsten</string>
+    <string name="ocr_ambiguous_body">Niet zeker welke waarde juist is. Kies de waarde die overeenkomt met de verpakking.</string>
 
     <string name="gallery_open">Productafbeeldingen bekijken</string>
     <string name="gallery_title">Productafbeeldingen</string>
