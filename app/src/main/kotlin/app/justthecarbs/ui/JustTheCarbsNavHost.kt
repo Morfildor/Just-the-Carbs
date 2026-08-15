@@ -126,7 +126,7 @@ fun JustTheCarbsNavHost(
             // ViewModel class, same behaviour — a separate instance because it lives and dies with
             // Home rather than with a route someone navigated to.
             val searchViewModel: SearchViewModel = viewModel(
-                factory = factory { SearchViewModel(container.productRepository) },
+                factory = factory { SearchViewModel(container.searchSource) },
             )
             val searchState by searchViewModel.state.collectAsStateWithLifecycle()
 
@@ -144,6 +144,7 @@ fun JustTheCarbsNavHost(
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
                 searchState = searchState,
                 onSearchQueryChanged = searchViewModel::onQueryChanged,
+                onSearchSubmit = searchViewModel::search,
                 onSearchSelect = { hit -> navController.navigate(Routes.product(hit.barcode)) },
                 onSearchScanLabel = { navController.navigate(Routes.labelScan()) },
                 onSearchEnterManually = { navController.navigate(Routes.manual()) },
@@ -277,13 +278,14 @@ fun JustTheCarbsNavHost(
 
         composable(Routes.SEARCH) {
             val viewModel: SearchViewModel = viewModel(
-                factory = factory { SearchViewModel(container.productRepository) },
+                factory = factory { SearchViewModel(container.searchSource) },
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
 
             SearchScreen(
                 state = state,
                 onQueryChanged = viewModel::onQueryChanged,
+                onSearchSubmit = viewModel::search,
                 onSelect = { hit ->
                     // Selecting a result runs an ordinary barcode lookup, so a searched product is
                     // cached, validated and given provenance by exactly the same path as a scanned

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import app.justthecarbs.domain.AppSettings
@@ -20,6 +21,7 @@ import app.justthecarbs.ui.home.RecentEntry
 import app.justthecarbs.ui.meal.MEAL_BAR_TAG
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import java.math.BigDecimal
@@ -65,6 +67,7 @@ class HomeScreenTest {
         recents: List<RecentEntry> = emptyList(),
         mealItems: List<MealItem> = emptyList(),
         searchState: SearchUiState = SearchUiState(),
+        onSearchSubmit: () -> Unit = {},
         density: Density? = null,
     ) {
         compose.setContent {
@@ -83,6 +86,7 @@ class HomeScreenTest {
                             CarbCalculator.calculate(BigDecimal("48.2"), BigDecimal("65"), NutritionBasis.PER_100_G)
                         },
                         searchState = searchState,
+                        onSearchSubmit = onSearchSubmit,
                     )
                 }
             }
@@ -148,6 +152,30 @@ class HomeScreenTest {
 
         compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).performTextInput("hagel")
         compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).assertIsDisplayed()
+    }
+
+    /**
+     * Typing must never itself trigger a network search (Open Food Facts' search endpoint is
+     * rate-limited and not meant for as-you-type traffic) — only the explicit IME action does.
+     */
+    @Test
+    fun typingAloneDoesNotSubmitASearch() {
+        var submitCount = 0
+        show(recents = emptyList(), onSearchSubmit = { submitCount++ })
+
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).performTextInput("hagel")
+
+        assertEquals("typing must not submit a search", 0, submitCount)
+    }
+
+    @Test
+    fun theImeSearchActionSubmitsExactlyOnce() {
+        var submitCount = 0
+        show(recents = emptyList(), searchState = SearchUiState(query = "hagel"), onSearchSubmit = { submitCount++ })
+
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).performImeAction()
+
+        assertEquals(1, submitCount)
     }
 
     /**

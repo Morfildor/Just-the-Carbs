@@ -184,6 +184,7 @@
     <string name="search_no_carbs" tools:ignore="MissingTranslation">No carbohydrate value — check the package</string>
     <string name="search_result" tools:ignore="MissingTranslation">%1$s. %2$s</string>
     <string name="search_clear" tools:ignore="MissingTranslation">Clear search</string>
+    <string name="search_submit" tools:ignore="MissingTranslation">Search</string>
 
     <plurals name="portion_kind_slice" tools:ignore="MissingTranslation">
         <item quantity="one">slice</item>
@@ -330,6 +331,8 @@
     <string name="settings_cancel">Cancel</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Version %1$s</string>
+    <string name="settings_privacy_policy" tools:ignore="MissingTranslation">Privacy Policy</string>
+    <string name="settings_privacy_policy_link_failed" tools:ignore="MissingTranslation">Could not open a browser. The privacy policy is at: %1$s</string>
     <!--
       Two licences, two lines: the database and the photographs are licensed separately by Open
       Food Facts, and one sentence covering only ODbL leaves the images uncredited. Both name the

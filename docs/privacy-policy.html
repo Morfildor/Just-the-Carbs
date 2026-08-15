@@ -36,7 +36,7 @@
 <body>
 
 <h1>Privacy policy — Just the Carbs</h1>
-<p class="meta">Last updated: 14 August 2026 · Contact: albinogorillassupport@gmail.com</p>
+<p class="meta">Last updated: 15 August 2026 · Contact: albinogorillassupport@gmail.com</p>
 
 <div class="callout">
   <strong>In one paragraph.</strong> Just the Carbs has no account, no advertising, and no
@@ -75,19 +75,19 @@
 </p>
 <table>
   <tr><th>Recipient</th><td>Open Food Facts, for product data/search (<code>world.openfoodfacts.org</code>) and product photos (<code>images.openfoodfacts.org</code> or <code>static.openfoodfacts.org</code>)</td></tr>
-  <tr><th>When</th><td>Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts&rsquo; own image host &mdash; the app checks this and will not load an image from any other address. Search text: only while you are typing on the search screen, which is reached from a failed lookup and never opened on its own</td></tr>
+  <tr><th>When</th><td>Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts&rsquo; own image host &mdash; the app checks this and will not load an image from any other address. Search text: only when you explicitly submit a search (the on-screen search action, or your keyboard&rsquo;s Search key) &mdash; typing alone never sends anything</td></tr>
   <tr><th>What is sent</th><td>The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo); the search words themselves (search)</td></tr>
   <tr><th>What Just the Carbs does not attach</th><td>An account/user ID, advertising ID, your portions, results, history, or verified values. The recipient still receives normal network metadata such as IP address</td></tr>
   <tr><th>Transport</th><td>HTTPS only; cleartext traffic is disabled at the platform level</td></tr>
 </table>
 <p>
   <strong>About the search text specifically.</strong> Unlike a barcode, this is text you typed, so
-  it deserves naming rather than folding into &ldquo;product lookups&rdquo;. It is sent as you type
-  (after a short pause) so results can appear live, it is sent with no app-supplied user identifier,
-  and Just the Carbs does not store it on your device or on a Just the Carbs server &mdash; the app keeps no search
-  history and has no server. Open Food Facts&rsquo; own retention of search requests was not
-  established by a primary source in the 14 August 2026 review. If you do not use Search by name,
-  nothing of this kind is sent by Just the Carbs.
+  it deserves naming rather than folding into &ldquo;product lookups&rdquo;. It is sent only when
+  you explicitly submit a search, never as you type, it is sent with no app-supplied user
+  identifier, and Just the Carbs does not store it on your device or on a Just the Carbs server
+  &mdash; the app keeps no search history and has no server. Open Food Facts&rsquo; own retention of
+  search requests was not established by a primary source in the 14 August 2026 review. If you do
+  not use Search by name, nothing of this kind is sent by Just the Carbs.
 </p>
 <p>
   Open Food Facts is an independent organisation and will receive your IP address as an unavoidable
@@ -98,9 +98,9 @@
 <h2>Camera</h2>
 <p>The camera is used to read barcodes and nutrition labels.</p>
 <ul>
-  <li>Processing is <strong>on-device</strong>; frames are analysed in memory and discarded immediately.</li>
-  <li><strong>No photograph is saved</strong>, and no image is uploaded to us or anyone else.</li>
-  <li>No storage or photo-library permission is requested, so the app cannot see your gallery.</li>
+  <li>Processing is <strong>on-device</strong>. Live camera frames are processed in memory and discarded immediately.</li>
+  <li>When you explicitly capture a nutrition label, a temporary image is stored in the app&rsquo;s private cache solely for on-device OCR and deleted immediately after processing. Images are not uploaded or retained.</li>
+  <li>No storage or photo-library permission is requested, so the app cannot see your gallery, and the temporary capture above is never written anywhere a gallery or another app could see it.</li>
   <li>Access is requested when you first open the scanner, not at launch. You may decline — manual entry always remains available.</li>
 </ul>
 

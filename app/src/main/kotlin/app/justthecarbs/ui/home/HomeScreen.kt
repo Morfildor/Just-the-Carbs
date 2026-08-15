@@ -112,6 +112,7 @@ fun HomeScreen(
     onOpenMeal: () -> Unit = {},
     searchState: SearchUiState = SearchUiState(),
     onSearchQueryChanged: (String) -> Unit = {},
+    onSearchSubmit: () -> Unit = {},
     onSearchSelect: (ProductSearchHit) -> Unit = {},
     onSearchScanLabel: () -> Unit = {},
     onSearchEnterManually: () -> Unit = {},
@@ -163,6 +164,7 @@ fun HomeScreen(
             HomeSearchField(
                 query = searchState.query,
                 onQueryChanged = onSearchQueryChanged,
+                onSearchSubmit = onSearchSubmit,
                 modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
             )
 
@@ -366,6 +368,7 @@ private fun EmptyStateStepStrip(modifier: Modifier = Modifier) {
 private fun HomeSearchField(
     query: String,
     onQueryChanged: (String) -> Unit,
+    onSearchSubmit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focusManager = LocalFocusManager.current
@@ -376,9 +379,22 @@ private fun HomeSearchField(
         onValueChange = onQueryChanged,
         singleLine = true,
         placeholder = { Text(stringResource(R.string.search_hint)) },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        // Tapping the leading icon also submits: it sits where a "search" affordance is expected,
+        // in addition to the IME action, without adding a second visible button to this compact field.
+        leadingIcon = {
+            IconButton(onClick = { onSearchSubmit(); focusManager.clearFocus() }) {
+                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search_submit))
+            }
+        },
+        // Search is explicit: typing alone never triggers a request (Open Food Facts' search
+        // endpoint is rate-limited and not meant for as-you-type traffic).
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+        keyboardActions = KeyboardActions(
+            onSearch = {
+                onSearchSubmit()
+                focusManager.clearFocus()
+            },
+        ),
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(

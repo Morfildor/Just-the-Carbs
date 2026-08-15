@@ -1,6 +1,6 @@
 # Privacy policy — Just the Carbs
 
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-15
 **Contact:** albinogorillassupport@gmail.com
 
 This describes what the app actually does, verified against the source code (§48).
@@ -43,17 +43,18 @@ There is no login, no cloud profile, and no synchronisation. Deleting the app de
 | Field | Value |
 |---|---|
 | Recipient | Open Food Facts, for product data/search (`world.openfoodfacts.org`) and product photos (`images.openfoodfacts.org` or `static.openfoodfacts.org`) |
-| When | Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts' own image host — the app checks this and will not load an image from any other address. Search text: only while you are typing on the search screen, which is reached from a failed lookup and never opened on its own |
+| When | Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts' own image host — the app checks this and will not load an image from any other address. Search text: only when you explicitly submit a search (the on-screen search action, or your keyboard's Search key) — typing alone never sends anything |
 | What is sent | The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo); the search words themselves (search) |
 | What Just the Carbs does not attach to these requests | An account/user ID, advertising ID, your portions, results, history, or verified values. The recipient still receives normal network metadata such as IP address |
 | Transport | HTTPS only. Cleartext traffic is disabled at the platform level |
 
 **About the search text specifically.** Unlike a barcode, this is text you typed, so it deserves
-naming rather than folding into "product lookups". It is sent as you type (after a short pause) so
-results can appear live, it is sent with no app-supplied user identifier, and Just the Carbs does not
-store it on your device or on a Just the Carbs server — the app keeps no search history and has no server.
-Open Food Facts' own retention of search requests was not established by a primary source in the
-2026-08-14 review. If you do not use Search by name, nothing of this kind is sent by Just the Carbs.
+naming rather than folding into "product lookups". It is sent only when you explicitly submit a
+search, never as you type, it is sent with no app-supplied user identifier, and Just the Carbs does
+not store it on your device or on a Just the Carbs server — the app keeps no search history and has
+no server. Open Food Facts' own retention of search requests was not established by a primary
+source in the 2026-08-14 review. If you do not use Search by name, nothing of this kind is sent by
+Just the Carbs.
 
 Open Food Facts is an independent organisation and will receive your IP address as an unavoidable
 part of any internet request. Their handling of that is governed by their own privacy policy.
@@ -65,9 +66,13 @@ re-using a product typically sends nothing.
 
 The camera is used for two things: reading barcodes, and reading nutrition labels.
 
-- Processing is **on-device**. Frames are analysed in memory and discarded immediately.
-- **No photograph is saved.** No image is uploaded to us or anyone else.
-- The app requests no storage or photo-library permission, so it cannot see your gallery.
+- Processing is **on-device**. Live camera frames are processed in memory and discarded
+  immediately.
+- When you explicitly capture a nutrition label, a temporary image is stored in the app's private
+  cache solely for on-device OCR and deleted immediately after processing. Images are not uploaded
+  or retained.
+- The app requests no storage or photo-library permission, so it cannot see your gallery, and the
+  temporary capture above is never written anywhere a gallery or another app could see it.
 - Camera access is asked for when you first open the scanner, not at launch, and you can decline —
   manual entry always remains available.
 

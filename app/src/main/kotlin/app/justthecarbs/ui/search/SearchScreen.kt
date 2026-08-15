@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -51,6 +52,7 @@ import app.justthecarbs.ui.theme.Space
 /** Stable handles for instrumented tests. */
 const val SEARCH_FIELD_TAG = "search_field"
 const val SEARCH_RESULTS_TAG = "search_results"
+const val SEARCH_SUBMIT_TAG = "search_submit"
 
 /**
  * Free-text product search (spec §9).
@@ -67,6 +69,7 @@ const val SEARCH_RESULTS_TAG = "search_results"
 fun SearchScreen(
     state: SearchUiState,
     onQueryChanged: (String) -> Unit,
+    onSearchSubmit: () -> Unit,
     onSelect: (ProductSearchHit) -> Unit,
     onScanLabel: () -> Unit,
     onEnterManually: () -> Unit,
@@ -102,22 +105,43 @@ fun SearchScreen(
         }
 
         val clearLabel = stringResource(R.string.search_clear)
+        val searchLabel = stringResource(R.string.search_submit)
         OutlinedTextField(
             value = state.query,
             onValueChange = onQueryChanged,
             singleLine = true,
             placeholder = { Text(stringResource(R.string.search_hint)) },
-            // Search, not Done: this field's action is the screen's whole purpose, and the results
-            // are already live, so the key only needs to put the keyboard away.
+            // Search is explicit: typing alone never triggers a request (Open Food Facts' search
+            // endpoint is rate-limited and not meant for as-you-type traffic). The IME action runs
+            // the search and puts the keyboard away; the trailing icon is the same action for anyone
+            // not on a soft keyboard.
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+            keyboardActions = KeyboardActions(
+                onSearch = {
+                    onSearchSubmit()
+                    focusManager.clearFocus()
+                },
+            ),
             trailingIcon = {
-                if (state.query.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (state.query.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onQueryChanged("") },
+                            modifier = Modifier.semantics { contentDescription = clearLabel },
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = null)
+                        }
+                    }
                     IconButton(
-                        onClick = { onQueryChanged("") },
-                        modifier = Modifier.semantics { contentDescription = clearLabel },
+                        onClick = {
+                            onSearchSubmit()
+                            focusManager.clearFocus()
+                        },
+                        modifier = Modifier
+                            .testTag(SEARCH_SUBMIT_TAG)
+                            .semantics { contentDescription = searchLabel },
                     ) {
-                        Icon(Icons.Filled.Close, contentDescription = null)
+                        Icon(Icons.Filled.Search, contentDescription = null)
                     }
                 }
             },

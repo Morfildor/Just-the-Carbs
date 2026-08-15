@@ -16,6 +16,7 @@ val brandAppName = extra["brandAppName"] as String
 val brandApplicationId = extra["brandApplicationId"] as String
 val brandNamespace = extra["brandNamespace"] as String
 val brandContactEmail = extra["brandContactEmail"] as String
+val brandPrivacyPolicyUrl = extra["brandPrivacyPolicyUrl"] as String
 val brandVersionCode = extra["brandVersionCode"] as Int
 val brandVersionName = extra["brandVersionName"] as String
 
@@ -71,6 +72,7 @@ android {
         buildConfigField("String", "APP_NAME", "\"$brandAppName\"")
         buildConfigField("String", "OFF_USER_AGENT", "\"$offUserAgent\"")
         buildConfigField("String", "CONTACT_EMAIL", "\"$brandContactEmail\"")
+        buildConfigField("String", "PRIVACY_POLICY_URL", "\"$brandPrivacyPolicyUrl\"")
     }
 
     signingConfigs {

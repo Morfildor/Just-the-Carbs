@@ -44,9 +44,11 @@ class AppContainer(context: Context) {
 
     /**
      * One Open Food Facts instance serving both roles — it is both the product source and the
-     * search source, and constructing it twice would open two paths to the same host.
+     * search source, and constructing it twice would open two paths to the same host. Exposed
+     * publicly as [searchSource] since [SearchViewModel][app.justthecarbs.ui.search.SearchViewModel]
+     * talks to it directly rather than through [productRepository].
      */
-    private val openFoodFacts by lazy {
+    val searchSource by lazy {
         OpenFoodFactsDataSource(
             NetworkModule.openFoodFactsApi(okHttpClient),
             preferredLanguage = {
@@ -58,11 +60,11 @@ class AppContainer(context: Context) {
     val productRepository by lazy {
         ProductRepository(
             local = localProducts,
-            remote = openFoodFacts,
+            remote = searchSource,
             portionUnits = localPortionUnits,
             meal = localMeal,
             portionUsage = localPortionUsage,
-            searchSource = openFoodFacts,
+            searchSource = searchSource,
         )
     }
 

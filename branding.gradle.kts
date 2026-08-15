@@ -28,5 +28,8 @@ extra["brandNamespace"] = "app.justthecarbs"
 /** Contact placeholder — OWNER MUST REPLACE before publication (also used in the OFF User-Agent). */
 extra["brandContactEmail"] = "albinogorillassupport@gmail.com"
 
+/** Public, non-geofenced, non-editable HTML privacy policy — the same URL given to Play Console. */
+extra["brandPrivacyPolicyUrl"] = "https://morfildor.github.io/Just-the-Carbs/privacy-policy.html"
+
 extra["brandVersionCode"] = 1
 extra["brandVersionName"] = "1.0.0"

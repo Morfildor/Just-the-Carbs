@@ -5,10 +5,14 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performTextInput
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.ProductSearchHit
+import app.justthecarbs.ui.search.SEARCH_FIELD_TAG
 import app.justthecarbs.ui.search.SEARCH_RESULTS_TAG
+import app.justthecarbs.ui.search.SEARCH_SUBMIT_TAG
 import app.justthecarbs.ui.search.SearchScreen
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
@@ -53,12 +57,14 @@ class SearchScreenTest {
         onScanLabel: () -> Unit = {},
         onEnterManually: () -> Unit = {},
         onRetry: () -> Unit = {},
+        onSearchSubmit: () -> Unit = {},
     ) {
         compose.setContent {
             JustTheCarbsTheme {
                 SearchScreen(
                     state = state,
                     onQueryChanged = {},
+                    onSearchSubmit = onSearchSubmit,
                     onSelect = onSelect,
                     onScanLabel = onScanLabel,
                     onEnterManually = onEnterManually,
@@ -146,6 +152,40 @@ class SearchScreenTest {
         show(SearchUiState(query = "hagelslag", error = LookupError.RATE_LIMITED))
 
         compose.onNodeWithText("Too many lookups", substring = true).assertIsDisplayed()
+    }
+
+    /**
+     * The central rule of this hardening pass: typing must never itself trigger a network search
+     * (Open Food Facts' search endpoint is rate-limited and not meant for as-you-type traffic).
+     */
+    @Test
+    fun typingAloneDoesNotSubmitASearch() {
+        var submitCount = 0
+        show(SearchUiState(), onSearchSubmit = { submitCount++ })
+
+        compose.onNodeWithTag(SEARCH_FIELD_TAG).performTextInput("hagelslag")
+
+        assertEquals("typing must not submit a search", 0, submitCount)
+    }
+
+    @Test
+    fun theImeSearchActionSubmitsExactlyOnce() {
+        var submitCount = 0
+        show(SearchUiState(query = "hagelslag"), onSearchSubmit = { submitCount++ })
+
+        compose.onNodeWithTag(SEARCH_FIELD_TAG).performImeAction()
+
+        assertEquals(1, submitCount)
+    }
+
+    @Test
+    fun theSearchButtonSubmitsExactlyOnce() {
+        var submitCount = 0
+        show(SearchUiState(query = "hagelslag"), onSearchSubmit = { submitCount++ })
+
+        compose.onNodeWithTag(SEARCH_SUBMIT_TAG).performClick()
+
+        assertEquals(1, submitCount)
     }
 
     @Test

@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -67,6 +68,8 @@ fun SettingsScreen(
 ) {
     var confirmClearRecents by remember { mutableStateOf(false) }
     var confirmClearProducts by remember { mutableStateOf(false) }
+    var privacyPolicyLinkFailed by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
 
     Column(
         modifier = Modifier
@@ -179,6 +182,26 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            SettingsAction(
+                text = stringResource(R.string.settings_privacy_policy),
+                onClick = {
+                    try {
+                        uriHandler.openUri(BuildConfig.PRIVACY_POLICY_URL)
+                    } catch (_: Exception) {
+                        // No browser or other app can handle the link. Manual entry always remains
+                        // available elsewhere in the app (§9, §36); here the fallback is simply
+                        // showing the URL as text the user can read and copy themselves.
+                        privacyPolicyLinkFailed = true
+                    }
+                },
+            )
+            if (privacyPolicyLinkFailed) {
+                Text(
+                    text = stringResource(R.string.settings_privacy_policy_link_failed, BuildConfig.PRIVACY_POLICY_URL),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
