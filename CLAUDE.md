@@ -98,16 +98,16 @@ instrumented tests (up from 95), lint clean.
 - ✅ Manual barcode entry (§8); live Open Food Facts verified end to end incl. product images
 - ✅ **Countable portions** (2026-08-14) — see dedicated section below
 - ✅ **Product development pass** (2026-08-14) — see dedicated section below
-- ✅ **392 JVM unit tests passing; lint clean; debug + minified release both build** (2026-08-15
-  OCR/direct-carb pass — was 259 before it)
-- ⚠️ **119 instrumented tests, 118 passing.** The one failure is
-  `SettingsScreenTest.tappingPrivacyPolicyDoesNotCrashTheScreen`, and it is **pre-existing and
-  environmental, not a regression**: verified by stashing the entire pass and running that test
-  against clean HEAD, where it fails identically. The API 36 emulator image ships Chrome, so tapping
-  the privacy-policy row really does launch a browser, backgrounding the test activity and leaving
-  Compose with no hierarchy to assert against ("No compose hierarchies found in the app"). The test's
-  own KDoc anticipates having no browser to intercept. It needs an Intents stub or `@Ignore` on
-  browser-equipped images — deliberately **not** changed in this pass, being unrelated scope.
+- ✅ **429 JVM unit tests passing; lint clean; debug + minified release both build** (2026-08-15
+  Light-theme-default pass — was 392 before it)
+- ✅ **133 instrumented tests, all passing** (2026-08-15 — was 119). The previously documented
+  failure, `SettingsScreenTest.tappingPrivacyPolicyDoesNotCrashTheScreen`, **no longer exists**: it
+  was replaced by `tappingPrivacyPolicyOpensTheCommittedUrlAndKeepsTheScreen`, which stubs Compose's
+  `LocalUriHandler` instead of letting a real browser launch, so the browser-backgrounding problem
+  is structurally gone rather than merely tolerated. Do not re-list it as a known failure.
+  Note: a full-suite run occasionally aborts with a UTP `TEST_EXECUTION_FAILED` driver error part
+  way through (it recorded 123/123 green, then failed the build). It does not reproduce and the
+  affected classes pass in isolation — emulator/instrumentation flakiness, not a code failure.
 - ✅ The previously flaky instrumented test is **fixed** — it was a test bug (a keyboard-covered
   control that `performClick()` silently no-ops on), not app behaviour. Full suite is green.
 - ✅ **Dependency vulnerability scan run** — `tools/dependency-scan.sh`, 226 shipped artifacts,
@@ -301,6 +301,28 @@ offers to save it as a `PortionUnit` (`ProductDataOrigin.OCR`, `USER_VERIFIED` �
 the package). Only from a still capture that passed the explicit accept step, never from a live
 frame; `LabelAnalyzer.analyzeStill` now reports the whole `NutritionParseReport`, while the live path
 still deals only in `LabelReading` so a camera frame cannot persist anything.
+
+## Default theme is Light (2026-08-15)
+
+On a fresh install the app opens in **Light regardless of the Android system theme**. Only the
+*default* moved; the Settings selector still offers System / Light / Dark and each behaves as before
+(an explicit `SYSTEM` still follows the OS in both directions).
+
+The default lives in **three** places that must agree, because `MainActivity` renders
+`AppSettings()` for the frame or two before DataStore answers and the repository value afterwards —
+if only one moved, a fresh install would visibly flip theme during launch:
+
+1. `AppSettings.theme` (`domain/Settings.kt`)
+2. the missing/unknown-value fallback in `SettingsRepository` — an unrecognised stored value means a
+   corrupt or downgraded preference file, not a request for the system theme
+3. `JustTheCarbsTheme`'s default argument (`ui/theme/Theme.kt`)
+
+`ThemeDefaultTest` (instrumented) asserts the **rendered** `colorScheme.background` with
+`LocalConfiguration` forced to system-dark and system-light, not which enum was passed in — the enum
+round-trip is already covered by the JVM tests, and the rendered colour is where a wrong default is
+actually visible. It carries a self-check that light and dark backgrounds differ and that the forced
+configuration really reaches `isSystemInDarkTheme()`, without which every other case in the class
+would pass vacuously. Verified on the minified release build on the emulator, not just in tests.
 
 ## Toolchain (installed — do NOT reinstall)
 

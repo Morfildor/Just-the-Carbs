@@ -218,6 +218,24 @@ Recommended owner path:
 
 Final results are recorded only after fresh commands complete:
 
+### 2026-08-15 re-verification (commit `6de524e`, Light-theme default)
+
+Re-run on the exact final commit, per step 10 of the owner release sequence. The artifacts below
+are **test-signed and not uploadable**; the go/no-go gates in §1 are unchanged by this pass.
+
+| Check | Result |
+|---|---|
+| JVM tests | **PASS** — 429 tests, 0 failures, 0 errors, 0 skipped. |
+| Instrumented tests | **PASS** — 133 tests, 0 failures, 0 errors, 0 skipped (API 36 emulator). |
+| Lint | **PASS** — `:app:lintDebug` clean, `abortOnError = true`. |
+| OSV dependency scan | **PASS** — 226 resolved release-runtime artifacts, 0 known vulnerabilities; control query positive, so the clean result is not a silent no-match. |
+| Release APK | Built from clean tree at `6de524e`. 67,053,774 bytes. SHA-256 `C5B9F870A4F10195EA0388652AC02671BF8C2FAB21F3AF1726D936003B935B20`. |
+| Release AAB | Built from clean tree at `6de524e`. 35,471,570 bytes. SHA-256 `5DB05C294269A565E28858EB1BFC0B919F8222FD4B4FCD353D3BBB5733C04C99`. |
+| Signature | **NOT UPLOADABLE** — `CN=DISPOSABLE TEST KEY, OU=NOT FOR PLAY, O=JustTheCarbs Test, C=NL`, valid 2026-08-15 to **2026-09-14** (30 days). Play upload keys must remain valid well beyond that, and the upload key is fixed once published. |
+| Minified release smoke test | **PASS (emulator)** — installs and launches; logcat clean of `ClassNotFoundException` / `NoClassDefFoundError` / serialization failures, so R8 keep rules still hold. |
+| Light-theme default on the release build | **PASS (emulator)** — fresh install with Android night mode **on** renders the light (Cream) palette. All three selector choices re-checked on the same artifact: System follows the OS, Dark stays dark, Light stays light. |
+| Physical-device QA of this artifact | **NOT DONE** — unchanged standing gap. |
+
 | Check | Result |
 |---|---|
 | Fail-closed unsigned bundle | **PASS 2026-08-14** — re-verified; `:app:bundleRelease` fails with `Release signing is incomplete; refusing to create an unsigned release artifact.` naming all four missing inputs. |
