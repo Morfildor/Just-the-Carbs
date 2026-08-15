@@ -8,7 +8,7 @@ enum class ThemeChoice { SYSTEM, LIGHT, DARK }
  * scan → portion → carbs faster, safer or clearer does not belong here (§74).
  */
 data class AppSettings(
-    val theme: ThemeChoice = ThemeChoice.SYSTEM,
+    val theme: ThemeChoice = ThemeChoice.LIGHT,
     val resultStyle: ResultStyle = ResultStyle.DECIMAL_DOMINANT,
     val hapticsEnabled: Boolean = true,
     val hasSeenOnboarding: Boolean = false,

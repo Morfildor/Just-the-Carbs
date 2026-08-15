@@ -28,8 +28,8 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
         .catch { cause -> if (cause is IOException) emit(emptyPreferences()) else throw cause }
         .map { prefs ->
             AppSettings(
-                theme = prefs[THEME]?.toEnum(ThemeChoice.entries, ThemeChoice.SYSTEM)
-                    ?: ThemeChoice.SYSTEM,
+                theme = prefs[THEME]?.toEnum(ThemeChoice.entries, ThemeChoice.LIGHT)
+                    ?: ThemeChoice.LIGHT,
                 resultStyle = prefs[RESULT_STYLE]?.toEnum(ResultStyle.entries, ResultStyle.DECIMAL_DOMINANT)
                     ?: ResultStyle.DECIMAL_DOMINANT,
                 hapticsEnabled = prefs[HAPTICS] ?: true,

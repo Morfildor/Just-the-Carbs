@@ -277,7 +277,7 @@ private val JustTheCarbsTypography = Typography().run {
 
 @Composable
 fun JustTheCarbsTheme(
-    themeChoice: ThemeChoice = ThemeChoice.SYSTEM,
+    themeChoice: ThemeChoice = ThemeChoice.LIGHT,
     content: @Composable () -> Unit,
 ) {
     val dark = when (themeChoice) {
