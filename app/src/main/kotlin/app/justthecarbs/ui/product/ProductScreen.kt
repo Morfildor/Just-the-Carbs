@@ -87,6 +87,7 @@ import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.PortionUnitKind
@@ -151,11 +152,11 @@ fun ProductScreen(
     onSwitchToPortionUnit: (Long) -> Unit = {},
     onCountChanged: (String) -> Unit = {},
     onShowAddPortionUnitForm: (Boolean) -> Unit = {},
-    onAddPortionUnit: (PortionUnitKind, BigDecimal, String?) -> Unit = { _, _, _ -> },
+    onAddPortionUnit: (PortionUnitKind, PortionConversion, String?) -> Unit = { _, _, _ -> },
     onVerifyPortionUnit: () -> Unit = {},
     onApplyNewerRemotePortionUnit: () -> Unit = {},
     onDismissNewerRemotePortionUnit: () -> Unit = {},
-    onCorrectPortionUnit: (BigDecimal) -> Unit = {},
+    onCorrectPortionUnit: (PortionConversion) -> Unit = {},
     onCancelPortionUnitCorrection: () -> Unit = {},
     /** Takes the portion in the user's own words ("2 slices"), which only a composable can build. */
     onAddToMeal: (String) -> Unit = {},
@@ -428,11 +429,11 @@ private fun CalculatorBody(
     onSwitchToPortionUnit: (Long) -> Unit = {},
     onCountChanged: (String) -> Unit = {},
     onShowAddPortionUnitForm: (Boolean) -> Unit = {},
-    onAddPortionUnit: (PortionUnitKind, BigDecimal, String?) -> Unit = { _, _, _ -> },
+    onAddPortionUnit: (PortionUnitKind, PortionConversion, String?) -> Unit = { _, _, _ -> },
     onVerifyPortionUnit: () -> Unit = {},
     onApplyNewerRemotePortionUnit: () -> Unit = {},
     onDismissNewerRemotePortionUnit: () -> Unit = {},
-    onCorrectPortionUnit: (BigDecimal) -> Unit = {},
+    onCorrectPortionUnit: (PortionConversion) -> Unit = {},
     onCancelPortionUnitCorrection: () -> Unit = {},
     onAddToMeal: (String) -> Unit = {},
     onAddToMealAndScanNext: (String) -> Unit = {},
@@ -546,10 +547,10 @@ private fun CalculatorBody(
                     correcting = state.correctingPortionUnit,
                     onCancelCorrection = onCancelPortionUnitCorrection,
                 )
-                state.newerRemotePortionUnitAmount?.let { newer ->
+                state.newerRemotePortionUnit?.let { newer ->
                     Spacer(Modifier.height(Space.s))
                     PortionUnitChangedNotice(
-                        newerAmount = newer,
+                        newerConversion = newer,
                         unit = selectedUnit,
                         onApply = onApplyNewerRemotePortionUnit,
                         onDismiss = onDismissNewerRemotePortionUnit,
@@ -578,9 +579,10 @@ private fun CalculatorBody(
                 AddPortionUnitAction(
                     expanded = state.showAddPortionUnitForm,
                     basisUnit = product.portionUnit,
+                    productBasis = product.basis,
                     onExpand = { onShowAddPortionUnitForm(true) },
                     onCancel = { onShowAddPortionUnitForm(false) },
-                    onSave = { kind, amount, label -> onAddPortionUnit(kind, amount, label) },
+                    onSave = { kind, conversion, label -> onAddPortionUnit(kind, conversion, label) },
                 )
             }
 
@@ -932,20 +934,33 @@ private fun PortionEquationText(
     resolvedGrams: String,
     modifier: Modifier = Modifier,
 ) {
-    if (resolvedGrams.isBlank()) return
     // English pluralization: only exactly 1 is singular ("1 slice"); 0, 1.5, 2... are all plural
     // ("0 slices", "1.5 slices", "2 slices") — the equation is read as a sentence, so getting this
     // wrong reads as a typo, unlike the mode chip's fixed representative plural.
     val pluralQuantity = if (PortionParser.parse(count)?.compareTo(BigDecimal.ONE) == 0) 1 else 2
-    Text(
-        text = stringResource(
-            R.string.product_count_equation,
+    val equation = when (val conversion = unit.conversion) {
+        is PortionConversion.WeightBased -> {
+            if (resolvedGrams.isBlank()) return
+            stringResource(
+                R.string.product_count_equation,
+                count.ifBlank { "0" },
+                unit.unitLabel(count = pluralQuantity),
+                conversion.amountPerUnit.stripTrailingZeros().toPlainString(),
+                conversion.basis.unitLabel,
+                resolvedGrams,
+            )
+        }
+        // No grams anywhere on this path — the user was never asked for a weight and must not be
+        // shown one, so this reads "4 slices × 14.2 g carbs" and stops there.
+        is PortionConversion.DirectCarbs -> stringResource(
+            R.string.product_direct_carb_equation,
             count.ifBlank { "0" },
             unit.unitLabel(count = pluralQuantity),
-            unit.amountPerUnit.stripTrailingZeros().toPlainString(),
-            unit.basis.unitLabel,
-            resolvedGrams,
-        ),
+            conversion.carbsPerUnit.stripTrailingZeros().toPlainString(),
+        )
+    }
+    Text(
+        text = equation,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.fillMaxWidth(),
@@ -969,7 +984,7 @@ private fun PortionEquationText(
 private fun PortionUnitStatusRow(
     unit: PortionUnit,
     onVerify: () -> Unit,
-    onCorrect: (BigDecimal) -> Unit = {},
+    onCorrect: (PortionConversion) -> Unit = {},
     correcting: Boolean = false,
     onCancelCorrection: () -> Unit = {},
 ) {
@@ -1018,11 +1033,17 @@ private fun PortionUnitStatusRow(
 @Composable
 private fun PortionUnitCorrectionForm(
     unit: PortionUnit,
-    onSave: (BigDecimal) -> Unit,
+    onSave: (PortionConversion) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val conversion = unit.conversion
     var amountText by remember(unit.id) {
-        mutableStateOf(unit.amountPerUnit.stripTrailingZeros().toPlainString())
+        mutableStateOf(
+            when (conversion) {
+                is PortionConversion.WeightBased -> conversion.amountPerUnit
+                is PortionConversion.DirectCarbs -> conversion.carbsPerUnit
+            }.stripTrailingZeros().toPlainString(),
+        )
     }
 
     Column(
@@ -1041,7 +1062,12 @@ private fun PortionUnitCorrectionForm(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = stringResource(R.string.product_one_unit_equals, unit.unitLabel(count = 1)),
+                text = when (conversion) {
+                    is PortionConversion.WeightBased ->
+                        stringResource(R.string.product_one_unit_equals, unit.unitLabel(count = 1))
+                    is PortionConversion.DirectCarbs ->
+                        stringResource(R.string.product_one_unit_contains, unit.unitLabel(count = 1))
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1051,7 +1077,15 @@ private fun PortionUnitCorrectionForm(
                 onValueChange = { amountText = it },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                suffix = { Text(unit.basis.unitLabel) },
+                suffix = {
+                    Text(
+                        when (conversion) {
+                            is PortionConversion.WeightBased -> conversion.basis.unitLabel
+                            is PortionConversion.DirectCarbs ->
+                                stringResource(R.string.product_unit_carbs_suffix)
+                        },
+                    )
+                },
                 shape = RoundedCornerShape(Space.buttonRadius),
                 // Tagged so UI tests can address this field directly. The alternative — indexing
                 // into "every text field on screen" — silently targets the wrong field as soon as
@@ -1069,8 +1103,17 @@ private fun PortionUnitCorrectionForm(
                     // A blank or unparseable amount is not a correction. Silently doing nothing is
                     // right here: the field is still on screen showing what the user typed.
                     val amount = PortionParser.parse(amountText) ?: return@TextButton
-                    if (amount.signum() <= 0) return@TextButton
-                    onSave(amount)
+                    // A weight of zero is not a portion; zero carbs per unit legitimately is.
+                    if (amount.signum() < 0) return@TextButton
+                    onSave(
+                        when (conversion) {
+                            is PortionConversion.WeightBased -> {
+                                if (amount.signum() <= 0) return@TextButton
+                                PortionConversion.WeightBased(amount, conversion.basis)
+                            }
+                            is PortionConversion.DirectCarbs -> PortionConversion.DirectCarbs(amount)
+                        },
+                    )
                 },
             ) { Text(stringResource(R.string.product_save_verified)) }
         }
@@ -1080,7 +1123,7 @@ private fun PortionUnitCorrectionForm(
 /** Same immutability pattern as [RemoteChangedNotice], scoped to the countable unit in use (§9). */
 @Composable
 private fun PortionUnitChangedNotice(
-    newerAmount: BigDecimal,
+    newerConversion: PortionConversion,
     unit: PortionUnit,
     onApply: () -> Unit,
     onDismiss: () -> Unit,
@@ -1099,12 +1142,19 @@ private fun PortionUnitChangedNotice(
         )
         Spacer(Modifier.height(Space.xs))
         Text(
-            text = stringResource(
-                R.string.portion_changed_body,
-                newerAmount.stripTrailingZeros().toPlainString(),
-                unit.basis.unitLabel,
-                unit.unitLabel(count = 1),
-            ),
+            text = when (newerConversion) {
+                is PortionConversion.WeightBased -> stringResource(
+                    R.string.portion_changed_body,
+                    newerConversion.amountPerUnit.stripTrailingZeros().toPlainString(),
+                    newerConversion.basis.unitLabel,
+                    unit.unitLabel(count = 1),
+                )
+                is PortionConversion.DirectCarbs -> stringResource(
+                    R.string.portion_changed_carbs_body,
+                    newerConversion.carbsPerUnit.stripTrailingZeros().toPlainString(),
+                    unit.unitLabel(count = 1),
+                )
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1123,9 +1173,10 @@ private fun PortionUnitChangedNotice(
 private fun AddPortionUnitAction(
     expanded: Boolean,
     basisUnit: String,
+    productBasis: NutritionBasis,
     onExpand: () -> Unit,
     onCancel: () -> Unit,
-    onSave: (PortionUnitKind, BigDecimal, String?) -> Unit,
+    onSave: (PortionUnitKind, PortionConversion, String?) -> Unit,
 ) {
     if (!expanded) {
         TextButton(onClick = onExpand) {
@@ -1138,6 +1189,9 @@ private fun AddPortionUnitAction(
     var kindMenuOpen by remember { mutableStateOf(false) }
     var customName by remember { mutableStateOf("") }
     var amountText by remember { mutableStateOf("") }
+    // Which fact the user has. Only one field is ever shown, so "fill in whichever you know" needs
+    // no cross-field validation — there is no second field to leave empty.
+    var weightMode by remember { mutableStateOf(true) }
 
     Column(
         modifier = Modifier
@@ -1184,13 +1238,39 @@ private fun AddPortionUnitAction(
         }
 
         Spacer(Modifier.height(Space.s))
+        // Two ways to describe one unit: what it weighs, or what it contains. A user who knows
+        // neither is not helped by a weight field they would have to guess at.
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+            FilterChip(
+                selected = weightMode,
+                onClick = { weightMode = true },
+                label = { Text(stringResource(R.string.product_unit_mode_weight)) },
+            )
+            FilterChip(
+                selected = !weightMode,
+                onClick = { weightMode = false },
+                label = { Text(stringResource(R.string.product_unit_mode_carbs)) },
+            )
+        }
+
+        Spacer(Modifier.height(Space.s))
         OutlinedTextField(
             value = amountText,
             onValueChange = { amountText = it },
-            label = { Text(stringResource(R.string.product_portion_unit_weighs, kind.name.lowercase())) },
+            label = {
+                Text(
+                    if (weightMode) {
+                        stringResource(R.string.product_portion_unit_weighs, kind.name.lowercase())
+                    } else {
+                        stringResource(R.string.product_portion_unit_contains, kind.name.lowercase())
+                    },
+                )
+            },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            suffix = { Text(basisUnit) },
+            suffix = {
+                Text(if (weightMode) basisUnit else stringResource(R.string.product_unit_carbs_suffix))
+            },
             shape = RoundedCornerShape(Space.buttonRadius),
             modifier = Modifier.fillMaxWidth().testTag(ADD_PORTION_UNIT_FIELD_TAG),
         )
@@ -1202,7 +1282,15 @@ private fun AddPortionUnitAction(
                 onClick = {
                     val amount = PortionParser.parse(amountText) ?: return@TextButton
                     if (kind == PortionUnitKind.CUSTOM && customName.isBlank()) return@TextButton
-                    onSave(kind, amount, customName.ifBlank { null }.takeIf { kind == PortionUnitKind.CUSTOM })
+                    // A zero-gram unit is not a portion; a zero-carb unit genuinely exists.
+                    val conversion = if (weightMode) {
+                        if (amount.signum() <= 0) return@TextButton
+                        PortionConversion.WeightBased(amount, productBasis)
+                    } else {
+                        if (amount.signum() < 0) return@TextButton
+                        PortionConversion.DirectCarbs(amount)
+                    }
+                    onSave(kind, conversion, customName.ifBlank { null }.takeIf { kind == PortionUnitKind.CUSTOM })
                 },
             ) { Text(stringResource(R.string.product_save)) }
         }
@@ -1270,11 +1358,13 @@ private fun ResultPanel(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val result = state.result
+    // The exact figure, whichever path produced it. Reading `state.result` alone left a valid
+    // direct-carb calculation showing "pending" with no Copy and no Add to meal (correction §1).
+    val exact = state.exactCarbs
 
     // Resolved during composition, not inside the click lambda: reading resources off
     // LocalContext at click time is not configuration-aware and can return a stale string.
-    val copiedValue = result?.let { ResultFormatter.clipboardValue(it, settings.resultStyle) }
+    val copiedValue = exact?.let { ResultFormatter.clipboardValue(it, settings.resultStyle) }
     val copiedMessage = copiedValue?.let { stringResource(R.string.product_copied, it) }
 
     val panelShape = RoundedCornerShape(topStart = Space.sheetTopRadius, topEnd = Space.sheetTopRadius)
@@ -1343,7 +1433,7 @@ private fun ResultPanel(
 
         Spacer(Modifier.height(Space.xs))
 
-        if (result == null) {
+        if (exact == null) {
             // Reserves the same height the result will occupy, so the panel does not jump when the
             // first digit is typed (§16: the result area must not move under the user).
             Box(
@@ -1359,9 +1449,10 @@ private fun ResultPanel(
         } else {
             // Both figures come from `exact`, independently. Neither is derived from the other,
             // so swapping which one dominates cannot introduce a double rounding (§17).
+            val wholeGrams = ResultFormatter.wholeGrams(exact)
             val dominant = when (settings.resultStyle) {
-                ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(result.exact)} g"
-                ResultStyle.WHOLE_DOMINANT -> "${ResultFormatter.whole(result.wholeGrams)} g"
+                ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(exact)} g"
+                ResultStyle.WHOLE_DOMINANT -> "${ResultFormatter.whole(wholeGrams)} g"
             }
 
             Row(
@@ -1422,11 +1513,11 @@ private fun ResultPanel(
                 text = when (settings.resultStyle) {
                     ResultStyle.DECIMAL_DOMINANT -> stringResource(
                         R.string.product_result_whole,
-                        ResultFormatter.whole(result.wholeGrams),
+                        ResultFormatter.whole(wholeGrams),
                     )
                     ResultStyle.WHOLE_DOMINANT -> stringResource(
                         R.string.product_result_calculated,
-                        ResultFormatter.decimal(result.exact),
+                        ResultFormatter.decimal(exact),
                     )
                 },
                 style = NumberType.supporting,

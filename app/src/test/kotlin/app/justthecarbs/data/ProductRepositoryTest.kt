@@ -6,6 +6,8 @@ import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.MealStore
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.MealItemKind
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.PortionUnitCandidate
 import app.justthecarbs.domain.PortionUnitKind
@@ -87,7 +89,7 @@ class ProductRepositoryTest {
 
     private fun Product.provenance() = Provenance(dataSource, verificationStatus)
 
-    private class FakeLocal(seed: List<Product> = emptyList()) : LocalProductDataSource {
+    private open class FakeLocal(seed: List<Product> = emptyList()) : LocalProductDataSource {
         val stored = seed.associateBy { it.barcode }.toMutableMap()
 
         override suspend fun fetch(barcode: String): ProductFetchResult =
@@ -110,7 +112,7 @@ class ProductRepositoryTest {
         }
     }
 
-    private class FakePortionUnitStore(seed: List<PortionUnit> = emptyList()) : PortionUnitStore {
+    private open class FakePortionUnitStore(seed: List<PortionUnit> = emptyList()) : PortionUnitStore {
         val stored = seed.associateBy { it.id }.toMutableMap()
         private var nextId = (seed.maxOfOrNull { it.id } ?: 0) + 1
 
@@ -672,7 +674,7 @@ class ProductRepositoryTest {
     @Test
     fun `a remote portion unit candidate is persisted on first lookup`() = runTest {
         val local = FakeLocal()
-        val candidate = PortionUnitCandidate(PortionUnitKind.SLICE, BigDecimal("36"), NutritionBasis.PER_100_G, "1 slice (36 g)")
+        val candidate = PortionUnitCandidate(PortionUnitKind.SLICE, PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G), "1 slice (36 g)")
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "42"), candidate))
         val repository = repositoryOf(local, remote)
 
@@ -680,7 +682,7 @@ class ProductRepositoryTest {
 
         val saved = portionUnits.stored.values.single { it.productBarcode == barcode }
         assertEquals(PortionUnitKind.SLICE, saved.kind)
-        assertEquals(0, BigDecimal("36").compareTo(saved.amountPerUnit))
+        assertEquals(0, BigDecimal("36").compareTo(saved.conversion.weight()))
         assertEquals(ProductDataOrigin.OPEN_FOOD_FACTS, saved.dataSource)
         assertEquals(VerificationStatus.UNVERIFIED, saved.verificationStatus)
         assertEquals("1 slice (36 g)", saved.rawRemoteServingText)
@@ -696,8 +698,7 @@ class ProductRepositoryTest {
         val saved = repository.saveUserPortionUnit(
             barcode = barcode,
             kind = PortionUnitKind.CUSTOM,
-            amountPerUnit = BigDecimal("24"),
-            basis = NutritionBasis.PER_100_G,
+            conversion = PortionConversion.WeightBased(BigDecimal("24"), NutritionBasis.PER_100_G),
             customLabel = "Dumpling",
         )
 
@@ -712,10 +713,10 @@ class ProductRepositoryTest {
     fun `a remote unit and a user verification of it coexist as provenance and status`() = runTest {
         val existing = PortionUnit(
             id = 1, productBarcode = barcode, kind = PortionUnitKind.SLICE, customLabel = null,
-            amountPerUnit = BigDecimal("36"), basis = NutritionBasis.PER_100_G,
+            conversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
             dataSource = ProductDataOrigin.OPEN_FOOD_FACTS, verificationStatus = VerificationStatus.UNVERIFIED,
-            verifiedAt = null, originalRemoteAmountPerUnit = BigDecimal("36"),
-            latestRemoteAmountPerUnit = BigDecimal("36"), rawRemoteServingText = "1 slice (36 g)",
+            verifiedAt = null, originalRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
+            latestRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G), rawRemoteServingText = "1 slice (36 g)",
             createdAt = now, updatedAt = now,
         )
         val seededUnits = FakePortionUnitStore(listOf(existing))
@@ -725,25 +726,25 @@ class ProductRepositoryTest {
             units = seededUnits,
         )
 
-        val verified = repository.verifyPortionUnit(1, confirmedAmountPerUnit = BigDecimal("35"))
+        val verified = repository.verifyPortionUnit(1, confirmedConversion = PortionConversion.WeightBased(BigDecimal("35"), NutritionBasis.PER_100_G))
 
         assertEquals("checking against the package does not change where the data came from", ProductDataOrigin.OPEN_FOOD_FACTS, verified.dataSource)
         assertEquals(VerificationStatus.USER_VERIFIED, verified.verificationStatus)
-        assertEquals(0, BigDecimal("35").compareTo(verified.amountPerUnit))
+        assertEquals(0, BigDecimal("35").compareTo(verified.conversion.weight()))
     }
 
     @Test
     fun `a background refresh cannot overwrite a user-verified portion unit`() = runTest {
         val verifiedUnit = PortionUnit(
             id = 1, productBarcode = barcode, kind = PortionUnitKind.SLICE, customLabel = null,
-            amountPerUnit = BigDecimal("35"), basis = NutritionBasis.PER_100_G,
+            conversion = PortionConversion.WeightBased(BigDecimal("35"), NutritionBasis.PER_100_G),
             dataSource = ProductDataOrigin.OPEN_FOOD_FACTS, verificationStatus = VerificationStatus.USER_VERIFIED,
-            verifiedAt = now, originalRemoteAmountPerUnit = BigDecimal("36"),
-            latestRemoteAmountPerUnit = BigDecimal("36"), rawRemoteServingText = "1 slice (36 g)",
+            verifiedAt = now, originalRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
+            latestRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G), rawRemoteServingText = "1 slice (36 g)",
             createdAt = now, updatedAt = now,
         )
         val seededUnits = FakePortionUnitStore(listOf(verifiedUnit))
-        val newCandidate = PortionUnitCandidate(PortionUnitKind.SLICE, BigDecimal("38"), NutritionBasis.PER_100_G, "1 slice (38 g)")
+        val newCandidate = PortionUnitCandidate(PortionUnitKind.SLICE, PortionConversion.WeightBased(BigDecimal("38"), NutritionBasis.PER_100_G), "1 slice (38 g)")
         val repository = repositoryOf(
             FakeLocal(listOf(product(PLAIN_OFF, "42"))),
             FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "42"), newCandidate)),
@@ -753,23 +754,23 @@ class ProductRepositoryTest {
         repository.refreshFromRemote(barcode)
 
         val stored = seededUnits.stored.getValue(1)
-        assertEquals("the effective amount must not move", 0, BigDecimal("35").compareTo(stored.amountPerUnit))
-        assertEquals("but the newer figure is retained for a notice", 0, BigDecimal("38").compareTo(stored.latestRemoteAmountPerUnit!!))
-        assertTrue(stored.remoteAmountDiffers)
+        assertEquals("the effective amount must not move", 0, BigDecimal("35").compareTo(stored.conversion.weight()))
+        assertEquals("but the newer figure is retained for a notice", 0, BigDecimal("38").compareTo(stored.latestRemoteConversion!!.weight()))
+        assertTrue(stored.remoteConversionDiffers)
     }
 
     @Test
     fun `a background refresh does update an unverified remote portion unit`() = runTest {
         val unverifiedUnit = PortionUnit(
             id = 1, productBarcode = barcode, kind = PortionUnitKind.SLICE, customLabel = null,
-            amountPerUnit = BigDecimal("36"), basis = NutritionBasis.PER_100_G,
+            conversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
             dataSource = ProductDataOrigin.OPEN_FOOD_FACTS, verificationStatus = VerificationStatus.UNVERIFIED,
-            verifiedAt = null, originalRemoteAmountPerUnit = BigDecimal("36"),
-            latestRemoteAmountPerUnit = BigDecimal("36"), rawRemoteServingText = "1 slice (36 g)",
+            verifiedAt = null, originalRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
+            latestRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G), rawRemoteServingText = "1 slice (36 g)",
             createdAt = now, updatedAt = now,
         )
         val seededUnits = FakePortionUnitStore(listOf(unverifiedUnit))
-        val newCandidate = PortionUnitCandidate(PortionUnitKind.SLICE, BigDecimal("38"), NutritionBasis.PER_100_G, "1 slice (38 g)")
+        val newCandidate = PortionUnitCandidate(PortionUnitKind.SLICE, PortionConversion.WeightBased(BigDecimal("38"), NutritionBasis.PER_100_G), "1 slice (38 g)")
         val repository = repositoryOf(
             FakeLocal(listOf(product(PLAIN_OFF, "42"))),
             FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "42"), newCandidate)),
@@ -779,9 +780,140 @@ class ProductRepositoryTest {
         repository.refreshFromRemote(barcode)
 
         val stored = seededUnits.stored.getValue(1)
-        assertEquals(0, BigDecimal("38").compareTo(stored.amountPerUnit))
+        assertEquals(0, BigDecimal("38").compareTo(stored.conversion.weight()))
         // The very first remote value ever seen stays put, even though the effective amount moved.
-        assertEquals(0, BigDecimal("36").compareTo(stored.originalRemoteAmountPerUnit!!))
+        assertEquals(0, BigDecimal("36").compareTo(stored.originalRemoteConversion!!.weight()))
+    }
+
+    // ---- direct-carb portion units (spec §9, §12) ----------------------------------------------
+
+    @Test
+    fun `a remote direct-carb candidate becomes a stored direct-carb unit`() = runTest {
+        val local = FakeLocal()
+        val candidate = PortionUnitCandidate(
+            PortionUnitKind.SLICE,
+            PortionConversion.DirectCarbs(BigDecimal("12.6")),
+            "2 slices",
+        )
+        val repository = repositoryOf(
+            local,
+            FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "42"), candidate)),
+        )
+
+        repository.lookup(barcode)
+
+        val saved = portionUnits.stored.values.single { it.productBarcode == barcode }
+        assertEquals(PortionConversion.DirectCarbs(BigDecimal("12.6")), saved.conversion)
+        assertEquals(ProductDataOrigin.OPEN_FOOD_FACTS, saved.dataSource)
+        assertEquals(VerificationStatus.UNVERIFIED, saved.verificationStatus)
+    }
+
+    @Test
+    fun `a refresh cannot overwrite a user-verified direct-carb unit`() = runTest {
+        val verifiedUnit = PortionUnit(
+            id = 1, productBarcode = barcode, kind = PortionUnitKind.SLICE, customLabel = null,
+            conversion = PortionConversion.DirectCarbs(BigDecimal("14.2")),
+            dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
+            verificationStatus = VerificationStatus.USER_VERIFIED,
+            verifiedAt = now, originalRemoteConversion = null, latestRemoteConversion = null,
+            rawRemoteServingText = "2 slices", createdAt = now, updatedAt = now,
+        )
+        val seededUnits = FakePortionUnitStore(listOf(verifiedUnit))
+        val newCandidate = PortionUnitCandidate(
+            PortionUnitKind.SLICE,
+            PortionConversion.DirectCarbs(BigDecimal("20.0")),
+            "1 slice",
+        )
+        val repository = repositoryOf(
+            FakeLocal(listOf(product(PLAIN_OFF, "42"))),
+            FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "42"), newCandidate)),
+            units = seededUnits,
+        )
+
+        repository.refreshFromRemote(barcode)
+
+        val stored = seededUnits.stored.getValue(1)
+        assertEquals(
+            "the user's own figure stands, exactly as it would for a weight",
+            PortionConversion.DirectCarbs(BigDecimal("14.2")),
+            stored.conversion,
+        )
+        assertEquals(PortionConversion.DirectCarbs(BigDecimal("20.0")), stored.latestRemoteConversion)
+    }
+
+    @Test
+    fun `a refresh does update an unverified direct-carb unit`() = runTest {
+        val unverified = PortionUnit(
+            id = 1, productBarcode = barcode, kind = PortionUnitKind.SLICE, customLabel = null,
+            conversion = PortionConversion.DirectCarbs(BigDecimal("12.6")),
+            dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
+            verificationStatus = VerificationStatus.UNVERIFIED,
+            verifiedAt = null,
+            originalRemoteConversion = PortionConversion.DirectCarbs(BigDecimal("12.6")),
+            latestRemoteConversion = PortionConversion.DirectCarbs(BigDecimal("12.6")),
+            rawRemoteServingText = "2 slices", createdAt = now, updatedAt = now,
+        )
+        val seededUnits = FakePortionUnitStore(listOf(unverified))
+        val repository = repositoryOf(
+            FakeLocal(listOf(product(PLAIN_OFF, "42"))),
+            FakeRemote(
+                ProductFetchResult.Found(
+                    product(PLAIN_OFF, "42"),
+                    PortionUnitCandidate(
+                        PortionUnitKind.SLICE,
+                        PortionConversion.DirectCarbs(BigDecimal("13.1")),
+                        "2 slices",
+                    ),
+                ),
+            ),
+            units = seededUnits,
+        )
+
+        repository.refreshFromRemote(barcode)
+
+        assertEquals(
+            PortionConversion.DirectCarbs(BigDecimal("13.1")),
+            seededUnits.stored.getValue(1).conversion,
+        )
+    }
+
+    @Test
+    fun `a user can define a direct-carb unit without knowing any weight`() = runTest {
+        val repository = repositoryOf(
+            FakeLocal(listOf(product(PLAIN_OFF, "42"))),
+            FakeRemote(ProductFetchResult.NotFound),
+        )
+
+        val saved = repository.saveUserPortionUnit(
+            barcode = barcode,
+            kind = PortionUnitKind.SLICE,
+            conversion = PortionConversion.DirectCarbs(BigDecimal("14.2")),
+        )
+
+        assertEquals(PortionConversion.DirectCarbs(BigDecimal("14.2")), saved.conversion)
+        assertEquals(ProductDataOrigin.MANUAL, saved.dataSource)
+        assertEquals(VerificationStatus.USER_VERIFIED, saved.verificationStatus)
+    }
+
+    @Test
+    fun `a direct-carb meal item records no resolved grams`() = runTest {
+        val repository = repositoryOf(
+            FakeLocal(listOf(product(PLAIN_OFF, "42"))),
+            FakeRemote(ProductFetchResult.NotFound),
+        )
+
+        val item = repository.addDirectCarbMealItem(
+            productBarcode = barcode,
+            displayName = "Crackers",
+            portionDescription = "4 slices",
+            count = BigDecimal("4"),
+            carbsPerUnit = BigDecimal("14.2"),
+            exactCarbs = BigDecimal("56.8"),
+        )
+
+        assertEquals(MealItemKind.DIRECT_CARBS, item.kind)
+        assertNull("a counted portion must never carry a weight the app never knew", item.resolvedAmount)
+        assertEquals(0, BigDecimal("56.8").compareTo(repository.findMealItems().single().exactCarbs))
     }
 
     @Test
@@ -791,8 +923,8 @@ class ProductRepositoryTest {
             FakeRemote(ProductFetchResult.NotFound),
         )
 
-        repository.saveUserPortionUnit(barcode, PortionUnitKind.SLICE, BigDecimal("36"), NutritionBasis.PER_100_G)
-        repository.saveUserPortionUnit(barcode, PortionUnitKind.CUSTOM, BigDecimal("24"), NutritionBasis.PER_100_G, "Dumpling")
+        repository.saveUserPortionUnit(barcode, PortionUnitKind.SLICE, PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G))
+        repository.saveUserPortionUnit(barcode, PortionUnitKind.CUSTOM, PortionConversion.WeightBased(BigDecimal("24"), NutritionBasis.PER_100_G), "Dumpling")
 
         val units = repository.findPortionUnits(barcode)
         assertEquals(2, units.size)
@@ -802,10 +934,10 @@ class ProductRepositoryTest {
     fun `countable portion units work fully offline once cached`() = runTest {
         val cachedUnit = PortionUnit(
             id = 1, productBarcode = barcode, kind = PortionUnitKind.SLICE, customLabel = null,
-            amountPerUnit = BigDecimal("36"), basis = NutritionBasis.PER_100_G,
+            conversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
             dataSource = ProductDataOrigin.OPEN_FOOD_FACTS, verificationStatus = VerificationStatus.UNVERIFIED,
-            verifiedAt = null, originalRemoteAmountPerUnit = BigDecimal("36"),
-            latestRemoteAmountPerUnit = BigDecimal("36"), rawRemoteServingText = "1 slice (36 g)",
+            verifiedAt = null, originalRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
+            latestRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G), rawRemoteServingText = "1 slice (36 g)",
             createdAt = now, updatedAt = now,
         )
         val seededUnits = FakePortionUnitStore(listOf(cachedUnit))
@@ -858,6 +990,240 @@ class ProductRepositoryTest {
         assertEquals(InputMode.GRAMS, stored.lastInputMode)
         assertNull(stored.lastSelectedPortionUnitId)
         assertNull(stored.lastCount)
+    }
+
+    // ---- direct-carb usage must not corrupt lastPortion (correction pass §4) --------------------
+    //
+    // `lastPortion` is strictly a resolved mass/volume in the product's own basis unit — it
+    // pre-fills the grams field. A direct-carb portion resolves no weight at all, so there is
+    // nothing legitimate to write there. Writing the *count* instead (the old `parse(portionText)
+    // ?: count` fallback) silently reinterprets "4 slices" as "4 grams", and the next visit in
+    // grams mode pre-fills 4 g of bread.
+
+    @Test
+    fun `using a direct-carb portion leaves the remembered gram portion untouched`() = runTest {
+        val local = FakeLocal(
+            listOf(product(PLAIN_OFF, "42").copy(lastPortion = BigDecimal("65"))),
+        )
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repository.recordUse(
+            barcode,
+            portion = null,
+            mode = InputMode.PORTION_UNIT,
+            portionUnitId = 7,
+            count = BigDecimal("4"),
+        )
+
+        val stored = local.stored.getValue(barcode)
+        assertEquals(
+            "the previously remembered weight must survive a direct-carb use",
+            0,
+            BigDecimal("65").compareTo(stored.lastPortion!!),
+        )
+    }
+
+    @Test
+    fun `a direct-carb use still remembers the count and the unit`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repository.recordUse(
+            barcode,
+            portion = null,
+            mode = InputMode.PORTION_UNIT,
+            portionUnitId = 7,
+            count = BigDecimal("4"),
+        )
+
+        val stored = local.stored.getValue(barcode)
+        assertEquals(InputMode.PORTION_UNIT, stored.lastInputMode)
+        assertEquals(7L, stored.lastSelectedPortionUnitId)
+        assertEquals(0, BigDecimal("4").compareTo(stored.lastCount!!))
+    }
+
+    @Test
+    fun `a direct-carb use with no prior portion leaves lastPortion null`() = runTest {
+        // The count must not become the product's first remembered weight either — "4" arriving in
+        // an empty field is exactly as wrong as "4" overwriting 65.
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repository.recordUse(
+            barcode,
+            portion = null,
+            mode = InputMode.PORTION_UNIT,
+            portionUnitId = 7,
+            count = BigDecimal("4"),
+        )
+
+        assertNull(local.stored.getValue(barcode).lastPortion)
+    }
+
+    @Test
+    fun `a direct-carb use still records a usual portion keyed on the count`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repeat(2) {
+            repository.recordUse(
+                barcode,
+                portion = null,
+                mode = InputMode.PORTION_UNIT,
+                portionUnitId = 7,
+                count = BigDecimal("4"),
+            )
+        }
+
+        val usual = repository.usualPortions(barcode)
+        assertEquals(1, usual.size)
+        assertEquals(InputMode.PORTION_UNIT, usual.first().inputMode)
+        assertEquals(0, BigDecimal("4").compareTo(usual.first().amount))
+    }
+
+    @Test
+    fun `a weight-based countable use still updates lastPortion`() = runTest {
+        // The other half of the branch: a weight-based unit does resolve real grams, and those
+        // grams remain the right thing to remember.
+        val local = FakeLocal(
+            listOf(product(PLAIN_OFF, "42").copy(lastPortion = BigDecimal("65"))),
+        )
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
+
+        repository.recordUse(
+            barcode,
+            portion = BigDecimal("72"),
+            mode = InputMode.PORTION_UNIT,
+            portionUnitId = 7,
+            count = BigDecimal("2"),
+        )
+
+        val stored = local.stored.getValue(barcode)
+        assertEquals(0, BigDecimal("72").compareTo(stored.lastPortion!!))
+        assertEquals(0, BigDecimal("2").compareTo(stored.lastCount!!))
+    }
+
+    // ---- OCR portion capture for an unknown product (correction pass §2) ------------------------
+    //
+    // `portion_units.productBarcode` is a foreign key to `products.barcode`, so a portion cannot be
+    // stored before its product exists. The OCR save action was reachable whenever a barcode string
+    // existed — including the not-found screen, which has a real barcode and no product row — so the
+    // insert failed while the UI had already said "saved".
+    //
+    // `saveProductWithPortionUnit` is the one ordered boundary: product first, portion second, and
+    // the portion is only attempted if the product actually landed.
+
+    @Test
+    fun `creating a product with a pending portion persists the product before the portion`() = runTest {
+        val local = FakeLocal()
+        val units = FakePortionUnitStore()
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound), units = units)
+
+        val saved = repository.saveProductWithPortionUnit(
+            product = product(MANUAL, "42").copy(barcode = barcode),
+            kind = PortionUnitKind.SLICE,
+            conversion = PortionConversion.DirectCarbs(BigDecimal("14.2")),
+            origin = ProductDataOrigin.OCR,
+        )
+
+        assertTrue("the product must exist", local.stored.containsKey(barcode))
+        assertEquals(1, units.stored.size)
+        assertEquals(barcode, saved.productBarcode)
+        assertEquals(PortionUnitKind.SLICE, saved.kind)
+        assertEquals(
+            0,
+            BigDecimal("14.2").compareTo(
+                (saved.conversion as PortionConversion.DirectCarbs).carbsPerUnit,
+            ),
+        )
+    }
+
+    @Test
+    fun `an OCR-captured portion keeps OCR provenance and verified status`() = runTest {
+        // The user was reading the physical package, which is exactly what verification means here —
+        // but the provenance stays OCR, per the owner's provenance-vs-verification correction.
+        val local = FakeLocal()
+        val units = FakePortionUnitStore()
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound), units = units)
+
+        val saved = repository.saveProductWithPortionUnit(
+            product = product(MANUAL, "42").copy(barcode = barcode),
+            kind = PortionUnitKind.SLICE,
+            conversion = PortionConversion.DirectCarbs(BigDecimal("14.2")),
+            origin = ProductDataOrigin.OCR,
+        )
+
+        assertEquals(ProductDataOrigin.OCR, saved.dataSource)
+        assertEquals(VerificationStatus.USER_VERIFIED, saved.verificationStatus)
+    }
+
+    @Test
+    fun `a failed product write means no portion is attempted and nothing is left behind`() = runTest {
+        // The false-success case the UI must never render as saved. If the product write throws,
+        // the portion insert must not run at all — an orphaned unit would violate the FK anyway,
+        // and a "saved" message would be a plain lie.
+        val local = object : FakeLocal() {
+            override suspend fun save(product: Product) {
+                throw IllegalStateException("disk full")
+            }
+        }
+        val units = FakePortionUnitStore()
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound), units = units)
+
+        val failure = runCatching {
+            repository.saveProductWithPortionUnit(
+                product = product(MANUAL, "42").copy(barcode = barcode),
+                kind = PortionUnitKind.SLICE,
+                conversion = PortionConversion.DirectCarbs(BigDecimal("14.2")),
+                origin = ProductDataOrigin.OCR,
+            )
+        }
+
+        assertTrue("the failure must surface to the caller", failure.isFailure)
+        assertTrue("no portion may be written without its product", units.stored.isEmpty())
+    }
+
+    @Test
+    fun `a failed portion write surfaces rather than reporting success`() = runTest {
+        val local = FakeLocal()
+        val units = object : FakePortionUnitStore() {
+            override suspend fun save(unit: PortionUnit): PortionUnit {
+                throw IllegalStateException("constraint failed")
+            }
+        }
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound), units = units)
+
+        val failure = runCatching {
+            repository.saveProductWithPortionUnit(
+                product = product(MANUAL, "42").copy(barcode = barcode),
+                kind = PortionUnitKind.SLICE,
+                conversion = PortionConversion.DirectCarbs(BigDecimal("14.2")),
+                origin = ProductDataOrigin.OCR,
+            )
+        }
+
+        assertTrue("the caller must see the failure, not a success", failure.isFailure)
+        assertTrue("no portion was stored", units.stored.isEmpty())
+    }
+
+    @Test
+    fun `saving a portion for an existing product does not need the product creation path`() = runTest {
+        // The other branch of §2: the product row already exists, so the portion is saved directly
+        // and the result is awaited before anything is reported to the user.
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "42")))
+        val units = FakePortionUnitStore()
+        val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound), units = units)
+
+        val saved = repository.saveUserPortionUnit(
+            barcode = barcode,
+            kind = PortionUnitKind.SLICE,
+            conversion = PortionConversion.DirectCarbs(BigDecimal("14.2")),
+            origin = ProductDataOrigin.OCR,
+        )
+
+        assertEquals(1, units.stored.size)
+        assertEquals(barcode, saved.productBarcode)
+        assertEquals(ProductDataOrigin.OCR, saved.dataSource)
     }
 
     // ---- temporary meal (development-pass brief §7-§10) ----------------------------------------
@@ -1026,5 +1392,15 @@ class ProductRepositoryTest {
         }
 
         assertEquals(3, repository.usualPortions(barcode).size)
+    }
+
+    /**
+     * The gram weight of a weight-based conversion. Fails loudly on a direct-carb one rather than
+     * returning a default, so a test asserting about grams cannot silently pass on a unit that has
+     * none.
+     */
+    private fun PortionConversion.weight(): BigDecimal = when (this) {
+        is PortionConversion.WeightBased -> amountPerUnit
+        is PortionConversion.DirectCarbs -> error("expected a weight-based conversion, got $this")
     }
 }

@@ -7,6 +7,7 @@ import app.justthecarbs.data.ProductRepository
 import app.justthecarbs.data.RefreshOutcome
 import app.justthecarbs.domain.CarbCalculator
 import app.justthecarbs.domain.CarbResult
+import app.justthecarbs.domain.DirectCarbCalculator
 import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.LabelComparison
 import app.justthecarbs.domain.LabelVerdict
@@ -14,6 +15,7 @@ import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.MealTotal
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.PortionResolver
 import app.justthecarbs.domain.PortionUnit
@@ -39,6 +41,14 @@ data class ProductUiState(
     val product: Product? = null,
     val portionText: String = "",
     val result: CarbResult? = null,
+    /**
+     * The total for a direct-carb countable portion (spec §14).
+     *
+     * Separate from [result] rather than folded into it: [CarbResult] carries a non-null
+     * [NutritionBasis] meaning "per 100 g/ml", which is a claim this path cannot make — it never
+     * knew a weight. At most one of the two is non-null at any time.
+     */
+    val directCarbResult: BigDecimal? = null,
     val failure: Failure? = null,
     val barcode: String = "",
     /** True for a quick calculation that has not been saved as a product (§28). */
@@ -59,7 +69,7 @@ data class ProductUiState(
     val countText: String = "",
     val showAddPortionUnitForm: Boolean = false,
     /** Same immutability rule as [newerRemoteCarbs], scoped to the unit currently in use (§9). */
-    val newerRemotePortionUnitAmount: BigDecimal? = null,
+    val newerRemotePortionUnit: PortionConversion? = null,
     /** The inline "1 slice = [36] g" correction form is open (development-pass brief §3.3). */
     val correctingPortionUnit: Boolean = false,
     // ---- temporary meal (development-pass brief §7-§10) --------------------------------------
@@ -84,6 +94,21 @@ data class ProductUiState(
 ) {
     val canCalculate: Boolean get() = product != null
     val selectedPortionUnit: PortionUnit? get() = portionUnits.firstOrNull { it.id == selectedPortionUnitId }
+
+    /**
+     * The carbohydrate figure to display, whichever path produced it (correction pass §1).
+     *
+     * The screen needs one exact [BigDecimal], not a [CarbResult]: a direct-carb portion has a real
+     * answer but no per-100 basis, so it can never become a [CarbResult] without inventing the
+     * weight the whole path exists to avoid. Rendering from the exact value instead lets both paths
+     * share the result panel, its *Copy* action and *Add to meal* — before this, a valid direct-carb
+     * calculation showed the equation while the result stayed "pending" and its actions never
+     * appeared.
+     *
+     * At most one of the two is ever non-null, so the order here resolves nothing in practice; it is
+     * fixed only so the property is total.
+     */
+    val exactCarbs: BigDecimal? get() = result?.exact ?: directCarbResult
 
     /** Running total of the meal, or null when the meal is empty and the bar should not show. */
     val mealTotal: CarbResult? get() = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems)
@@ -202,9 +227,17 @@ class ProductViewModel(
                 ?: ""
 
             val portionText = if (resolvedMode == InputMode.PORTION_UNIT && resolvedSelectedId != null) {
-                val unit = units.first { it.id == resolvedSelectedId }
-                val count = PortionParser.parse(countText) ?: BigDecimal.ONE
-                PortionResolver.resolve(count, unit.amountPerUnit).stripTrailingZeros().toPlainString()
+                when (val conversion = units.first { it.id == resolvedSelectedId }.conversion) {
+                    is PortionConversion.WeightBased -> {
+                        val count = PortionParser.parse(countText) ?: BigDecimal.ONE
+                        PortionResolver.resolve(count, conversion.amountPerUnit)
+                            .stripTrailingZeros()
+                            .toPlainString()
+                    }
+                    // A restored direct-carb selection has no grams to pre-fill. The count alone
+                    // reproduces the calculation.
+                    is PortionConversion.DirectCarbs -> ""
+                }
             } else {
                 restoredPortion
                     ?: product.lastPortion?.stripTrailingZeros()?.toPlainString()
@@ -224,7 +257,14 @@ class ProductViewModel(
                     usualPortions = repository.usualPortions(product.barcode),
                 )
             }
-            recalculate()
+            // A restored countable selection must recalculate through its own conversion path;
+            // recalculate() alone only covers the grams field.
+            val restoredUnit = units.firstOrNull { it.id == resolvedSelectedId }
+            if (restoredUnit != null && resolvedMode == InputMode.PORTION_UNIT) {
+                recalculateFromCount(restoredUnit, countText)
+            } else {
+                recalculate()
+            }
 
             // Background refresh only, never on the path to a result: the value is already on screen
             // by now (§10.2).
@@ -244,9 +284,11 @@ class ProductViewModel(
             if (frozenSelected != null) {
                 val refreshed = repository.findPortionUnits(product.barcode)
                     .firstOrNull { it.id == frozenSelected.id }
-                val latest = refreshed?.latestRemoteAmountPerUnit
-                if (latest != null && latest.compareTo(frozenSelected.amountPerUnit) != 0) {
-                    _state.update { it.copy(newerRemotePortionUnitAmount = latest) }
+                // Asks the unit itself rather than comparing here, so this notice uses the same
+                // numeric comparison as everywhere else and a trailing zero cannot trigger it.
+                val changed = refreshed?.takeIf { it.remoteConversionDiffers }?.latestRemoteConversion
+                if (changed != null) {
+                    _state.update { it.copy(newerRemotePortionUnit = changed) }
                 }
             }
         }
@@ -274,7 +316,10 @@ class ProductViewModel(
     fun switchToGrams() {
         savedState[KEY_MODE] = InputMode.GRAMS.name
         savedState.remove<Long>(KEY_SELECTED_UNIT)
-        _state.update { it.copy(inputMode = InputMode.GRAMS, selectedPortionUnitId = null) }
+        _state.update {
+            it.copy(inputMode = InputMode.GRAMS, selectedPortionUnitId = null, directCarbResult = null)
+        }
+        recalculate()
     }
 
     fun switchToPortionUnit(unitId: Long) {
@@ -299,27 +344,42 @@ class ProductViewModel(
     private fun recalculateFromCount(unit: PortionUnit, countText: String) {
         val count = PortionParser.parse(countText)
         if (count == null) {
-            _state.update { it.copy(result = null) }
+            _state.update { it.copy(result = null, directCarbResult = null) }
             return
         }
-        val resolved = PortionResolver.resolve(count, unit.amountPerUnit)
-        savedState[KEY_PORTION] = resolved.stripTrailingZeros().toPlainString()
-        _state.update { it.copy(portionText = resolved.stripTrailingZeros().toPlainString()) }
-        recalculate()
+
+        when (val conversion = unit.conversion) {
+            is PortionConversion.WeightBased -> {
+                val resolved = PortionResolver.resolve(count, conversion.amountPerUnit)
+                val portionText = resolved.stripTrailingZeros().toPlainString()
+                savedState[KEY_PORTION] = portionText
+                _state.update { it.copy(portionText = portionText, directCarbResult = null) }
+                recalculate()
+            }
+            is PortionConversion.DirectCarbs -> {
+                // No grams exist on this path, so none are written into portionText. Filling it with
+                // a derived figure would put a weight the app never knew in front of the user.
+                _state.update {
+                    it.copy(
+                        result = null,
+                        directCarbResult = DirectCarbCalculator.exactCarbs(count, conversion.carbsPerUnit),
+                    )
+                }
+            }
+        }
     }
 
     fun showAddPortionUnitForm(show: Boolean) = _state.update { it.copy(showAddPortionUnitForm = show) }
 
     /** A unit the user defines themselves (§6). Always saved as verified — they read their own scale. */
-    fun addPortionUnit(kind: PortionUnitKind, amountPerUnit: BigDecimal, customLabel: String?) {
+    fun addPortionUnit(kind: PortionUnitKind, conversion: PortionConversion, customLabel: String?) {
         val product = _state.value.product ?: return
-        if (product.barcode.isEmpty() || amountPerUnit.signum() <= 0) return
+        if (product.barcode.isEmpty()) return
         viewModelScope.launch {
             val saved = repository.saveUserPortionUnit(
                 barcode = product.barcode,
                 kind = kind,
-                amountPerUnit = amountPerUnit,
-                basis = product.basis,
+                conversion = conversion,
                 customLabel = customLabel,
             )
             _state.update { it.copy(portionUnits = it.portionUnits + saved, showAddPortionUnitForm = false) }
@@ -348,11 +408,10 @@ class ProductViewModel(
      * unit's Open Food Facts provenance and its `originalRemoteAmountPerUnit` — it does not become a
      * second, competing user-defined unit.
      */
-    fun correctSelectedPortionUnit(confirmedAmountPerUnit: BigDecimal) {
+    fun correctSelectedPortionUnit(confirmedConversion: PortionConversion) {
         val unit = _state.value.selectedPortionUnit ?: return
-        if (confirmedAmountPerUnit.signum() <= 0) return
         viewModelScope.launch {
-            val verified = repository.verifyPortionUnit(unit.id, confirmedAmountPerUnit)
+            val verified = repository.verifyPortionUnit(unit.id, confirmedConversion)
             _state.update { st ->
                 st.copy(
                     portionUnits = st.portionUnits.map { if (it.id == verified.id) verified else it },
@@ -375,7 +434,7 @@ class ProductViewModel(
             _state.update { st ->
                 st.copy(
                     portionUnits = st.portionUnits.map { if (it.id == applied.id) applied else it },
-                    newerRemotePortionUnitAmount = null,
+                    newerRemotePortionUnit = null,
                 )
             }
             if (_state.value.selectedPortionUnitId == applied.id) {
@@ -384,7 +443,7 @@ class ProductViewModel(
         }
     }
 
-    fun dismissNewerRemotePortionUnit() = _state.update { it.copy(newerRemotePortionUnitAmount = null) }
+    fun dismissNewerRemotePortionUnit() = _state.update { it.copy(newerRemotePortionUnit = null) }
 
     // ---- temporary meal (development-pass brief §7-§11) ----------------------------------------
 
@@ -401,18 +460,34 @@ class ProductViewModel(
      */
     fun addCurrentToMeal(portionDescription: String) {
         val product = _state.value.product ?: return
-        val result = _state.value.result ?: return
-        val resolved = PortionParser.parse(_state.value.portionText) ?: return
+        val barcode = product.barcode.takeIf { !_state.value.unsaved }
+        val directCarbs = _state.value.directCarbResult
+        val conversion = _state.value.selectedPortionUnit?.conversion
+
         viewModelScope.launch {
-            repository.addMealItem(
-                productBarcode = product.barcode.takeIf { !_state.value.unsaved },
-                displayName = product.name,
-                portionDescription = portionDescription,
-                resolvedAmount = resolved,
-                basis = product.basis,
-                carbsPer100 = product.carbsPer100,
-                exactCarbs = result.exact,
-            )
+            if (directCarbs != null && conversion is PortionConversion.DirectCarbs) {
+                val count = PortionParser.parse(_state.value.countText) ?: return@launch
+                repository.addDirectCarbMealItem(
+                    productBarcode = barcode,
+                    displayName = product.name,
+                    portionDescription = portionDescription,
+                    count = count,
+                    carbsPerUnit = conversion.carbsPerUnit,
+                    exactCarbs = directCarbs,
+                )
+            } else {
+                val result = _state.value.result ?: return@launch
+                val resolved = PortionParser.parse(_state.value.portionText) ?: return@launch
+                repository.addMealItem(
+                    productBarcode = barcode,
+                    displayName = product.name,
+                    portionDescription = portionDescription,
+                    resolvedAmount = resolved,
+                    basis = product.basis,
+                    carbsPer100 = product.carbsPer100,
+                    exactCarbs = result.exact,
+                )
+            }
             // Adding to a meal is the strongest possible signal that this portion is real — stronger
             // than the debounced typing signal — so it counts towards *Usual* too (§13).
             rememberUsage()
@@ -453,17 +528,43 @@ class ProductViewModel(
         }
     }
 
-    /** Remember the portion once the user has actually acted on the result (§20, §21, §11-§12). */
+    /**
+     * Remember the portion once the user has actually acted on the result (§20, §21, §11-§12).
+     *
+     * Branches on the selected unit's [PortionConversion] rather than falling back through nullable
+     * values (correction pass §4). The old form was `parse(portionText) ?: count`, which for a
+     * direct-carb portion wrote the *count* into `lastPortion`: using 4 slices recorded "4" as the
+     * product's remembered gram amount, so the next visit in grams mode pre-filled 4 g of bread.
+     *
+     * Reading `portionText` at all is unsafe on the direct-carb path for a second reason — it can
+     * still hold grams left over from an earlier weight-based selection this session, which would be
+     * recorded as if the user had just chosen it. The typed branch below never reads it there.
+     */
     fun rememberUsage() {
         val product = _state.value.product ?: return
-        val portion = PortionParser.parse(_state.value.portionText) ?: return
         if (_state.value.unsaved || product.barcode.isEmpty()) return
         val mode = _state.value.inputMode
-        val count = if (mode == InputMode.PORTION_UNIT) PortionParser.parse(_state.value.countText) else null
+        val conversion = _state.value.selectedPortionUnit?.conversion
+
+        val count = if (mode == InputMode.PORTION_UNIT) {
+            PortionParser.parse(_state.value.countText)
+        } else {
+            null
+        }
+
+        val resolvedPortion = when {
+            // No weight exists on this path and none may be invented — not even from the count.
+            mode == InputMode.PORTION_UNIT && conversion is PortionConversion.DirectCarbs -> null
+            else -> PortionParser.parse(_state.value.portionText)
+        }
+
+        // Nothing usable to record at all: no weight and, in countable mode, no count either.
+        if (resolvedPortion == null && count == null) return
+
         viewModelScope.launch {
             repository.recordUse(
                 product.barcode,
-                portion,
+                resolvedPortion,
                 mode = mode,
                 portionUnitId = _state.value.selectedPortionUnitId,
                 count = count,

@@ -38,4 +38,27 @@ object NutritionValueValidator {
         // would produce.
         return BigDecimal.valueOf(raw)
     }
+
+    /**
+     * A serving's total carbohydrate, which has no fixed size to bound it (spec §7).
+     *
+     * [MAX_PER_100_G]'s reasoning — "100 g of anything cannot hold more than 100 g of carbohydrate"
+     * — is arithmetic about a fixed 100 g and does not transfer: a 500 g ready meal can legitimately
+     * carry well over 100 g. So this only rejects what is clearly corrupt rather than merely large,
+     * because a false rejection here silently costs the user the countable-portion path.
+     */
+    fun validateCarbsPerServing(raw: Double?): BigDecimal? {
+        if (raw == null) return null
+        if (raw.isNaN() || raw.isInfinite()) return null
+        if (raw < 0.0) return null
+        if (raw > MAX_PER_SERVING) return null
+
+        return BigDecimal.valueOf(raw)
+    }
+
+    /**
+     * No edible serving holds this much carbohydrate; a figure above it is a unit error or corrupt
+     * data. Deliberately far above any real serving so genuine large portions are never refused.
+     */
+    private const val MAX_PER_SERVING = 1_000.0
 }

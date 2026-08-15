@@ -85,4 +85,38 @@ class NutritionValueValidatorTest {
     fun `rejects a physically impossible value per 100 ml`() {
         assertNull(NutritionValueValidator.validateCarbsPer100(201.0, NutritionBasis.PER_100_ML))
     }
+
+    // ---- per-serving carbohydrate (spec §7) ----------------------------------------------------
+
+    @Test
+    fun `a serving carbohydrate figure above 100 is accepted`() {
+        // A 500 g ready meal legitimately holds more than 100 g of carbohydrate. The per-100 ceiling
+        // is arithmetic about a fixed 100 g; a serving has no such fixed size.
+        assertEquals(
+            0,
+            BigDecimal("140.5").compareTo(NutritionValueValidator.validateCarbsPerServing(140.5)),
+        )
+    }
+
+    @Test
+    fun `a serving carbohydrate figure is rejected when clearly corrupt`() {
+        assertNull(NutritionValueValidator.validateCarbsPerServing(50_000.0))
+    }
+
+    @Test
+    fun `a negative or non-finite serving figure is rejected`() {
+        assertNull(NutritionValueValidator.validateCarbsPerServing(-1.0))
+        assertNull(NutritionValueValidator.validateCarbsPerServing(Double.NaN))
+        assertNull(NutritionValueValidator.validateCarbsPerServing(Double.POSITIVE_INFINITY))
+        assertNull(NutritionValueValidator.validateCarbsPerServing(null))
+    }
+
+    @Test
+    fun `a zero-carb serving is accepted`() {
+        // A sugar-free sachet really does contain zero. Rejecting it would deny a valid unit.
+        assertEquals(
+            0,
+            BigDecimal.ZERO.compareTo(NutritionValueValidator.validateCarbsPerServing(0.0)),
+        )
+    }
 }

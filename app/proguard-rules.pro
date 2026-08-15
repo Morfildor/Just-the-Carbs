@@ -65,8 +65,9 @@
 
 # ---- Domain ----------------------------------------------------------------------------------
 # Enum values are looked up by name when reading them back out of the database
-# (NutritionBasis.valueOf, ProductDataOrigin.valueOf, VerificationStatus.valueOf). Obfuscating
-# the constant names would break every stored row.
+# (NutritionBasis.valueOf, ProductDataOrigin.valueOf, VerificationStatus.valueOf, and since v6
+# MealItemKind.valueOf). Obfuscating the constant names would break every stored row. The wildcard
+# already covers new domain enums, so adding one needs no rule change — only this note.
 -keepclassmembers enum app.justthecarbs.domain.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);

@@ -106,6 +106,21 @@
     <string name="portion_changed_title" tools:ignore="MissingTranslation">Online portion changed</string>
     <string name="portion_changed_body" tools:ignore="MissingTranslation">The database now reports %1$s %2$s per %3$s. Your current value is unchanged.</string>
     <string name="portion_changed_apply" tools:ignore="MissingTranslation">Use new value</string>
+    <!-- Direct-carb countable portions (spec §14/§15): a unit whose carbohydrate content is known
+         but whose weight is not. No gram figure appears anywhere on this path. -->
+    <string name="product_direct_carb_equation" tools:ignore="MissingTranslation">%1$s %2$s × %3$s g carbs</string>
+    <string name="product_unit_mode_weight" tools:ignore="MissingTranslation">Weight</string>
+    <string name="product_unit_mode_carbs" tools:ignore="MissingTranslation">Carbs per unit</string>
+    <string name="product_unit_carbs_suffix" tools:ignore="MissingTranslation">g carbs</string>
+    <string name="product_portion_unit_contains" tools:ignore="MissingTranslation">1 %1$s contains</string>
+    <string name="product_one_unit_contains" tools:ignore="MissingTranslation">1 %1$s contains</string>
+    <string name="portion_changed_carbs_body" tools:ignore="MissingTranslation">The database now reports %1$s g of carbohydrate per %2$s. Your current value is unchanged.</string>
+    <!-- e.g. "Save as a slice portion" — offered only when a still capture named a countable unit. -->
+    <string name="label_save_as_portion_unit" tools:ignore="MissingTranslation">Save as a %1$s portion</string>
+    <string name="label_portion_unit_saved" tools:ignore="MissingTranslation">✓ Portion saved</string>
+    <string name="label_portion_unit_saving" tools:ignore="MissingTranslation">Saving portion…</string>
+    <string name="label_portion_unit_failed" tools:ignore="MissingTranslation">Could not save the portion. Try again.</string>
+    <string name="label_portion_unit_pending" tools:ignore="MissingTranslation">Portion will be saved with the new product</string>
 
     <!--
       Temporary meal (development-pass brief §7-§10). English only, same reasoning as the

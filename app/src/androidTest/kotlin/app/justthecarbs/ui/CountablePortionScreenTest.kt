@@ -25,6 +25,7 @@ import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.PortionResolver
 import app.justthecarbs.domain.PortionUnit
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
@@ -94,13 +95,12 @@ class CountablePortionScreenTest {
         productBarcode = "5449000000996",
         kind = PortionUnitKind.SLICE,
         customLabel = null,
-        amountPerUnit = BigDecimal(amountPerUnit),
-        basis = NutritionBasis.PER_100_G,
+        conversion = PortionConversion.WeightBased(BigDecimal(amountPerUnit), NutritionBasis.PER_100_G),
         dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
         verificationStatus = verification,
         verifiedAt = if (verification == VerificationStatus.USER_VERIFIED) now else null,
-        originalRemoteAmountPerUnit = BigDecimal(amountPerUnit),
-        latestRemoteAmountPerUnit = BigDecimal(amountPerUnit),
+        originalRemoteConversion = PortionConversion.WeightBased(BigDecimal(amountPerUnit), NutritionBasis.PER_100_G),
+        latestRemoteConversion = PortionConversion.WeightBased(BigDecimal(amountPerUnit), NutritionBasis.PER_100_G),
         rawRemoteServingText = "1 slice ($amountPerUnit g)",
         createdAt = now,
         updatedAt = now,
@@ -118,13 +118,13 @@ class CountablePortionScreenTest {
             var selectedUnitId by remember { mutableStateOf<Long?>(null) }
             var units by remember { mutableStateOf(initialUnits) }
             var showAddForm by remember { mutableStateOf(false) }
-            var newerRemoteAmount by remember { mutableStateOf<BigDecimal?>(null) }
+            var newerRemoteConversion by remember { mutableStateOf<PortionConversion?>(null) }
             var correcting by remember { mutableStateOf(false) }
 
             fun recalcFromCount(unit: PortionUnit, text: String) {
                 val count = PortionParser.parse(text)
                 portionText = if (count == null) "" else {
-                    PortionResolver.resolve(count, unit.amountPerUnit).stripTrailingZeros().toPlainString()
+                    PortionResolver.resolve(count, unit.weight()).stripTrailingZeros().toPlainString()
                 }
             }
 
@@ -142,7 +142,7 @@ class CountablePortionScreenTest {
                         selectedPortionUnitId = selectedUnitId,
                         portionUnits = units,
                         showAddPortionUnitForm = showAddForm,
-                        newerRemotePortionUnitAmount = newerRemoteAmount,
+                        newerRemotePortionUnit = newerRemoteConversion,
                         correctingPortionUnit = correcting,
                         result = result,
                         barcode = product.barcode,
@@ -173,19 +173,18 @@ class CountablePortionScreenTest {
                         units.firstOrNull { it.id == selectedUnitId }?.let { recalcFromCount(it, text) }
                     },
                     onShowAddPortionUnitForm = { showAddForm = it },
-                    onAddPortionUnit = { kind, amount, label ->
+                    onAddPortionUnit = { kind, conversion, label ->
                         val saved = PortionUnit(
                             id = (units.maxOfOrNull { it.id } ?: 0) + 1,
                             productBarcode = product.barcode,
                             kind = kind,
                             customLabel = label,
-                            amountPerUnit = amount,
-                            basis = product.basis,
+                            conversion = conversion,
                             dataSource = ProductDataOrigin.MANUAL,
                             verificationStatus = VerificationStatus.USER_VERIFIED,
                             verifiedAt = now,
-                            originalRemoteAmountPerUnit = null,
-                            latestRemoteAmountPerUnit = null,
+                            originalRemoteConversion = null,
+                            latestRemoteConversion = null,
                             rawRemoteServingText = null,
                             createdAt = now,
                             updatedAt = now,
@@ -202,12 +201,12 @@ class CountablePortionScreenTest {
                     // records that they did (§3.3).
                     onVerifyPortionUnit = { correcting = true },
                     onCancelPortionUnitCorrection = { correcting = false },
-                    onCorrectPortionUnit = { amount ->
+                    onCorrectPortionUnit = { corrected ->
                         val id = selectedUnitId ?: return@ProductScreen
                         units = units.map {
                             if (it.id == id) {
                                 it.copy(
-                                    amountPerUnit = amount,
+                                    conversion = corrected,
                                     verificationStatus = VerificationStatus.USER_VERIFIED,
                                     verifiedAt = now,
                                 )
@@ -220,12 +219,12 @@ class CountablePortionScreenTest {
                     },
                     onApplyNewerRemotePortionUnit = {
                         val id = selectedUnitId ?: return@ProductScreen
-                        val newer = newerRemoteAmount ?: return@ProductScreen
-                        units = units.map { if (it.id == id) it.copy(amountPerUnit = newer) else it }
-                        newerRemoteAmount = null
+                        val newer = newerRemoteConversion ?: return@ProductScreen
+                        units = units.map { if (it.id == id) it.copy(conversion = newer) else it }
+                        newerRemoteConversion = null
                         units.firstOrNull { it.id == id }?.let { recalcFromCount(it, countText) }
                     },
-                    onDismissNewerRemotePortionUnit = { newerRemoteAmount = null },
+                    onDismissNewerRemotePortionUnit = { newerRemoteConversion = null },
                 )
             }
         }
@@ -351,9 +350,10 @@ class CountablePortionScreenTest {
             initialUnits = listOf(
                 PortionUnit(
                     id = 9, productBarcode = "5449000000996", kind = PortionUnitKind.CUSTOM,
-                    customLabel = "Dumpling", amountPerUnit = BigDecimal("24"), basis = NutritionBasis.PER_100_G,
+                    customLabel = "Dumpling",
+                    conversion = PortionConversion.WeightBased(BigDecimal("24"), NutritionBasis.PER_100_G),
                     dataSource = ProductDataOrigin.MANUAL, verificationStatus = VerificationStatus.USER_VERIFIED,
-                    verifiedAt = now, originalRemoteAmountPerUnit = null, latestRemoteAmountPerUnit = null,
+                    verifiedAt = now, originalRemoteConversion = null, latestRemoteConversion = null,
                     rawRemoteServingText = null, createdAt = now, updatedAt = now,
                 ),
             ),
@@ -456,10 +456,14 @@ class CountablePortionScreenTest {
     private fun showCalculatorWithNotice(product: Product, unit: PortionUnit, newerAmount: BigDecimal) {
         compose.setContent {
             var units by remember { mutableStateOf(listOf(unit)) }
-            var newerRemoteAmount by remember { mutableStateOf<BigDecimal?>(newerAmount) }
+            var newerRemoteConversion by remember {
+                mutableStateOf<PortionConversion?>(
+                    PortionConversion.WeightBased(newerAmount, NutritionBasis.PER_100_G),
+                )
+            }
             val countText = "2"
             val selectedUnit = units.first()
-            val portionText = PortionResolver.resolve(BigDecimal("2"), selectedUnit.amountPerUnit)
+            val portionText = PortionResolver.resolve(BigDecimal("2"), selectedUnit.weight())
                 .stripTrailingZeros().toPlainString()
             val result = CarbCalculator.calculate(
                 product.carbsPer100,
@@ -477,7 +481,7 @@ class CountablePortionScreenTest {
                         inputMode = InputMode.PORTION_UNIT,
                         selectedPortionUnitId = selectedUnit.id,
                         portionUnits = units,
-                        newerRemotePortionUnitAmount = newerRemoteAmount,
+                        newerRemotePortionUnit = newerRemoteConversion,
                         result = result,
                         barcode = product.barcode,
                     ),
@@ -495,15 +499,19 @@ class CountablePortionScreenTest {
                     onEnterManually = {},
                     onRetry = {},
                     onApplyNewerRemotePortionUnit = {
-                        val newer = newerRemoteAmount ?: return@ProductScreen
-                        units = units.map { it.copy(amountPerUnit = newer) }
-                        newerRemoteAmount = null
+                        val newer = newerRemoteConversion ?: return@ProductScreen
+                        units = units.map { it.copy(conversion = newer) }
+                        newerRemoteConversion = null
                     },
-                    onDismissNewerRemotePortionUnit = { newerRemoteAmount = null },
+                    onDismissNewerRemotePortionUnit = { newerRemoteConversion = null },
                 )
             }
         }
     }
 
     private fun countField() = androidx.compose.ui.test.hasSetTextAction()
+
+    /** The harness only exercises weight-based units; a direct-carb one here is a test bug. */
+    private fun PortionUnit.weight(): BigDecimal =
+        (conversion as PortionConversion.WeightBased).amountPerUnit
 }

@@ -1,8 +1,12 @@
 package app.justthecarbs.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
@@ -20,11 +24,15 @@ import app.justthecarbs.AppContainer
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.MealTotal
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionConversion
+import app.justthecarbs.domain.PortionParser
+import app.justthecarbs.domain.PortionUnitKind
 import java.math.BigDecimal
 import app.justthecarbs.ui.home.HomeScreen
 import app.justthecarbs.ui.home.HomeViewModel
 import app.justthecarbs.ui.manual.ManualEntryScreen
 import app.justthecarbs.ui.manual.ManualEntryViewModel
+import app.justthecarbs.ui.manual.PendingPortionUnit
 import app.justthecarbs.ui.meal.MealScreen
 import app.justthecarbs.ui.meal.MealViewModel
 import app.justthecarbs.ui.onboarding.OnboardingScreen
@@ -33,6 +41,7 @@ import app.justthecarbs.ui.search.SearchScreen
 import app.justthecarbs.ui.search.SearchViewModel
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductViewModel
+import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.ui.scan.LabelScannerScreen
 import app.justthecarbs.ui.scan.ScannerScreen
 import app.justthecarbs.ui.settings.SettingsScreen
@@ -49,12 +58,40 @@ import kotlinx.coroutines.launch
 private const val KEY_DETECTED_CARBS = "detected_carbs"
 private const val KEY_DETECTED_BASIS = "detected_basis"
 
+/**
+ * Rebuilds a pending portion from its navigation arguments (correction pass §2).
+ *
+ * Returns null unless the arguments describe one complete, valid conversion. A half-parsed portion
+ * is discarded rather than repaired: the two shapes are kept apart on the wire precisely so a weight
+ * can never be read back as a carbohydrate figure, and guessing here would undo that.
+ */
+private fun pendingPortionUnitFrom(
+    kindName: String,
+    carbsPerUnit: String,
+    weightPerUnit: String,
+    weightBasis: String,
+): PendingPortionUnit? {
+    val kind = PortionUnitKind.entries.firstOrNull { it.name == kindName } ?: return null
+
+    val weight = PortionParser.parse(weightPerUnit)
+    val basis = NutritionBasis.entries.firstOrNull { it.name == weightBasis }
+    if (weight != null && basis != null && weight.signum() > 0) {
+        return PendingPortionUnit(kind, PortionConversion.WeightBased(weight, basis))
+    }
+
+    val carbs = PortionParser.parse(carbsPerUnit) ?: return null
+    if (carbs.signum() < 0) return null
+    return PendingPortionUnit(kind, PortionConversion.DirectCarbs(carbs))
+}
+
 private object Routes {
     const val ONBOARDING = "onboarding"
     const val HOME = "home"
     const val SCAN = "scan"
     const val PRODUCT = "product/{barcode}"
-    const val MANUAL = "manual?barcode={barcode}&carbs={carbs}&basis={basis}"
+    const val MANUAL =
+        "manual?barcode={barcode}&carbs={carbs}&basis={basis}" +
+            "&unitKind={unitKind}&unitCarbs={unitCarbs}&unitWeight={unitWeight}&unitBasis={unitBasis}"
     const val LABEL_SCAN = "labelscan?barcode={barcode}&compare={compare}"
     const val SETTINGS = "settings"
     const val MEAL = "meal"
@@ -63,7 +100,31 @@ private object Routes {
     fun product(barcode: String) = "product/$barcode"
 
     fun manual(barcode: String? = null, carbs: String = "", basis: String = "") =
-        "manual?barcode=${barcode.orEmpty()}&carbs=$carbs&basis=$basis"
+        "manual?barcode=${barcode.orEmpty()}&carbs=$carbs&basis=$basis" +
+            "&unitKind=&unitCarbs=&unitWeight=&unitBasis="
+
+    /**
+     * Manual entry carrying a portion accepted from OCR, for a product that does not exist yet
+     * (correction pass §2).
+     *
+     * The portion travels as arguments rather than in a `savedStateHandle`, for the same reason the
+     * detected carbohydrate figure does: it must survive process death, and the route the user is
+     * being sent to is precisely where the product it depends on gets created.
+     *
+     * The two conversion shapes are kept distinct in the arguments — carbs-per-unit and
+     * weight-per-unit are never collapsed into one field, so a weight can never be read back as a
+     * carbohydrate figure.
+     */
+    fun manualWithPendingPortion(
+        barcode: String?,
+        carbs: String,
+        basis: String,
+        unitKind: String,
+        unitCarbs: String = "",
+        unitWeight: String = "",
+        unitBasis: String = "",
+    ) = "manual?barcode=${barcode.orEmpty()}&carbs=$carbs&basis=$basis" +
+        "&unitKind=$unitKind&unitCarbs=$unitCarbs&unitWeight=$unitWeight&unitBasis=$unitBasis"
 
     /**
      * [compare]: whether a product is already loaded on the screen underneath, so a reading comes
@@ -332,17 +393,34 @@ fun JustTheCarbsNavHost(
                 navArgument("barcode") { type = NavType.StringType; defaultValue = "" },
                 navArgument("carbs") { type = NavType.StringType; defaultValue = "" },
                 navArgument("basis") { type = NavType.StringType; defaultValue = "" },
+                navArgument("unitKind") { type = NavType.StringType; defaultValue = "" },
+                navArgument("unitCarbs") { type = NavType.StringType; defaultValue = "" },
+                navArgument("unitWeight") { type = NavType.StringType; defaultValue = "" },
+                navArgument("unitBasis") { type = NavType.StringType; defaultValue = "" },
             ),
         ) { entry ->
             val barcode = entry.arguments?.getString("barcode").orEmpty()
             val carbs = entry.arguments?.getString("carbs").orEmpty()
             val basis = entry.arguments?.getString("basis").orEmpty()
+            val unitKind = entry.arguments?.getString("unitKind").orEmpty()
+            val unitCarbs = entry.arguments?.getString("unitCarbs").orEmpty()
+            val unitWeight = entry.arguments?.getString("unitWeight").orEmpty()
+            val unitBasis = entry.arguments?.getString("unitBasis").orEmpty()
             val viewModel: ManualEntryViewModel =
                 viewModel(factory = factory { ManualEntryViewModel(container.productRepository) })
             val state by viewModel.state.collectAsStateWithLifecycle()
 
+            // A portion accepted from OCR for a product that does not exist yet (correction §2).
+            // Rebuilt here rather than being persisted at the scanner, because the row it depends
+            // on is created by this very screen.
+            val pendingPortion = remember(unitKind, unitCarbs, unitWeight, unitBasis) {
+                pendingPortionUnitFrom(unitKind, unitCarbs, unitWeight, unitBasis)
+            }
+
             // A confirmed OCR reading arrives pre-filled; the user still supplies the name (§29).
-            LaunchedEffect(barcode, carbs, basis) { viewModel.start(barcode, carbs, basis) }
+            LaunchedEffect(barcode, carbs, basis, pendingPortion) {
+                viewModel.start(barcode, carbs, basis, pendingPortion)
+            }
 
             // Saving lands the user straight on the calculator: the point of entering a product is
             // to get a number, not to admire a saved record (§70).
@@ -375,6 +453,19 @@ fun JustTheCarbsNavHost(
         ) { entry ->
             val barcode = entry.arguments?.getString("barcode").orEmpty()
             val compare = entry.arguments?.getBoolean("compare") ?: false
+
+            // Whether a `products` row actually exists for this barcode — the fact the portion's
+            // foreign key depends on (correction pass §2). A non-empty barcode is NOT the same
+            // question: the not-found screen has a real barcode and no row, and saving a portion
+            // there failed while the UI reported success. Null while the check is in flight, which
+            // keeps both save paths closed rather than guessing one.
+            var productExistsCheck by remember(barcode) { mutableStateOf<Boolean?>(null) }
+            LaunchedEffect(barcode) {
+                productExistsCheck = barcode.isNotEmpty() &&
+                    container.productRepository.findLocal(barcode) != null
+            }
+            val productExists = productExistsCheck == true
+
             LabelScannerScreen(
                 onUseValue = { carbs, basis ->
                     // For a product already on the calculator, a label reading comes back as a
@@ -406,6 +497,50 @@ fun JustTheCarbsNavHost(
                     }
                 },
                 onClose = { navController.popBackStack() },
+                // Two genuinely different situations, decided by whether the product row actually
+                // exists rather than by whether the barcode string is non-empty (correction §2).
+                // A not-found product screen has a real barcode and no product row, and that is
+                // exactly the case where capturing a countable portion matters most.
+                //
+                // The scan is the user reading their own package, so the unit is stored as verified
+                // with OCR provenance — the same provenance/verification split products already use.
+                onSavePortionUnit = if (!productExists) {
+                    null
+                } else {
+                    { kind, conversion ->
+                        // Suspends until the write completes and reports what happened, so the
+                        // scanner can only show "saved" once the row is genuinely on disk.
+                        runCatching {
+                            container.productRepository.saveUserPortionUnit(
+                                barcode = barcode,
+                                kind = kind,
+                                conversion = conversion,
+                                origin = ProductDataOrigin.OCR,
+                            )
+                        }.isSuccess
+                    }
+                },
+                // No product row yet: carry the accepted portion into creation instead of writing
+                // it against a foreign key with nothing to point at.
+                onCarryPendingPortionUnit = if (productExists) {
+                    null
+                } else {
+                    { kind, conversion ->
+                        val weight = conversion as? PortionConversion.WeightBased
+                        val direct = conversion as? PortionConversion.DirectCarbs
+                        navController.navigate(
+                            Routes.manualWithPendingPortion(
+                                barcode = barcode,
+                                carbs = "",
+                                basis = "",
+                                unitKind = kind.name,
+                                unitCarbs = direct?.carbsPerUnit?.toPlainString().orEmpty(),
+                                unitWeight = weight?.amountPerUnit?.toPlainString().orEmpty(),
+                                unitBasis = weight?.basis?.name.orEmpty(),
+                            ),
+                        ) { popUpTo(Routes.LABEL_SCAN) { inclusive = true } }
+                    }
+                },
             )
         }
 

@@ -71,7 +71,7 @@ class MealScreenTest {
         description: String,
         carbs: String,
         exact: String,
-    ) = MealItem(
+    ) = MealItem.weightBased(
         id = id,
         productBarcode = "8712100849060",
         displayName = name,
@@ -209,7 +209,7 @@ class MealScreenTest {
 
             fun add(description: String) {
                 val exact = result?.exact ?: return
-                items = items + MealItem(
+                items = items + MealItem.weightBased(
                     id = items.size + 1L,
                     productBarcode = p.barcode,
                     displayName = p.name,

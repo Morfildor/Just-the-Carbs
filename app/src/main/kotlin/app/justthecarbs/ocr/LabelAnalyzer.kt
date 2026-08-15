@@ -75,13 +75,18 @@ class LabelAnalyzer(
     /**
      * Reads a high-resolution cache file, reports even `NotFound`, then deletes the file.
      * The file is never inserted into MediaStore and never survives completion or setup failure.
+     *
+     * Reports the whole [NutritionParseReport] rather than just its reading, so a still capture can
+     * also surface a per-serving figure the user may save as a countable portion (spec §17). The
+     * live-frame path below is deliberately unchanged and still deals only in [LabelReading] — a
+     * camera frame must never be able to persist anything.
      */
-    fun analyzeStill(context: Context, file: File, onComplete: (LabelReading) -> Unit) {
+    fun analyzeStill(context: Context, file: File, onComplete: (NutritionParseReport) -> Unit) {
         val request = StillRequest(context.applicationContext, file, onComplete)
         val replaced = pendingStill.getAndSet(request)
         if (replaced != null) {
             replaced.file.delete()
-            replaced.onComplete(LabelReading.NotFound)
+            replaced.onComplete(NutritionParseReport(LabelReading.NotFound, emptyList()))
         }
         startPendingStillIfPossible()
     }
@@ -105,11 +110,11 @@ class LabelAnalyzer(
             val input = InputImage.fromFilePath(request.context, Uri.fromFile(request.file))
             recognizer.process(input)
                 .addOnSuccessListener { text ->
-                    request.onComplete(parse(text, dimensions.outWidth, dimensions.outHeight, started).reading)
+                    request.onComplete(parse(text, dimensions.outWidth, dimensions.outHeight, started))
                 }
                 .addOnFailureListener {
                     OcrDiagnosticsLogger.failure("Still OCR failed", it)
-                    request.onComplete(LabelReading.NotFound)
+                    request.onComplete(NutritionParseReport(LabelReading.NotFound, emptyList()))
                 }
                 .addOnCompleteListener {
                     if (!request.file.delete()) {
@@ -121,7 +126,7 @@ class LabelAnalyzer(
         } catch (error: Exception) {
             OcrDiagnosticsLogger.failure("Could not prepare still image", error)
             request.file.delete()
-            request.onComplete(LabelReading.NotFound)
+            request.onComplete(NutritionParseReport(LabelReading.NotFound, emptyList()))
             inFlight.set(false)
             startPendingStillIfPossible()
         }
@@ -143,6 +148,6 @@ class LabelAnalyzer(
     private data class StillRequest(
         val context: Context,
         val file: File,
-        val onComplete: (LabelReading) -> Unit,
+        val onComplete: (NutritionParseReport) -> Unit,
     )
 }

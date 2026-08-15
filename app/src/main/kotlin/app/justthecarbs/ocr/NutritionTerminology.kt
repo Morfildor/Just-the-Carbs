@@ -20,7 +20,9 @@ data class NutritionTerms(
  */
 object NutritionTerminology {
     val languages: List<NutritionTerms> = listOf(
-        NutritionTerms("en", setOf("carbohydrate", "carbohydrates"), setOf("of which sugars", "sugars", "sugar", "fibre", "fiber", "starch", "polyols"), setOf("serving", "portion")),
+        // The named sugars are the same words across these Latin-script languages, so they live in
+        // the shared English set rather than being repeated in each one.
+        NutritionTerms("en", setOf("carbohydrate", "carbohydrates"), setOf("of which sugars", "sugars", "sugar", "added sugars", "added sugar", "fibre", "fiber", "starch", "polyols", "polyol", "dextrose", "glucose", "fructose", "sucrose", "lactose", "maltose", "maltodextrin", "glucose syrup"), setOf("serving", "portion")),
         NutritionTerms("nl", setOf("koolhydraten"), setOf("waarvan suikers", "suikers", "suiker", "vezels", "voedingsvezels", "zetmeel", "polyolen"), setOf("portie", "per portie")),
         NutritionTerms("de", setOf("kohlenhydrate"), setOf("davon zucker", "zucker", "ballaststoffe", "stärke", "mehrwertige alkohole", "polyole"), setOf("portion", "pro portion")),
         NutritionTerms("fr", setOf("glucides"), setOf("dont sucres", "sucres", "fibres alimentaires", "fibres", "amidon", "polyols"), setOf("portion", "par portion")),

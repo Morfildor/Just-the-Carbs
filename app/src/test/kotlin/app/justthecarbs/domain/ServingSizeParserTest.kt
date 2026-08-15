@@ -110,4 +110,80 @@ class ServingSizeParserTest {
         assertNull(ServingSizeParser.parse("family pack"))
         assertNull(ServingSizeParser.parse("????"))
     }
+
+    // ---- parseDescriptor: what the string says, weight optional (spec §6) ----------------------
+
+    @Test
+    fun `parseDescriptor accepts a bare count and unit word with no weight`() {
+        val descriptor = ServingSizeParser.parseDescriptor("1 slice")
+
+        assertEquals(PortionUnitKind.SLICE, descriptor?.kind)
+        assertEquals(0, BigDecimal.ONE.compareTo(descriptor?.count))
+        assertNull("no weight was printed, so none may be invented", descriptor?.weightOrVolume)
+    }
+
+    @Test
+    fun `parseDescriptor keeps a bracketed weight when one is present`() {
+        val descriptor = ServingSizeParser.parseDescriptor("2 slices (70 g)")
+
+        assertEquals(PortionUnitKind.SLICE, descriptor?.kind)
+        assertEquals(0, BigDecimal("2").compareTo(descriptor?.count))
+        assertEquals(0, BigDecimal("70").compareTo(descriptor?.weightOrVolume?.amount))
+        assertEquals(NutritionBasis.PER_100_G, descriptor?.weightOrVolume?.basis)
+    }
+
+    @Test
+    fun `parseDescriptor divides a multi-count weight down to one unit`() {
+        val descriptor = ServingSizeParser.parseDescriptor("2 slices (70 g)")
+
+        assertEquals(0, BigDecimal("35").compareTo(descriptor?.amountPerUnit?.amount))
+        assertEquals(NutritionBasis.PER_100_G, descriptor?.amountPerUnit?.basis)
+    }
+
+    @Test
+    fun `parseDescriptor returns null amountPerUnit when there is no weight`() {
+        assertNull(ServingSizeParser.parseDescriptor("1 sachet")?.amountPerUnit)
+    }
+
+    @Test
+    fun `parseDescriptor defaults a bare unit word to a count of one`() {
+        val descriptor = ServingSizeParser.parseDescriptor("slice")
+
+        assertEquals(PortionUnitKind.SLICE, descriptor?.kind)
+        assertEquals(0, BigDecimal.ONE.compareTo(descriptor?.count))
+    }
+
+    @Test
+    fun `parseDescriptor recognises dutch unit words`() {
+        assertEquals(PortionUnitKind.SLICE, ServingSizeParser.parseDescriptor("2 sneetjes")?.kind)
+        assertEquals(PortionUnitKind.SACHET, ServingSizeParser.parseDescriptor("1 zakje (15 g)")?.kind)
+    }
+
+    @Test
+    fun `parseDescriptor rejects a bare weight with no unit word`() {
+        assertNull(ServingSizeParser.parseDescriptor("30 g"))
+        assertNull(ServingSizeParser.parseDescriptor("250 ml"))
+    }
+
+    @Test
+    fun `parseDescriptor rejects an unrecognised unit word`() {
+        assertNull(ServingSizeParser.parseDescriptor("2 blorps"))
+    }
+
+    @Test
+    fun `parseDescriptor rejects a zero or negative count`() {
+        assertNull(ServingSizeParser.parseDescriptor("0 slices (70 g)"))
+    }
+
+    @Test
+    fun `parseDescriptor keeps the raw text for diagnostics`() {
+        assertEquals("2 slices (70 g)", ServingSizeParser.parseDescriptor("  2 slices (70 g)  ")?.rawText)
+    }
+
+    @Test
+    fun `parseDescriptor recognises a ml serving`() {
+        val descriptor = ServingSizeParser.parseDescriptor("1 scoop (30 ml)")
+
+        assertEquals(NutritionBasis.PER_100_ML, descriptor?.weightOrVolume?.basis)
+    }
 }

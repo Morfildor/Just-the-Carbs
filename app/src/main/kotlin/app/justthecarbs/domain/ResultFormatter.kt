@@ -63,8 +63,26 @@ object ResultFormatter {
      * expecting `31.3` would misread the Dutch `31,3`, and this is the one string that leaves the
      * app for a machine rather than for a person.
      */
-    fun clipboardValue(result: CarbResult, style: ResultStyle): String = when (style) {
-        ResultStyle.DECIMAL_DOMINANT -> decimal(result.exact, Locale.ROOT)
-        ResultStyle.WHOLE_DOMINANT -> result.wholeGrams.toString()
+    fun clipboardValue(result: CarbResult, style: ResultStyle): String =
+        clipboardValue(result.exact, style)
+
+    /**
+     * The same clipboard rule for a result that has no [CarbResult] behind it.
+     *
+     * A direct-carb portion ("4 slices × 14.2 g carbs") produces an exact carbohydrate figure with
+     * no per-100 basis, because no weight was ever known — [CarbResult] cannot represent it without
+     * inventing one. Both paths format identically here, so *Copy* cannot drift between them.
+     */
+    fun clipboardValue(exact: BigDecimal, style: ResultStyle): String = when (style) {
+        ResultStyle.DECIMAL_DOMINANT -> decimal(exact, Locale.ROOT)
+        ResultStyle.WHOLE_DOMINANT -> wholeGrams(exact).toString()
     }
+
+    /**
+     * The whole-gram figure, derived from [exact] directly.
+     *
+     * Mirrors [CarbResult.wholeGrams] exactly rather than rounding the already-rounded decimal,
+     * which would round twice and can shift the whole gram by one (§17).
+     */
+    fun wholeGrams(exact: BigDecimal): Int = exact.setScale(0, RoundingMode.HALF_UP).toInt()
 }

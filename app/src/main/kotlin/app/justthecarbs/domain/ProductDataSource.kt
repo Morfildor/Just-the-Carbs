@@ -20,8 +20,7 @@ enum class LookupError {
  */
 data class PortionUnitCandidate(
     val kind: PortionUnitKind,
-    val amountPerUnit: BigDecimal,
-    val basis: NutritionBasis,
+    val conversion: PortionConversion,
     val rawServingText: String,
 )
 

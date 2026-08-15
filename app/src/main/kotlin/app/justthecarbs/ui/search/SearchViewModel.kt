@@ -32,31 +32,46 @@ data class SearchUiState(
  * could do it.
  *
  * Search is **explicit**, not as-you-type: Open Food Facts' search endpoint is rate-limited
- * (15 reads/min/IP for the whole app) and must not be hit on every keystroke. Typing only updates
- * [SearchUiState.query]; a network request happens only when [search] is called, from the field's
- * IME "Search" action or a dedicated search button.
+ * (10 reads/min/IP for search, distinct from the 15/min product-read budget) and must not be hit on
+ * every keystroke. Typing only updates [SearchUiState.query]; a network request happens only when
+ * [search] is called, from the field's IME "Search" action or a dedicated search button.
  */
 class SearchViewModel(private val searchSource: ProductSearchSource) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
-    /** The query a search is currently running or has just completed for — used to dedupe. */
-    private var lastSubmittedQuery: String? = null
+    /**
+     * The query the currently-displayed hits/noMatches/error belong to.
+     *
+     * Distinct from [SearchUiState.query], which is live editor text. Editing the field clears this,
+     * which is what lets an A -> B -> A retype search again instead of being deduped against a
+     * result set that is no longer on screen.
+     */
+    private var displayedQuery: String? = null
     private var searchJob: Job? = null
 
     /** Guards a slower, older response from overwriting a newer one (last-submitted wins). */
     private var requestId = 0L
 
     fun onQueryChanged(text: String) {
+        // Editing invalidates whatever is on screen and whatever is in flight. Bumping requestId is
+        // the part that was missing: without it, an in-flight response for the *previous* query
+        // still passed runSearch's "am I the latest request" check — because nothing had raised the
+        // counter since that request started — and wrote its hits underneath the new editor text.
+        if (text != displayedQuery) {
+            requestId++
+            searchJob?.cancel()
+            searchJob = null
+            displayedQuery = null
+        }
         _state.update {
             it.copy(
                 query = text,
-                // Clearing the field returns to the prompt rather than leaving stale results
-                // sitting under an empty query, which would look like matches for nothing.
-                hits = if (text.isBlank()) emptyList() else it.hits,
+                hits = emptyList(),
                 noMatches = false,
                 error = null,
+                searching = false,
             )
         }
     }
@@ -69,10 +84,10 @@ class SearchViewModel(private val searchSource: ProductSearchSource) : ViewModel
             _state.update { it.copy(searching = false, hits = emptyList(), noMatches = false) }
             return
         }
-        // Same query already running or just completed: no duplicate submission.
-        if (terms == lastSubmittedQuery) return
+        // A result for exactly this text is already showing: no duplicate submission.
+        if (terms == displayedQuery) return
 
-        lastSubmittedQuery = terms
+        displayedQuery = terms
         searchJob?.cancel()
         val thisRequestId = ++requestId
         searchJob = viewModelScope.launch { runSearch(terms, thisRequestId) }
@@ -102,9 +117,9 @@ class SearchViewModel(private val searchSource: ProductSearchSource) : ViewModel
     }
 
     fun retry() {
-        // A retry re-runs the same query even though it "already ran" — clear the dedupe guard
-        // first so it is not silently dropped as a duplicate submission.
-        lastSubmittedQuery = null
+        // A retry re-runs the same query even though its result is already on screen — clear the
+        // dedupe guard first so it is not silently dropped as a duplicate submission.
+        displayedQuery = null
         search()
     }
 

@@ -17,10 +17,10 @@ A copy is kept on the Desktop as **`JustTheCarbs-debug.apk`** — install that o
 Other useful tasks:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest         # 259 JVM tests
+.\gradlew.bat :app:testDebugUnitTest         # 392 JVM tests
 .\gradlew.bat :app:lintDebug                 # lint (clean)
-.\gradlew.bat :app:assembleRelease           # minified, UNSIGNED unless keystore.properties exists (~65 MB)
-.\gradlew.bat :app:connectedDebugAndroidTest # 106 instrumented tests, needs a device
+.\gradlew.bat :app:assembleRelease           # minified, UNSIGNED unless keystore.properties exists (~64 MB)
+.\gradlew.bat :app:connectedDebugAndroidTest # 119 instrumented tests, needs a device
 bash tools/dependency-scan.sh                # CVE scan of the shipped dependency graph
 ```
 
@@ -32,7 +32,10 @@ weight exists — see [Countable portions](#countable-portions-2026-08-14) below
 Requirements are in **`docs/MASTER-PROMPT.md`** (referenced throughout as §N).
 Design decisions are in `docs/superpowers/specs/2026-08-13-carbquick-design.md` (original — kept
 under its original filename/prose as a historical record from when the working name was CarbQuick)
-and `docs/superpowers/specs/2026-08-14-countable-portions-design.md` (countable portions).
+and `docs/superpowers/specs/2026-08-14-countable-portions-design.md` (countable portions), extended
+by `docs/superpowers/specs/2026-08-15-ocr-table-and-direct-carb-portions-design.md` (geometry-first
+OCR + direct-carb portions), whose implementation plan is
+`docs/superpowers/plans/2026-08-15-ocr-table-and-direct-carb-portions.md`.
 
 **It does NOT calculate insulin.** Not a diet tracker. Scope discipline is a hard requirement (§2).
 
@@ -95,8 +98,16 @@ instrumented tests (up from 95), lint clean.
 - ✅ Manual barcode entry (§8); live Open Food Facts verified end to end incl. product images
 - ✅ **Countable portions** (2026-08-14) — see dedicated section below
 - ✅ **Product development pass** (2026-08-14) — see dedicated section below
-- ✅ **259 JVM unit tests, 106 instrumented tests, all passing; lint clean** (post-rebrand-hardening
-  count, 2026-08-15 — see that section above)
+- ✅ **392 JVM unit tests passing; lint clean; debug + minified release both build** (2026-08-15
+  OCR/direct-carb pass — was 259 before it)
+- ⚠️ **119 instrumented tests, 118 passing.** The one failure is
+  `SettingsScreenTest.tappingPrivacyPolicyDoesNotCrashTheScreen`, and it is **pre-existing and
+  environmental, not a regression**: verified by stashing the entire pass and running that test
+  against clean HEAD, where it fails identically. The API 36 emulator image ships Chrome, so tapping
+  the privacy-policy row really does launch a browser, backgrounding the test activity and leaving
+  Compose with no hierarchy to assert against ("No compose hierarchies found in the app"). The test's
+  own KDoc anticipates having no browser to intercept. It needs an Intents stub or `@Ignore` on
+  browser-equipped images — deliberately **not** changed in this pass, being unrelated scope.
 - ✅ The previously flaky instrumented test is **fixed** — it was a test bug (a keyboard-covered
   control that `performClick()` silently no-ops on), not app behaviour. Full suite is green.
 - ✅ **Dependency vulnerability scan run** — `tools/dependency-scan.sh`, 226 shipped artifacts,
@@ -131,6 +142,37 @@ independently trustworthy per-unit weight.
 remote image URL — previously unvalidated. Retrofit and Coil now share **one** `OkHttpClient`
 instance (`AppContainer.okHttpClient`) — previously two separately-constructed clients with
 matching config, not a real shared instance.
+
+### Direct-carb conversions (2026-08-15)
+
+`PortionUnit` no longer stores `amountPerUnit`/`basis`. It stores a sealed **`PortionConversion`**:
+
+- `WeightBased(amountPerUnit, basis)` — "1 slice = 35 g", resolved via `PortionResolver` then
+  `CarbCalculator`, exactly as before.
+- `DirectCarbs(carbsPerUnit)` — "1 slice = 14.2 g carbs", used when OFF gives
+  `carbohydrates_serving` but `serving_size` prints no weight. `DirectCarbCalculator` is the only
+  place `count × carbsPerUnit` happens. **No gram figure exists on this path and none is invented** —
+  `portionText` stays empty, the UI shows "4 slices × 14.2 g carbs", and a direct-carb `MealItem` has
+  `resolvedAmount == null`.
+
+A sealed interface rather than nullable fields, so "weight-based with no weight" is unconstructible.
+
+**OFF precedence** (`OpenFoodFactsDataSource.portionUnitCandidate`): a printed weight always wins
+(Cases A and C); no weight plus `carbohydrates_serving` gives `DirectCarbs` (Case B); neither gives
+**no candidate at all** (Case D) and the UI asks the user once. `carbohydrates_serving` is validated
+by `NutritionValueValidator.validateCarbsPerServing`, which deliberately does **not** reuse the
+per-100 ceiling — a 500 g meal can legitimately exceed 100 g, so only clearly corrupt data (>1000) is
+refused.
+
+The freeze rule is unchanged and applies identically to both kinds: `isRemoteRefreshable` keys on
+provenance and verification, never on which conversion the unit holds. `remoteConversionDiffers`
+compares **numerically** — `BigDecimal.equals` would report `36` vs `36.0` as a change and show the
+user a "portion changed" notice about nothing.
+
+`ServingSizeParser` is split: `parseDescriptor` returns a typed `ServingDescriptor(kind, count,
+weightOrVolume?)` where the weight is now **optional**, and `parse` keeps its original
+weight-required contract by delegating to it. A weight with no leading count ("portion 25 g") is
+still rejected — it states no count-to-quantity relationship.
 
 **Two genuine findings from actually running the tests, not just reading the code:**
 1. Room's `MigrationTestHelper` connection does not enforce the `portion_units` FK's
@@ -216,6 +258,49 @@ suite as evidence that a screen is usable:
 Also: a geometric regression test I wrote was itself invalid — it compared before/after positions
 while `performTextInput` opened the IME, so it measured ~268 dp of keyboard, not layout movement.
 A single-layout `panelTop >= fieldBottom` assertion replaced it.
+
+## Geometry-first nutrition table parsing (2026-08-15)
+
+The OCR parser previously grouped text into rows using ML Kit's `blockId`/`lineId` and then scored
+candidates by proximity. On real multi-column and hierarchical labels that could return a **child
+nutrient's** value as total carbohydrate — ML Kit both splits one printed row across several lines
+and merges two printed rows into one, and a proximity score could be outvoted by geometry.
+
+Four pure-Kotlin stages under `ocr/`, each independently tested:
+
+1. **`LogicalRowBuilder`** — rows from box geometry alone: vertical overlap ≥ 0.5 against the
+   *running* row box, with a centre-distance tiebreaker at 0.6 median heights. `blockId`/`lineId` are
+   retained for diagnostics and **never** consulted for row membership. Thresholds live in
+   `LogicalRowThresholds`, deliberately separate from and stricter than `NutritionParserThresholds` —
+   a row boundary is now a hard structural claim, not one soft signal among many.
+2. **`RowClassifier`** — `TOTAL_CARBOHYDRATE` / `CARBOHYDRATE_CHILD` / `HEADER` / `OTHER`. A row
+   naming any child nutrient (sugars, polyols, starch, fibre, dextrose, glucose, fructose, sucrose,
+   lactose, maltose, maltodextrin, glucose syrup, …) is `CARBOHYDRATE_CHILD` **unconditionally** — a
+   type-level exclusion checked *before* the carbohydrate check, so "Carbohydrate of which sugars"
+   is a child row. This is the correctness claim of the whole rewrite; it is not a score penalty.
+3. **`ColumnClassifier`** — `PER_100_G` / `PER_100_ML` / `PER_SERVING` / `REFERENCE_PERCENT` /
+   `UNKNOWN`. Headers are the primary signal; a cell-shape fallback recovers a percent column whose
+   header OCR lost (≥2 percent-shaped cells sharing an x position). It never guesses per-100 vs
+   per-serving from shape — those stay `UNKNOWN`, and an `UNKNOWN` cell is never used for any figure.
+   A span matching two vocabularies at once returns null so shorter spans are tried, which is what
+   keeps "per 100 g per 100 ml" as two columns rather than one.
+4. **`NutritionTableInterpreter`** — associates the total row's cells to columns, producing the
+   unchanged `LabelReading` plus a new `servingCandidate: ServingCarbCandidate?` carrying a typed
+   `ServingDescriptor`, so the OCR→save flow reads `descriptor.count` without re-parsing header text.
+
+`NutritionTableParser` shrank from 458 to ~76 lines and is now just an adapter. `LabelReading`,
+`CarbCandidate`, `MlKitOcrMapper` and `AmbiguityStabilityTracker` are untouched, so live-scan
+stability behaviour is unchanged.
+
+**Deliberate behaviour change:** a carbohydrate value whose column was never resolved is now
+`NotFound` rather than `Ambiguous` with a null basis. A value the parser cannot place on the label is
+not a reading; the app asks for a better photo instead of asking the user to supply the basis.
+
+**OCR → "Save as a slice portion"**: a still capture whose serving column named a countable unit
+offers to save it as a `PortionUnit` (`ProductDataOrigin.OCR`, `USER_VERIFIED` — the user was reading
+the package). Only from a still capture that passed the explicit accept step, never from a live
+frame; `LabelAnalyzer.analyzeStill` now reports the whole `NutritionParseReport`, while the live path
+still deals only in `LabelReading` so a camera frame cannot persist anything.
 
 ## Toolchain (installed — do NOT reinstall)
 
@@ -307,7 +392,9 @@ data/
   remote/  Retrofit (OFF v3 read + cgi/search.pl) + OpenFoodFactsDataSource
   settings/DataStore
   ProductRepository   ← owns the §10 lookup priority, portion units, meal, usage, search
-ocr/       OcrDocument + NutritionTableParser (pure) + ML Kit mapper/LabelAnalyzer boundary
+ocr/       OcrDocument + geometry-first table layer (LogicalRowBuilder → RowClassifier →
+           ColumnClassifier → NutritionTableInterpreter, all pure) + ML Kit mapper/LabelAnalyzer
+           boundary. NutritionTableParser is now a thin adapter over the interpreter.
 ui/        Compose screens + ViewModels, immutable state via StateFlow
            product/, meal/, search/, components/ (shared design system)
 ```
@@ -322,11 +409,19 @@ Key invariants, each pinned by a test:
 - Carbohydrate values (and countable-portion weights) are stored as **TEXT** in SQLite, never REAL.
 - `ResultFormatter` sets `RoundingMode.HALF_UP` explicitly — `DecimalFormat` defaults to HALF_EVEN,
   which made the app display a different decimal from the one it calculated (15.4 vs 15.5).
-- Room schema is at **v5**; `MIGRATION_1_2` adds `latestRemoteCarbs`, `MIGRATION_2_3` adds
+- Room schema is at **v6**; `MIGRATION_1_2` adds `latestRemoteCarbs`, `MIGRATION_2_3` adds
   `portion_units` + three `products` columns for remembered countable-portion mode, `MIGRATION_3_4`
   adds `current_meal_items` (the name is the scope guarantee: there is only ever a *current* meal)
-  and `portion_usage`; `MIGRATION_4_5` adds nullable selected-image gallery metadata. Never destructive. `MIGRATION_2_3`'s `ALTER TABLE ADD
-  COLUMN` calls are guarded by a `PRAGMA table_info` check — see "Countable portions" above for why.
+  and `portion_usage`; `MIGRATION_4_5` adds nullable selected-image gallery metadata;
+  `MIGRATION_5_6` **rebuilds and copies** both `portion_units` (weight columns →
+  `conversionKind`/`conversionValue`/`conversionBasis` plus six remote-variant columns) and
+  `current_meal_items` (adds `itemKind`, makes `resolvedAmount`/`basis`/`carbsPer100` nullable).
+  Rebuild-and-copy because SQLite cannot drop `NOT NULL` in place. **Row ids are preserved by the
+  copy**, which is why `portion_usage.portionUnitId` still resolves — there is a migration test
+  asserting exactly that join. Every migrated row is explicitly labelled (`'WEIGHT'` /
+  `'WEIGHT_BASED'`), never left NULL for a mapper to infer. Never destructive. `MIGRATION_2_3`'s
+  `ALTER TABLE ADD COLUMN` calls are guarded by a `PRAGMA table_info` check — see "Countable
+  portions" above for why.
 - `MealStore` has **no meal id** and `PortionUsageStore` has **no all-usage accessor**. Both
   absences are the scope guarantee (§2) expressed structurally — adding either would make a food
   diary buildable. Do not add them "for symmetry".
@@ -371,6 +466,27 @@ Key invariants, each pinned by a test:
 6. **Countable portions against a real OFF `serving_size`.** Still fixture-only; no live product
    with a countable-unit-shaped `serving_size` has been checked against real packaging.
    `docs/manual-qa.md` §15a.
+7. **Direct-carb portions (Case B) against real data.** The "no printed weight, but
+   `carbohydrates_serving` is present" path is covered by fixtures and emulator runs only. No live
+   OFF product with that exact shape has been scanned and checked against its package.
+   `docs/manual-qa.md` §15b–§15c.
+8. **The rebuilt geometry-first OCR interpreter on physical hardware.** All seven adversarial
+   fixtures pass as unit tests, but the two real-device failures that motivated the rewrite — a
+   multi-column label and a hierarchical one — have not been re-photographed on the original
+   packages. `docs/manual-qa.md` §15d–§15e.
+
+### Closed in the 2026-08-15 OCR/direct-carb pass
+
+- ~~OCR could return a child nutrient (sugars, dextrose, a %RI figure) as total carbohydrate~~ —
+  child rows are now excluded by row *type* before any number is read; see "Geometry-first nutrition
+  table parsing" above.
+- ~~Countable portions required a per-item weight, so a label giving only per-serving carbs sent the
+  user to fetch a kitchen scale~~ — `PortionConversion.DirectCarbs`; see "Direct-carb conversions".
+- ~~`SearchViewModel` could write a stale in-flight response under newly-edited query text~~ —
+  `onQueryChanged` now bumps `requestId`, cancels the running job, and clears displayed results;
+  dedupe keys on `displayedQuery` so an A→B→A retype genuinely re-searches.
+- ~~Comments claimed OFF Search allows 15 req/min~~ — corrected to 10 for the search endpoint only;
+  the product-read path's 15/min comments were already right and were left alone.
 
 ### Closed in the 2026-08-14 development pass
 

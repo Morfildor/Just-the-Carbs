@@ -148,15 +148,17 @@ class NutritionLabelParserTest {
     }
 
     @Test
-    fun `carbohydrate row without basis evidence requires explicit basis selection`() {
+    // Behaviour deliberately changed by the geometry-first rewrite (spec §4): a value whose column
+    // was never resolved is NotFound, not an Ambiguous candidate carrying a null basis. The old
+    // scoring model surfaced "48.2, basis unknown" and left the user to supply the basis, which
+    // offered a number the parser could not actually place on the label. "No column resolved at all
+    // -> NotFound" replaces it, so the app asks for a better photo rather than for a guess.
+    fun `carbohydrate row without basis evidence is not a reading at all`() {
         val reading = NutritionTableParser.parse(
             document(e("Carbohydrate 48.2 g", 30, 100, 450, 130, line = 1)),
         )
 
-        assertTrue("expected Ambiguous but was $reading", reading is LabelReading.Ambiguous)
-        val candidate = (reading as LabelReading.Ambiguous).candidates.single()
-        assertDecimal("48.2", candidate.value)
-        assertEquals(null, candidate.basis)
+        assertEquals(LabelReading.NotFound, reading)
     }
 
     @Test
@@ -223,10 +225,13 @@ class NutritionLabelParserTest {
             twoColumnTable("Carbohydrate", "52.4 g", "13.1 g", "of which sugars"),
         )
 
-        assertTrue(report.diagnostics.any { it.stage == "anchor" && "Carbohydrate" in it.message })
-        assertTrue(report.diagnostics.any { it.stage == "header" && "PER_100_G" in it.message })
+        // Stage names follow the pipeline that now does the work (rows -> row kinds -> columns ->
+        // selection). The assertion is unchanged in substance: the report must still explain which
+        // row was the total, which column fixed the basis, and what was chosen.
+        assertTrue(report.diagnostics.any { it.stage == "row-kind" && "TOTAL_CARBOHYDRATE" in it.message })
+        assertTrue(report.diagnostics.any { it.stage == "row-kind" && "CARBOHYDRATE_CHILD" in it.message })
+        assertTrue(report.diagnostics.any { it.stage == "column" && "PER_100_G" in it.message })
         assertTrue(report.diagnostics.any { it.stage == "selected" && "52.4" in it.message })
-        assertTrue(report.diagnostics.any { it.stage == "rejected" && "13.1" in it.message })
     }
 
     private fun confident(document: OcrDocument): CarbCandidate {

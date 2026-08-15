@@ -16,7 +16,7 @@ class MealTotalTest {
 
     private var nextId = 1L
 
-    private fun item(exactCarbs: String, basis: NutritionBasis = NutritionBasis.PER_100_G) = MealItem(
+    private fun item(exactCarbs: String, basis: NutritionBasis = NutritionBasis.PER_100_G) = MealItem.weightBased(
         id = nextId++,
         productBarcode = "500${nextId}",
         displayName = "Item $nextId",
@@ -109,7 +109,7 @@ class MealTotalTest {
     @Test
     fun `a countable item contributes the carbs of its resolved amount`() {
         // 2 slices x 36 g = 72 g of a 42 g/100 g bread -> 30.24 g
-        val twoSlices = MealItem(
+        val twoSlices = MealItem.weightBased(
             id = 1,
             productBarcode = "5449000000996",
             displayName = "Sliced Bread",
@@ -129,7 +129,7 @@ class MealTotalTest {
 
     @Test
     fun `a package fraction item keeps its human readable description`() {
-        val halfPack = MealItem(
+        val halfPack = MealItem.weightBased(
             id = 1,
             productBarcode = "8710398",
             displayName = "Crackers",
@@ -159,7 +159,7 @@ class MealTotalTest {
         val correctedProductCarbs = BigDecimal("51.0")
 
         assertEquals(0, MealTotal.exact(listOf(added)).compareTo(BigDecimal("34.704")))
-        assertEquals(0, added.carbsPer100.compareTo(BigDecimal("34.704")))
+        assertEquals(0, added.carbsPer100!!.compareTo(BigDecimal("34.704")))
         assertEquals(0, correctedProductCarbs.compareTo(BigDecimal("51.0")))
     }
 }

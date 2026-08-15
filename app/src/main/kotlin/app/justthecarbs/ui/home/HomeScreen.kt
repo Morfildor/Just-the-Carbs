@@ -273,8 +273,7 @@ private fun EmptyState(onScanLabel: () -> Unit, modifier: Modifier = Modifier) {
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            // Inset inside the tile: the mark's scan beam runs the full width of its viewport, so
-            // at tile size it collides with the rounded corners.
+            // Inset inside the tile so the mark doesn't collide with the tile's rounded corners.
             Icon(
                 painter = painterResource(R.drawable.ic_launcher_foreground),
                 contentDescription = null,

@@ -229,6 +229,82 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun `editing the query after submitting discards the in-flight response`() = runTest {
+        val source = FakeSearchSource()
+        val viewModel = SearchViewModel(source)
+        viewModel.onQueryChanged("bread")
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        // The user keeps typing without submitting. The "bread" request is still in flight.
+        viewModel.onQueryChanged("bread wholegrain")
+        dispatcher.scheduler.advanceUntilIdle()
+        source.resolve("bread", ProductSearchResult.Found(listOf(hit(barcode = "stale-barcode"))))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(emptyList<ProductSearchHit>(), viewModel.state.value.hits)
+        assertEquals("bread wholegrain", viewModel.state.value.query)
+        assertFalse(viewModel.state.value.searching)
+    }
+
+    @Test
+    fun `editing clears stale hits immediately before any new submission`() = runTest {
+        val source = FakeSearchSource()
+        val viewModel = SearchViewModel(source)
+        viewModel.onQueryChanged("hagelslag")
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+        source.resolve("hagelslag", ProductSearchResult.Found(listOf(hit())))
+        dispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, viewModel.state.value.hits.size)
+
+        viewModel.onQueryChanged("hagelslag puur")
+
+        assertEquals(emptyList<ProductSearchHit>(), viewModel.state.value.hits)
+        assertFalse(viewModel.state.value.noMatches)
+        assertNull(viewModel.state.value.error)
+    }
+
+    @Test
+    fun `editing away and back resubmits rather than being deduped`() = runTest {
+        val source = FakeSearchSource()
+        val viewModel = SearchViewModel(source)
+        viewModel.onQueryChanged("hagelslag")
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+        source.resolve("hagelslag", ProductSearchResult.Found(listOf(hit())))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        // A -> B -> A. The results for A were cleared during the edit to B, so retyping A and
+        // submitting must genuinely search again rather than being swallowed as a duplicate.
+        viewModel.onQueryChanged("puur")
+        viewModel.onQueryChanged("hagelslag")
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+        source.resolve("hagelslag", ProductSearchResult.Found(listOf(hit())))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(2, source.callCount)
+        assertEquals(1, viewModel.state.value.hits.size)
+    }
+
+    @Test
+    fun `editing cancels the running job so a late response cannot flip searching off`() = runTest {
+        val source = FakeSearchSource()
+        val viewModel = SearchViewModel(source)
+        viewModel.onQueryChanged("bread")
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.state.value.searching)
+
+        viewModel.onQueryChanged("bread rolls")
+        dispatcher.scheduler.advanceUntilIdle()
+
+        // Editing ends the search that was running: no spinner for a query nobody submitted.
+        assertFalse(viewModel.state.value.searching)
+    }
+
+    @Test
     fun `retry re-runs the same query even though it already ran`() = runTest {
         val source = FakeSearchSource()
         val viewModel = SearchViewModel(source)

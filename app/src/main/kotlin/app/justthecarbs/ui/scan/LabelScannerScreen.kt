@@ -51,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,16 +69,56 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionConversion
+import app.justthecarbs.domain.PortionUnitKind
+import app.justthecarbs.domain.ServingDescriptor
 import app.justthecarbs.ocr.CarbCandidate
 import app.justthecarbs.ocr.LabelAnalyzer
 import app.justthecarbs.ocr.LabelReading
+import app.justthecarbs.ocr.ServingCarbCandidate
 import app.justthecarbs.ocr.OcrDiagnosticsLogger
 import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.theme.Space
+import kotlinx.coroutines.launch
 import java.io.File
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
+
+/**
+ * Where an accepted OCR portion has got to (correction pass §2).
+ *
+ * The states are distinct because the previous code had only one — a `savedPortionUnit` boolean set
+ * synchronously, on the line after firing an asynchronous save. A Room insert that then failed left
+ * the user reading "Saved" about a portion that does not exist. Success is now something only the
+ * persistence layer can report.
+ */
+sealed interface PortionSaveState {
+    /** Nothing accepted yet; the save action is offered. */
+    data object Idle : PortionSaveState
+
+    /** The write is in flight. The action is disabled so a second tap cannot duplicate it. */
+    data object Saving : PortionSaveState
+
+    /** Persisted. Only ever set from a completed write. */
+    data object Saved : PortionSaveState
+
+    /**
+     * The write failed. Says so plainly and leaves the action available to retry — the one thing the
+     * old boolean could not express, and the reason it silently reported success.
+     */
+    data object Failed : PortionSaveState
+
+    /**
+     * Held for a product that does not exist yet, to be saved once it is created (correction §2).
+     *
+     * The barcode was scanned but Open Food Facts did not know it, so there is no `products` row for
+     * the portion's foreign key to reference. The accepted portion travels into manual entry instead
+     * of being written now and failing.
+     */
+    data object PendingProductCreation : PortionSaveState
+}
 
 /** Nutrition-table OCR camera. It proposes values; it never commits one without a tap. */
 @Composable
@@ -85,6 +126,20 @@ fun LabelScannerScreen(
     onUseValue: (BigDecimal, NutritionBasis) -> Unit,
     onEditManually: () -> Unit,
     onClose: () -> Unit,
+    /**
+     * Persists the accepted portion, returning true only once it is genuinely on disk.
+     *
+     * Suspending, and its result is what drives [PortionSaveState] — the UI cannot report success
+     * before persistence completes. Null when there is no product to attach a countable unit to at
+     * all (spec §17).
+     */
+    onSavePortionUnit: (suspend (PortionUnitKind, PortionConversion) -> Boolean)? = null,
+    /**
+     * Carries an accepted portion into product creation when no product row exists yet (§2).
+     *
+     * Null when the product already exists, which is what selects the direct-save path above.
+     */
+    onCarryPendingPortionUnit: ((PortionUnitKind, PortionConversion) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var hasPermission by remember {
@@ -107,6 +162,8 @@ fun LabelScannerScreen(
                 onUseValue = onUseValue,
                 onEditManually = onEditManually,
                 onClose = onClose,
+                onSavePortionUnit = onSavePortionUnit,
+                onCarryPendingPortionUnit = onCarryPendingPortionUnit,
             )
         } else {
             LabelPermissionRationale(
@@ -124,12 +181,28 @@ private fun LabelCamera(
     onUseValue: (BigDecimal, NutritionBasis) -> Unit,
     onEditManually: () -> Unit,
     onClose: () -> Unit,
+    onSavePortionUnit: (suspend (PortionUnitKind, PortionConversion) -> Boolean)? = null,
+    onCarryPendingPortionUnit: ((PortionUnitKind, PortionConversion) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
+    val saveScope = rememberCoroutineScope()
 
     var reading by remember { mutableStateOf<LabelReading?>(null) }
+    /**
+     * A per-serving figure from the **still** capture only (spec §17).
+     *
+     * Live frames never set this: a countable portion is persisted only from a deliberate capture
+     * the user then explicitly accepts, so a passing camera frame cannot save anything.
+     */
+    var servingCandidate by remember { mutableStateOf<ServingCarbCandidate?>(null) }
+    /**
+     * How far the accepted portion has got (correction pass §2).
+     *
+     * Never set to [PortionSaveState.Saved] except from a completed write.
+     */
+    var portionSaveState by remember { mutableStateOf<PortionSaveState>(PortionSaveState.Idle) }
     var captureState by remember { mutableStateOf(CaptureState.IDLE) }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
@@ -161,6 +234,8 @@ private fun LabelCamera(
 
     fun resumeLive() {
         reading = null
+        servingCandidate = null
+        portionSaveState = PortionSaveState.Idle
         captureState = CaptureState.IDLE
         analyzer.resume()
     }
@@ -189,11 +264,12 @@ private fun LabelCamera(
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     mainExecutor.execute { captureState = CaptureState.PROCESSING }
-                    analyzer.analyzeStill(context, file) { result ->
+                    analyzer.analyzeStill(context, file) { report ->
                         pendingCapture.compareAndSet(file, null)
                         mainExecutor.execute {
                             captureState = CaptureState.IDLE
-                            reading = result
+                            reading = report.reading
+                            servingCandidate = report.servingCandidate
                         }
                     }
                 }
@@ -330,6 +406,45 @@ private fun LabelCamera(
                     onCapture = ::captureLabel,
                     onEdit = onEditManually,
                     onRetry = ::resumeLive,
+                    // Offered whenever the label named a countable unit and there is somewhere for
+                    // it to go — an existing product to save against, or product creation to carry
+                    // it into. The count comes off the typed descriptor; the header text is never
+                    // re-parsed at this boundary (spec §17).
+                    savablePortion = servingCandidate
+                        ?.takeIf {
+                            (onSavePortionUnit != null || onCarryPendingPortionUnit != null) &&
+                                it.descriptor != null
+                        }
+                        ?.let { it.descriptor!! to it.carbsPerServing },
+                    onSavePortionUnit = { kind, conversion ->
+                        when {
+                            // No product row yet: carry the portion into creation rather than
+                            // writing it against a foreign key that has nothing to point at.
+                            onSavePortionUnit == null -> {
+                                portionSaveState = PortionSaveState.PendingProductCreation
+                                onCarryPendingPortionUnit?.invoke(kind, conversion)
+                            }
+                            else -> {
+                                portionSaveState = PortionSaveState.Saving
+                                saveScope.launch {
+                                    // Success is whatever persistence reports, never the mere fact
+                                    // that a save was started.
+                                    val persisted = runCatching {
+                                        onSavePortionUnit(kind, conversion)
+                                    }.getOrElse { error ->
+                                        OcrDiagnosticsLogger.failure("Could not save portion unit", error)
+                                        false
+                                    }
+                                    portionSaveState = if (persisted) {
+                                        PortionSaveState.Saved
+                                    } else {
+                                        PortionSaveState.Failed
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    saveState = portionSaveState,
                 )
                 // Insufficient evidence to pick one interpretation: showing the top-ranked
                 // candidate as if it were confident would fabricate certainty the parser doesn't
@@ -424,10 +539,97 @@ private fun ProposalCard(
     onCapture: () -> Unit,
     onEdit: () -> Unit,
     onRetry: () -> Unit,
+    /** The typed descriptor and its per-serving carbohydrate figure, when the label named one. */
+    savablePortion: Pair<ServingDescriptor, BigDecimal>? = null,
+    onSavePortionUnit: (PortionUnitKind, PortionConversion) -> Unit = { _, _ -> },
+    saveState: PortionSaveState = PortionSaveState.Idle,
 ) {
     ScannerCard {
         CandidateChoice(candidate, onUse)
+        savablePortion?.let { (descriptor, carbsPerServing) ->
+            SavePortionUnitAction(
+                descriptor = descriptor,
+                carbsPerServing = carbsPerServing,
+                saveState = saveState,
+                onSave = onSavePortionUnit,
+            )
+        }
         SecondaryScannerActions(onCapture, onEdit, onRetry)
+    }
+}
+
+/**
+ * "Save as a slice portion" (spec §17).
+ *
+ * The explicit acceptance step: nothing is persisted until this is tapped, and it only appears after
+ * a still capture, never from a live frame. A printed weight is preferred when the same descriptor
+ * carried one — it feeds the app's existing weight-based path — and the carbs-per-unit figure is the
+ * fallback that makes a weightless label usable at all.
+ */
+@Composable
+private fun SavePortionUnitAction(
+    descriptor: ServingDescriptor,
+    carbsPerServing: BigDecimal,
+    saveState: PortionSaveState,
+    onSave: (PortionUnitKind, PortionConversion) -> Unit,
+) {
+    // Each terminal state says what actually happened. "Saved" is reachable only from a completed
+    // write; a failure says so and leaves the action available rather than claiming success.
+    when (saveState) {
+        PortionSaveState.Saved -> {
+            Text(
+                text = stringResource(R.string.label_portion_unit_saved),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return
+        }
+        PortionSaveState.PendingProductCreation -> {
+            // Not saved, and deliberately not described as saved: the portion is waiting for the
+            // product the user is about to create.
+            Text(
+                text = stringResource(R.string.label_portion_unit_pending),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return
+        }
+        PortionSaveState.Saving -> {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Space.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(
+                    text = stringResource(R.string.label_portion_unit_saving),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            return
+        }
+        PortionSaveState.Failed ->
+            Text(
+                text = stringResource(R.string.label_portion_unit_failed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        PortionSaveState.Idle -> Unit
+    }
+
+    TextButton(
+        onClick = {
+            val conversion = descriptor.amountPerUnit?.let { perUnit ->
+                PortionConversion.WeightBased(perUnit.amount, perUnit.basis)
+            } ?: PortionConversion.DirectCarbs(
+                // The count is read straight off the typed descriptor rather than re-parsed from
+                // the header text, which is the point of typing it at parse time.
+                carbsPerServing.divide(descriptor.count, 4, RoundingMode.HALF_UP).stripTrailingZeros(),
+            )
+            onSave(descriptor.kind, conversion)
+        },
+    ) {
+        Text(stringResource(R.string.label_save_as_portion_unit, descriptor.kind.name.lowercase()))
     }
 }
 

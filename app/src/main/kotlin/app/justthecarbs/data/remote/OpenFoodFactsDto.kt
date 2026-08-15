@@ -98,4 +98,11 @@ data class OffNutriments(
      * wrong number at the exact moment the user needs a right one.
      */
     @SerialName("carbohydrates_100g") val carbohydrates100g: Double? = null,
+    /**
+     * TOTAL carbohydrate in one serving, as OFF reports it (spec §7).
+     *
+     * Read only to build a countable portion when `serving_size` names a unit but prints no weight —
+     * it is never a substitute for [carbohydrates100g] and never feeds the per-100 calculation.
+     */
+    @SerialName("carbohydrates_serving") val carbohydratesServing: Double? = null,
 )

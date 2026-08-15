@@ -1,5 +1,8 @@
 package app.justthecarbs.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -23,18 +26,36 @@ class SettingsScreenTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun show() {
+    /**
+     * Records what the screen asked the platform to open, instead of opening it.
+     *
+     * [SettingsScreen] navigates through Compose's [LocalUriHandler] rather than firing an Intent
+     * itself, so overriding that CompositionLocal is the natural seam: no real browser launches, and
+     * the assertion can be about the exact URL rather than merely "something was resolved".
+     */
+    private class RecordingUriHandler(private val failWith: Exception? = null) : UriHandler {
+        val opened = mutableListOf<String>()
+
+        override fun openUri(uri: String) {
+            opened += uri
+            failWith?.let { throw it }
+        }
+    }
+
+    private fun show(uriHandler: UriHandler = RecordingUriHandler()) {
         compose.setContent {
-            JustTheCarbsTheme {
-                SettingsScreen(
-                    settings = AppSettings(),
-                    onThemeChanged = {},
-                    onResultStyleChanged = {},
-                    onHapticsChanged = {},
-                    onClearRecents = {},
-                    onClearProducts = {},
-                    onBack = {},
-                )
+            CompositionLocalProvider(LocalUriHandler provides uriHandler) {
+                JustTheCarbsTheme {
+                    SettingsScreen(
+                        settings = AppSettings(),
+                        onThemeChanged = {},
+                        onResultStyleChanged = {},
+                        onHapticsChanged = {},
+                        onClearRecents = {},
+                        onClearProducts = {},
+                        onBack = {},
+                    )
+                }
             }
         }
     }
@@ -47,17 +68,37 @@ class SettingsScreenTest {
     }
 
     /**
-     * There is no fake browser to intercept the intent in this test harness, so this only pins that
-     * tapping the row does not crash the screen — [SettingsScreen]'s own try/catch around
-     * `LocalUriHandler.openUri` is what makes an unavailable browser graceful, exercised here by
-     * whatever activity (or lack of one) the test device actually resolves the URL to.
+     * Tapping the row opens the committed policy URL and leaves the screen intact.
+     *
+     * The [UriHandler] is stubbed, so no real browser launches. That is what makes this test stable:
+     * previously it drove the device's actual browser, which backgrounded the test activity and left
+     * Compose with no hierarchy to assert against on any emulator image that ships Chrome.
      */
     @Test
-    fun tappingPrivacyPolicyDoesNotCrashTheScreen() {
-        show()
+    fun tappingPrivacyPolicyOpensTheCommittedUrlAndKeepsTheScreen() {
+        val uriHandler = RecordingUriHandler()
+        show(uriHandler)
 
         compose.onNodeWithText("Privacy Policy").performClick()
 
+        assert(uriHandler.opened == listOf(BuildConfig.PRIVACY_POLICY_URL)) {
+            "expected exactly the policy URL to be opened, got ${uriHandler.opened}"
+        }
+        compose.onNodeWithText("Privacy Policy").assertIsDisplayed()
+    }
+
+    /**
+     * The no-browser fallback. [SettingsScreen] catches the failure and shows the URL as copyable
+     * text rather than crashing — the branch that a device *with* a browser can never reach, and so
+     * was never actually exercised before the handler became injectable.
+     */
+    @Test
+    fun whenNoBrowserCanHandleTheLinkTheUrlIsShownAsText() {
+        show(RecordingUriHandler(failWith = IllegalStateException("no activity found to handle the uri")))
+
+        compose.onNodeWithText("Privacy Policy").performClick()
+
+        compose.onNodeWithText(BuildConfig.PRIVACY_POLICY_URL, substring = true).assertIsDisplayed()
         compose.onNodeWithText("Privacy Policy").assertIsDisplayed()
     }
 

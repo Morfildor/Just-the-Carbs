@@ -2,6 +2,7 @@ package app.justthecarbs.data.remote
 
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.ProductFetchResult
@@ -276,9 +277,70 @@ class OpenFoodFactsDataSourceTest {
 
         val candidate = requireNotNull(result.portionUnitCandidate)
         assertEquals(PortionUnitKind.SLICE, candidate.kind)
-        assertEquals(0, BigDecimal("36").compareTo(candidate.amountPerUnit))
-        assertEquals(NutritionBasis.PER_100_G, candidate.basis)
+        assertEquals(
+            PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
+            candidate.conversion,
+        )
         assertEquals("1 slice (36 g)", candidate.rawServingText)
+    }
+
+    // ---- direct-carb countable portions, Cases A-D (spec §9, §16) ------------------------------
+
+    @Test
+    fun `case B - no weight but per-serving carbs yields a direct-carb unit`() = runTest {
+        respond(
+            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0,
+               "carbohydrates_serving":25.2},"serving_size":"2 slices"}}""",
+        )
+
+        val result = dataSource.fetch(barcode) as ProductFetchResult.Found
+
+        val candidate = requireNotNull(result.portionUnitCandidate)
+        assertEquals(PortionUnitKind.SLICE, candidate.kind)
+        assertEquals(PortionConversion.DirectCarbs(BigDecimal("12.6")), candidate.conversion)
+        assertEquals("2 slices", candidate.rawServingText)
+    }
+
+    @Test
+    fun `case C - a printed weight wins even when per-serving carbs are also present`() = runTest {
+        respond(
+            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0,
+               "carbohydrates_serving":25.2},"serving_size":"2 slices (70 g)"}}""",
+        )
+
+        val result = dataSource.fetch(barcode) as ProductFetchResult.Found
+
+        assertEquals(
+            "a printed weight is the stronger relationship",
+            PortionConversion.WeightBased(BigDecimal("35"), NutritionBasis.PER_100_G),
+            result.portionUnitCandidate?.conversion,
+        )
+    }
+
+    @Test
+    fun `case D - neither a weight nor per-serving carbs yields no candidate`() = runTest {
+        respond(
+            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0},
+               "serving_size":"1 slice"}}""",
+        )
+
+        val result = dataSource.fetch(barcode) as ProductFetchResult.Found
+
+        // The app knows the product comes in slices but not what one contains. It does not guess;
+        // the UI asks the user once instead.
+        assertNull(result.portionUnitCandidate)
+    }
+
+    @Test
+    fun `a corrupt per-serving carbohydrate figure is refused`() = runTest {
+        respond(
+            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0,
+               "carbohydrates_serving":50000.0},"serving_size":"2 slices"}}""",
+        )
+
+        val result = dataSource.fetch(barcode) as ProductFetchResult.Found
+
+        assertNull(result.portionUnitCandidate)
     }
 
     @Test

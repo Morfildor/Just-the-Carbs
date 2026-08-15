@@ -215,6 +215,58 @@ real Open Food Facts data (a real Dutch sliced-bread barcode) needs a human to c
 | 15a.16 | Keyboard open (typing a count): the result at the bottom of the screen stays visible | ☐ |
 | 15a.17 | A long product name combined with the mode row does not push the result off-screen | ☐ |
 
+## 15b. Direct-carb portions (2026-08-15) — *not yet verified on hardware*
+
+The path for a product whose label gives carbohydrate **per serving** but prints no per-item weight.
+The whole point is that the user is never asked to weigh anything, so **any gram figure appearing on
+this path is a defect**, not a nicety.
+
+| # | Check | Pass |
+|---|---|---|
+| 15b.1 | Find an OFF product whose `serving_size` names a unit with no bracketed weight (e.g. `"2 slices"`) and whose `carbohydrates_serving` is present; scan it | ☐ |
+| 15b.2 | A countable chip appears for that unit even though no weight is known | ☐ |
+| 15b.3 | Entering `4` gives a result equal to 4 × (serving carbs ÷ serving count), checked by hand | ☐ |
+| 15b.4 | The equation reads `4 slices × NN g carbs` — **no gram weight and no "= NN g" weight term anywhere** | ☐ |
+| 15b.5 | The portion/grams field stays empty; nothing fills in a derived weight | ☐ |
+| 15b.6 | Case D: a product with `"1 slice"` and **no** `carbohydrates_serving` offers **no** automatic chip — the app must not invent a relationship | ☐ |
+| 15b.7 | **+ Add portion unit** → **Carbs per unit** lets you define one by hand; only one field is shown, labelled "1 slice contains … g carbs" | ☐ |
+| 15b.8 | Correcting a direct-carb unit (Edit) pre-fills the carbs figure, not a weight, and saving keeps its Open Food Facts provenance with ✓ Verified | ☐ |
+| 15b.9 | Switching a direct-carb unit → Grams and back does not produce a fabricated weight or a stale result | ☐ |
+
+## 15c. Direct-carb portions in the meal (2026-08-15) — *not yet verified on hardware*
+
+| # | Check | Pass |
+|---|---|---|
+| 15c.1 | Add a direct-carb portion to the meal; the line reads "4 slices", not a gram amount | ☐ |
+| 15c.2 | The meal total equals the sum of its lines, including a mix of weighed and counted items | ☐ |
+| 15c.3 | Force-stop and relaunch: the direct-carb line survives with its count and total intact | ☐ |
+| 15c.4 | Upgrading from a build with existing meal items and portion units (v5 → v6) loses nothing: verified units stay verified, favourites and recents survive, usual portions still resolve | ☐ |
+
+## 15d. OCR total vs child nutrients (2026-08-15) — *not yet verified on hardware*
+
+This is the failure that motivated the rewrite. Re-photograph the **original packages** that
+previously misread, not just any label.
+
+| # | Check | Pass |
+|---|---|---|
+| 15d.1 | A multi-column label (per 100 g **and** per serving) reports the per-100-g total, not the serving figure | ☐ |
+| 15d.2 | A hierarchical label ("Carbohydrate … of which sugars …") reports the **total**, never the sugars value | ☐ |
+| 15d.3 | A label with a `%RI`/`%DV` column never reports the percentage as grams | ☐ |
+| 15d.4 | A label naming a specific sugar (dextrose, glucose syrup) still reports the total | ☐ |
+| 15d.5 | A genuinely unreadable/ambiguous label offers an explicit choice rather than a confident wrong number | ☐ |
+| 15d.6 | A label with no per-100 header at all reports "not found" and offers a retake — it does not offer a value with an unknown basis | ☐ |
+| 15d.7 | Live scanning still settles rather than flickering; a single bad frame does not strand an ambiguity card | ☐ |
+
+## 15e. OCR → save as portion unit (2026-08-15) — *not yet verified on hardware*
+
+| # | Check | Pass |
+|---|---|---|
+| 15e.1 | From a product screen, scan a label whose serving column names a unit ("per slice"); after the still capture, **Save as a slice portion** appears | ☐ |
+| 15e.2 | It does **not** appear during live scanning — only after an explicit capture | ☐ |
+| 15e.3 | It does **not** appear when the serving column is generic ("per serving") with no countable unit named | ☐ |
+| 15e.4 | Tapping it creates a usable countable unit on that product, shown as verified | ☐ |
+| 15e.5 | A "per 2 slices" column halves correctly — the saved unit is per *one* slice | ☐ |
+
 ## 16. Temporary meal (2026-08-14) — *not yet verified on hardware*
 
 The meal is deliberately one unnamed, undated list. If any check below reveals a date, a name, a

@@ -15,6 +15,7 @@ import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.PortionUnit
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.PortionUsage
 import app.justthecarbs.domain.Product
@@ -59,13 +60,12 @@ class UsualPortionScreenTest {
         productBarcode = barcode,
         kind = PortionUnitKind.SLICE,
         customLabel = null,
-        amountPerUnit = BigDecimal("36"),
-        basis = NutritionBasis.PER_100_G,
+        conversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
         dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
         verificationStatus = VerificationStatus.UNVERIFIED,
         verifiedAt = null,
-        originalRemoteAmountPerUnit = BigDecimal("36"),
-        latestRemoteAmountPerUnit = BigDecimal("36"),
+        originalRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
+        latestRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
         rawRemoteServingText = "1 slice (36 g)",
         createdAt = Instant.parse("2026-08-14T10:00:00Z"),
         updatedAt = Instant.parse("2026-08-14T10:00:00Z"),
@@ -137,7 +137,7 @@ class UsualPortionScreenTest {
                             mode = InputMode.PORTION_UNIT
                             selectedUnitId = unit.id
                             count = chosen.amount.stripTrailingZeros().toPlainString()
-                            portion = chosen.amount.multiply(unit.amountPerUnit)
+                            portion = chosen.amount.multiply((unit.conversion as PortionConversion.WeightBased).amountPerUnit)
                                 .stripTrailingZeros().toPlainString()
                         } else {
                             mode = InputMode.GRAMS

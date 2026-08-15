@@ -52,7 +52,7 @@ class HomeScreenTest {
         lastPortion = BigDecimal("65"),
     )
 
-    private fun mealItem() = MealItem(
+    private fun mealItem() = MealItem.weightBased(
         productBarcode = "8712100849060",
         displayName = "Hagelslag puur",
         portionDescription = "65 g",

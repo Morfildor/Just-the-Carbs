@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
@@ -65,13 +66,12 @@ class PortionUnitDaoTest {
         productBarcode = barcode,
         kind = PortionUnitKind.SLICE,
         customLabel = null,
-        amountPerUnit = BigDecimal("36"),
-        basis = NutritionBasis.PER_100_G,
+        conversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
         dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
         verificationStatus = VerificationStatus.UNVERIFIED,
         verifiedAt = null,
-        originalRemoteAmountPerUnit = BigDecimal("36"),
-        latestRemoteAmountPerUnit = BigDecimal("36"),
+        originalRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
+        latestRemoteConversion = PortionConversion.WeightBased(BigDecimal("36"), NutritionBasis.PER_100_G),
         rawRemoteServingText = "1 slice (36 g)",
         createdAt = now,
         updatedAt = now,
@@ -84,7 +84,7 @@ class PortionUnitDaoTest {
 
         val stored = portionUnitDao.findById(id)!!.toDomain()
         assertEquals(PortionUnitKind.SLICE, stored.kind)
-        assertEquals(0, BigDecimal("36").compareTo(stored.amountPerUnit))
+        assertEquals(0, BigDecimal("36").compareTo((stored.conversion as PortionConversion.WeightBased).amountPerUnit))
         assertEquals(ProductDataOrigin.OPEN_FOOD_FACTS, stored.dataSource)
     }
 
@@ -93,7 +93,7 @@ class PortionUnitDaoTest {
         productDao.upsert(product("111").toEntity())
         portionUnitDao.upsert(sliceUnit("111").toEntity())
         portionUnitDao.upsert(
-            sliceUnit("111").copy(kind = PortionUnitKind.CUSTOM, customLabel = "Dumpling", amountPerUnit = BigDecimal("24")).toEntity(),
+            sliceUnit("111").copy(kind = PortionUnitKind.CUSTOM, customLabel = "Dumpling", conversion = PortionConversion.WeightBased(BigDecimal("24"), NutritionBasis.PER_100_G)).toEntity(),
         )
 
         assertEquals(2, portionUnitDao.findByBarcode("111").size)

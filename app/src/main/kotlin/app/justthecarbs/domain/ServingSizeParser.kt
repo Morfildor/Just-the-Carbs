@@ -30,8 +30,9 @@ data class ParsedServingSize(
  */
 object ServingSizeParser {
 
-    private val PATTERN = Regex(
-        """^\s*(\d+(?:[.,]\d+)?)\s+(\p{L}+)\s*[(,=]?\s*(\d+(?:[.,]\d+)?)\s*(g|ml)\)?\s*$""",
+    /** count + unit word, with an optional bracketed weight. The weight group is now optional. */
+    private val DESCRIPTOR = Regex(
+        """^\s*(?:(\d+(?:[.,]\d+)?)\s*)?(\p{L}+)\s*(?:[(,=]?\s*(\d+(?:[.,]\d+)?)\s*(g|ml)\)?\s*)?$""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -59,22 +60,58 @@ object ServingSizeParser {
         "portie" to PortionUnitKind.SERVING, "porties" to PortionUnitKind.SERVING,
     )
 
-    fun parse(rawServingSize: String?): ParsedServingSize? {
-        val match = PATTERN.find(rawServingSize?.trim().orEmpty()) ?: return null
-        val (countText, word, weightText, unit) = match.destructured
+    /** Recognises a unit word in isolation — used by the OCR column-header path (spec §4). */
+    internal fun kindForWord(word: String): PortionUnitKind? = UNIT_WORDS[word.lowercase().trim()]
 
-        val kind = UNIT_WORDS[word.lowercase()] ?: return null
-        val count = PortionParser.parse(countText) ?: return null
-        val weight = PortionParser.parse(weightText) ?: return null
-        if (count.signum() <= 0 || weight.signum() <= 0) return null
+    /**
+     * What the string describes, weight optional.
+     *
+     * A bare weight ("30 g") is still rejected: it names no countable unit, so there is nothing to
+     * count. An unrecognised word is rejected rather than guessed — a false unit mapping is worse
+     * than no mapping.
+     */
+    fun parseDescriptor(rawServingSize: String?): ServingDescriptor? {
+        val raw = rawServingSize?.trim().orEmpty()
+        val match = DESCRIPTOR.find(raw) ?: return null
+        val countText = match.groupValues[1]
+        val word = match.groupValues[2]
+        val weightText = match.groupValues[3]
+        val unit = match.groupValues[4]
 
-        val amountPerUnit = weight.divide(count, 4, RoundingMode.HALF_UP).stripTrailingZeros()
-        val basis = if (unit.equals("ml", ignoreCase = true)) {
-            NutritionBasis.PER_100_ML
+        val kind = kindForWord(word) ?: return null
+        // A weight with no leading count states no count-to-quantity relationship: "portion 25 g"
+        // does not say how many portions 25 g is, so it stays a rejection exactly as before. A bare
+        // "slice" is different — it names one unit and claims no weight at all.
+        if (countText.isEmpty() && weightText.isNotEmpty()) return null
+        val count = if (countText.isEmpty()) BigDecimal.ONE else PortionParser.parse(countText) ?: return null
+        if (count.signum() <= 0) return null
+
+        val weightOrVolume = if (weightText.isEmpty()) {
+            null
         } else {
-            NutritionBasis.PER_100_G
+            val weight = PortionParser.parse(weightText) ?: return null
+            if (weight.signum() <= 0) return null
+            AmountWithBasis(
+                amount = weight,
+                basis = if (unit.equals("ml", ignoreCase = true)) {
+                    NutritionBasis.PER_100_ML
+                } else {
+                    NutritionBasis.PER_100_G
+                },
+            )
         }
 
-        return ParsedServingSize(kind = kind, amountPerUnit = amountPerUnit, basis = basis)
+        return ServingDescriptor(kind = kind, count = count, weightOrVolume = weightOrVolume, rawText = raw)
+    }
+
+    /**
+     * The weight-backed mapping only. Unchanged contract: a string with no printed weight still
+     * returns null here, because this function's whole promise is a weight relationship. Callers
+     * that can work without one use [parseDescriptor].
+     */
+    fun parse(rawServingSize: String?): ParsedServingSize? {
+        val descriptor = parseDescriptor(rawServingSize) ?: return null
+        val perUnit = descriptor.amountPerUnit ?: return null
+        return ParsedServingSize(kind = descriptor.kind, amountPerUnit = perUnit.amount, basis = perUnit.basis)
     }
 }

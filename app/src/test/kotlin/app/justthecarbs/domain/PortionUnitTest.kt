@@ -21,13 +21,14 @@ class PortionUnitTest {
         productBarcode = "5449000000996",
         kind = PortionUnitKind.SLICE,
         customLabel = null,
-        amountPerUnit = amountPerUnit,
-        basis = NutritionBasis.PER_100_G,
+        conversion = PortionConversion.WeightBased(amountPerUnit, NutritionBasis.PER_100_G),
         dataSource = dataSource,
         verificationStatus = verificationStatus,
         verifiedAt = null,
-        originalRemoteAmountPerUnit = null,
-        latestRemoteAmountPerUnit = latestRemoteAmountPerUnit,
+        originalRemoteConversion = null,
+        latestRemoteConversion = latestRemoteAmountPerUnit?.let {
+            PortionConversion.WeightBased(it, NutritionBasis.PER_100_G)
+        },
         rawRemoteServingText = null,
         createdAt = Instant.EPOCH,
         updatedAt = Instant.EPOCH,
@@ -50,19 +51,27 @@ class PortionUnitTest {
 
     @Test
     fun `no remote difference when the latest remote amount matches the effective amount`() {
+        // 36 and 36.0 are the same weight. The comparison must be numeric, not textual — a trailing
+        // zero arriving from the provider is not a reformulation and must not raise a notice.
         val u = unit(amountPerUnit = BigDecimal("36"), latestRemoteAmountPerUnit = BigDecimal("36.0"))
-        assertFalse(u.remoteAmountDiffers)
+        assertFalse(u.remoteConversionDiffers)
     }
 
     @Test
     fun `a remote difference is reported when the latest remote amount changed`() {
         val u = unit(amountPerUnit = BigDecimal("36"), latestRemoteAmountPerUnit = BigDecimal("38"))
-        assertTrue(u.remoteAmountDiffers)
+        assertTrue(u.remoteConversionDiffers)
     }
 
     @Test
     fun `no remote difference when no latest remote amount has been recorded`() {
         val u = unit(amountPerUnit = BigDecimal("36"), latestRemoteAmountPerUnit = null)
-        assertFalse(u.remoteAmountDiffers)
+        assertFalse(u.remoteConversionDiffers)
+    }
+
+    @Test
+    fun `a change of conversion kind is a real difference`() {
+        val u = unit().copy(latestRemoteConversion = PortionConversion.DirectCarbs(BigDecimal("14.2")))
+        assertTrue("gaining a printed weight, or losing one, is worth surfacing", u.remoteConversionDiffers)
     }
 }

@@ -1,8 +1,10 @@
 package app.justthecarbs.data.remote
 
 import app.justthecarbs.domain.LookupError
+import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.NutritionValueValidator
 import app.justthecarbs.domain.PackageQuantityParser
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitCandidate
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
@@ -19,6 +21,7 @@ import app.justthecarbs.domain.VerificationStatus
 import kotlinx.serialization.SerializationException
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.math.RoundingMode
 import java.net.UnknownHostException
 import java.util.Locale
 
@@ -150,20 +153,7 @@ class OpenFoodFactsDataSource(
             basis = basis,
         ) ?: return ProductFetchResult.Unusable(barcode)
 
-        // A parsed serving size is only trustworthy if its basis matches the product's own — a
-        // countable unit measured in ml has no meaning for a product whose carbs are per 100 g, and
-        // the two never converting into each other (§17) rules out silently coercing one to the
-        // other here too.
-        val servingSize = ServingSizeParser.parse(remote.servingSize)
-            ?.takeIf { it.basis == basis }
-            ?.let {
-                PortionUnitCandidate(
-                    kind = it.kind,
-                    amountPerUnit = it.amountPerUnit,
-                    basis = it.basis,
-                    rawServingText = remote.servingSize.orEmpty(),
-                )
-            }
+        val servingSize = portionUnitCandidate(remote, basis)
 
         return ProductFetchResult.Found(
             product = Product(
@@ -180,6 +170,52 @@ class OpenFoodFactsDataSource(
                 images = remote.selectedProductImages(),
             ),
             portionUnitCandidate = servingSize,
+        )
+    }
+
+    /**
+     * Turns `serving_size` plus `carbohydrates_serving` into a countable unit, or into nothing
+     * (spec §9, §16).
+     *
+     * Precedence, in order:
+     *
+     * - **A/C** a printed weight wins whenever one is present, even if per-serving carbs are also
+     *   available. A weight is the stronger relationship: it survives a recipe reformulation, and it
+     *   feeds the app's single existing calculation path.
+     * - **B** no weight, but per-serving carbs → a direct-carb unit. This is the case that used to
+     *   send the user to fetch a kitchen scale.
+     * - **D** neither → no candidate. The app may still know the product is sold in slices, but it
+     *   does not invent a relationship it was not given; the UI asks the user once instead.
+     *
+     * A parsed serving size is only trustworthy if its basis matches the product's own — a countable
+     * unit measured in ml has no meaning for a product whose carbs are per 100 g, and the two never
+     * converting into each other (§17) rules out silently coercing one to the other here too. That
+     * check applies to the weight path only: a direct-carb figure carries no basis to disagree.
+     */
+    private fun portionUnitCandidate(remote: OffProduct, basis: NutritionBasis): PortionUnitCandidate? {
+        val descriptor = ServingSizeParser.parseDescriptor(remote.servingSize) ?: return null
+
+        descriptor.amountPerUnit?.let { perUnit ->
+            if (perUnit.basis != basis) return null
+            return PortionUnitCandidate(
+                kind = descriptor.kind,
+                conversion = PortionConversion.WeightBased(perUnit.amount, perUnit.basis),
+                rawServingText = remote.servingSize.orEmpty(),
+            )
+        }
+
+        val carbsPerServing = NutritionValueValidator.validateCarbsPerServing(
+            remote.nutriments?.carbohydratesServing,
+        ) ?: return null
+
+        val carbsPerUnit = carbsPerServing
+            .divide(descriptor.count, CARBS_PER_UNIT_SCALE, RoundingMode.HALF_UP)
+            .stripTrailingZeros()
+
+        return PortionUnitCandidate(
+            kind = descriptor.kind,
+            conversion = PortionConversion.DirectCarbs(carbsPerUnit),
+            rawServingText = remote.servingSize.orEmpty(),
         )
     }
 
@@ -236,5 +272,8 @@ class OpenFoodFactsDataSource(
     private companion object {
         const val HTTP_NOT_FOUND = 404
         const val HTTP_TOO_MANY_REQUESTS = 429
+
+        /** Matches the scale [app.justthecarbs.domain.ServingDescriptor] uses for its own division. */
+        const val CARBS_PER_UNIT_SCALE = 4
     }
 }

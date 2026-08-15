@@ -36,7 +36,7 @@ interface OpenFoodFactsApi {
      * relying on the number.
      *
      * [pageSize] is deliberately small. This is a disambiguation list the user reads, not a catalogue
-     * to browse, and OFF's read budget is 15 requests/min/IP.
+     * to browse, and OFF's search budget is 10 requests/min/IP.
      *
      * Uses [SEARCH_FIELDS], not [PRODUCT_FIELDS]: up to 20 hits only need enough to recognise and
      * select a result, not gallery/serving metadata that a full product lookup fetches separately

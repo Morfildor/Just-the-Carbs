@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Icon concept (§56): a package, crossed by a scan beam. Product + reading it + speed.
-
-  Deliberately NOT a syringe, blood drop, glucose meter, pump, medical cross, calorie flame or
-  scale. The app is a calculator for packaged food, and the icon should not claim otherwise.
-
-  Two shapes only, so it stays readable at 48dp in a launcher folder.
+  Icon concept (rebrand): a rounded container split by a gap, with three drips hanging from the
+  underside of the top band — the mark submitted to the Play Store listing. Two shapes (top band,
+  drip band), so it stays readable at 48dp in a launcher folder and works as a monochrome/themed
+  icon on Android 13+.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -13,17 +11,16 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- The package -->
+    <!-- Top band: the rounded-top half of the container -->
     <path
-        android:pathData="M32,30 h44 a9,9 0 0 1 9,9 v30 a9,9 0 0 1 -9,9 h-44 a9,9 0 0 1 -9,-9 v-30 a9,9 0 0 1 9,-9 z"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="6.5"
-        android:strokeLineJoin="round" />
+        android:pathData="M32,20 h44 a20,20 0 0 1 20,20 v10 h-84 v-10 a20,20 0 0 1 20,-20 z"
+        android:fillColor="#FFFFFF" />
 
-    <!-- The scan beam, running past the package on both sides -->
+    <!-- Bottom band: rounded-bottom container with three drips hanging from the split -->
     <path
-        android:pathData="M14,50.5 h80 v7 h-80 z"
+        android:pathData="
+            M22,58
+            h14 v14 a7,7 0 0 0 14,0 v-14 h12 v22 a7,7 0 0 0 14,0 v-22 h10 v20 a20,20 0 0 1 -20,20 h-24 a20,20 0 0 1 -20,-20 z"
         android:fillColor="#FFFFFF" />
 
 </vector>

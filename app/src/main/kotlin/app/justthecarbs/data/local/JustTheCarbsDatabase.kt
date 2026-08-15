@@ -28,7 +28,7 @@ import androidx.sqlite.execSQL
         MealItemEntity::class,
         PortionUsageEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class JustTheCarbsDatabase : RoomDatabase() {
@@ -179,6 +179,108 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 → v6: portion units carry a [app.justthecarbs.domain.PortionConversion] instead of a
+         * mandatory weight, and meal items carry a kind instead of mandatory grams (spec §11).
+         *
+         * Both tables are **rebuilt and copied** rather than altered, because SQLite cannot drop a
+         * NOT NULL constraint in place and both changes make previously-mandatory columns optional.
+         * Row ids are preserved by the copy, so `portion_usage.portionUnitId` still resolves to the
+         * same unit and nothing referencing a meal item by id breaks.
+         *
+         * Every pre-existing row is explicitly labelled — portion units as `'WEIGHT'`, meal items as
+         * `'WEIGHT_BASED'` — rather than left NULL for a mapper to interpret. "Absent means legacy"
+         * is the kind of implicit rule that quietly rots; the discriminant is always present and
+         * always authoritative.
+         */
+        internal val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `portion_units_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productBarcode` TEXT NOT NULL,
+                        `kind` TEXT NOT NULL,
+                        `customLabel` TEXT,
+                        `conversionKind` TEXT NOT NULL,
+                        `conversionValue` TEXT NOT NULL,
+                        `conversionBasis` TEXT,
+                        `dataSource` TEXT NOT NULL,
+                        `verificationStatus` TEXT NOT NULL,
+                        `verifiedAt` INTEGER,
+                        `originalRemoteConversionKind` TEXT,
+                        `originalRemoteConversionValue` TEXT,
+                        `originalRemoteConversionBasis` TEXT,
+                        `latestRemoteConversionKind` TEXT,
+                        `latestRemoteConversionValue` TEXT,
+                        `latestRemoteConversionBasis` TEXT,
+                        `rawRemoteServingText` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        FOREIGN KEY(`productBarcode`) REFERENCES `products`(`barcode`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    """
+                    INSERT INTO `portion_units_new`
+                        (id, productBarcode, kind, customLabel, conversionKind, conversionValue,
+                         conversionBasis, dataSource, verificationStatus, verifiedAt,
+                         originalRemoteConversionKind, originalRemoteConversionValue,
+                         originalRemoteConversionBasis, latestRemoteConversionKind,
+                         latestRemoteConversionValue, latestRemoteConversionBasis,
+                         rawRemoteServingText, createdAt, updatedAt)
+                    SELECT id, productBarcode, kind, customLabel, 'WEIGHT', amountPerUnit,
+                           basis, dataSource, verificationStatus, verifiedAt,
+                           CASE WHEN originalRemoteAmountPerUnit IS NOT NULL THEN 'WEIGHT' END,
+                           originalRemoteAmountPerUnit,
+                           CASE WHEN originalRemoteAmountPerUnit IS NOT NULL THEN basis END,
+                           CASE WHEN latestRemoteAmountPerUnit IS NOT NULL THEN 'WEIGHT' END,
+                           latestRemoteAmountPerUnit,
+                           CASE WHEN latestRemoteAmountPerUnit IS NOT NULL THEN basis END,
+                           rawRemoteServingText, createdAt, updatedAt
+                    FROM `portion_units`
+                    """.trimIndent(),
+                )
+                connection.execSQL("DROP TABLE `portion_units`")
+                connection.execSQL("ALTER TABLE `portion_units_new` RENAME TO `portion_units`")
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_portion_units_productBarcode` ON `portion_units` (`productBarcode`)",
+                )
+
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `current_meal_items_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productBarcode` TEXT,
+                        `displayName` TEXT NOT NULL,
+                        `portionDescription` TEXT NOT NULL,
+                        `itemKind` TEXT NOT NULL,
+                        `resolvedAmount` TEXT,
+                        `basis` TEXT,
+                        `carbsPer100` TEXT,
+                        `count` TEXT,
+                        `carbsPerUnit` TEXT,
+                        `exactCarbs` TEXT NOT NULL,
+                        `addedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    """
+                    INSERT INTO `current_meal_items_new`
+                        (id, productBarcode, displayName, portionDescription, itemKind,
+                         resolvedAmount, basis, carbsPer100, count, carbsPerUnit, exactCarbs, addedAt)
+                    SELECT id, productBarcode, displayName, portionDescription, 'WEIGHT_BASED',
+                           resolvedAmount, basis, carbsPer100, NULL, NULL, exactCarbs, addedAt
+                    FROM `current_meal_items`
+                    """.trimIndent(),
+                )
+                connection.execSQL("DROP TABLE `current_meal_items`")
+                connection.execSQL("ALTER TABLE `current_meal_items_new` RENAME TO `current_meal_items`")
+            }
+        }
+
         /** Shared by the guarded migrations above. SQLite has no "ADD COLUMN IF NOT EXISTS". */
         private fun SQLiteConnection.hasColumn(table: String, column: String): Boolean {
             val statement = prepare("PRAGMA table_info(`$table`)")
@@ -196,7 +298,7 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
 
         fun build(context: Context): JustTheCarbsDatabase =
             Room.databaseBuilder(context.applicationContext, JustTheCarbsDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
     }
 }

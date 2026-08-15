@@ -4,7 +4,9 @@ import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.LocalProductDataSource
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.MealStore
+import app.justthecarbs.domain.MealItemKind
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.PortionUnitCandidate
 import app.justthecarbs.domain.PortionUnitKind
@@ -252,10 +254,17 @@ class ProductRepository(
      * product) does not need to pass anything new (§11, §12). Passing [InputMode.GRAMS] explicitly
      * clears any previously remembered countable selection, so switching back to grams and using it
      * is itself what "remembers grams" next time.
+     *
+     * [portion] is **nullable**, and that is the whole point of its type (correction pass §4).
+     * `lastPortion` is strictly a resolved mass or volume in the product's own basis unit — it
+     * pre-fills the grams field and nothing else. A direct-carb portion ("4 slices × 14.2 g carbs")
+     * resolves no weight at all, so null is the only honest value, and the previously remembered
+     * weight is left exactly as it was. The caller must never substitute the count here: "4 slices"
+     * written into `lastPortion` becomes "4 g" the next time the grams field is shown.
      */
     suspend fun recordUse(
         barcode: String,
-        portion: BigDecimal,
+        portion: BigDecimal?,
         mode: InputMode? = null,
         portionUnitId: Long? = null,
         count: BigDecimal? = null,
@@ -263,7 +272,8 @@ class ProductRepository(
         val existing = requireExisting(barcode)
         local.save(
             existing.copy(
-                lastPortion = portion,
+                // Only ever advanced by a real resolved amount; a direct-carb use preserves it.
+                lastPortion = portion ?: existing.lastPortion,
                 lastUsedAt = clock.instant(),
                 lastInputMode = mode ?: existing.lastInputMode,
                 lastSelectedPortionUnitId = if (mode == InputMode.GRAMS) null else portionUnitId ?: existing.lastSelectedPortionUnitId,
@@ -319,26 +329,26 @@ class ProductRepository(
     suspend fun saveUserPortionUnit(
         barcode: String,
         kind: PortionUnitKind,
-        amountPerUnit: BigDecimal,
-        basis: NutritionBasis,
+        conversion: PortionConversion,
         customLabel: String? = null,
+        origin: ProductDataOrigin = ProductDataOrigin.MANUAL,
     ): PortionUnit {
         require(kind != PortionUnitKind.CUSTOM || !customLabel.isNullOrBlank()) {
             "a custom portion unit requires a label"
         }
+        require(origin.isUserAuthored) { "$origin is not a user-authored origin" }
         val now = clock.instant()
         return portionUnits.save(
             PortionUnit(
                 productBarcode = barcode,
                 kind = kind,
                 customLabel = customLabel,
-                amountPerUnit = amountPerUnit,
-                basis = basis,
-                dataSource = ProductDataOrigin.MANUAL,
+                conversion = conversion,
+                dataSource = origin,
                 verificationStatus = VerificationStatus.USER_VERIFIED,
                 verifiedAt = now,
-                originalRemoteAmountPerUnit = null,
-                latestRemoteAmountPerUnit = null,
+                originalRemoteConversion = null,
+                latestRemoteConversion = null,
                 rawRemoteServingText = null,
                 createdAt = now,
                 updatedAt = now,
@@ -347,14 +357,52 @@ class ProductRepository(
     }
 
     /**
+     * Create a product and its first countable portion, in that order (correction pass §2).
+     *
+     * The ordering is the entire point. `portion_units.productBarcode` is a foreign key to
+     * `products.barcode`, so a portion for a product that does not exist yet cannot be stored at
+     * all. The OCR capture flow reaches exactly that situation: the barcode was scanned, Open Food
+     * Facts did not recognise it, and the user then photographs the nutrition table — the case where
+     * capturing a countable portion is most valuable, and the one where a naive save fails.
+     *
+     * Both writes are awaited, and a failure in either propagates to the caller rather than being
+     * swallowed. That is what lets the UI show *saved* only once the data is genuinely on disk: the
+     * previous flow set its "saved" flag synchronously, immediately after firing an asynchronous
+     * save, so a failed insert still rendered as success.
+     *
+     * A single Room transaction is not used here because the two writes go through two independent
+     * store abstractions ([LocalProductDataSource] and [PortionUnitStore]) that the domain layer
+     * deliberately keeps separate. Ordering plus propagated failure gives the property that matters:
+     * a portion never exists without its product. The reverse — a product with no portion — is a
+     * perfectly ordinary state the user can retry from, not corruption.
+     */
+    suspend fun saveProductWithPortionUnit(
+        product: Product,
+        kind: PortionUnitKind,
+        conversion: PortionConversion,
+        customLabel: String? = null,
+        origin: ProductDataOrigin = ProductDataOrigin.OCR,
+    ): PortionUnit {
+        require(product.barcode.isNotEmpty()) { "a portion unit requires a product barcode" }
+        saveUserAuthoredProduct(product, origin = origin)
+        return saveUserPortionUnit(
+            barcode = product.barcode,
+            kind = kind,
+            conversion = conversion,
+            customLabel = customLabel,
+            origin = origin,
+        )
+    }
+
+    /**
      * The user checked a remote-sourced unit against the package (§7), optionally correcting the
      * weight while doing so. Mirrors [saveVerification]: provenance stays Open Food Facts, only
      * verification state and the effective amount change.
      */
-    suspend fun verifyPortionUnit(unitId: Long, confirmedAmountPerUnit: BigDecimal? = null): PortionUnit {
+    suspend fun verifyPortionUnit(unitId: Long, confirmedConversion: PortionConversion? = null): PortionUnit {
         val existing = requirePortionUnit(unitId)
         val verified = existing.copy(
-            amountPerUnit = confirmedAmountPerUnit ?: existing.amountPerUnit,
+            conversion = confirmedConversion ?: existing.conversion,
             verificationStatus = VerificationStatus.USER_VERIFIED,
             verifiedAt = clock.instant(),
             updatedAt = clock.instant(),
@@ -365,9 +413,9 @@ class ProductRepository(
     /** Deliberate acceptance of a newer remote amount (§7, mirrors [applyLatestRemoteValue]). */
     suspend fun applyLatestRemotePortionUnit(unitId: Long): PortionUnit {
         val existing = requirePortionUnit(unitId)
-        val latest = existing.latestRemoteAmountPerUnit ?: return existing
+        val latest = existing.latestRemoteConversion ?: return existing
         val applied = existing.copy(
-            amountPerUnit = latest,
+            conversion = latest,
             verificationStatus = VerificationStatus.UNVERIFIED,
             verifiedAt = null,
             updatedAt = clock.instant(),
@@ -406,13 +454,41 @@ class ProductRepository(
         carbsPer100: BigDecimal,
         exactCarbs: BigDecimal,
     ): MealItem = meal.add(
-        MealItem(
+        MealItem.weightBased(
             productBarcode = productBarcode?.takeIf { it.isNotEmpty() },
             displayName = displayName,
             portionDescription = portionDescription,
             resolvedAmount = resolvedAmount,
             basis = basis,
             carbsPer100 = carbsPer100,
+            exactCarbs = exactCarbs,
+            addedAt = clock.instant(),
+        ),
+    )
+
+    /**
+     * Add a completed direct-carb calculation to the meal (spec §12).
+     *
+     * Deliberately takes no resolved amount and no basis: on this path the app does not know what
+     * the portion weighs. Writing a derived gram figure here would make a counted portion
+     * indistinguishable from a weighed one, which is the exact confusion [MealItemKind] exists to
+     * prevent. As with [addMealItem], [exactCarbs] is the number the user already saw — nothing is
+     * recomputed here.
+     */
+    suspend fun addDirectCarbMealItem(
+        productBarcode: String?,
+        displayName: String,
+        portionDescription: String,
+        count: BigDecimal,
+        carbsPerUnit: BigDecimal,
+        exactCarbs: BigDecimal,
+    ): MealItem = meal.add(
+        MealItem.directCarbs(
+            productBarcode = productBarcode?.takeIf { it.isNotEmpty() },
+            displayName = displayName,
+            portionDescription = portionDescription,
+            count = count,
+            carbsPerUnit = carbsPerUnit,
             exactCarbs = exactCarbs,
             addedAt = clock.instant(),
         ),
@@ -488,13 +564,12 @@ class ProductRepository(
             productBarcode = barcode,
             kind = candidate.kind,
             customLabel = null,
-            amountPerUnit = candidate.amountPerUnit,
-            basis = candidate.basis,
+            conversion = candidate.conversion,
             dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
             verificationStatus = VerificationStatus.UNVERIFIED,
             verifiedAt = null,
-            originalRemoteAmountPerUnit = candidate.amountPerUnit,
-            latestRemoteAmountPerUnit = candidate.amountPerUnit,
+            originalRemoteConversion = candidate.conversion,
+            latestRemoteConversion = candidate.conversion,
             rawRemoteServingText = candidate.rawServingText,
             createdAt = now,
             updatedAt = now,
@@ -521,8 +596,8 @@ class ProductRepository(
         if (matching.isRemoteRefreshable) {
             portionUnits.save(
                 matching.copy(
-                    amountPerUnit = candidate.amountPerUnit,
-                    latestRemoteAmountPerUnit = candidate.amountPerUnit,
+                    conversion = candidate.conversion,
+                    latestRemoteConversion = candidate.conversion,
                     rawRemoteServingText = candidate.rawServingText,
                     updatedAt = clock.instant(),
                 ),
@@ -530,7 +605,7 @@ class ProductRepository(
         } else {
             portionUnits.save(
                 matching.copy(
-                    latestRemoteAmountPerUnit = candidate.amountPerUnit,
+                    latestRemoteConversion = candidate.conversion,
                     rawRemoteServingText = candidate.rawServingText,
                     updatedAt = clock.instant(),
                 ),
@@ -540,6 +615,22 @@ class ProductRepository(
 
     private suspend fun requirePortionUnit(unitId: Long): PortionUnit =
         portionUnits.findById(unitId) ?: error("no portion unit with id $unitId")
+
+    /**
+     * The stored product for [barcode], or null — a **local-only** read that never touches the
+     * network.
+     *
+     * Added for one question the OCR portion flow has to answer before offering to save: does a
+     * `products` row exist for this barcode? That is what `portion_units.productBarcode`'s foreign
+     * key requires, and it is not the same question as "is the barcode string non-empty", which is
+     * what the flow previously used (correction pass §2).
+     *
+     * Deliberately not [lookup]: that falls through to Open Food Facts and would spend one of the
+     * 15 reads/min/IP budget, and worse, could *create* the row as a side effect — turning a
+     * question into an action.
+     */
+    suspend fun findLocal(barcode: String): Product? =
+        (local.fetch(barcode) as? ProductFetchResult.Found)?.product
 
     private suspend fun requireExisting(barcode: String): Product =
         (local.fetch(barcode) as? ProductFetchResult.Found)?.product
