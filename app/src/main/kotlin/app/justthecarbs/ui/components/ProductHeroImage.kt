@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -72,8 +73,40 @@ fun ProductHeroImage(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    // A product with no photo has nothing to identify: the monogram is derived from the name shown
+    // directly above it, so a full-height slab spends ~150 dp restating two letters the user has
+    // already read. Found by running the app on a manually-entered product, where the hero was a
+    // large empty blue rectangle sitting above a compressed portion zone. The photo case is
+    // unchanged — that is where the height genuinely earns itself (§5).
+    val hasImage = remember(product.imageUrl, product.largeImageUrl, product.images) {
+        ProductImageSelector.heroImageUrl(product) != null
+    }
+
+    // A real photo is sized against the screen, not to a fixed dp (owner request: "much bigger, but
+    // appropriately"). A flat 150 dp was the same size on a 5" phone and a tall modern one — small
+    // on the second, and this image exists to be compared against a package held in the other hand,
+    // so bigger genuinely helps. Proportional sizing gives a much larger picture on the phones people
+    // actually have while staying self-limiting on short displays.
+    //
+    // The clamp is the "appropriately": [MAX_PHOTO_HEIGHT] stops it becoming a poster on a tall
+    // device, and [MIN_PHOTO_HEIGHT] keeps it recognisable on a short one. The result panel is
+    // pinned and the portion field sits above it, so the photo can never push either off-screen —
+    // and it still yields to [COMPACT_HEIGHT] the moment the keyboard opens, which is when
+    // identification stops mattering and typing starts.
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val photoHeight = (screenHeight * PHOTO_HEIGHT_FRACTION)
+        .coerceIn(MIN_PHOTO_HEIGHT, MAX_PHOTO_HEIGHT)
+
+    // Order matters: `compact` is checked first, so the monogram plate yields to the keyboard too.
+    // Checking `!hasImage` first left the placeholder as the one thing on the screen that never gave
+    // any height back while the user was typing — which is how the result and the equation ended up
+    // pushed below the fold on a product with no photo.
     val height by animateDpAsState(
-        targetValue = if (compact) COMPACT_HEIGHT else FULL_HEIGHT,
+        targetValue = when {
+            compact -> COMPACT_HEIGHT
+            !hasImage -> MONOGRAM_HEIGHT
+            else -> photoHeight
+        },
         animationSpec = tween(Motion.STANDARD_MS),
         label = "heroHeight",
     )
@@ -132,7 +165,9 @@ private fun ProductHeroImageContent(
                 text = product.monogram(),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 44.sp,
+                // Tracks the plate it sits on, so the short no-photo plate does not carry a
+                // monogram scaled for the tall one.
+                fontSize = if (height < FULL_HEIGHT) 32.sp else 44.sp,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
         }
@@ -154,11 +189,43 @@ private fun ProductHeroImageContent(
     }
 }
 
-/** ~150 dp: large enough to identify a package, small enough to leave the result dominant (§5). */
+/**
+ * Share of the screen height a real product photo gets.
+ *
+ * 28% lands around 245 dp on a typical modern phone (~875 dp tall) — a genuinely large picture,
+ * comfortably more than the flat 150 dp it replaces, while still leaving the portion controls and
+ * the pinned result on the same screen without scrolling.
+ */
+private const val PHOTO_HEIGHT_FRACTION = 0.28f
+
+/** Below this a package photo stops being comparable against the real thing. */
+private val MIN_PHOTO_HEIGHT = 150.dp
+
+/** Above this the photo starts competing with the result for the screen (§5). */
+private val MAX_PHOTO_HEIGHT = 280.dp
+
+/** The reference height the monogram sizing compares against. */
 private val FULL_HEIGHT = 150.dp
 
-/** Yields ~60 dp to the portion controls while the keyboard is open (§5). */
-private val COMPACT_HEIGHT = 92.dp
+/**
+ * What the photo shrinks to while the keyboard is open (§5).
+ *
+ * Deliberately *smaller* than the 92 dp it used to be. With the resting photo enlarged, 92 dp left
+ * the portion field clipped through its lower edge by the pinned result panel — seen on the
+ * emulator with the keyboard open, and the same class of defect the
+ * `panelTop >= fieldBottom` assertion in MealScreenTest exists to catch.
+ *
+ * The photo has already done its job by the time the user is typing, so this is the right place to
+ * find the room: identification matters before the keyboard, the number matters during it.
+ */
+private val COMPACT_HEIGHT = 64.dp
+
+/**
+ * No photo exists, so the monogram is a placeholder rather than an identification aid. Tall enough
+ * to stay a deliberate plate rather than a stripe, short enough that it stops dominating a screen
+ * whose subject is the number below it.
+ */
+private val MONOGRAM_HEIGHT = 84.dp
 
 /**
  * Up to two initials — "Hagelslag puur" becomes "HP". Digits and punctuation are skipped so "7Up"

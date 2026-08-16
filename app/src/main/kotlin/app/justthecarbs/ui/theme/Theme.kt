@@ -42,9 +42,16 @@ val SpaceGrotesk = FontFamily(
 )
 
 // Light palette (design doc "Design tokens" section).
-private val Blue = Color(0xFF2F8FE0)
+//
+// Blue and Red are darkened from the original handoff tokens (#2F8FE0 / #FF5C5C) because measured
+// contrast, not appearance, decided them: the handoff values scored 3.43:1 and 2.84:1 against the
+// surfaces they are actually drawn on, so the app's single most-read element — the carbohydrate
+// result — failed even the 3:1 large-text floor. Both are the smallest darkening along their own
+// hue that clears 4.5:1 on every surface each is really used on; hue and saturation are otherwise
+// preserved, so the identity is unchanged. ContrastTest pins the pairs. See DESIGN.md.
+private val Blue = Color(0xFF1B6FBF)
 private val BlueSoft = Color(0xFFE4F1FC)
-private val Red = Color(0xFFFF5C5C)
+private val Red = Color(0xFFD42F2F)
 private val Orange = Color(0xFFFFA94D)
 private val OrangeSoft = Color(0xFFFFEEDC)
 private val Cream = Color(0xFFFFF6EE)
@@ -83,7 +90,10 @@ data class ExtendedColors(
 private val LightExtendedColors = ExtendedColors(
     result = Red,
     orangeSoft = OrangeSoft,
-    onOrangeSoft = Color(0xFFB5710B),
+    // Darkened from #B5710B, which scored 3.47:1 on its own container — a badge foreground that
+    // failed the normal-text floor on the only background it is ever drawn on. #9B6109 cleared it
+    // at 4.51:1; this sits at 4.79:1 for margin, an imperceptible further shift.
+    onOrangeSoft = Color(0xFF965D08),
     disabledButton = DisabledBlue,
 )
 
@@ -130,6 +140,11 @@ private val LightColors = lightColorScheme(
     tertiary = Orange,
     tertiaryContainer = OrangeSoft,
     onTertiaryContainer = Color(0xFF7A4B0A),
+    // Snackbar action text. Left unset this falls back to Material's baseline lavender — the same
+    // stray-purple trap recorded above for `secondaryContainer`, and it appeared verbatim on the
+    // meal's Undo action. `BlueDark` is the app's own accent adapted for a dark surface and scores
+    // 5.04:1 on Material's inverseSurface.
+    inversePrimary = BlueDark,
 )
 
 private val DarkColors = darkColorScheme(
@@ -159,6 +174,9 @@ private val DarkColors = darkColorScheme(
     tertiary = OrangeDark,
     tertiaryContainer = OrangeSoftDark,
     onTertiaryContainer = OrangeDark,
+    // Same reason as the light scheme. Dark mode's inverseSurface is light, so the action takes the
+    // darker blue rather than the brightened one.
+    inversePrimary = Blue,
 )
 
 /**
@@ -206,6 +224,15 @@ object Space {
 object Motion {
     const val QUICK_MS = 120
     const val STANDARD_MS = 220
+
+    /**
+     * How long the copy button holds its "copied" state.
+     *
+     * Not motion so much as persistence: long enough to survive looking away at the phone you are
+     * pasting into and back, short enough that it cannot be mistaken for the button's resting
+     * state. Deliberately much longer than [STANDARD_MS] — this is a confirmation, not a transition.
+     */
+    const val COPIED_STATE_MS = 2500L
 }
 
 /**

@@ -18,6 +18,17 @@ class OnboardingViewModel(private val settingsRepository: SettingsRepository) : 
         _slideIndex.value = (_slideIndex.value + 1).coerceAtMost(LAST_SLIDE)
     }
 
+    /**
+     * Follow a slide the user reached by swiping.
+     *
+     * Separate from [next] because a swipe can move in either direction and can land on any slide,
+     * where [next] only ever advances by one. Coerced rather than trusted: the pager is the source
+     * of the value and this keeps an out-of-range index from becoming state.
+     */
+    fun showSlide(index: Int) {
+        _slideIndex.value = index.coerceIn(0, LAST_SLIDE)
+    }
+
     fun skip() {
         _slideIndex.value = LAST_SLIDE
     }

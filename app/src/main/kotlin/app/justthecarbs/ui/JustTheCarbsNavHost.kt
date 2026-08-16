@@ -168,6 +168,7 @@ fun JustTheCarbsNavHost(
                 slideIndex = slideIndex,
                 onNext = viewModel::next,
                 onSkip = viewModel::skip,
+                onSlideChanged = viewModel::showSlide,
                 onGetStarted = {
                     viewModel.complete()
                     navController.navigate(Routes.HOME) {
@@ -384,6 +385,11 @@ fun JustTheCarbsNavHost(
                 onRemoveItem = viewModel::removeItem,
                 onClear = viewModel::clear,
                 onShowClearConfirmation = viewModel::showClearConfirmation,
+                // An ordinary forward navigation, so the scanner's own "back" returns to the meal
+                // the user is still building rather than skipping past it to Home.
+                onScanNext = { navController.navigate(Routes.SCAN) },
+                onUndoRemove = viewModel::undoRemove,
+                onUndoExpired = viewModel::clearUndo,
             )
         }
 

@@ -128,7 +128,10 @@ fun ManualEntryScreen(
                 OutlinedTextField(
                     value = state.carbsPer100,
                     onValueChange = onCarbsChanged,
-                    label = { Text(stringResource(R.string.manual_carbs)) },
+                    // Names the unit the value is measured in, tracking the basis chips below — the
+                    // same number means different things per 100 g and per 100 ml, and this is the
+                    // one field where that ambiguity has a numeric consequence.
+                    label = { Text(stringResource(R.string.manual_carbs, state.basis.unitLabel)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = state.carbsError != null,

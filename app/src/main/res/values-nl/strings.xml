@@ -8,6 +8,7 @@
     <string name="home_scan_button">Streepjescode scannen</string>
     <string name="home_manual_button">Handmatig invoeren</string>
     <string name="home_recent_title">Recent</string>
+    <string name="home_favorites_title">Favorieten</string>
     <string name="home_empty_headline">Scannen. Portie. Koolhydraten.</string>
     <string name="home_empty_body">Scan de streepjescode, kies hoeveel je neemt en krijg de hoeveelheid koolhydraten.</string>
     <string name="home_empty_step_scan">Scannen</string>
@@ -15,6 +16,10 @@
     <string name="home_empty_step_carbs">Koolhydraten</string>
     <string name="home_empty_scan_label">Voedingswaardelabel scannen</string>
     <string name="home_settings">Instellingen</string>
+    <string name="home_search_label">Producten zoeken</string>
+    <string name="home_action_barcode_subtitle">Snelste manier om een verpakt product te vinden</string>
+    <string name="home_action_label_subtitle">Lees koolhydraten direct van de verpakking</string>
+    <string name="home_action_description">%1$s. %2$s</string>
 
     <string name="recent_summary">%1$s → %2$s</string>
     <string name="recent_never_used">Nog niet gebruikt</string>
@@ -33,7 +38,8 @@
     <string name="scanner_unavailable">De camera is niet beschikbaar. Je kunt een product handmatig invoeren.</string>
 
     <string name="permission_title">Cameratoegang is nodig om een streepjescode te scannen.</string>
-    <string name="permission_body">Deze app gebruikt de camera alleen om streepjescodes en voedingswaardelabels te lezen. Afbeeldingen worden nooit geüpload of opgeslagen.</string>
+    <!-- See the English string for why this says "bewaard" (kept) rather than "opgeslagen" (saved). -->
+    <string name="permission_body">Deze app gebruikt de camera alleen om streepjescodes en voedingswaardelabels te lezen. Afbeeldingen worden op je toestel verwerkt en nooit geüpload of bewaard.</string>
     <string name="permission_allow">Camera toestaan</string>
     <string name="permission_manual">Handmatig invoeren</string>
     <string name="permission_settings">Instellingen openen</string>
@@ -51,6 +57,7 @@
     <string name="remote_changed_apply">Nieuwe waarde gebruiken</string>
     <string name="product_portion_question">Hoeveel eet je?</string>
     <string name="product_portion_label">Portie in %1$s</string>
+    <string name="product_count_field_label">Aantal %1$s</string>
     <string name="product_result_label">KOOLHYDRATEN</string>
     <string name="product_result_calculated">%1$s g berekend</string>
     <string name="product_result_whole">≈ %1$s g hele grammen</string>
@@ -67,10 +74,8 @@
     <string name="product_remove">Verwijderen uit recent</string>
     <string name="product_scan_label">Voedingswaardelabel scannen</string>
 
-    <string name="adjust_minus_ten">Min 10</string>
-    <string name="adjust_minus_five">Min 5</string>
-    <string name="adjust_plus_five">Plus 5</string>
-    <string name="adjust_plus_ten">Plus 10</string>
+    <string name="adjust_minus">Min %1$d</string>
+    <string name="adjust_plus">Plus %1$d</string>
 
     <string name="notfound_title">Product niet gevonden</string>
     <string name="notfound_body">Deze streepjescode staat niet in de productdatabase. Je kunt de waarde van de verpakking gebruiken.</string>
@@ -92,7 +97,7 @@
 
     <string name="manual_title">Product invoeren</string>
     <string name="manual_name">Productnaam</string>
-    <string name="manual_carbs">Koolhydraten per 100</string>
+    <string name="manual_carbs">Koolhydraten per 100 %1$s</string>
     <string name="manual_basis">Gemeten per</string>
     <string name="manual_basis_g">100 g</string>
     <string name="manual_basis_ml">100 ml</string>
@@ -155,8 +160,6 @@
     <string name="settings_theme_light">Licht</string>
     <string name="settings_theme_dark">Donker</string>
     <string name="settings_results">Resultaten</string>
-    <string name="settings_results_whole">Hele gram met decimaal</string>
-    <string name="settings_results_decimal">Alleen decimaal</string>
     <string name="settings_results_decimal_first">Decimale waarde, hele gram eronder</string>
     <string name="settings_results_whole_first">Hele gram, decimaal eronder</string>
     <string name="settings_interaction">Interactie</string>

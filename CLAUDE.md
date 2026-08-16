@@ -45,7 +45,11 @@ versionName, `app_name` and the OFF User-Agent). Historical docs under `docs/sup
 and `docs/superpowers/plans/` keep their original CarbScan/CarbQuick prose as a dated record of
 decisions made under the earlier working names — do not sweep those.
 
-GitHub: **https://github.com/Morfildor/Just-the-Carbs** — private, and staying private for now.
+GitHub: **https://github.com/Morfildor/Just-the-Carbs** — **public** (owner, 2026-08-16). It was
+private until GitHub Pages was needed to host the privacy policy, which Pages will not serve from a
+private repo on a free account. This reverses the earlier "stays private" decision; treat everything
+in the repo as publicly readable. Nothing signed and no keystore is committed, and
+`keystore.properties` is git-ignored — re-check that before any release work.
 
 ## Post-rebrand hardening pass (2026-08-15)
 
@@ -98,9 +102,13 @@ instrumented tests (up from 95), lint clean.
 - ✅ Manual barcode entry (§8); live Open Food Facts verified end to end incl. product images
 - ✅ **Countable portions** (2026-08-14) — see dedicated section below
 - ✅ **Product development pass** (2026-08-14) — see dedicated section below
-- ✅ **429 JVM unit tests passing; lint clean; debug + minified release both build** (2026-08-15
-  Light-theme-default pass — was 392 before it)
-- ✅ **133 instrumented tests, all passing** (2026-08-15 — was 119). The previously documented
+- ✅ **434 JVM unit tests passing; lint clean; debug builds** (2026-08-16 T1D UX pass — was 429
+  before it). The minified release was **not** rebuilt in this pass; the last verified release build
+  is the 2026-08-15 one.
+- ✅ **140 instrumented tests, all passing** (2026-08-16 T1D UX pass). The two `quickAdjust*` cases
+  had been failing on HEAD as well — a **test** bug, not an app bug: the ± row sits below the fold,
+  where a node has empty bounds and `performClick()` presses nothing. Both now `performScrollTo()`
+  first; see the dedicated section below. The previously documented
   failure, `SettingsScreenTest.tappingPrivacyPolicyDoesNotCrashTheScreen`, **no longer exists**: it
   was replaced by `tappingPrivacyPolicyOpensTheCommittedUrlAndKeepsTheScreen`, which stubs Compose's
   `LocalUriHandler` instead of letting a real browser launch, so the browser-backgrounding problem
@@ -324,6 +332,227 @@ actually visible. It carries a self-check that light and dark backgrounds differ
 configuration really reaches `isSystemInDarkTheme()`, without which every other case in the class
 would pass vacuously. Verified on the minified release build on the emulator, not just in tests.
 
+## Home entry points (2026-08-15)
+
+Home now presents all three ways in as first-class actions. Design:
+`docs/superpowers/specs/2026-08-15-home-entry-points-design.md`.
+
+**The bug was structural, not cosmetic.** "Scan nutrition label" was rendered only inside
+`EmptyState`, which lives in the `recents.isEmpty()` branch — so the app's third entry point
+**disappeared permanently after the user's first scan**. Every returning user had two ways in, not
+three. A green 133-test suite never caught it because nothing asserted the action existed in the
+non-empty state.
+
+**Direct Home → label scanning already worked and needed no navigation change.** `JustTheCarbsNavHost`
+already passed `onScanLabel = { navController.navigate(Routes.labelScan()) }`, and the no-context path
+is complete: empty barcode → `productExists == false` → `onSavePortionUnit = null` and
+`onCarryPendingPortionUnit` non-null → an accepted reading routes to `Routes.manual("", carbs, basis)`,
+carrying any detected countable portion as typed arguments into the same creation flow used when a
+barcode lookup misses. Verified on the emulator by tapping the card with no product context: the
+scanner opens directly. Do not "add" this flow again — only its presentation was ever missing.
+
+**Layout.** One `LazyColumn` (`HomeBody`) holds, in order: filled *Scan barcode* card, outlined
+*Scan nutrition label* card, *Enter manually*, then either recents or the branded starter hero. The
+barcode action moved out of its pinned bottom slot into this scroll region — the only arrangement
+where the two scanners read as a matched pair *and* precede history. `HomeActionCard` is one
+composable parameterised by `filled`; the outlined variant reuses `RecentCard`'s exact surface and
+border so the column is visibly one system, and spends colour only on its `tertiaryContainer` icon
+roundel. No new palette, no new drawables.
+
+**Two defects only running the app caught** (the suite was green for both):
+
+1. Pinning *Enter manually* to the bottom edge left ~900px of dead space between the last card and
+   the screen edge — the screen read unfinished. It is now the last content item instead.
+2. Ordering *Enter manually* **after** the starter hero put it beyond the composed window at 1.8×
+   font scale, where `LazyColumn` never composes it at all — `performScrollTo` failed with "could not
+   find any node". The action did not merely sit below the fold, it did not exist. It now precedes
+   the hero: the hero is reassurance, manual entry is a function.
+
+`search_hint` ("Product or brand name") is now a placeholder under a real `label` of *Search
+products* — previously the word "search" appeared nowhere on Home and a magnifier glyph carried the
+entire discovery burden. Explicit-search behaviour is unchanged: typing never calls Open Food Facts.
+
+## UX polish pass (2026-08-16)
+
+An app-wide friction and visual-coherence audit. No behaviour, calculation, schema or parser change
+— every finding below was presentation. `PRODUCT.md` and `DESIGN.md` were added at the repo root,
+transcribed from the design handoff, `docs/MASTER-PROMPT.md` and `Theme.kt`; **`Theme.kt` stays
+authoritative** if DESIGN.md drifts.
+
+**Raw enum constants were reaching the user.** The "Add portion unit" type picker rendered
+`kind.name`, so it listed `SLICE`, `PIECE`, `BISCUIT`, `SACHET`, `CUSTOM` in screaming caps, and two
+other sites used `kind.name.lowercase()`. The plurals already existed for every kind; they were only
+reachable from a `PortionUnit`, not a bare `PortionUnitKind`. Added
+`PortionUnitKind.kindLabel(count)` in `PortionUnitLabels.kt` and routed all three sites through it.
+`CUSTOM` gets its own string ("Something else") because it has no built-in word — its label is text
+the user has not typed yet.
+
+**The product photo is now sized against the screen, not a flat 150 dp** (owner request: "much
+bigger, but appropriately"). `PHOTO_HEIGHT_FRACTION = 0.28f` clamped to 150–280 dp, which is ~245 dp
+on a typical phone. Verified against a live Open Food Facts product: the jar's label and its "400G"
+badge are legible, and the per-100 figure, portion field, adjusters and pinned result all still fit
+without scrolling.
+
+**Three heights, and the ordering between them is load-bearing:**
+
+- a real photo gets the proportional height;
+- **no photo gets 84 dp**, not the photo height — the monogram is derived from the name printed
+  directly above it, so it identifies nothing and a 150 dp slab spent a third of the screen
+  restating two letters;
+- `compact` (IME open) gets 64 dp, reduced from 92 dp because the enlarged photo pushed the portion
+  field under the pinned panel.
+
+`compact` is checked **before** `!hasImage`. With the checks the other way round the monogram plate
+was the one element that never gave height back while typing, which is how the result and the
+equation ended up below the fold — caught by the instrumented suite, not by reading the code.
+
+**Other fixes:** the meal-total panel gained the `resultElevation` shadow the calculator's identical
+panel already had (without it, `surfaceContainerLowest` on cream is a ~1% difference and the
+screen's most important number had no edge); the portion field gained a greyed `0` placeholder,
+cleared from semantics so text searches cannot match the input instead of the result; `manual_carbs`
+now names its unit ("Carbs per 100 g/ml") tracking the basis chips, since that is the one field
+where the ambiguity has a numeric consequence; the unverified-source hint hides while the keyboard
+is open.
+
+**Microcopy:** `product_result_label` `CARBOHYDRATES` → `CARBS` and `home_empty_body` now says
+"carbs", per the one-vocabulary rule. Dutch `KOOLHYDRATEN` is left alone — it has no shorter
+idiomatic form.
+
+**Home's empty state no longer draws `ic_launcher_foreground`.** It is a 108 dp adaptive-icon vector
+whose two paths are *white* shapes meant to read against the launcher's own coloured background,
+inside a 72 dp safe zone. Tinted dark on a light tile the figure and ground invert and it renders as
+an indistinct blob. Only visible by looking at the screen. The headline now leads and the existing
+3-step strip does the visual work; the mark still renders correctly on onboarding, where it is white
+on blue as designed. **Do not put the launcher icon on a light surface again.**
+
+**Two test-quality fixes made while chasing real failures:** `MealScreenTest` read the literal
+`"CARBOHYDRATES"` (now resolved from resources, so a position assertion cannot fail over wording),
+and two `ProductScreenTest` assertions searched the whole screen for text like `"0.0 g"` — which the
+*portion field* also matches once it holds a value and a unit suffix. Both are now scoped to
+`PRODUCT_RESULT_TAG`, so they genuinely assert about the result.
+
+**Deliberately rejected:** `weight(1f, fill = false)` on the portion zone removes the remaining gap
+above the result panel but unpins the panel from the bottom edge, leaving a strip of page beneath
+it. Tried both ways on the emulator; the gap is the lesser problem and the panel must stay welded to
+the bottom. Also rejected: a −/+ stepper for countable portions (the count field already pre-fills
+`1` and selects-all on focus, so it is one tap plus one keystroke) and any haptics beyond the
+existing copy feedback.
+
+## T1D consumer UX pass (2026-08-16)
+
+A UI/UX review from the perspective of someone with type 1 diabetes counting carbs to dose insulin,
+then the pre-release half of it implemented. Review:
+`docs/plans/2026-08-16-t1d-ux-review.md` (11 findings, ranked, tagged pre/post-release).
+**Nothing in this pass changed calculation, schema, navigation or parsing** — all presentation.
+
+**The eight implemented (pre-release) items:**
+
+- **The result slot no longer says "Enter a portion" into a void.** It shows the per-100 figure the
+  result will be scaled from, in `NumberType.supporting` and the ordinary variant colour —
+  deliberately **not** `NumberType.result` or the result hue, because a per-100 figure that looked
+  like an answer is the worst available confusion on that screen. The 96 dp reservation is unchanged.
+  The countable path now says *Enter a count*, since "portion" named the wrong input there.
+- **Provenance now appears at the result, not only at the top of the screen.** `SourceBadge` drops
+  its advisory line while the IME is open, so at the moment the user reads the number and decides
+  whether to act, nothing on that half of the screen said whether the figure was ever checked
+  against the package. One plain line, `bodySmall`, variant colour, **no icon and no alarm hue**.
+  Only for `OPEN_FOOD_FACTS` — a MANUAL or OCR value was by definition read off the package.
+  Wording is a fact about the *data* ("Not checked against the package"), never about a consequence
+  ("may affect your dose"): the first describes a crowd-sourced database, the second is medical
+  advice this app never gives.
+- **Quick-adjust steps scale with the package** — `quickAdjustStep(packageAmount)`, a pure
+  `internal` function with its own JVM test (`QuickAdjustStepTest`, 5 cases). A fixed ±5 g was
+  one-hundredth of a 500 g pack and a quarter of a 20 g biscuit. Ladder is 5/10/25/50, keyed on the
+  **same confidently-parsed package size `PackShortcuts` already gates on**, so it introduces no new
+  guess; **no package size keeps the original ±5/±10**. Steps stay round numbers — a computed "+37"
+  is defensible and unusable. `adjust_plus_five`/`_ten` etc. replaced by parameterised
+  `adjust_plus`/`adjust_minus` in both locales.
+- **The per-100 line is now `SemiBold`.** It is what every result derives from and what an
+  experienced counter sanity-checks first; it was rendering lighter than a product name the photo
+  and top bar already establish.
+- **Copy holds a visible confirmation** — the icon swaps to a check for `Motion.COPIED_STATE_MS`
+  (2500 ms). The Toast was the *only* confirmation and is transient, easily missed one-handed, and
+  gone by the time the user looks back from the app they are pasting into. The Toast stays: it is
+  what announces the copy to TalkBack. Keyed on the copied value, so copying a different number
+  after changing the portion restarts the confirmation rather than reusing a running timer.
+- **`verify_label_basis_mismatch` had a lowercase `t` after a full stop** — in the one dialog
+  specifically about the app refusing to do something risky.
+- **Onboarding promised a control that does not exist.** `onboarding_body_2` said "Drag, type, or
+  tap a preset"; there is no drag/slider/pointer API anywhere in `ui/` (verified by search, not
+  assumed). Now "Type it, or tap a preset."
+- **Minor:** `meal_bar_summary` now says "g carbs" not bare "g" (one-vocabulary rule); dead
+  `settings_results_whole` / `settings_results_decimal` removed from both locales — `ResultStyle`
+  has two entries and only the `_first` variants were ever referenced.
+
+## The quick-adjust test failure — fixed, and worth reading before trusting a click
+
+**Resolved 2026-08-16. It was a test bug, not an app bug**, and it predates this pass (it fails on
+HEAD too, verified in a clean `git worktree`). Both `quickAdjust*` cases now call `performScrollTo()`
+before `performClick()`.
+
+**The actual cause, measured:** in the test harness the quick-adjust row starts outside the visible
+bounds of the portion zone's scroll container. A node scrolled out of view is still
+`isPlaced == true` and still reports a size, but its `boundsInRoot` is an **empty rect at the
+origin** — so it has no clickable area. `performClick()` on it does not throw. It clicks nothing,
+`onAdjust` never fires, and the portion silently stays put.
+
+```
+before scroll:  bounds=Rect(0,0,0,0)          size=228x126   placed=true
+after scroll:   bounds=Rect(799,861,1027,987)                portion 65 -> 75
+```
+
+**This is a test-harness artifact, not a user-facing layout defect — do not "fix" the layout.**
+After the scroll the row occupies y=861–987 on a 1080x2400 @420dpi window (411x914 dp, an ordinary
+modern phone), comfortably on screen and well clear of the result panel at y=1050. I initially wrote
+this up as a real overlap that left the ± buttons dead on small devices; that was wrong, and the
+arithmetic above is what disproves it. `createComposeRule` composes into a harness-sized container
+rather than the full activity window, which is what puts the row out of view there but not in the app.
+
+**Why the assertion only started failing recently:** the uncommitted UX-polish work tightened it from
+a whole-screen `onNodeWithText("36.2 g")` to one scoped to `PRODUCT_RESULT_TAG`. The loose version
+had been passing for the wrong reason — it could match the portion field, which also contains the
+text. The tightening did not break anything; it revealed that the click had never been working.
+
+**Diagnostic method worth reusing.** `fetchSemanticsNode().boundsInRoot` + `.layoutInfo.isPlaced` is
+what settles this class of question in one run. Note specifically that:
+
+- `printToLog`'s per-node offsets are **not** absolute screen positions — reading them as such sent
+  me down a wrong path (I concluded the pinned result panel was overlapping the row; it is not).
+- "displayed" in an assertion failure does not distinguish *covered* from *scrolled out of view*.
+- Two layout changes were tried against the wrong diagnosis and **reverted**: shrinking the result
+  panel's padding, and enlarging the zone's trailing `Spacer`. Neither is needed. The panel padding
+  keeps only the give-back rule for the new provenance line, which is correct on its own terms.
+
+**The general rule, now with two instances in this repo:** if `performClick()` appears to do nothing,
+the control is probably unreachable — covered by the keyboard (the 2026-08-14 case) or below the fold
+(this one). Scroll to it first; do not start moving layout.
+
+**Do not "fix" the decorative corner circle.** Blue on Home/Product and orange on Meal is not an
+inconsistency — `ManualEntryScreen` is orange too. Blue marks lookup-driven screens, orange
+user-authored ones. I flagged it as a possible defect in the review and was wrong.
+
+**Deliberately NOT done** (the three post-release findings, all needing an owner decision):
+surfacing a favourite's remembered result on Home so a repeated product needs no scan (finding 1 —
+fastest path is currently the slowest, and the data is already computed then discarded); making the
+meal startable rather than only appendable (finding 2 — `MealActions` renders only inside
+`ResultPanel` when `exact != null`, and Home's meal bar hides whenever the search field is
+non-blank, i.e. exactly while the user is finding the next item); and per-item provenance on meal
+lines (finding 3 — needs a `MealItem` field, hence a migration).
+
+**Test changes made in this pass, all because behaviour or copy genuinely moved:** three
+`MealScreenTest` assertions updated for `meal_bar_summary`'s new "g carbs" suffix, and one
+`LabelVerificationScreenTest` assertion for the corrected capital in `verify_label_basis_mismatch`
+(it was asserting on the typo). New `QuickAdjustStepTest` (5 JVM cases) pins the step ladder,
+including that a missing package size keeps the original ±5 and that the ladder never decreases as
+the package grows.
+
+**Still emulator/unverified:** none of this pass has been seen by a human on a device. Two items are
+visual claims that instrumented tests do not settle — the result slot's new two-line pending state
+at 1.8× font scale, and whether the provenance line crowds `MealActions` on a short display.
+
+**Instrumented suite is green (140/140).** The two `quickAdjust*` failures seen during this pass
+predated it and were a test bug — see the dedicated section above.
+
 ## Toolchain (installed — do NOT reinstall)
 
 | Thing | Path |
@@ -384,7 +613,9 @@ Note: `connectedAndroidTest` **uninstalls the app afterwards** — reinstall bef
    (`OPEN_FOOD_FACTS`/`MANUAL`/`OCR`) and `verificationStatus` (`UNVERIFIED`/`USER_VERIFIED`) are
    **separate fields and must stay separate**. A product can come from OFF *and* be verified; that
    provenance must be preserved. Do not "simplify" these back into one enum.
-6. Repo stays **private**. **Just the Carbs** (`app.justthecarbs`) is the current, decided public
+6. Repo is **public** since 2026-08-16 (superseding the earlier "stays private" decision) — GitHub
+   Pages could not serve the privacy policy from a private repo. **Just the Carbs**
+   (`app.justthecarbs`) is the current, decided public
    name and namespace (2026-08-14) — see the header above. Historical docs under
    `docs/superpowers/**` intentionally keep their original CarbScan/CarbQuick prose as a dated
    record; that is not an open decision, just an unswept historical record.
@@ -465,11 +696,14 @@ Key invariants, each pinned by a test:
 1. **§44 regulatory assessment is drafted but unsigned, and still blocks publication.** The
    manufacturer's assessment is `docs/regulatory-qualification-assessment.md` (conclusion: **not a
    medical device**, EU only, conditional on its §7 marketing constraints); a PDF export exists for
-   signature. Signing it closes checklist rows A1/A3 — **A2 (independent review), A5 (non-EU
+   signature. **Both files are deliberately untracked** (see `.gitignore`) — they contain the
+   owner's personal information and the repo is public. They are on disk; read them there.
+   Signing it closes checklist rows A1/A3 — **A2 (independent review), A5 (non-EU
    markets) and A6 (listing wording) stay open**, so publication remains NO-GO. Gate rows are in
    `docs/regulatory-release-checklist.md`; the release order is `docs/play-release-readiness.md`.
-   §7.1 forbids marketing the app for diabetes and forbids the owner's personal pump use appearing
-   in any published material — that constraint is binding on store copy and review replies.
+   §7.1 forbids marketing the app for diabetes, and forbids the owner's personal circumstances
+   appearing in any published material — binding on store copy and review replies. Do not restate
+   those circumstances in tracked files, including this one.
 2. **ML Kit telemetry: investigated and settled as far as code can settle it (2026-08-14).**
    `com.google.android.datatransport` comes from `com.google.mlkit:common` and **cannot be
    excluded** — doing so fatally crashes the scanner (`NoClassDefFoundError: CCTDestination`),

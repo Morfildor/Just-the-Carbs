@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_background">#15140F</color>
-    <color name="splash_background">#15140F</color>
+    <!--
+      Deliberately does NOT override `window_background` / `splash_background`.
+
+      Those two are the *launch* colours, painted by the system before Compose draws anything. The
+      app's theme default is Light on a fresh install regardless of the Android system theme (see
+      `AppSettings.theme`, `SettingsRepository`'s fallback and `JustTheCarbsTheme`'s default), so a
+      dark launch window on a dark-system phone produced a visible near-black → cream flash that
+      contradicted the app's own default.
+
+      The launch window cannot read DataStore — the preference is not available until after the
+      first frame — so it cannot follow the user's actual choice. Between a flash for every
+      dark-system user on every launch and a stable branded light splash for everyone, the stable
+      one wins: it is correct for the default, and for a user who has explicitly chosen Dark it is a
+      brief branded plate rather than a wrong-colour flash of the app's own UI.
+
+      An explicitly-selected Dark theme still applies in full as soon as Compose composes; only this
+      pre-first-frame window is unconditionally light.
+    -->
 </resources>

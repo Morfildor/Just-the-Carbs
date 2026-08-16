@@ -14,13 +14,19 @@
     <string name="home_scan_button">Scan barcode</string>
     <string name="home_manual_button">Enter manually</string>
     <string name="home_recent_title">Recent</string>
+    <string name="home_favorites_title">Favourites</string>
     <string name="home_empty_headline">Scan. Portion. Carbs.</string>
-    <string name="home_empty_body">Scan the barcode, choose how much you\'re having, and get the carbohydrate amount.</string>
+    <string name="home_empty_body">Scan the barcode, choose how much you\'re having, and get the carbs.</string>
     <string name="home_empty_step_scan">Scan</string>
     <string name="home_empty_step_portion">Portion</string>
     <string name="home_empty_step_carbs">Carbs</string>
     <string name="home_empty_scan_label">Scan nutrition label</string>
     <string name="home_settings">Settings</string>
+    <string name="home_search_label">Search products</string>
+    <string name="home_action_barcode_subtitle">Fastest way to find a packaged product</string>
+    <string name="home_action_label_subtitle">Read carbs straight from the package</string>
+    <!-- Spoken as one announcement per card: "<title>. <subtitle>". -->
+    <string name="home_action_description">%1$s. %2$s</string>
 
     <!-- Recents list -->
     <string name="recent_summary">%1$s → %2$s</string>
@@ -42,7 +48,17 @@
 
     <!-- Camera permission (§9) -->
     <string name="permission_title">Camera access is needed to scan a barcode.</string>
-    <string name="permission_body">This app uses the camera only to read barcodes and nutrition labels. Images are never uploaded or saved.</string>
+    <!--
+      "not kept", not "never saved".
+
+      Reading a nutrition label writes the captured frame to the app's private cache directory so
+      ML Kit can read it, then deletes it (see LabelScannerScreen's capture path and
+      LabelAnalyzer's delete calls). A file therefore does exist, briefly. "Never saved" was
+      literally untrue, and a privacy claim that overstates is worse than one that is merely
+      modest — this wording says the two things that actually matter and are actually true: it does
+      not leave the device, and it is not retained.
+    -->
+    <string name="permission_body">This app uses the camera only to read barcodes and nutrition labels. Images are processed on your device and are never uploaded or kept.</string>
     <string name="permission_allow">Allow camera</string>
     <string name="permission_manual">Enter manually</string>
     <string name="permission_settings">Open settings</string>
@@ -52,6 +68,18 @@
     <string name="product_per_100">%1$s g carbs / 100 %2$s</string>
     <string name="product_source_online">Online value</string>
     <string name="product_source_online_hint">Check package if needed</string>
+    <!--
+      Shown beside the result itself, not only in the badge at the top of the screen.
+
+      Deliberately a statement about the DATA ("not checked against the package"), never about a
+      consequence ("may affect your dose"). The first is a fact about a crowd-sourced database; the
+      second would be medical advice, which this app never gives (§45, owner decision #9).
+
+      No alarm colour and no warning icon: the online value is usually right, and dressing it as a
+      fault every time trains the user to ignore it (§25).
+    -->
+    <string name="product_result_unverified" tools:ignore="MissingTranslation">Not checked against the package</string>
+    <string name="product_result_verified" tools:ignore="MissingTranslation">Checked against the package</string>
     <string name="product_source_verified">✓ Verified by you</string>
     <string name="product_source_manual">Entered by you</string>
     <string name="product_source_ocr">Read from label by you</string>
@@ -60,11 +88,24 @@
     <string name="remote_changed_body">The database now reports %1$s g / 100 %2$s. Your current value is unchanged.</string>
     <string name="remote_changed_apply">Use new value</string>
     <string name="product_portion_question">How much are you eating?</string>
+    <!-- Screen-reader labels for the two amount fields. Neither has a visible `label`: the
+         question above them names them for sighted users, but that heading is a separate node and
+         is not read as part of the field. -->
     <string name="product_portion_label">Portion in %1$s</string>
-    <string name="product_result_label">CARBOHYDRATES</string>
+    <string name="product_count_field_label">Number of %1$s</string>
+    <!-- The consumer word, per the vocabulary rule: "Carbs" wherever brevity fits, the full
+         "carbohydrate" only where clarity needs it (OCR row naming, regulatory copy). Caps come
+         from the string, not the style, so the label stays a deliberate eyebrow. -->
+    <string name="product_result_label">CARBS</string>
     <string name="product_result_calculated">%1$s g calculated</string>
     <string name="product_result_whole">≈ %1$s g whole grams</string>
     <string name="product_result_pending">Enter a portion</string>
+    <!-- The countable path asks for a count, not a weight, so "Enter a portion" names the wrong
+         input. Same slot, same reserved height — only the noun changes with the active mode. -->
+    <string name="product_result_pending_count" tools:ignore="MissingTranslation">Enter a count</string>
+    <!-- Shown in the result slot before a portion exists: the figure the result will be scaled
+         from. Marked as the per-100 basis so it can never be mistaken for a computed result. -->
+    <string name="product_result_basis_preview" tools:ignore="MissingTranslation">%1$s g per 100 %2$s</string>
     <string name="product_quarter_pack">¼ pack</string>
     <string name="product_half_pack">½ pack</string>
     <string name="product_full_pack">Full pack</string>
@@ -78,10 +119,10 @@
     <string name="product_scan_label">Scan nutrition label</string>
 
     <!-- Quick adjust (§16) -->
-    <string name="adjust_minus_ten">Minus 10</string>
-    <string name="adjust_minus_five">Minus 5</string>
-    <string name="adjust_plus_five">Plus 5</string>
-    <string name="adjust_plus_ten">Plus 10</string>
+    <!-- Parameterised because the step size now scales with the package size: ±5 on a biscuit is a
+         quarter of the item, while on a 500 g pack it is noise. See quickAdjustStep(). -->
+    <string name="adjust_minus">Minus %1$d</string>
+    <string name="adjust_plus">Plus %1$d</string>
 
     <!--
       Countable portions (countable-portions brief §3-§12). English only: the owner corrected the
@@ -95,6 +136,9 @@
     <string name="product_add_portion_unit_title" tools:ignore="MissingTranslation">Add portion unit</string>
     <string name="product_portion_unit_type" tools:ignore="MissingTranslation">Portion type</string>
     <string name="product_portion_unit_custom_name" tools:ignore="MissingTranslation">Name</string>
+    <!-- The type picker's word for CUSTOM. The other kinds read their own plurals; CUSTOM has no
+         built-in word because its label is text the user has not typed yet. -->
+    <string name="product_portion_unit_custom" tools:ignore="MissingTranslation">Something else</string>
     <string name="product_portion_unit_weighs" tools:ignore="MissingTranslation">1 %1$s weighs</string>
     <string name="product_save" tools:ignore="MissingTranslation">Save</string>
     <string name="product_online_portion" tools:ignore="MissingTranslation">Online portion</string>
@@ -133,7 +177,7 @@
     <string name="meal_add" tools:ignore="MissingTranslation">Add to meal</string>
     <string name="meal_add_and_scan" tools:ignore="MissingTranslation">Add &amp; scan next</string>
     <string name="meal_added" tools:ignore="MissingTranslation">Added to meal</string>
-    <string name="meal_bar_summary" tools:ignore="MissingTranslation">Meal · %1$s · %2$s g</string>
+    <string name="meal_bar_summary" tools:ignore="MissingTranslation">Meal · %1$s · %2$s g carbs</string>
     <string name="meal_title" tools:ignore="MissingTranslation">Meal total</string>
     <string name="meal_total_label" tools:ignore="MissingTranslation">MEAL TOTAL</string>
     <string name="meal_empty_title" tools:ignore="MissingTranslation">No items yet</string>
@@ -143,6 +187,9 @@
     <string name="meal_remove_item" tools:ignore="MissingTranslation">Remove %1$s</string>
     <string name="meal_item_summary" tools:ignore="MissingTranslation">%1$s · %2$s g</string>
     <string name="meal_open" tools:ignore="MissingTranslation">Open meal total</string>
+    <string name="meal_scan_next" tools:ignore="MissingTranslation">Scan next item</string>
+    <string name="meal_item_removed" tools:ignore="MissingTranslation">Removed %1$s</string>
+    <string name="action_undo" tools:ignore="MissingTranslation">Undo</string>
 
     <plurals name="meal_item_count" tools:ignore="MissingTranslation">
         <item quantity="one">%d item</item>
@@ -164,7 +211,7 @@
     <string name="verify_label_value" tools:ignore="MissingTranslation">%1$s g / 100 %2$s</string>
     <string name="verify_label_match" tools:ignore="MissingTranslation">✓ Values match</string>
     <string name="verify_label_mismatch" tools:ignore="MissingTranslation">These do not match. Which is right?</string>
-    <string name="verify_label_basis_mismatch" tools:ignore="MissingTranslation">The package is measured per 100 %1$s, but this product is measured per 100 %2$s. this app does not convert between them.</string>
+    <string name="verify_label_basis_mismatch" tools:ignore="MissingTranslation">The package is measured per 100 %1$s, but this product is measured per 100 %2$s. This app does not convert between them.</string>
     <string name="verify_label_confirm" tools:ignore="MissingTranslation">Confirm</string>
     <string name="verify_label_use_package" tools:ignore="MissingTranslation">Use package value</string>
     <string name="verify_label_edit" tools:ignore="MissingTranslation">Edit detected value</string>
@@ -262,7 +309,10 @@
     <!-- Manual entry (§27) -->
     <string name="manual_title">Enter product</string>
     <string name="manual_name">Product name</string>
-    <string name="manual_carbs">Carbohydrates per 100</string>
+    <!-- "per 100" alone left the one numerically consequential field ambiguous: the same number
+         means different things per 100 g and per 100 ml. Takes the unit from the basis chips below
+         so the label and the selection can never disagree. -->
+    <string name="manual_carbs">Carbs per 100 %1$s</string>
     <string name="manual_basis">Measured per</string>
     <string name="manual_basis_g">100 g</string>
     <string name="manual_basis_ml">100 ml</string>
@@ -331,8 +381,6 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_results">Results</string>
-    <string name="settings_results_whole">Whole gram with decimal detail</string>
-    <string name="settings_results_decimal">Decimal only</string>
     <string name="settings_results_decimal_first">Decimal value, whole gram beneath</string>
     <string name="settings_results_whole_first">Whole gram, decimal beneath</string>
     <string name="settings_interaction">Interaction</string>
@@ -367,7 +415,7 @@
     <string name="onboarding_title_1" tools:ignore="MissingTranslation">Scan it.</string>
     <string name="onboarding_body_1" tools:ignore="MissingTranslation">Point your camera at any barcode. No searching, no typing a product name.</string>
     <string name="onboarding_title_2" tools:ignore="MissingTranslation">Size the portion.</string>
-    <string name="onboarding_body_2" tools:ignore="MissingTranslation">Drag, type, or tap a preset. Grams, slices, whatever makes sense for the food.</string>
+    <string name="onboarding_body_2" tools:ignore="MissingTranslation">Type it, or tap a preset. Grams, slices, whatever makes sense for the food.</string>
     <string name="onboarding_title_3" tools:ignore="MissingTranslation">Get the number.</string>
     <string name="onboarding_body_3" tools:ignore="MissingTranslation">Just the carbs. Nothing else on screen competes with it.</string>
     <string name="onboarding_next" tools:ignore="MissingTranslation">Next</string>

@@ -15,6 +15,11 @@ import kotlinx.coroutines.launch
 data class MealUiState(
     val items: List<MealItem> = emptyList(),
     val showClearConfirmation: Boolean = false,
+    /**
+     * The item most recently removed, held only long enough to offer Undo. Not a history: exactly
+     * one item deep, cleared when the Snackbar goes, and never persisted.
+     */
+    val lastRemoved: MealItem? = null,
 ) {
     /** Null while empty, so the screen shows its empty state rather than a `0.0 g` total. */
     val total: CarbResult? get() = if (items.isEmpty()) null else MealTotal.asResult(items)
@@ -40,9 +45,31 @@ class MealViewModel(private val repository: ProductRepository) : ViewModel() {
         }
     }
 
+    /**
+     * Remove immediately and keep the snapshot so it can be put back (§5.3).
+     *
+     * No confirmation dialog: removal is instant and reversible, which is faster than a modal for
+     * the common case (the user meant it) and safer for the rare one (they did not). The snapshot
+     * held here is the removed item exactly as it was — restoring it never recomputes carbs.
+     */
     fun removeItem(item: MealItem) {
-        viewModelScope.launch { repository.removeMealItem(item) }
+        viewModelScope.launch {
+            repository.removeMealItem(item)
+            _state.update { it.copy(lastRemoved = item) }
+        }
     }
+
+    /** Put the last removed item back, exactly as it was. */
+    fun undoRemove() {
+        val removed = _state.value.lastRemoved ?: return
+        // Cleared first so a second Undo tap cannot insert the same line twice — the Snackbar can
+        // still be on screen for a moment after the action fires.
+        _state.update { it.copy(lastRemoved = null) }
+        viewModelScope.launch { repository.restoreMealItem(removed) }
+    }
+
+    /** The Snackbar has gone (dismissed or timed out); the removal is now final. */
+    fun clearUndo() = _state.update { it.copy(lastRemoved = null) }
 
     fun showClearConfirmation(show: Boolean) = _state.update { it.copy(showClearConfirmation = show) }
 

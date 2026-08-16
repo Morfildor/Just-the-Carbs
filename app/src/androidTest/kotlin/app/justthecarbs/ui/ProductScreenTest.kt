@@ -8,11 +8,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onAllNodesWithText
@@ -184,10 +187,30 @@ class ProductScreenTest {
         showCalculator()
         compose.onNode(portionField()).performTextInput("65")
 
-        compose.onNodeWithText("+10").performClick()
+        // Scrolled into view before clicking, and that is not defensive padding.
+        //
+        // On a phone-sized window the quick-adjust row sits below the visible fold of the portion
+        // zone's scroll container. A node scrolled out of view is still `isPlaced == true` and still
+        // has a size, but Compose reports its `boundsInRoot` as an empty rect at the origin — it has
+        // no clickable area. `performClick()` on it does not throw; it clicks nothing, `onAdjust`
+        // never fires, and the portion silently stays where it was.
+        //
+        // Measured, not inferred: before the scroll the button reports
+        // `bounds=Rect(0,0,0,0) size=228x126`; after it, `bounds=Rect(799,861,1027,987)` and the
+        // click moves the portion 65 -> 75.
+        //
+        // Same family as the keyboard-covered control recorded in CLAUDE.md — a control the user
+        // cannot currently reach is a control `performClick()` cannot press.
+        compose.onNodeWithText("+10").performScrollTo().performClick()
 
         // 48.2 x 75 / 100 = 36.15
-        compose.onNodeWithText("36.2 g").assertIsDisplayed()
+        //
+        // Scoped to the result's own node rather than searching the whole screen for the text: the
+        // portion field carries a value and a unit suffix too, so a bare text search can match the
+        // input instead of the result — which is how this assertion could pass while saying nothing
+        // about the result at all.
+        compose.onNode(hasTestTag(PRODUCT_RESULT_TAG) and hasText("36.2 g"))
+            .assertIsDisplayed()
     }
 
     @Test
@@ -195,10 +218,17 @@ class ProductScreenTest {
         showCalculator()
         compose.onNode(portionField()).performTextInput("5")
 
-        compose.onNodeWithText("-10").performClick()
+        // Scrolled first, for the reason given in full on the sibling test above: below the fold,
+        // this button has empty bounds and `performClick()` presses nothing.
+        compose.onNodeWithText("-10").performScrollTo().performClick()
 
         // Clamped at zero: a negative portion is not a thing you can eat.
-        compose.onNodeWithText("0.0 g").assertIsDisplayed()
+        //
+        // Asserted on the result's own tag rather than by searching for the text "0.0 g": once the
+        // portion field is showing `0`, a plain text search matches the *field* as well as the
+        // result, and the assertion silently stops being about the result at all.
+        compose.onNode(hasTestTag(PRODUCT_RESULT_TAG) and hasText("0.0 g"))
+            .assertIsDisplayed()
     }
 
     // ---- design decision 3.1: ml is never converted to g -------------------------------------
@@ -239,6 +269,12 @@ class ProductScreenTest {
      * The hero must be substantially larger than a Recents thumbnail (52 dp) — that size difference
      * is the entire point of the feature (§4). Asserted against the real measured height rather
      * than a screenshot, so it stays meaningful without a screenshot-testing framework (§30).
+     *
+     * This product has **no image**, so it gets the short monogram plate rather than the tall photo
+     * plate: a monogram is derived from the name shown directly above it and identifies nothing, so
+     * reserving photo-sized space for it is space spent on nothing. The threshold is therefore
+     * stated against the thumbnail it must beat, not against the photo height — which is what this
+     * test was always about.
      */
     @Test
     fun theProductHeroImageIsSubstantiallyLargerThanARecentThumbnail() {
@@ -250,9 +286,34 @@ class ProductScreenTest {
             .height
 
         with(compose.density) {
-            // 52 dp is Space.thumbnail, what Recents uses. The hero is ~150 dp.
-            assert(heroHeight.toDp() > 120.dp) {
+            // 52 dp is Space.thumbnail, what Recents uses.
+            assert(heroHeight.toDp() > 72.dp) {
                 "hero image was ${heroHeight.toDp()}, expected well above the 52dp thumbnail"
+            }
+        }
+    }
+
+    /**
+     * A product that genuinely has a photo gets a much taller plate than a monogram placeholder.
+     *
+     * That size is what answers "is this the package in my hand?", and it is proportional to the
+     * screen rather than a fixed dp — so the assertion is stated as "clearly taller than the
+     * monogram plate" rather than as a pixel value that would only hold on one display.
+     */
+    @Test
+    fun aProductWithAPhotoGetsATallerHeroThanOneWithout() {
+        showCalculator(
+            product().copy(imageUrl = "https://images.openfoodfacts.org/images/products/front.jpg"),
+        )
+
+        val photoHeight = compose.onNodeWithTag(PRODUCT_HERO_TAG)
+            .fetchSemanticsNode().size.height
+
+        with(compose.density) {
+            // The monogram plate is 84 dp; a real photo must be substantially beyond it.
+            assert(photoHeight.toDp() > 120.dp) {
+                "photo hero was ${photoHeight.toDp()}, expected clearly taller than the 84dp " +
+                    "monogram plate"
             }
         }
     }

@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.R
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.CarbCalculator
 import app.justthecarbs.domain.MealItem
@@ -30,6 +32,7 @@ import app.justthecarbs.ui.meal.MEAL_ADD_AND_SCAN_TAG
 import app.justthecarbs.ui.meal.MEAL_ADD_TAG
 import app.justthecarbs.ui.meal.MEAL_BAR_TAG
 import app.justthecarbs.ui.meal.MEAL_CLEAR_TAG
+import app.justthecarbs.ui.meal.MEAL_SCAN_NEXT_TAG
 import app.justthecarbs.ui.meal.MEAL_TOTAL_TAG
 import app.justthecarbs.ui.meal.MealScreen
 import app.justthecarbs.ui.meal.MealUiState
@@ -89,15 +92,34 @@ class MealScreenTest {
         compose.setContent {
             var items by remember { mutableStateOf(initial) }
             var confirming by remember { mutableStateOf(false) }
+            // Mirrors MealViewModel: the removed snapshot is held so Undo can re-insert it.
+            var lastRemoved by remember { mutableStateOf<MealItem?>(null) }
 
             JustTheCarbsTheme {
                 MealScreen(
-                    state = MealUiState(items = items, showClearConfirmation = confirming),
+                    state = MealUiState(
+                        items = items,
+                        showClearConfirmation = confirming,
+                        lastRemoved = lastRemoved,
+                    ),
                     settings = AppSettings(),
                     onBack = {},
-                    onRemoveItem = { removed -> items = items.filterNot { it.id == removed.id } },
+                    onRemoveItem = { removed ->
+                        items = items.filterNot { it.id == removed.id }
+                        lastRemoved = removed
+                    },
                     onClear = { items = emptyList(); confirming = false },
                     onShowClearConfirmation = { confirming = it },
+                    onUndoRemove = {
+                        lastRemoved?.let { restored ->
+                            // Re-inserted in `addedAt` order, exactly as the DAO would return it.
+                            items = (items + restored).sortedWith(
+                                compareBy({ it.addedAt }, { it.id }),
+                            )
+                        }
+                        lastRemoved = null
+                    },
+                    onUndoExpired = { lastRemoved = null },
                 )
             }
         }
@@ -272,7 +294,7 @@ class MealScreenTest {
 
         // 48.2 g/100 g × 50 g = 24.1 g, via the production calculator.
         compose.onNodeWithTag(MEAL_BAR_TAG).assertIsDisplayed()
-        compose.onNodeWithText("Meal · 1 item · 24.1 g").assertIsDisplayed()
+        compose.onNodeWithText("Meal · 1 item · 24.1 g carbs").assertIsDisplayed()
     }
 
     @Test
@@ -283,7 +305,7 @@ class MealScreenTest {
         compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
         compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
 
-        compose.onNodeWithText("Meal · 2 items · 48.2 g").assertIsDisplayed()
+        compose.onNodeWithText("Meal · 2 items · 48.2 g carbs").assertIsDisplayed()
     }
 
     /** §11: one tap both records the item and moves on, or the loop is not worth using. */
@@ -295,7 +317,7 @@ class MealScreenTest {
         compose.onNode(hasSetTextAction()).performTextInput("50")
         compose.onNodeWithTag(MEAL_ADD_AND_SCAN_TAG).performClick()
 
-        compose.onNodeWithText("Meal · 1 item · 24.1 g").assertIsDisplayed()
+        compose.onNodeWithText("Meal · 1 item · 24.1 g carbs").assertIsDisplayed()
         assertEquals("Add & scan next must also open the scanner", true, scannedNext)
     }
 
@@ -345,7 +367,11 @@ class MealScreenTest {
         // about one layout at one moment, and it is exactly the relationship that broke.
         val fieldBottom = compose.onNode(hasSetTextAction())
             .fetchSemanticsNode().boundsInRoot.bottom
-        val panelTop = compose.onNodeWithText("CARBOHYDRATES")
+        // Read from resources rather than hardcoded: this assertion is about the panel's *position*,
+        // and it should not fail because the label's wording changed.
+        val resultLabel = InstrumentationRegistry.getInstrumentation()
+            .targetContext.getString(R.string.product_result_label)
+        val panelTop = compose.onNodeWithText(resultLabel)
             .fetchSemanticsNode().boundsInRoot.top
 
         assert(panelTop >= fieldBottom) {
@@ -353,5 +379,89 @@ class MealScreenTest {
                 "the result panel overlaps the portion field by ${(fieldBottom - panelTop).toDp()}"
             }
         }
+    }
+
+    // ---- remove and undo (§5.3) ----------------------------------------------------------------
+
+    @Test
+    fun removingAnItemOffersAnUndoAction() {
+        showMeal(listOf(item(1, "Bread", "2 slices", "48.2", "34.704")))
+
+        compose.onNodeWithContentDescription("Remove Bread").performClick()
+
+        compose.onNodeWithText("Removed Bread").assertIsDisplayed()
+        compose.onNodeWithText("Undo").assertIsDisplayed()
+    }
+
+    @Test
+    fun undoRestoresTheRemovedItemWithItsOriginalFigures() {
+        showMeal(listOf(item(1, "Bread", "2 slices", "48.2", "34.704")))
+
+        compose.onNodeWithContentDescription("Remove Bread").performClick()
+        compose.onNodeWithText("2 slices · 34.7 g").assertDoesNotExist()
+
+        compose.onNodeWithText("Undo").performClick()
+
+        // The exact snapshot returns — same portion wording, same carbohydrate figure. A restore
+        // that recomputed from the product could produce a different number here.
+        compose.onNodeWithText("2 slices · 34.7 g").assertIsDisplayed()
+    }
+
+    @Test
+    fun undoRestoresTheTotalAsWellAsTheLine() {
+        showMeal(
+            listOf(
+                item(1, "A", "50 g", "37.3", "18.65"),
+                item(2, "B", "50 g", "43.3", "21.65"),
+            ),
+        )
+
+        compose.onNodeWithContentDescription("Remove B").performClick()
+        compose.onNodeWithText("18.7 g").assertIsDisplayed()
+
+        compose.onNodeWithText("Undo").performClick()
+
+        // Back to the unrounded sum, not 18.7 + 21.7.
+        compose.onNodeWithText("40.3 g").assertIsDisplayed()
+    }
+
+    @Test
+    fun aRestoredItemReturnsToItsOriginalPosition() {
+        // `addedAt` is preserved by the restore and the list is ordered by it, so an item removed
+        // from the middle comes back to the middle rather than jumping to the end.
+        showMeal(
+            listOf(
+                item(1, "First", "50 g", "10", "5"),
+                item(2, "Middle", "50 g", "20", "10"),
+                item(3, "Last", "50 g", "30", "15"),
+            ),
+        )
+
+        compose.onNodeWithContentDescription("Remove Middle").performClick()
+        compose.onNodeWithText("Undo").performClick()
+
+        val positions = listOf("First", "Middle", "Last").map { name ->
+            compose.onNodeWithText(name).fetchSemanticsNode().boundsInRoot.top
+        }
+        assert(positions == positions.sorted()) {
+            "restored item is out of order: $positions"
+        }
+    }
+
+    @Test
+    fun theMealOffersAWayToScanTheNextItem() {
+        // The meal used to be a dead end: the only ways on read as "leave", not "continue".
+        showMeal(listOf(item(1, "Bread", "2 slices", "48.2", "34.704")))
+
+        compose.onNodeWithTag(MEAL_SCAN_NEXT_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun anEmptyMealDoesNotOfferScanNext() {
+        // On an empty meal the primary action is still to calculate a portion, which the empty
+        // state already says; a second competing call to action would just be noise.
+        showMeal(emptyList())
+
+        compose.onNodeWithTag(MEAL_SCAN_NEXT_TAG).assertDoesNotExist()
     }
 }

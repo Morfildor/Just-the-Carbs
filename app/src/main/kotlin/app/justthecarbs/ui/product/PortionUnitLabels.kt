@@ -2,6 +2,7 @@ package app.justthecarbs.ui.product
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import app.justthecarbs.R
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.PortionUnitKind
@@ -27,6 +28,26 @@ fun PortionUnit.unitLabel(count: Int): String =
         customLabel.orEmpty()
     } else {
         pluralStringResource(kind.pluralsRes(), count)
+    }
+
+/**
+ * The kind's own word, for the places that have a [PortionUnitKind] but no [PortionUnit] yet — the
+ * "Add portion unit" type picker and the OCR "save as a … portion" action.
+ *
+ * Those three sites previously rendered `kind.name`, so the user was shown the raw enum constant:
+ * `SLICE`, `BISCUIT`, `SACHET`, and — worst — `CUSTOM`, which is not a word for anything a person
+ * eats. Routing them through the same plurals the rest of the app uses is what keeps one vocabulary
+ * (§15) and keeps implementation names out of the UI (§24).
+ *
+ * [CUSTOM] has no printable word of its own here (its label is user-supplied text that does not
+ * exist yet at type-selection time), so it borrows the "Custom" wording the name field already uses.
+ */
+@Composable
+fun PortionUnitKind.kindLabel(count: Int = 1): String =
+    if (this == PortionUnitKind.CUSTOM) {
+        stringResource(R.string.product_portion_unit_custom)
+    } else {
+        pluralStringResource(pluralsRes(), count)
     }
 
 /** The mode-chip label: Title Case, matching the "Grams" chip it sits beside. */

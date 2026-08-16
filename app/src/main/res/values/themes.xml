@@ -16,7 +16,12 @@
     -->
     <style name="Theme.JustTheCarbs.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <!--
+          The splash draws this icon *alone*, with no adaptive-icon background behind it, so it
+          cannot be `ic_launcher_foreground` — that drawable's paths are white and were rendering
+          white-on-cream. `ic_splash_mark` carries the launcher's own coral plate with it.
+        -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_mark</item>
         <item name="postSplashScreenTheme">@style/Theme.JustTheCarbs</item>
     </style>
 </resources>

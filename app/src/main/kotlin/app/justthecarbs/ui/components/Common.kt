@@ -48,7 +48,18 @@ import app.justthecarbs.ui.theme.extendedColors
  * carries the meaning in words (§39).
  */
 @Composable
-fun SourceBadge(product: Product, modifier: Modifier = Modifier) {
+fun SourceBadge(
+    product: Product,
+    modifier: Modifier = Modifier,
+    /**
+     * Whether to show the plain-language line under an unverified online value.
+     *
+     * The calculator drops it while the keyboard is open: it is advice to act on before committing
+     * to a portion, and during typing the field and the result need the height. The badge itself —
+     * which carries the provenance in words — never goes away.
+     */
+    showHint: Boolean = true,
+) {
     val verified = product.isUserVerified
     val label = when {
         verified -> stringResource(R.string.product_source_verified)
@@ -84,7 +95,7 @@ fun SourceBadge(product: Product, modifier: Modifier = Modifier) {
 
         // Unverified online data gets a plain-language nudge rather than a warning icon: the value
         // is usually right, and alarming the user every time would train them to ignore it (§25).
-        if (!verified && product.dataSource == ProductDataOrigin.OPEN_FOOD_FACTS) {
+        if (showHint && !verified && product.dataSource == ProductDataOrigin.OPEN_FOOD_FACTS) {
             Text(
                 text = stringResource(R.string.product_source_online_hint),
                 style = MaterialTheme.typography.bodySmall,

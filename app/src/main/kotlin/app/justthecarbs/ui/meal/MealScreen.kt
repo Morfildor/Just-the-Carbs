@@ -26,12 +26,20 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -44,6 +52,7 @@ import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.AppSettings
+import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
@@ -51,6 +60,8 @@ import app.justthecarbs.ui.theme.extendedColors
 /** Stable handles for instrumented tests. */
 const val MEAL_TOTAL_TAG = "meal_total"
 const val MEAL_CLEAR_TAG = "meal_clear"
+const val MEAL_SCAN_NEXT_TAG = "meal_scan_next"
+const val MEAL_SNACKBAR_TAG = "meal_snackbar"
 
 /**
  * The meal total (development-pass brief §10).
@@ -71,7 +82,34 @@ fun MealScreen(
     onRemoveItem: (MealItem) -> Unit,
     onClear: () -> Unit,
     onShowClearConfirmation: (Boolean) -> Unit,
+    onScanNext: () -> Unit = {},
+    onUndoRemove: () -> Unit = {},
+    onUndoExpired: () -> Unit = {},
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // One Snackbar per removal, keyed on the removed item so a second removal replaces the first
+    // rather than queueing behind it — a queue would let the user tap Undo and restore an item they
+    // removed two actions ago.
+    val removed = state.lastRemoved
+    val removedLabel = removed?.displayName
+    val undoMessage = removedLabel?.let { stringResource(R.string.meal_item_removed, it) }
+    val undoAction = stringResource(R.string.action_undo)
+    LaunchedEffect(removed?.id) {
+        if (removed == null || undoMessage == null) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = undoMessage,
+            actionLabel = undoAction,
+            withDismissAction = false,
+            duration = SnackbarDuration.Short,
+        )
+        when (result) {
+            SnackbarResult.ActionPerformed -> onUndoRemove()
+            // Timed out or was replaced: the removal stands, and the held snapshot is dropped so it
+            // cannot be restored later by a stale action.
+            SnackbarResult.Dismissed -> onUndoExpired()
+        }
+    }
     if (state.showClearConfirmation) {
         AlertDialog(
             onDismissRequest = { onShowClearConfirmation(false) },
@@ -150,7 +188,28 @@ fun MealScreen(
                 }
             }
 
-            MealTotalPanel(state = state, settings = settings)
+            MealTotalPanel(state = state, settings = settings, onScanNext = onScanNext)
+        }
+
+        // Anchored to the *top* of the screen, not the bottom.
+        //
+        // A bottom-anchored Snackbar sat directly over the meal total — the one number this screen
+        // exists to show — for its whole four-second life, so removing an item hid the figure the
+        // user was removing it to correct. Only visible by looking at the screen; every assertion
+        // still passed. Raising it above the panel instead would work on this device and fail on a
+        // shorter one, because the panel's height depends on the total's font scale.
+        //
+        // The Undo action's colour comes from `inversePrimary`, which `Theme.kt` now sets — left to
+        // Material's default it rendered as a lavender that appears nowhere else in the app.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = Space.screenEdge)
+                .testTag(MEAL_SNACKBAR_TAG),
+        ) { data ->
+            Snackbar(snackbarData = data, shape = RoundedCornerShape(Space.buttonRadius))
         }
     }
 }
@@ -226,13 +285,18 @@ private fun MealItemRow(item: MealItem, onRemove: () -> Unit) {
  * number in the same place on screen, so it reads as one app rather than two.
  */
 @Composable
-private fun MealTotalPanel(state: MealUiState, settings: AppSettings) {
+private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext: () -> Unit) {
     val panelShape = RoundedCornerShape(topStart = Space.sheetTopRadius, topEnd = Space.sheetTopRadius)
     val total = state.total
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // Same lift as the calculator's result panel, and for the same reason recorded there:
+            // this surface is `surfaceContainerLowest` on a cream page, a ~1% difference, so without
+            // a shadow the screen's most important number has no edge and reads as part of the
+            // background. The two panels are the same element in the same place and must not differ.
+            .shadow(elevation = Space.resultElevation, shape = panelShape, clip = false)
             .clip(panelShape)
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .navigationBarsPadding()
@@ -280,5 +344,22 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings) {
             style = NumberType.supporting,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        // The meal was previously a dead end: the only ways on were the system back gesture or the
+        // top-left arrow, both of which read as "leave" rather than "continue". A meal is usually
+        // several products, so the screen that shows the running total is exactly where the user
+        // decides to add another — barcode, because that is the app's fastest way to a product.
+        //
+        // Offered only once the meal has something in it. On an empty meal the primary action is
+        // still to calculate a portion, which the empty state already says.
+        if (state.items.isNotEmpty()) {
+            Spacer(Modifier.height(Space.m))
+            Box(modifier = Modifier.testTag(MEAL_SCAN_NEXT_TAG)) {
+                PrimaryAction(
+                    text = stringResource(R.string.meal_scan_next),
+                    onClick = onScanNext,
+                )
+            }
+        }
     }
 }

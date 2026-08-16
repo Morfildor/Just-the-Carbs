@@ -2,11 +2,18 @@ package app.justthecarbs.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import app.justthecarbs.domain.AppSettings
@@ -15,6 +22,8 @@ import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
+import app.justthecarbs.ui.home.HOME_SCAN_BARCODE_TAG
+import app.justthecarbs.ui.home.HOME_SCAN_LABEL_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_FIELD_TAG
 import app.justthecarbs.ui.home.HomeScreen
 import app.justthecarbs.ui.home.RecentEntry
@@ -28,13 +37,15 @@ import java.math.BigDecimal
 import java.time.Instant
 
 /**
- * Home (§7 product-development brief, redesigned empty state 2026-08-15).
+ * Home (§7 product-development brief; entry-point pass 2026-08-15).
  *
- * No dedicated HomeScreen coverage existed before this pass, despite Home having the same
- * conditional-state complexity as Product/Meal/Search (empty vs recents vs search, plus the meal
- * bar priority rule). Pins the rules that matter: the empty state communicates Scan → Portion →
- * Carbs without becoming a dashboard, the primary actions never disappear, and the meal bar/search
- * results still take priority over the decorative starter content.
+ * The rule this class exists to pin: **all three ways into the app are present at all times.** The
+ * defect it was written against was structural rather than cosmetic — "Scan nutrition label" lived
+ * inside the empty state, so it vanished permanently the moment the user's first product landed in
+ * Recents, and the app's third entry point became unreachable from Home for every returning user.
+ *
+ * Also pins the explicit-search contract (typing must never reach Open Food Facts) and the meal
+ * bar's priority over starter content.
  *
  * **Instrumented: needs a device or emulator.**
  */
@@ -67,6 +78,9 @@ class HomeScreenTest {
         recents: List<RecentEntry> = emptyList(),
         mealItems: List<MealItem> = emptyList(),
         searchState: SearchUiState = SearchUiState(),
+        onScan: () -> Unit = {},
+        onScanLabel: () -> Unit = {},
+        onManualEntry: () -> Unit = {},
         onSearchSubmit: () -> Unit = {},
         density: Density? = null,
     ) {
@@ -76,11 +90,12 @@ class HomeScreenTest {
                     HomeScreen(
                         recents = recents,
                         settings = AppSettings(),
-                        onScan = {},
-                        onManualEntry = {},
+                        onScan = onScan,
+                        onManualEntry = onManualEntry,
                         onOpenProduct = {},
                         onToggleFavorite = {},
                         onOpenSettings = {},
+                        onScanLabel = onScanLabel,
                         mealItems = mealItems,
                         mealTotal = if (mealItems.isEmpty()) null else {
                             CarbCalculator.calculate(BigDecimal("48.2"), BigDecimal("65"), NutritionBasis.PER_100_G)
@@ -98,61 +113,107 @@ class HomeScreenTest {
         }
     }
 
+    // ---- The three core entry points -------------------------------------------------------
+
     @Test
-    fun emptyStateIsDisplayedWithNoRecents() {
+    fun allThreeEntryPointsAreVisibleInTheEmptyState() {
         show(recents = emptyList())
 
-        compose.onNodeWithText("Scan. Portion. Carbs.").assertIsDisplayed()
-    }
-
-    @Test
-    fun scanBarcodeCtaRemainsVisibleInTheEmptyState() {
-        show(recents = emptyList())
-
-        compose.onNodeWithText("Scan barcode").assertIsDisplayed()
-    }
-
-    @Test
-    fun manualEntryRemainsAvailableInTheEmptyState() {
-        show(recents = emptyList())
-
-        compose.onNodeWithText("Enter manually").assertIsDisplayed()
-    }
-
-    @Test
-    fun theStarterVisualDoesNotAppearOnceRecentsExist() {
-        show(recents = listOf(RecentEntry(product(), lastUnit = null)))
-
-        compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
-        compose.onNodeWithText("Hagelslag puur").assertIsDisplayed()
-        // The primary actions must still be present with recents shown.
-        compose.onNodeWithText("Scan barcode").assertIsDisplayed()
-    }
-
-    @Test
-    fun theMealBarStillTakesPriorityOverTheEmptyStarterContent() {
-        show(recents = emptyList(), mealItems = listOf(mealItem()))
-
-        compose.onNodeWithTag(MEAL_BAR_TAG).assertIsDisplayed()
-        // The starter content still furnishes the remaining space beneath the meal bar.
-        compose.onNodeWithText("Scan. Portion. Carbs.").assertIsDisplayed()
-    }
-
-    @Test
-    fun typingInSearchReplacesTheEmptyStateWithSearchResults() {
-        show(recents = emptyList(), searchState = SearchUiState(query = "hagel"))
-
-        // A non-blank query takes over the space the empty state would otherwise occupy.
-        compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
-    }
-
-    @Test
-    fun typingIntoTheSearchFieldIsPossibleFromTheEmptyState() {
-        show(recents = emptyList())
-
-        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).performTextInput("hagel")
+        compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).assertIsDisplayed()
         compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).assertIsDisplayed()
     }
+
+    /**
+     * The regression this pass exists to prevent. Before it, the nutrition-label action was rendered
+     * only by the empty state, so a single recent product removed it from Home entirely.
+     */
+    @Test
+    fun allThreeEntryPointsSurviveTheArrivalOfRecentProducts() {
+        show(recents = listOf(RecentEntry(product(), lastUnit = null)))
+
+        compose.onNodeWithText("Hagelslag puur").assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).assertIsDisplayed()
+    }
+
+    /** Core actions precede history: the app's job must not sit below a list of past products. */
+    @Test
+    fun theCoreActionsRenderAboveTheRecentList() {
+        show(recents = listOf(RecentEntry(product(), lastUnit = null)))
+
+        val barcodeTop = compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).fetchSemanticsNode()
+            .positionInRoot.y
+        val labelTop = compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).fetchSemanticsNode()
+            .positionInRoot.y
+        val recentTop = compose.onNodeWithText("Hagelslag puur").fetchSemanticsNode()
+            .positionInRoot.y
+
+        assert(barcodeTop < labelTop) { "barcode card must precede the label card" }
+        assert(labelTop < recentTop) { "core actions must precede recent products" }
+    }
+
+    @Test
+    fun manualEntryRemainsAvailableButBelowTheCoreActions() {
+        show(recents = emptyList())
+
+        compose.onNodeWithText("Enter manually").performScrollTo().assertIsDisplayed()
+
+        val labelTop = compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).fetchSemanticsNode()
+            .positionInRoot.y
+        val manualTop = compose.onNodeWithText("Enter manually").fetchSemanticsNode()
+            .positionInRoot.y
+        assert(manualTop > labelTop) { "manual entry must stay below the three core entry points" }
+    }
+
+    // ---- Navigation wiring ------------------------------------------------------------------
+
+    @Test
+    fun theBarcodeCardTriggersTheScannerExactlyOnce() {
+        var scans = 0
+        show(onScan = { scans++ })
+
+        compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).performClick()
+
+        assertEquals(1, scans)
+    }
+
+    @Test
+    fun theNutritionLabelCardTriggersTheLabelScannerExactlyOnce() {
+        var labelScans = 0
+        show(onScanLabel = { labelScans++ })
+
+        compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).performClick()
+
+        assertEquals(1, labelScans)
+    }
+
+    /**
+     * The label scanner must be reachable with recents present — the same click, on the state a
+     * returning user actually sees.
+     */
+    @Test
+    fun theNutritionLabelCardStillNavigatesWhenRecentsExist() {
+        var labelScans = 0
+        show(recents = listOf(RecentEntry(product(), lastUnit = null)), onScanLabel = { labelScans++ })
+
+        compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).performScrollTo().performClick()
+
+        assertEquals(1, labelScans)
+    }
+
+    @Test
+    fun manualEntryTriggersItsRouteExactlyOnce() {
+        var manual = 0
+        show(onManualEntry = { manual++ })
+
+        compose.onNodeWithText("Enter manually").performScrollTo().performClick()
+
+        assertEquals(1, manual)
+    }
+
+    // ---- Explicit search --------------------------------------------------------------------
 
     /**
      * Typing must never itself trigger a network search (Open Food Facts' search endpoint is
@@ -178,20 +239,70 @@ class HomeScreenTest {
         assertEquals(1, submitCount)
     }
 
+    @Test
+    fun aNonBlankQueryReplacesTheHomeBodyWithResults() {
+        show(recents = emptyList(), searchState = SearchUiState(query = "hagel"))
+
+        // Search owns the whole middle region, so the starter content and the action cards yield.
+        compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
+        compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertDoesNotExist()
+    }
+
+    // ---- Starter content and the meal bar ---------------------------------------------------
+
+    @Test
+    fun theStarterHeroIsShownOnlyWhileThereAreNoRecents() {
+        show(recents = emptyList())
+        compose.onNodeWithText("Scan. Portion. Carbs.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theStarterHeroDisappearsOnceRecentsExist() {
+        show(recents = listOf(RecentEntry(product(), lastUnit = null)))
+        compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
+    }
+
+    @Test
+    fun theMealBarStillTakesPriorityOverTheEmptyStarterContent() {
+        show(recents = emptyList(), mealItems = listOf(mealItem()))
+
+        compose.onNodeWithTag(MEAL_BAR_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertIsDisplayed()
+    }
+
+    // ---- Accessibility ----------------------------------------------------------------------
+
     /**
-     * 1.8x is the scale the app is documented as supporting (see ProductScreenTest's equivalent
-     * pin). The primary Scan/Enter-manually actions sit at the bottom of a Column with the
-     * decorative starter content given `Modifier.weight(1f)` above them, so they must never be
-     * pushed off-screen regardless of how much vertical space the starter content wants.
+     * Each action card is one button node carrying one description, rather than an icon, a title and
+     * a subtitle announced as three separate stops inside a single tappable surface.
      */
     @Test
-    fun largeFontDoesNotHidePrimaryActions() {
+    fun theActionCardsExposeButtonSemanticsWithASingleDescription() {
+        show(recents = emptyList())
+
+        compose.onNodeWithContentDescription("Scan barcode. Fastest way to find a packaged product")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        compose.onNodeWithContentDescription("Scan nutrition label. Read carbs straight from the package")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+    }
+
+    // ---- Scaling ----------------------------------------------------------------------------
+
+    /**
+     * 1.8x is the scale the app is documented as supporting (see ProductScreenTest's equivalent
+     * pin). Every entry point must survive it — the cards scroll, so they are reached with
+     * performScrollTo rather than asserted to be on screen unaided.
+     */
+    @Test
+    fun largeFontKeepsEveryEntryPointReachable() {
         show(
             recents = emptyList(),
             density = Density(density = 2.75f, fontScale = 1.8f),
         )
 
-        compose.onNodeWithText("Scan barcode").assertIsDisplayed()
-        compose.onNodeWithText("Enter manually").assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Enter manually").performScrollTo().assertIsDisplayed()
     }
 }

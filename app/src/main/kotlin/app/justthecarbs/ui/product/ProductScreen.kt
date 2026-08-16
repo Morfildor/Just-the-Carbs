@@ -39,6 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
@@ -67,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -78,6 +80,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -462,8 +465,14 @@ private fun CalculatorBody(
         )
 
         // The per-100 figure and its provenance, directly under the image they describe.
+        //
+        // `compact` drops the badge's advisory second line while the keyboard is open, for the same
+        // reason the hero shrinks there: "Check package if needed" is guidance to read *before*
+        // committing to a number, and during typing the portion field and the result need the room.
+        // Nothing is hidden that the user has not already had on screen.
         ProductSummary(
             product = product,
+            compact = imeVisible,
             modifier = Modifier.padding(horizontal = Space.screenEdge),
         )
 
@@ -496,6 +505,13 @@ private fun CalculatorBody(
         // still sit comfortably in the lower half because the hero above them is 150 dp tall; they
         // simply no longer float away from it. Pinned by
         // `thePortionControlsFollowTheProductHeaderWithoutALargeDeadBand`.
+        // Still `weight(1f)`: the zone takes the remaining height so the result panel stays welded to
+        // the bottom edge. Letting this zone shrink instead (`fill = false`) does remove the gap, but
+        // it unpins the panel — it then floats with a strip of page below it, which is worse than the
+        // gap it fixed. Verified on the emulator, both ways.
+        //
+        // The dead space is removed at its source instead: the trailing spacer below now absorbs it,
+        // and the no-photo hero above no longer reserves 150 dp for two letters.
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -564,7 +580,7 @@ private fun CalculatorBody(
                 )
 
                 Spacer(Modifier.height(Space.m))
-                QuickAdjustRow(onAdjust = onAdjust)
+                QuickAdjustRow(onAdjust = onAdjust, packageAmount = product.packageAmount)
 
                 // Only offered when the package size was read confidently. A guessed pack size
                 // would be a wrong portion presented as a shortcut (§14, §13).
@@ -609,6 +625,7 @@ private fun CalculatorBody(
             state = state,
             settings = settings,
             equationUnit = selectedUnit.takeIf { countableActive },
+            imeVisible = imeVisible,
             onAddToMeal = { onAddToMeal(portionDescription) },
             onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription) },
             onOpenMeal = onOpenMeal,
@@ -646,12 +663,24 @@ private fun portionDescription(
  * image above and the result below.
  */
 @Composable
-private fun ProductSummary(product: Product, modifier: Modifier = Modifier) {
+private fun ProductSummary(
+    product: Product,
+    /** True while the IME is open — drops the badge's advisory line to give the room back. */
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
     // Stacked rather than side by side. The badge is itself a two-part block (a pill plus, for
     // unverified online data, a "Check package if needed" line), so putting it beside the per-100
     // figure produced a ragged two-line arrangement where neither element had a clean baseline —
     // visible only once a real product was on screen.
     Column(modifier = modifier.fillMaxWidth().padding(vertical = Space.xs)) {
+        // Weighted deliberately heavier than the product name in the top bar above it.
+        //
+        // This is the figure every result on the screen derives from, and it is the one an
+        // experienced user sanity-checks first — they know roughly what bread and pasta should be,
+        // so a wrong database entry is usually obvious at a glance. The name is already carried by
+        // the photo and the top bar; leaving this in plain weight made the screen's most
+        // consequential input read as secondary to a label the user does not need.
         Text(
             text = stringResource(
                 R.string.product_per_100,
@@ -659,16 +688,18 @@ private fun ProductSummary(product: Product, modifier: Modifier = Modifier) {
                 product.portionUnit,
             ),
             style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(Space.xs))
-        SourceBadge(product)
+        SourceBadge(product, showHint = !compact)
     }
 }
 
 @Composable
 private fun PortionField(value: String, unit: String, onValueChange: (String) -> Unit) {
     val focusManager = LocalFocusManager.current
+    val portionLabel = stringResource(R.string.product_portion_label, unit)
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -682,28 +713,88 @@ private fun PortionField(value: String, unit: String, onValueChange: (String) ->
             imeAction = ImeAction.Done,
         ),
         keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        // An empty 48sp field with a lone unit suffix is a large blank box that does not say what
+        // goes in it. A greyed `0` in the field's own type shows the shape of the expected input
+        // without being a value: it is a placeholder, so it never becomes part of the portion and
+        // there is no pre-filled zero to delete before typing.
+        //
+        // Cleared from semantics: the field already announces itself, and leaving the placeholder
+        // readable made the *field* match text searches for values like "0.0 g", so assertions
+        // looking for the result found the input box instead. It is decoration for the eye only.
+        placeholder = {
+            Text(
+                text = "0",
+                style = NumberType.portion,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clearAndSetSemantics {},
+                textAlign = TextAlign.Center,
+            )
+        },
         suffix = {
             Text(text = unit, style = MaterialTheme.typography.titleMedium)
         },
         shape = RoundedCornerShape(Space.buttonRadius),
         modifier = Modifier
             .fillMaxWidth()
-            .semantics { contentDescription = "" },
+            // A real label, not an empty one. This field has no visible `label`, so
+            // `contentDescription = ""` left TalkBack announcing an unnamed edit box on the screen's
+            // primary input — the question above it is a separate node and is not read with it.
+            // The unit is included because it is the one thing about this field that changes
+            // between products and it is what stops a millilitre product being typed in grams.
+            .semantics { contentDescription = portionLabel },
     )
 }
 
+/**
+ * The step size the ± buttons move by, chosen from the package size (§16).
+ *
+ * A fixed ±5 g is wrong at both ends of the range this app serves: on a 400 g loaf or a 500 g pasta
+ * pack it is roughly one-hundredth of the package and takes twenty taps to do anything, while on a
+ * 20 g biscuit it is a quarter of the item. One absolute step cannot serve both.
+ *
+ * The package size is the signal already trusted elsewhere on this screen — [PackShortcuts] renders
+ * only when [app.justthecarbs.domain.PackageQuantityParser] read one confidently — so scaling to it
+ * introduces no new guess. When no package size was read, the original ±5/±10 stands: it is the
+ * safe default for an unknown product, and inventing a step from a size the app does not have would
+ * be exactly the guessed-shortcut problem §14 rules out.
+ *
+ * Steps stay round numbers. A "+37" button is arithmetically defensible and useless to someone
+ * adjusting a portion by feel.
+ */
+internal fun quickAdjustStep(packageAmount: BigDecimal?): Int {
+    val pack = packageAmount?.toInt() ?: return 5
+    return when {
+        pack >= 750 -> 50
+        pack >= 300 -> 25
+        pack >= 120 -> 10
+        else -> 5
+    }
+}
+
 @Composable
-private fun QuickAdjustRow(onAdjust: (Int) -> Unit) {
+private fun QuickAdjustRow(onAdjust: (Int) -> Unit, packageAmount: BigDecimal? = null) {
     // Order runs negative → positive so the row reads like a number line (§16).
-    val steps = listOf(-10 to R.string.adjust_minus_ten, -5 to R.string.adjust_minus_five,
-        5 to R.string.adjust_plus_five, 10 to R.string.adjust_plus_ten)
+    //
+    // Two steps per direction, the second twice the first, so the row spans a useful range without
+    // a fourth button — the constraint that keeps every label inside its button at large font
+    // scales, the same one that keeps ¾ out of PackShortcuts.
+    val small = quickAdjustStep(packageAmount)
+    val large = small * 2
+    val steps = listOf(-large, -small, small, large)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
-        steps.forEach { (delta, label) ->
-            val description = stringResource(label)
+        steps.forEach { delta ->
+            // Spoken as "Minus 25" / "Plus 25" rather than the glyph, which TalkBack would
+            // otherwise read as a mathematical operator detached from its amount.
+            val description = stringResource(
+                if (delta > 0) R.string.adjust_plus else R.string.adjust_minus,
+                kotlin.math.abs(delta),
+            )
             OutlinedButton(
                 onClick = { onAdjust(delta) },
                 shape = RoundedCornerShape(Space.buttonRadius),
@@ -883,6 +974,7 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
     // value differs from what we last emitted (mode switch, unit change, restored state), the
     // field's text is resynchronised while leaving the caret at the end.
     val focusManager = LocalFocusManager.current
+    val countLabel = stringResource(R.string.product_count_field_label, unit.unitLabel(count = 2))
     var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     if (fieldValue.text != value) {
         fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
@@ -918,7 +1010,9 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
                 }
                 hasFocus = focus.isFocused
             }
-            .semantics { contentDescription = "" },
+            // Named for the same reason as the portion field, and with the unit's own word so the
+            // announcement is "Number of slices" rather than an unlabelled box.
+            .semantics { contentDescription = countLabel },
     )
 }
 
@@ -1213,12 +1307,14 @@ private fun AddPortionUnitAction(
         )
         Box {
             OutlinedButton(onClick = { kindMenuOpen = true }, shape = RoundedCornerShape(Space.buttonRadius)) {
-                Text(if (kind == PortionUnitKind.CUSTOM) stringResource(R.string.product_portion_unit_custom_name) else kind.name)
+                // The kind's own word, not `kind.name` — that rendered the raw enum constant, so the
+                // picker read SLICE / BISCUIT / SACHET / CUSTOM in screaming caps (§24).
+                Text(kind.kindLabel())
             }
             DropdownMenu(expanded = kindMenuOpen, onDismissRequest = { kindMenuOpen = false }) {
                 PortionUnitKind.entries.forEach { candidate ->
                     DropdownMenuItem(
-                        text = { Text(candidate.name) },
+                        text = { Text(candidate.kindLabel()) },
                         onClick = { kind = candidate; kindMenuOpen = false },
                     )
                 }
@@ -1260,9 +1356,9 @@ private fun AddPortionUnitAction(
             label = {
                 Text(
                     if (weightMode) {
-                        stringResource(R.string.product_portion_unit_weighs, kind.name.lowercase())
+                        stringResource(R.string.product_portion_unit_weighs, kind.kindLabel())
                     } else {
-                        stringResource(R.string.product_portion_unit_contains, kind.name.lowercase())
+                        stringResource(R.string.product_portion_unit_contains, kind.kindLabel())
                     },
                 )
             },
@@ -1351,6 +1447,14 @@ private fun ResultPanel(
     settings: AppSettings,
     /** Non-null when a countable unit is in use — draws the equation inside this same surface. */
     equationUnit: PortionUnit? = null,
+    /**
+     * True while the soft keyboard is taking screen space.
+     *
+     * This panel is welded to the bottom edge, so anything it renders conditionally is height taken
+     * from the scrolling controls above. See the provenance line below for what happens when that
+     * budget is exceeded.
+     */
+    imeVisible: Boolean = false,
     onAddToMeal: () -> Unit = {},
     onAddToMealAndScanNext: () -> Unit = {},
     onOpenMeal: () -> Unit = {},
@@ -1369,6 +1473,21 @@ private fun ResultPanel(
 
     val panelShape = RoundedCornerShape(topStart = Space.sheetTopRadius, topEnd = Space.sheetTopRadius)
 
+    // Whether the provenance line renders, decided once.
+    //
+    // Both the padding above and the Text below read this single value: computing the condition
+    // twice is how the panel's height budget and its contents drift apart, and a panel that pads
+    // for a line it does not draw (or vice versa) is the bug this whole block exists to prevent.
+    //
+    // Only for Open Food Facts data — a MANUAL or OCR value was by definition read off the package
+    // by the user, so "checked against the package" is not an open question there. Only with a
+    // result, since there is nothing to qualify otherwise. Not while the IME is open, where the
+    // user is typing a portion rather than deciding whether to trust the figure — the same reason
+    // `SourceBadge` drops its own hint there.
+    val showsProvenanceLine = exact != null &&
+        !imeVisible &&
+        state.product?.dataSource == ProductDataOrigin.OPEN_FOOD_FACTS
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1386,8 +1505,12 @@ private fun ResultPanel(
                 // Growing pushed the whole panel up over the portion field, so the user could no
                 // longer read the number they were typing — the third layout defect in this area
                 // that only running the app revealed.
-                top = if (state.mealItems.isEmpty()) Space.l else Space.s,
-                bottom = Space.l,
+                //
+                // The provenance line below follows the same rule: when it is present the padding
+                // shrinks to pay for it, so this surface's height stays a fixed budget rather than
+                // a starting point that each new element adds to.
+                top = if (state.mealItems.isEmpty() && !showsProvenanceLine) Space.l else Space.s,
+                bottom = if (showsProvenanceLine) Space.m else Space.l,
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1436,15 +1559,46 @@ private fun ResultPanel(
         if (exact == null) {
             // Reserves the same height the result will occupy, so the panel does not jump when the
             // first digit is typed (§16: the result area must not move under the user).
+            //
+            // The slot shows the per-100 figure the result is about to be scaled from, rather than
+            // an instruction. "Enter a portion" spent the screen's largest and best-placed surface
+            // telling the user to do something the focused, labelled field above already asks for;
+            // the basis figure is the number they are working from, and seeing it here — in the
+            // result's own position, at a size that reads as supporting rather than final — is what
+            // makes the relationship between the two legible.
+            //
+            // It is deliberately NOT drawn in the result's colour or `NumberType.result`: this is
+            // not a result, it is the input to one, and a per-100 figure that looked like an answer
+            // would be the worst possible confusion on this screen.
             Box(
                 modifier = Modifier.height(96.dp).fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = stringResource(R.string.product_result_pending),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    state.product?.let { product ->
+                        Text(
+                            text = stringResource(
+                                R.string.product_result_basis_preview,
+                                product.carbsPer100.stripTrailingZeros().toPlainString(),
+                                product.portionUnit,
+                            ),
+                            style = NumberType.supporting,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(Space.xs))
+                    }
+                    Text(
+                        // The countable path asks for a count, not a weight — naming the wrong
+                        // input is a small thing that makes the app look like it is not watching.
+                        text = if (equationUnit != null) {
+                            stringResource(R.string.product_result_pending_count)
+                        } else {
+                            stringResource(R.string.product_result_pending)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         } else {
             // Both figures come from `exact`, independently. Neither is derived from the other,
@@ -1487,10 +1641,30 @@ private fun ResultPanel(
                 Spacer(Modifier.width(Space.s))
 
                 val copyLabel = stringResource(R.string.product_copy)
+                // The button holds a visible "copied" state for a few seconds after the tap.
+                //
+                // The Toast alone was the only confirmation, and a Toast is transient, easy to miss
+                // one-handed, and gone by the time the user looks back — while the value they are
+                // about to paste is going into something that doses insulin. The icon swapping to a
+                // checkmark survives being glanced away from, which is exactly what a Toast cannot
+                // do. The Toast stays: it is what announces the copy to TalkBack.
+                //
+                // Keyed on the copied value so copying a *different* number after changing the
+                // portion restarts the confirmation rather than silently reusing the running timer.
+                var copiedAt by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(copiedAt) {
+                    if (copiedAt != null) {
+                        kotlinx.coroutines.delay(Motion.COPIED_STATE_MS)
+                        copiedAt = null
+                    }
+                }
+                val showCopied = copiedAt != null && copiedAt == copiedValue
+
                 IconButton(
                     onClick = {
                         // Only the number reaches the clipboard — never "31 g carbs" (§19).
                         clipboard.setText(AnnotatedString(copiedValue.orEmpty()))
+                        copiedAt = copiedValue
                         if (settings.hapticsEnabled) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
@@ -1504,7 +1678,15 @@ private fun ResultPanel(
                         .size(Space.minTouchTarget)
                         .semantics { contentDescription = copyLabel },
                 ) {
-                    Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = null)
+                    Icon(
+                        imageVector = if (showCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+                        contentDescription = null,
+                        tint = if (showCopied) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            androidx.compose.material3.LocalContentColor.current
+                        },
+                    )
                 }
             }
 
@@ -1523,6 +1705,47 @@ private fun ResultPanel(
                 style = NumberType.supporting,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // Where this number came from, at the number itself.
+            //
+            // `SourceBadge` already states provenance, but it lives at the top of the screen and
+            // drops its advisory line entirely while the keyboard is open — so at the moment the
+            // user reads the result and decides whether to act on it, nothing on that half of the
+            // screen says whether the underlying figure was ever checked against the package.
+            //
+            // Only shown for Open Food Facts data, because it is the only provenance where the
+            // question is open: a manually-entered or OCR-read value was, by definition, read off
+            // the package by the user. Deliberately plain text in the ordinary supporting colour —
+            // no icon, no alarm hue, and nothing about doses or consequences (§25, §45).
+            //
+            // **Hidden while the keyboard is open, and that is load-bearing rather than tidy.**
+            // This panel is pinned to the bottom edge, so every dp it gains is taken from the
+            // scrolling controls above it. Adding this line unconditionally grew the panel by
+            // ~40px and put its top edge at y=997 while the quick-adjust row still ended at
+            // y=1102 — the row was physically underneath the panel, and a tap on "+10" hit the
+            // panel instead and silently did nothing. That is the fourth time a change to this
+            // surface has swallowed a control above it (see the meal-bar history), and the only
+            // reason it was caught is that an instrumented test clicked the button and checked the
+            // result actually moved.
+            //
+            // The IME-open case is also when the line is least needed: the user is typing a
+            // portion, not deciding whether to trust the figure, and `SourceBadge` above already
+            // drops its own hint for exactly the same reason.
+            if (showsProvenanceLine) {
+                Spacer(Modifier.height(Space.xs))
+                Text(
+                    text = stringResource(
+                        if (state.product?.isUserVerified == true) {
+                            R.string.product_result_verified
+                        } else {
+                            R.string.product_result_unverified
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
 
             // Only once there is a number worth adding. Offered under the result, never in place
             // of it: the app answers a carbohydrate question first and builds a meal second (§9).

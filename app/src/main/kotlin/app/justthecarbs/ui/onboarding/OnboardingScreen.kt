@@ -3,7 +3,6 @@ package app.justthecarbs.ui.onboarding
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,26 +16,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -70,9 +68,27 @@ fun OnboardingScreen(
     onNext: () -> Unit,
     onSkip: () -> Unit,
     onGetStarted: () -> Unit,
+    onSlideChanged: (Int) -> Unit = {},
 ) {
-    val slide = SLIDES[slideIndex]
     val last = slideIndex == SLIDES.lastIndex
+
+    // `slideIndex` stays the single source of truth; the pager is an input device for it, not a
+    // second copy of the state. The two effects below are deliberately asymmetric:
+    //
+    //  - settled page -> state: reads `settledPage`, not `currentPage`, so a half-finished drag
+    //    that springs back does not count as having changed slide.
+    //  - state -> pager: animates when Next or Skip moved the index, which is what makes the button
+    //    and the gesture produce the same motion instead of the button teleporting.
+    val pagerState = rememberPagerState(initialPage = slideIndex) { SLIDES.size }
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            if (page != slideIndex) onSlideChanged(page)
+        }
+    }
+    LaunchedEffect(slideIndex) {
+        if (pagerState.currentPage != slideIndex) pagerState.animateScrollToPage(slideIndex)
+    }
 
     val background by animateColorAsState(
         targetValue = when (slideIndex) {
@@ -119,40 +135,53 @@ fun OnboardingScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 32.dp),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                OnboardingMark(color = markColor, size = 64.dp)
-                Spacer(Modifier.height(20.dp))
-                Text(
-                    text = stringResource(slide.eyebrowRes),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = foreground.copy(alpha = 0.7f),
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = stringResource(slide.titleRes),
-                    fontFamily = SpaceGrotesk,
-                    fontSize = 44.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-1.5).sp,
-                    lineHeight = 46.sp,
-                    color = foreground,
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = stringResource(slide.bodyRes),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = foreground.copy(alpha = 0.85f),
-                    modifier = Modifier.widthIn(max = 280.dp),
-                )
+            // Only the slide content pages. The background colour, Skip and the CTA are shared
+            // chrome that cross-fades with `slideIndex` instead of sliding, so a swipe moves the
+            // words while the screen itself stays put — which is what makes the colour transition
+            // read as one screen changing rather than three screens scrolling past.
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f),
+                // No looping: the last slide is an endpoint with its own action, and wrapping back
+                // to slide 1 from it would hide that the sequence had finished.
+                pageSpacing = 0.dp,
+            ) { page ->
+                val pageSlide = SLIDES[page]
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = Space.xl),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    OnboardingMark(color = markColor, size = 64.dp)
+                    Spacer(Modifier.height(20.dp))
+                    Text(
+                        text = stringResource(pageSlide.eyebrowRes),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = foreground.copy(alpha = 0.7f),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(pageSlide.titleRes),
+                        fontFamily = SpaceGrotesk,
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-1.5).sp,
+                        lineHeight = 46.sp,
+                        color = foreground,
+                    )
+                    Spacer(Modifier.height(Space.m))
+                    Text(
+                        text = stringResource(pageSlide.bodyRes),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = foreground.copy(alpha = 0.85f),
+                        modifier = Modifier.widthIn(max = 280.dp),
+                    )
+                }
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 32.dp, vertical = 40.dp),
+                modifier = Modifier.padding(horizontal = Space.xl, vertical = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 Dots(count = SLIDES.size, active = slideIndex, color = foreground)
@@ -189,7 +218,7 @@ fun OnboardingScreen(
 
 @Composable
 private fun Dots(count: Int, active: Int, color: Color) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
         repeat(count) { index ->
             val width by animateDpAsState(
                 targetValue = if (index == active) 22.dp else 7.dp,
@@ -200,7 +229,7 @@ private fun Dots(count: Int, active: Int, color: Color) {
                 modifier = Modifier
                     .height(7.dp)
                     .width(width)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(Space.xs))
                     .background(color.copy(alpha = if (index == active) 1f else 0.35f)),
             )
         }
@@ -220,33 +249,21 @@ private fun Dots(count: Int, active: Int, color: Color) {
  */
 @Composable
 private fun OnboardingMark(color: Color, size: Dp) {
-    val centerDot = MaterialTheme.colorScheme.background
-    Canvas(modifier = Modifier.size(size)) {
-        val s = this.size.width / 64f
-        val tileTopLeft = Offset(4f * s, 4f * s)
-        val tileSize = Size(56f * s, 56f * s)
-        val tileCorner = CornerRadius(18f * s, 18f * s)
-
-        // The tile itself, at low opacity.
-        drawRoundRect(
-            color = color.copy(alpha = 0.16f),
-            topLeft = tileTopLeft,
-            size = tileSize,
-            cornerRadius = tileCorner,
-        )
-
-        // The "sliced open" band across the top third, clipped to the tile's rounded corners so
-        // it reads as part of the same shape rather than a separate rectangle overlapping it.
-        val tileRoundRect = RoundRect(
-            rect = Rect(offset = tileTopLeft, size = tileSize),
-            cornerRadius = tileCorner,
-        )
-        clipPath(Path().apply { addRoundRect(tileRoundRect) }) {
-            drawRect(color = color, topLeft = tileTopLeft, size = Size(56f * s, 22f * s))
-        }
-
-        // The core circle with a light center dot.
-        drawCircle(color = color, radius = 13f * s, center = Offset(32f * s, 38f * s))
-        drawCircle(color = centerDot, radius = 6f * s, center = Offset(32f * s, 38f * s))
-    }
+    // The real brand mark, not a drawing of one.
+    //
+    // This was a hand-built Canvas approximation — a rounded tile with a band and a dot — that
+    // resembled nothing the user had seen. The app it introduces is identified everywhere else by
+    // the split container with three drips: on the launcher icon they tapped, on the splash screen
+    // they just watched, and in the Play listing. Onboarding is the first screen after that splash,
+    // and it was the one place showing a different mark.
+    //
+    // `ic_launcher_foreground` is the right source here (unlike the splash, which needed its own
+    // plate) because its paths are a single flat colour and onboarding tints them to sit on a
+    // coloured slide — which is exactly what a monochrome/themed icon is for.
+    Icon(
+        painter = painterResource(R.drawable.ic_launcher_foreground),
+        contentDescription = null,
+        tint = color,
+        modifier = Modifier.size(size),
+    )
 }

@@ -163,7 +163,7 @@ class LabelVerificationScreenTest {
             basis = NutritionBasis.PER_100_ML,
         )
 
-        compose.onNodeWithText("this app does not convert", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("This app does not convert", substring = true).assertIsDisplayed()
         compose.onNodeWithTag(VERIFY_USE_PACKAGE_TAG).assertDoesNotExist()
         compose.onNodeWithTag(VERIFY_CONFIRM_TAG).assertDoesNotExist()
     }

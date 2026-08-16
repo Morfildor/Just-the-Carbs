@@ -5,6 +5,15 @@ keystore.properties
 release/
 upload-keystore*
 
+# Regulatory assessment — kept LOCAL, never published (owner, 2026-08-16).
+# Its §5.2 records the manufacturer's own health information to explain two design decisions, and
+# §7.1 of the same document forbids that fact appearing in published material. The repo went public
+# so GitHub Pages could serve the privacy policy, which made the file world-readable.
+# The document itself is unchanged and still the signable manufacturer's assessment — it simply
+# lives on disk only. Note: it remains in commits made before this date.
+docs/regulatory-qualification-assessment.md
+docs/regulatory-qualification-assessment.pdf
+
 # Local config
 local.properties
 

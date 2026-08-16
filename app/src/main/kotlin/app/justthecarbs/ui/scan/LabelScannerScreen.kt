@@ -78,6 +78,7 @@ import app.justthecarbs.ocr.LabelReading
 import app.justthecarbs.ocr.ServingCarbCandidate
 import app.justthecarbs.ocr.OcrDiagnosticsLogger
 import app.justthecarbs.ui.components.RecoveryPanel
+import app.justthecarbs.ui.product.kindLabel
 import app.justthecarbs.ui.theme.Space
 import kotlinx.coroutines.launch
 import java.io.File
@@ -629,7 +630,9 @@ private fun SavePortionUnitAction(
             onSave(descriptor.kind, conversion)
         },
     ) {
-        Text(stringResource(R.string.label_save_as_portion_unit, descriptor.kind.name.lowercase()))
+        // The kind's own word rather than `kind.name.lowercase()`, which happened to read correctly
+        // for single-word constants and would have printed "custom" for CUSTOM (§24).
+        Text(stringResource(R.string.label_save_as_portion_unit, descriptor.kind.kindLabel()))
     }
 }
 

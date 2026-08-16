@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The splash mark: the launcher icon's foreground drawn on its own coral plate.
+
+  The splash cannot reuse `ic_launcher_foreground` directly. That drawable's two paths are *white*,
+  because an adaptive icon composites them over `ic_launcher_background` (#FF5C4D) and never draws
+  them alone. `windowSplashScreenAnimatedIcon` does draw it alone, over `windowSplashScreenBackground`
+  — which is cream — so the mark rendered white-on-cream and was effectively invisible at launch.
+
+  Rather than recolour the mark (which would make it a different mark from the launcher's), this
+  reproduces the launcher's own composition: the coral plate first, the white mark over it. The app
+  therefore opens with the same icon the user tapped.
+
+  Geometry note: an adaptive icon reserves a 72dp safe zone inside its 108dp canvas, and the splash
+  API applies its own mask, so the plate is drawn as a centred circle at that safe-zone radius
+  instead of filling the full square. A full-bleed square would be clipped to an indeterminate
+  rounded shape by the launcher mask on some OEM skins.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Coral plate: the launcher background, as a circle inside the 72dp safe zone. -->
+    <path
+        android:pathData="M54,18 a36,36 0 1 1 0,72 a36,36 0 1 1 0,-72 z"
+        android:fillColor="@color/ic_launcher_background" />
+
+    <!--
+      The mark itself, scaled to sit inside the plate. Same two paths as
+      ic_launcher_foreground, translated/scaled about the centre by 0.62 so the container clears
+      the plate's edge.
+    -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.62"
+        android:scaleY="0.62">
+
+        <!-- Top band: the rounded-top half of the container -->
+        <path
+            android:pathData="M32,20 h44 a20,20 0 0 1 20,20 v10 h-84 v-10 a20,20 0 0 1 20,-20 z"
+            android:fillColor="#FFFFFF" />
+
+        <!-- Bottom band: rounded-bottom container with three drips hanging from the split -->
+        <path
+            android:pathData="
+                M22,58
+                h14 v14 a7,7 0 0 0 14,0 v-14 h12 v22 a7,7 0 0 0 14,0 v-22 h10 v20 a20,20 0 0 1 -20,20 h-24 a20,20 0 0 1 -20,-20 z"
+            android:fillColor="#FFFFFF" />
+    </group>
+</vector>

@@ -16,9 +16,12 @@ Status vocabulary is strict:
 
 ## A. Qualification decision — all rows block release
 
-A manufacturer's assessment has been **drafted** and is held at
-[regulatory-qualification-assessment.md](regulatory-qualification-assessment.md) (exported to
-`regulatory-qualification-assessment.pdf` for signature). Its conclusion is **not a medical device**.
+A manufacturer's assessment has been **drafted** and is held **locally, outside version control**,
+at `docs/regulatory-qualification-assessment.md` (exported to
+`docs/regulatory-qualification-assessment.pdf` for signature). It is deliberately not published: it
+records the manufacturer's own health information to explain two design decisions, and §7.1 of that
+same document forbids that fact appearing in published material. Its conclusion is **not a medical
+device**.
 Rows below record what that document does and does not settle. A drafted assessment is not a signed
 one, and a self-assessment is not an independent one.
 
@@ -53,7 +56,7 @@ basis stated.
 
 ## B. Owner decision record — drafted, unsigned
 
-Source: [regulatory-qualification-assessment.md](regulatory-qualification-assessment.md). This table
+Source: `docs/regulatory-qualification-assessment.md` (held locally, not in version control). This table
 summarises; the assessment governs.
 
 | Field | Owner record |

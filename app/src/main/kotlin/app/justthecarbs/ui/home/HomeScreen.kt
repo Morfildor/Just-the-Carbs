@@ -20,13 +20,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DocumentScanner
@@ -34,7 +35,6 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Scale
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -50,11 +50,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -62,13 +63,11 @@ import androidx.compose.ui.unit.dp
 import app.justthecarbs.BuildConfig
 import app.justthecarbs.R
 import app.justthecarbs.domain.AppSettings
-import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
-import app.justthecarbs.domain.CarbCalculator
 import app.justthecarbs.domain.CarbResult
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.ui.components.FavoriteButton
@@ -82,17 +81,22 @@ import app.justthecarbs.ui.product.unitLabel
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
+import java.math.BigDecimal
 
 /** Stable handles for instrumented tests. */
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
 const val HOME_SEARCH_RESULTS_TAG = "home_search_results"
+const val HOME_SCAN_BARCODE_TAG = "home_scan_barcode"
+const val HOME_SCAN_LABEL_TAG = "home_scan_label"
+const val HOME_FAVORITES_HEADING_TAG = "home_favorites_heading"
 
 /**
  * Home (§6, §7).
  *
- * One primary surface, no bottom navigation. Favourites float to the top of Recent rather than
- * occupying a tab of their own, because a second tab would add a decision to a workflow whose whole
- * value is not having to make one (§22, §74).
+ * One primary surface, no bottom navigation. Favourites get their own labelled section directly
+ * above Recent rather than a tab of their own, because a second tab would add a decision to a
+ * workflow whose whole value is not having to make one (§22, §74). They were previously only sorted
+ * to the top of Recent, which made them first without making them findable.
  *
  * Nothing here waits on the network: recents are local, and the list renders before any lookup
  * could possibly return (§7).
@@ -171,20 +175,30 @@ fun HomeScreen(
             // The meal in progress, if there is one (§10). Above recents rather than below, because a
             // half-built meal is the thing the user is in the middle of; and absent entirely when the
             // meal is empty, so Home's resting state is unchanged from before this feature existed.
-            // Hidden while a search is active — the meal bar and search results both want the space
-            // right below the header, and a search in progress is the more immediate task.
-            if (searchState.query.isBlank()) {
-                MealBarIfPresent(
-                    itemCount = mealItems.size,
-                    total = mealTotal,
-                    onClick = onOpenMeal,
-                    modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
-                )
-            }
+            //
+            // Deliberately NOT hidden while searching. It used to be, on the reasoning that search
+            // results are the more immediate task — but searching is precisely *how* the user finds
+            // the next item to add, so the bar vanished during the one activity that most implies a
+            // meal is underway. Building a three-item meal meant watching the running total
+            // disappear and reappear three times, and it made the meal feel lost rather than
+            // waiting.
+            MealBarIfPresent(
+                itemCount = mealItems.size,
+                total = mealTotal,
+                onClick = onOpenMeal,
+                modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
+            )
 
-            // Recents take the scrollable middle; the primary action sits at the bottom where a thumb
-            // actually reaches it (§40). A non-blank query takes over the same space with live
-            // results instead — Home never shows both at once.
+            // The two camera entry points, then history beneath them. Both live in the scrolling
+            // region rather than pinned at the bottom, which is a deliberate change: the app's three
+            // ways in must all be visible before any history (§7 of the entry-points brief), and
+            // they can only read as one matched system if they sit together. At the top of the
+            // scroll region they land roughly 220–300dp down — inside thumb reach and above the fold
+            // on a short display — whereas pinning both would park ~180dp of permanent chrome over
+            // the recents list and make Home feel like a dashboard (§2, §22).
+            //
+            // A non-blank query takes over this whole region with live results — Home never shows
+            // both at once.
             if (searchState.query.isNotBlank()) {
                 HomeSearchResults(
                     state = searchState,
@@ -192,55 +206,19 @@ fun HomeScreen(
                     onScanLabel = onSearchScanLabel,
                     onEnterManually = onSearchEnterManually,
                     onRetry = onSearchRetry,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).navigationBarsPadding(),
                 )
-            } else if (recents.isEmpty()) {
-                EmptyState(onScanLabel = onScanLabel, modifier = Modifier.weight(1f))
             } else {
-                RecentList(
+                HomeBody(
                     recents = recents,
                     settings = settings,
+                    onScan = onScan,
+                    onScanLabel = onScanLabel,
+                    onManualEntry = onManualEntry,
                     onOpenProduct = onOpenProduct,
                     onToggleFavorite = onToggleFavorite,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).navigationBarsPadding(),
                 )
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Space.screenEdge)
-                    .padding(bottom = Space.m)
-                    .navigationBarsPadding(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Button(
-                    onClick = onScan,
-                    shape = RoundedCornerShape(Space.buttonRadius),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .shadow(
-                            elevation = 12.dp,
-                            shape = RoundedCornerShape(Space.buttonRadius),
-                            ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
-                            spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
-                        ),
-                ) {
-                    Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
-                    Spacer(Modifier.size(Space.s))
-                    Text(
-                        text = stringResource(R.string.home_scan_button),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-
-                TextButton(
-                    onClick = onManualEntry,
-                    modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
-                ) {
-                    Text(stringResource(R.string.home_manual_button))
-                }
             }
         }
     }
@@ -255,34 +233,20 @@ fun HomeScreen(
  * not a dashboard: no stats, no fake recents, no tips.
  */
 @Composable
-private fun EmptyState(onScanLabel: () -> Unit, modifier: Modifier = Modifier) {
+private fun EmptyState(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = Space.xl)
-            .verticalScroll(rememberScrollState()),
+            .padding(horizontal = Space.m),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(88.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(28.dp),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            // Inset inside the tile so the mark doesn't collide with the tile's rounded corners.
-            Icon(
-                painter = painterResource(R.drawable.ic_launcher_foreground),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(72.dp),
-            )
-        }
-
-        Spacer(Modifier.height(Space.l))
+        // The launcher mark used to be rendered here and it did not survive the move: it is a 108 dp
+        // adaptive-icon vector whose two paths are white shapes designed to read against the
+        // launcher's own coloured background, drawn inside a 72 dp safe zone. Tinted dark and placed
+        // on a light tile, the figure and ground invert and the mark reads as an indistinct blob —
+        // visible only by looking at the rendered screen. An app icon is not a general-purpose
+        // illustration, and the step strip below already carries this composition's identity, so the
+        // headline now leads and the strip does the visual work.
         Text(
             text = stringResource(R.string.home_empty_headline),
             style = MaterialTheme.typography.headlineSmall,
@@ -300,13 +264,6 @@ private fun EmptyState(onScanLabel: () -> Unit, modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(Space.l))
         EmptyStateStepStrip()
-
-        Spacer(Modifier.height(Space.m))
-        TextButton(onClick = onScanLabel) {
-            Icon(Icons.Filled.DocumentScanner, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.size(Space.xs))
-            Text(stringResource(R.string.home_empty_scan_label))
-        }
     }
 }
 
@@ -323,8 +280,10 @@ private fun EmptyStateStepStrip(modifier: Modifier = Modifier) {
         Triple(Icons.Filled.Calculate, R.string.home_empty_step_carbs, MaterialTheme.extendedColors.result),
     )
 
+    // Scrolls rather than clips: the strip is a fixed-width row of roundels, and at 1.8x font scale
+    // on a narrow display it otherwise runs past the screen edge with the third step cut in half.
     Row(
-        modifier = modifier,
+        modifier = modifier.horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         steps.forEachIndexed { index, (icon, labelRes, tint) ->
@@ -377,6 +336,10 @@ private fun HomeSearchField(
         value = query,
         onValueChange = onQueryChanged,
         singleLine = true,
+        // Labelled "Search products", not just hinted: the placeholder alone ("Product or brand
+        // name") never says the word *search*, which left the magnifier glyph carrying the entire
+        // discovery burden for one of the app's three ways in.
+        label = { Text(stringResource(R.string.home_search_label)) },
         placeholder = { Text(stringResource(R.string.search_hint)) },
         // Tapping the leading icon also submits: it sits where a "search" affordance is expected,
         // in addition to the IME action, without adding a second visible button to this compact field.
@@ -487,10 +450,22 @@ private fun HomeSearchResults(
     }
 }
 
+/**
+ * Home's resting state: the two camera entry points, then either recent products or the branded
+ * starter composition.
+ *
+ * One `LazyColumn` rather than a fixed header plus a list, so the actions scroll with the content
+ * instead of stealing a permanent band of the screen. The actions are `item`s, so on a screen with
+ * many recents they scroll away exactly as a header should — they are the first thing seen, not a
+ * fixture.
+ */
 @Composable
-private fun RecentList(
+private fun HomeBody(
     recents: List<RecentEntry>,
     settings: AppSettings,
+    onScan: () -> Unit,
+    onScanLabel: () -> Unit,
+    onManualEntry: () -> Unit,
     onOpenProduct: (String) -> Unit,
     onToggleFavorite: (Product) -> Unit,
     modifier: Modifier = Modifier,
@@ -500,27 +475,234 @@ private fun RecentList(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             start = Space.screenEdge,
             end = Space.screenEdge,
+            top = Space.xs,
             bottom = Space.m,
         ),
         verticalArrangement = Arrangement.spacedBy(Space.s),
     ) {
-        item {
-            Text(
-                text = stringResource(R.string.home_recent_title),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = Space.s).semantics { heading() },
+        item(key = "action_barcode") {
+            HomeActionCard(
+                icon = Icons.Filled.QrCodeScanner,
+                title = stringResource(R.string.home_scan_button),
+                subtitle = stringResource(R.string.home_action_barcode_subtitle),
+                filled = true,
+                onClick = onScan,
+                modifier = Modifier.testTag(HOME_SCAN_BARCODE_TAG),
             )
         }
-        items(items = recents, key = { it.product.barcode }) { entry ->
-            RecentCard(
-                entry = entry,
-                settings = settings,
-                onClick = { onOpenProduct(entry.product.barcode) },
-                onToggleFavorite = { onToggleFavorite(entry.product) },
+        item(key = "action_label") {
+            HomeActionCard(
+                icon = Icons.Filled.DocumentScanner,
+                title = stringResource(R.string.home_empty_scan_label),
+                subtitle = stringResource(R.string.home_action_label_subtitle),
+                filled = false,
+                onClick = onScanLabel,
+                modifier = Modifier.testTag(HOME_SCAN_LABEL_TAG),
             )
+        }
+
+        // Manual entry sits directly under the three real ways in, and *above* the starter hero.
+        // Ordering it after the hero put it beyond the composed window at 1.8x font scale, where a
+        // LazyColumn simply never composes it — the action was not merely below the fold, it did not
+        // exist. The hero is reassurance; this is a function, and functions come first.
+        item(key = "manual") {
+            TextButton(
+                onClick = onManualEntry,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(Space.minTouchTarget)
+                    .padding(top = Space.xs),
+            ) {
+                Text(stringResource(R.string.home_manual_button))
+            }
+        }
+
+        if (recents.isEmpty()) {
+            item(key = "starter") {
+                EmptyState(modifier = Modifier.padding(top = Space.m, bottom = Space.m))
+            }
+        } else {
+            // Favourites are the repeat-use path: a product the user has already told the app they
+            // come back to. They were previously only *sorted* to the top of Recents (`ORDER BY
+            // favorite DESC`), which makes them first but not findable — nothing on screen said the
+            // list had two halves, so a favourite five items down looked like ordinary history.
+            //
+            // Split here rather than in the query so the DAO keeps returning one ordered list and
+            // the section is purely presentational. An empty favourites list renders nothing at all
+            // — no heading, no empty card — because a section explaining its own emptiness costs the
+            // user a scroll on every launch to say nothing.
+            val favorites = recents.filter { it.product.favorite }
+            val others = recents.filterNot { it.product.favorite }
+
+            if (favorites.isNotEmpty()) {
+                item(key = "favorites_heading") {
+                    SectionHeading(
+                        text = stringResource(R.string.home_favorites_title),
+                        modifier = Modifier.testTag(HOME_FAVORITES_HEADING_TAG),
+                    )
+                }
+                items(items = favorites, key = { "fav_${it.product.barcode}" }) { entry ->
+                    RecentCard(
+                        entry = entry,
+                        settings = settings,
+                        onClick = { onOpenProduct(entry.product.barcode) },
+                        onToggleFavorite = { onToggleFavorite(entry.product) },
+                    )
+                }
+            }
+
+            if (others.isNotEmpty()) {
+                item(key = "recent_heading") {
+                    SectionHeading(text = stringResource(R.string.home_recent_title))
+                }
+                items(items = others, key = { it.product.barcode }) { entry ->
+                    RecentCard(
+                        entry = entry,
+                        settings = settings,
+                        onClick = { onOpenProduct(entry.product.barcode) },
+                        onToggleFavorite = { onToggleFavorite(entry.product) },
+                    )
+                }
+            }
         }
     }
+}
+
+/**
+ * One way into the app: an icon, what it does, and why you'd pick it over the other one.
+ *
+ * The two camera actions share this shape so they read as two options of one kind, and differ only
+ * in weight — [filled] carries the app's primary blue and its lifted shadow, the outlined variant
+ * borrows [RecentCard]'s exact surface and border so the whole column is visibly one system. The
+ * icon roundel is the only place the outlined card spends colour, using the existing orange, which
+ * is what keeps the two scanners distinguishable at a glance without adding a hue (§5).
+ *
+ * Semantics are merged into a single button node: without that, TalkBack announces the icon, the
+ * title and the subtitle as three separate stops inside one tappable thing.
+ */
+@Composable
+private fun HomeActionCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    filled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(Space.cardRadius)
+    val container = if (filled) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerLowest
+    }
+    val titleColor = if (filled) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    // On the filled card the subtitle must stay legible against the accent, so it is the same ink at
+    // reduced opacity rather than onSurfaceVariant, which is tuned for the page background.
+    val subtitleColor = if (filled) {
+        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val description = stringResource(R.string.home_action_description, title, subtitle)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (filled) {
+                    Modifier.shadow(
+                        elevation = 12.dp,
+                        shape = shape,
+                        ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                        spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .clip(shape)
+            .background(container)
+            .then(
+                if (filled) {
+                    Modifier
+                } else {
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                },
+            )
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = description
+            }
+            .padding(horizontal = Space.m, vertical = Space.m),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .background(
+                    color = if (filled) {
+                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f)
+                    } else {
+                        MaterialTheme.colorScheme.tertiaryContainer
+                    },
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (filled) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onTertiaryContainer
+                },
+                modifier = Modifier.size(24.dp),
+            )
+        }
+
+        Column(modifier = Modifier.weight(1f).padding(horizontal = Space.m)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = titleColor,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = subtitleColor,
+            )
+        }
+
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = if (filled) {
+                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+    }
+}
+
+/** One list-section label. Extracted so Favourites and Recent cannot drift apart visually. */
+@Composable
+private fun SectionHeading(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier
+            .padding(top = Space.m, bottom = Space.xs)
+            .semantics { heading() },
+    )
 }
 
 /**
@@ -539,21 +721,36 @@ private fun RecentCard(
     val product = entry.product
     // Recompute rather than store a display string, so a corrected carbs value is reflected in the
     // summary immediately instead of showing a figure derived from the old one.
-    val summary = product.lastPortion?.let { portion ->
-        val result = CarbCalculator.calculate(product.carbsPer100, portion, product.basis)
+    //
+    // The label and the figure both come from one `rememberedCarbs` decision. Reading `lastPortion`
+    // to compute while reading `lastCount` to label was the P0 defect: `lastPortion` legitimately
+    // survives a direct-carb use, so a product last eaten as "4 slices" could print that count over
+    // a number scaled from a stale gram amount left by an earlier weight-based use.
+    val summary = rememberedCarbs(product, entry.lastUnit)?.let { remembered ->
         // Countable-portions brief §12: when the product was last used as "2 slices", Recents says
         // so — not the gram amount the user never actually thought in.
-        val amountLabel = product.lastCount
-            ?.takeIf { entry.lastUnit != null && product.lastInputMode == InputMode.PORTION_UNIT }
-            ?.let { count -> "${count.stripTrailingZeros().toPlainString()} ${entry.lastUnit!!.unitLabel(count = 2)}" }
-            ?: "${portion.stripTrailingZeros().toPlainString()} ${product.portionUnit}"
+        val amountLabel = when (remembered) {
+            is RememberedCarbs.Countable ->
+                // Plural agreement follows the count, so a remembered single portion reads "1
+                // slice" rather than the "1 slices" the previous hardcoded `count = 2` produced.
+                // Anything that is not exactly one takes the plural, which keeps a fractional
+                // count ("1.5 slices") correct rather than truncating it to the singular.
+                "${remembered.count.stripTrailingZeros().toPlainString()} " +
+                    entry.lastUnit!!.unitLabel(
+                        count = if (remembered.count.compareTo(BigDecimal.ONE) == 0) 1 else 2,
+                    )
+
+            is RememberedCarbs.Weight ->
+                "${remembered.portion.stripTrailingZeros().toPlainString()} ${product.portionUnit}"
+        }
         // Follows the user's configured result style (§18). Recents previously always showed the
         // whole gram while the calculator led with the decimal, so the same portion of the same
         // product read as "30 g" here and "30.2 g" one tap away — the app appearing to disagree
         // with itself about a number the user is about to rely on.
         val carbsLabel = when (settings.resultStyle) {
-            ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(result.exact)} g"
-            ResultStyle.WHOLE_DOMINANT -> "${ResultFormatter.whole(result.wholeGrams)} g"
+            ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(remembered.exactCarbs)} g"
+            ResultStyle.WHOLE_DOMINANT ->
+                "${ResultFormatter.whole(ResultFormatter.wholeGrams(remembered.exactCarbs))} g"
         }
         stringResource(R.string.recent_summary, amountLabel, carbsLabel)
     } ?: stringResource(R.string.recent_never_used)

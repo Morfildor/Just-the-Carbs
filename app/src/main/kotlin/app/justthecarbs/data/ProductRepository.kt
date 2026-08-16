@@ -499,6 +499,20 @@ class ProductRepository(
 
     suspend fun removeMealItem(item: MealItem) = meal.remove(item)
 
+    /**
+     * Put back an item the user has just removed, for Undo (§5.3).
+     *
+     * Re-inserts the **snapshot** rather than recomputing anything: a `MealItem` already holds every
+     * figure needed to re-display and re-total the line, and re-deriving it from the product here
+     * would reintroduce exactly the drift the snapshot exists to prevent — the product may have been
+     * refreshed, corrected or deleted between the removal and the Undo.
+     *
+     * `id` is cleared because the row it named is gone; SQLite assigns a new one on insert. Nothing
+     * else about the line changes, including [MealItem.addedAt], so a restored item sorts back into
+     * its original position rather than jumping to the end of the meal.
+     */
+    suspend fun restoreMealItem(item: MealItem): MealItem = meal.add(item.copy(id = 0))
+
     /** End the meal. A `DELETE FROM`, not an archive — nothing is kept (§8). */
     suspend fun clearMeal() = meal.clear()
 
