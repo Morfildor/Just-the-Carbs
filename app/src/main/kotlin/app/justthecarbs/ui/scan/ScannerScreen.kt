@@ -57,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import app.justthecarbs.R
+import app.justthecarbs.domain.BarcodeAcceptance
+import app.justthecarbs.domain.BarcodeStabilityTracker
 import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.theme.Space
 import java.util.concurrent.Executors
@@ -134,15 +136,26 @@ private fun CameraPreview(
     var cameraFailed by remember { mutableStateOf(false) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
 
+    // Which of the two guidance lines to show (§4). Only ever these two: the scanner has one reason
+    // to be waiting that the user can act on — aim it, then hold it.
+    var holdSteady by remember { mutableStateOf(false) }
+
     val executor = remember { Executors.newSingleThreadExecutor() }
     val analyzer = remember {
-        BarcodeAnalyzer { code ->
-            // A short haptic confirms the read without the user having to look away from the
-            // package (§41). Restrained: this is one of only two places the app vibrates.
-            // Compose's abstraction is used rather than HapticFeedbackConstants.CONFIRM, which
-            // needs API 30 and would be silently inlined as an unsupported constant on minSdk 26.
-            if (hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            onBarcode(code)
+        BarcodeAnalyzer { acceptance ->
+            when (acceptance) {
+                is BarcodeAcceptance.Accepted -> {
+                    // A short haptic confirms the read without the user having to look away from
+                    // the package (§41). Restrained: this is one of only two places the app
+                    // vibrates. Compose's abstraction is used rather than
+                    // HapticFeedbackConstants.CONFIRM, which needs API 30 and would be silently
+                    // inlined as an unsupported constant on minSdk 26.
+                    if (hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onBarcode(acceptance.value)
+                }
+                BarcodeAcceptance.Stabilizing -> holdSteady = true
+                BarcodeAcceptance.Searching -> holdSteady = false
+            }
         }
     }
 
@@ -242,7 +255,9 @@ private fun CameraPreview(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = stringResource(R.string.scanner_hint),
+                text = stringResource(
+                    if (holdSteady) R.string.scanner_hint_steady else R.string.scanner_hint_aim,
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White,
                 textAlign = TextAlign.Center,
@@ -285,7 +300,14 @@ private fun CameraPreview(
     }
 }
 
-/** A subtle frame — a hint, not a target the barcode has to be squeezed into (§8). */
+/**
+ * The scan frame (§8), now a functional target rather than decoration.
+ *
+ * [BarcodeStabilityTracker] refuses a barcode whose centre sits outside the middle of the frame, so
+ * this rectangle finally means what it always looked like it meant. It stays a *hint*: acceptance
+ * needs the barcode's centre inside a generous central region, never the whole box squeezed in here,
+ * which is why the drawn frame is narrower than the region that actually gates the scan.
+ */
 @Composable
 private fun ScanFrame(modifier: Modifier = Modifier) {
     val accent = MaterialTheme.colorScheme.primary

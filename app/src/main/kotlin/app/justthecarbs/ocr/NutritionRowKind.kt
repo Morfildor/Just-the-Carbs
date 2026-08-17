@@ -1,5 +1,7 @@
 package app.justthecarbs.ocr
 
+import app.justthecarbs.domain.ServingSizeParser
+
 /** What one reconstructed table row is, as far as a carbohydrate reading is concerned. */
 enum class NutritionRowKind {
     /** The row carrying the product's TOTAL carbohydrate figure. At most one per table. */
@@ -53,8 +55,37 @@ object RowClassifier {
         if (NutritionTerminology.servingTerms.any { NutritionTerminology.containsTerm(normalizedText, it) }) {
             return true
         }
-        return REFERENCE_INTAKE.containsMatchIn(normalizedText)
+        if (REFERENCE_INTAKE.containsMatchIn(normalizedText)) return true
+        return namesACountableServing(normalizedText)
     }
+
+    /**
+     * A "per <countable unit>" header — "per stuk", "par pièce" — using the **same** unit vocabulary
+     * [ColumnClassifier] recognises columns with.
+     *
+     * Found by running the real Kinder package through ML Kit. Its per-piece header spans several
+     * printed lines of eight languages, and the line carrying "Par pièce" names no per-100 basis, no
+     * generic serving word and no reference intake — so this returned false, the row was typed
+     * `OTHER`, and [ColumnClassifier] (which only ever looks at `HEADER` rows) never got to apply the
+     * countable-unit vocabulary it already had. The per-piece column did not exist, and the printed
+     * 6.7 g per piece was discarded with `no column`.
+     *
+     * Two stages disagreeing about what a serving header looks like is the actual defect; routing
+     * both through [app.justthecarbs.domain.ServingSizeParser] is what stops them drifting again.
+     *
+     * Safe by construction: this is checked only after the nutrient terms, so a real value row is
+     * never demoted — and `HEADER` and `OTHER` are equally value-less downstream, so the only thing
+     * this can change is whether a column gets recognised.
+     */
+    private fun namesACountableServing(normalizedText: String): Boolean {
+        val words = normalizedText.split(' ').filter { it.isNotBlank() }
+        return words.zipWithNext().any { (first, second) ->
+            first in CONNECTIVES && ServingSizeParser.kindForWord(second) != null
+        }
+    }
+
+    /** The one shared list — see [NutritionTerminology]. */
+    private val CONNECTIVES = NutritionTerminology.connectives
 
     private val PER_100 = Regex("(?:^|\\s)100\\s*(?:g|ml)(?:$|\\s)")
 

@@ -4,14 +4,15 @@ import androidx.annotation.OptIn
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import app.justthecarbs.domain.BarcodeAcceptance
 import app.justthecarbs.domain.BarcodeFormat
-import app.justthecarbs.domain.BarcodeValidator
+import app.justthecarbs.domain.BarcodeFrameReader
+import app.justthecarbs.domain.BarcodeStabilityTracker
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Maps ML Kit's format constant to the domain-level [BarcodeFormat] so `domain/` never imports ML
@@ -27,18 +28,22 @@ private fun Int.toBarcodeFormat(): BarcodeFormat? = when (this) {
 }
 
 /**
- * Continuous barcode detection (§8).
+ * Continuous barcode detection (§8), gated by [BarcodeStabilityTracker].
  *
- * The camera streams; the user never has to press a shutter. Detection is debounced by a one-way
- * latch rather than a timer: once a valid code is accepted the analyzer stops emitting entirely,
- * which is the only way to guarantee a single navigation from a stream that can deliver the same
- * frame's result several times in a row (§8, §36 "duplicate scans").
+ * This class deliberately holds no acceptance policy of its own. It is the ML Kit boundary: decode,
+ * convert to normalized coordinates, hand the frame to the pure tracker, report what it decided.
+ * The policy — framed, large enough, held, not already submitted — is all in `domain/`, where it is
+ * testable without a camera.
+ *
+ * It previously accepted the first frame that decoded anything, latched by an `AtomicBoolean`. That
+ * is why raising the phone toward a shelf could commit the app to a lookup for a neighbouring
+ * product before the user had aimed at anything.
  */
 class BarcodeAnalyzer(
-    private val onBarcode: (String) -> Unit,
+    private val onAcceptance: (BarcodeAcceptance) -> Unit,
 ) : ImageAnalysis.Analyzer {
 
-    private val consumed = AtomicBoolean(false)
+    private val tracker = BarcodeStabilityTracker()
 
     private val scanner: BarcodeScanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder()
@@ -53,37 +58,47 @@ class BarcodeAnalyzer(
             .build(),
     )
 
+    /** Re-arms the scanner: clears both the held-barcode count and the one-shot latch. */
+    fun reset() = tracker.reset()
+
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
-        if (consumed.get()) {
-            imageProxy.close()
-            return
-        }
-
         val mediaImage = imageProxy.image
         if (mediaImage == null) {
             imageProxy.close()
             return
         }
 
-        val input = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+        val rotation = imageProxy.imageInfo.rotationDegrees
+        // ML Kit reports bounding boxes in the coordinate space of the image *as rotated* for
+        // recognition, so the upright frame's width and height are swapped for a quarter turn.
+        // Reading these the wrong way round would mirror every centre into the wrong half of the
+        // frame and silently invert the region gate.
+        val uprightWidth = if (rotation == 90 || rotation == 270) imageProxy.height else imageProxy.width
+        val uprightHeight = if (rotation == 90 || rotation == 270) imageProxy.width else imageProxy.height
+        val now = System.nanoTime()
+
+        val input = InputImage.fromMediaImage(mediaImage, rotation)
         scanner.process(input)
             .addOnSuccessListener { barcodes ->
-                val code = barcodes.asSequence()
-                    .mapNotNull { barcode ->
-                        val raw = barcode.rawValue ?: return@mapNotNull null
-                        val format = barcode.format.toBarcodeFormat() ?: return@mapNotNull null
-                        raw to format
-                    }
+                val candidates = barcodes.mapNotNull { barcode ->
+                    val box = barcode.boundingBox ?: return@mapNotNull null
                     // A misread digit must not become a lookup for a different product (§36). UPC-E
-                    // is format-aware here rather than falling through to EAN-8's plain length rules,
-                    // since an 8-digit UPC-E raw value is a compressed UPC-A, not an EAN-8.
-                    .mapNotNull { (raw, format) -> BarcodeValidator.validate(raw, format) }
-                    .firstOrNull()
-
-                if (code != null && consumed.compareAndSet(false, true)) {
-                    onBarcode(code)
+                    // is format-aware here rather than falling through to EAN-8's plain length
+                    // rules, since an 8-digit UPC-E raw value is a compressed UPC-A, not an EAN-8.
+                    BarcodeFrameReader.read(
+                        rawValue = barcode.rawValue,
+                        format = barcode.format.toBarcodeFormat(),
+                        boxLeft = box.left,
+                        boxTop = box.top,
+                        boxRight = box.right,
+                        boxBottom = box.bottom,
+                        uprightWidth = uprightWidth,
+                        uprightHeight = uprightHeight,
+                        timestampNanos = now,
+                    )
                 }
+                onAcceptance(tracker.onFrame(candidates, now))
             }
             // A failed frame is not worth reporting: the next one arrives in milliseconds.
             .addOnCompleteListener { imageProxy.close() }

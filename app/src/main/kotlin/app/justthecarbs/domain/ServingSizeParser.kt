@@ -58,6 +58,11 @@ object ServingSizeParser {
         "schepje" to PortionUnitKind.SCOOP, "schepjes" to PortionUnitKind.SCOOP,
         "zakje" to PortionUnitKind.SACHET, "zakjes" to PortionUnitKind.SACHET,
         "portie" to PortionUnitKind.SERVING, "porties" to PortionUnitKind.SERVING,
+        // "schaaltje" is a small dish or bowl — a serving vessel, not a countable item with a shape
+        // of its own, so it maps to SERVING exactly as "portie" does. Added 2026-08-17 after a real
+        // Dutch yoghurt package printed its per-serving column header as "schaaltje (150 g)"; the
+        // word is ordinary Dutch for a single-serve pot, not specific to that brand.
+        "schaaltje" to PortionUnitKind.SERVING, "schaaltjes" to PortionUnitKind.SERVING,
     )
 
     /** Recognises a unit word in isolation — used by the OCR column-header path (spec §4). */

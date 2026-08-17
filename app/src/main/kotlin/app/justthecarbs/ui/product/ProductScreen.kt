@@ -149,6 +149,8 @@ fun ProductScreen(
     onEnterManually: () -> Unit,
     onRetry: () -> Unit,
     onSearch: () -> Unit = {},
+    /** Straight back to the barcode camera from *Product not found*, without passing through Home. */
+    onScanAgain: () -> Unit = {},
     onApplyNewerRemote: () -> Unit = {},
     onDismissNewerRemote: () -> Unit = {},
     onSwitchToGrams: () -> Unit = {},
@@ -243,6 +245,7 @@ fun ProductScreen(
                     onEnterManually = onEnterManually,
                     onRetry = onRetry,
                     onSearch = onSearch,
+                    onScanAgain = onScanAgain,
                 )
                 state.product != null -> CalculatorBody(
                     product = state.product,
@@ -363,6 +366,7 @@ private fun FailureBody(
     onEnterManually: () -> Unit,
     onRetry: () -> Unit,
     onSearch: () -> Unit = {},
+    onScanAgain: () -> Unit = {},
     onApplyNewerRemote: () -> Unit = {},
     onDismissNewerRemote: () -> Unit = {},
 ) {
@@ -392,13 +396,21 @@ private fun FailureBody(
             // Every failure offers a way to get a number anyway. The user never hits a dead end
             // (§10, §26, §32).
             //
-            // Search sits first in the recovery order for a *missing* barcode specifically: the
-            // product may well be in the database under a different code, and finding it there
-            // beats retyping a label the database already has. For a network failure it is
+            // For a *missing* barcode the order is: scan again, read the label, search by name. The
+            // most likely reason to be here is now the cheapest to undo — the scanner read a code
+            // the user had not aimed at, and one tap returns to the camera. Search stays offered
+            // because the product may be in the database under a different code, but it is a
+            // slower recovery than simply scanning the right thing. For a network failure search is
             // pointless — the same host is down — so it is not offered there (spec §9).
             if (failure is Failure.NotFound) {
-                PrimaryAction(text = stringResource(R.string.search_action), onClick = onSearch)
+                // *Scan barcode again* is the primary recovery, and it is here because of a real
+                // device failure: the scanner could accept a barcode the user had not aimed at, and
+                // this screen — the place that mistake lands — offered no way back to the camera at
+                // all. Recovering from a mis-scan meant navigating out to Home first. The scanner is
+                // now gated (see BarcodeStabilityTracker), but the dead end was its own defect.
+                PrimaryAction(text = stringResource(R.string.notfound_scan_again), onClick = onScanAgain)
                 SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+                SecondaryAction(text = stringResource(R.string.search_action), onClick = onSearch)
             } else {
                 PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
             }

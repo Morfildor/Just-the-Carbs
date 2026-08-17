@@ -34,11 +34,19 @@ data class LogicalRow(
  * treat as authoritative, so it is tuned tight and reviewed on its own terms.
  */
 object LogicalRowThresholds {
-    /** Fraction of vertical overlap against the running row box required to join it. */
-    const val MIN_ROW_OVERLAP = 0.5
-
-    /** Narrow tiebreaker when overlap is present but inconclusive, in median element heights. */
-    const val MAX_CENTER_DISTANCE_IN_HEIGHT = 0.6
+    /**
+     * How far a de-skewed element centre may sit from its row's centre, in text heights.
+     *
+     * Compared against the row's **median** de-skewed centre, not against a growing union box and not
+     * against the previously added element. Both of those are single-linkage rules: each new member
+     * moves the thing the next candidate is measured against, so on a photograph a row walks steadily
+     * down the table and absorbs the row beneath it. A median over the members already accepted does
+     * not move under one outlier, which is what makes the boundary hold.
+     *
+     * 0.7 leaves better than 2x margin at an ordinary row pitch of ~1.5 text heights while still
+     * absorbing the few pixels of residual skew the slope estimate leaves behind.
+     */
+    const val MAX_CENTER_DISTANCE_IN_HEIGHT = 0.7
 }
 
 object LogicalRowBuilder {
@@ -47,20 +55,34 @@ object LogicalRowBuilder {
         if (document.elements.isEmpty()) return emptyList()
 
         val medianHeight = medianHeight(document.elements)
-        val ordered = document.elements.sortedWith(compareBy({ it.box.centerY }, { it.box.left }))
+
+        // One global skew angle, measured from the image itself. Rows are then compared along the
+        // baseline the package was actually photographed at rather than along the image's own
+        // horizontal — which is the difference between reading a hand-held photo and only ever
+        // reading a rendered mock. See RowSlopeEstimator for why this is a scalar and not a grouping.
+        val slope = RowSlopeEstimator.estimate(document.elements)
+        fun deskewedCenter(element: OcrElement): Double =
+            element.box.centerY - slope * element.box.centerX
+
+        val ordered = document.elements.sortedWith(compareBy({ deskewedCenter(it) }, { it.box.left }))
 
         val rows = mutableListOf<MutableList<OcrElement>>()
         var current = mutableListOf(ordered.first())
-        var currentBox = ordered.first().box
+        // Kept sorted so the median is a lookup rather than a re-sort per element.
+        var currentCenters = mutableListOf(deskewedCenter(ordered.first()))
 
         ordered.drop(1).forEach { element ->
-            if (belongsToRow(element, currentBox, medianHeight)) {
+            val center = deskewedCenter(element)
+            val rowCenter = currentCenters[currentCenters.size / 2]
+            val rowHeight = maxOf(medianHeight, element.box.height).coerceAtLeast(1)
+            if (abs(center - rowCenter) <= rowHeight * LogicalRowThresholds.MAX_CENTER_DISTANCE_IN_HEIGHT) {
                 current += element
-                currentBox = currentBox.union(element.box)
+                // The list is built in ascending centre order, so appending keeps it sorted.
+                currentCenters += center
             } else {
                 rows += current
                 current = mutableListOf(element)
-                currentBox = element.box
+                currentCenters = mutableListOf(center)
             }
         }
         rows += current
@@ -73,20 +95,6 @@ object LogicalRowBuilder {
                 sourceLines = sorted.map { LineKey(it.blockId, it.lineId) }.toSet(),
             )
         }
-    }
-
-    /**
-     * Overlap first, centre distance only as a narrow tiebreaker.
-     *
-     * Overlap is measured against the row's *running* union box rather than against the previous
-     * element, so a tall value beside short label text does not start a spurious row.
-     */
-    private fun belongsToRow(element: OcrElement, rowBox: OcrBox, medianHeight: Int): Boolean {
-        val overlap = rowBox.verticalOverlapRatio(element.box)
-        if (overlap >= LogicalRowThresholds.MIN_ROW_OVERLAP) return true
-        if (overlap <= 0.0) return false
-        val allowed = medianHeight.coerceAtLeast(1) * LogicalRowThresholds.MAX_CENTER_DISTANCE_IN_HEIGHT
-        return abs(rowBox.centerY - element.box.centerY) <= allowed
     }
 
     private fun medianHeight(elements: List<OcrElement>): Int {

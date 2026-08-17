@@ -33,3 +33,12 @@ app/build/
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Sanitized nutrition-table fixtures for RealImageOcrTest are COMMITTED (2026-08-16), so CI cannot
+# silently skip the highest-value regression tests. They are cropped to the nutrition panel only —
+# no surroundings, no people, no unrelated packaging. Full-frame originals stay local.
+app/src/androidTest/assets/ocr_real/originals/
+
+# Full-frame source photographs for the OCR fixtures. Sanitized crops under
+# app/src/androidTest/assets/ocr_real/ are committed; these originals never are.
+Test labels/

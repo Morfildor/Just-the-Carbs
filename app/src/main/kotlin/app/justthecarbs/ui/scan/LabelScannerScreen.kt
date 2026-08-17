@@ -11,6 +11,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
@@ -58,6 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -66,6 +69,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
@@ -75,6 +79,7 @@ import app.justthecarbs.domain.ServingDescriptor
 import app.justthecarbs.ocr.CarbCandidate
 import app.justthecarbs.ocr.LabelAnalyzer
 import app.justthecarbs.ocr.LabelReading
+import app.justthecarbs.ocr.NormalizedRegion
 import app.justthecarbs.ocr.ServingCarbCandidate
 import app.justthecarbs.ocr.OcrDiagnosticsLogger
 import app.justthecarbs.ui.components.RecoveryPanel
@@ -211,6 +216,15 @@ private fun LabelCamera(
     var torchOn by remember { mutableStateOf(false) }
     var cameraFailed by remember { mutableStateOf(false) }
 
+    /**
+     * The scan region the user is framing the table in, as fractions of the preview (§10).
+     *
+     * Measured from the overlay's own laid-out bounds rather than recomputed from the constants that
+     * position it — the two would silently disagree the moment either changed, and nothing on screen
+     * would show it. Null until the first layout pass, which makes the first capture read the whole
+     * frame rather than a guessed rectangle.
+     */
+    val scanRegion = remember { AtomicReference<NormalizedRegion?>(null) }
     val pendingCapture = remember { AtomicReference<File?>(null) }
     val cameraProvider = remember { AtomicReference<ProcessCameraProvider?>(null) }
     val disposed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
@@ -265,7 +279,7 @@ private fun LabelCamera(
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     mainExecutor.execute { captureState = CaptureState.PROCESSING }
-                    analyzer.analyzeStill(context, file) { report ->
+                    analyzer.analyzeStill(context, file, scanRegion.get()) { report ->
                         pendingCapture.compareAndSet(file, null)
                         mainExecutor.execute {
                             captureState = CaptureState.IDLE
@@ -312,8 +326,7 @@ private fun LabelCamera(
             factory = { ctx ->
                 val previewView = PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
                 val providerFuture = ProcessCameraProvider.getInstance(ctx)
-                providerFuture.addListener(listener@{
-                    if (disposed.get()) return@listener
+                fun bind() {
                     try {
                         val provider = providerFuture.get()
                         cameraProvider.set(provider)
@@ -334,11 +347,18 @@ private fun LabelCamera(
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
                             .also { it.setAnalyzer(executor, analyzer) }
+                        // 8 MP rather than the previous 2.7 MP (§12). The figure that has to be read
+                        // is a few millimetres of print: on a 1920-wide capture of a package held at
+                        // arm's length, "53,5" is a couple of dozen pixels across, which is where
+                        // recognition starts guessing. Doubling the linear resolution is the single
+                        // cheapest thing available for small text. Not the sensor maximum — a 50 MP
+                        // capture costs seconds of latency and a bitmap that will not fit in memory
+                        // alongside its crop, for detail well past what ML Kit uses.
                         val stillSelector = ResolutionSelector.Builder()
                             .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
                             .setResolutionStrategy(
                                 ResolutionStrategy(
-                                    Size(1920, 1440),
+                                    Size(3264, 2448),
                                     ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
                                 ),
                             )
@@ -349,12 +369,24 @@ private fun LabelCamera(
                             .build()
 
                         provider.unbindAll()
+                        // A ViewPort matched to the preview is what makes the scan region mean
+                        // anything (§10). Without it the capture stream (4:3) and the preview
+                        // (whatever the screen is) cover different fields of view, so a rectangle
+                        // measured on screen is not the same rectangle in the JPEG — and the crop
+                        // would be wrong by an amount that varies per device, in a direction nobody
+                        // could see. Binding all three use cases through one viewport makes "the
+                        // fraction the user framed" identical in all of them, which is why
+                        // ScanRegionMapper needs no aspect-ratio arithmetic at all.
+                        val useCases = UseCaseGroup.Builder()
+                            .addUseCase(preview)
+                            .addUseCase(analysis)
+                            .addUseCase(stillCapture)
+                            .apply { previewView.viewPort?.let { setViewPort(it) } }
+                            .build()
                         camera = provider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
-                            preview,
-                            analysis,
-                            stillCapture,
+                            useCases,
                         )
                         imageCapture = stillCapture
                         torchAvailable = camera?.cameraInfo?.hasFlashUnit() == true
@@ -362,12 +394,52 @@ private fun LabelCamera(
                         OcrDiagnosticsLogger.failure("Could not bind label camera", error)
                         cameraFailed = true
                     }
+                }
+
+                providerFuture.addListener(listener@{
+                    if (disposed.get()) return@listener
+                    // PreviewView.viewPort is null until the view has been measured, and binding
+                    // without it silently gives back the un-aligned fields of view this whole
+                    // arrangement exists to avoid — the crop would then be wrong on every device
+                    // with nothing on screen to show it. doOnLayout runs immediately when the view
+                    // is already laid out, so this costs nothing in the common case.
+                    previewView.doOnLayout layout@{
+                        if (disposed.get()) return@layout
+                        bind()
+                    }
                 }, mainExecutor)
                 previewView
             },
         )
 
-        ScanRegionOverlay(modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(Space.l))
+        ScanRegionOverlay(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .padding(Space.l)
+                // The region OCR reads is taken from where this actually landed, so the rectangle
+                // the user aims at and the rectangle the parser gets cannot drift apart. The parent
+                // Box and the PreviewView fill the same space, so the overlay's bounds in that Box
+                // are directly fractions of the preview.
+                .onGloballyPositioned { coordinates ->
+                    val parent = coordinates.parentLayoutCoordinates?.size ?: return@onGloballyPositioned
+                    if (parent.width <= 0 || parent.height <= 0) return@onGloballyPositioned
+                    val origin = coordinates.positionInParent()
+                    val left = origin.x / parent.width
+                    val top = origin.y / parent.height
+                    val right = (origin.x + coordinates.size.width) / parent.width
+                    val bottom = (origin.y + coordinates.size.height) / parent.height
+                    if (right <= left || bottom <= top) return@onGloballyPositioned
+                    scanRegion.set(
+                        NormalizedRegion(
+                            left = left.toDouble().coerceIn(0.0, 1.0),
+                            top = top.toDouble().coerceIn(0.0, 1.0),
+                            right = right.toDouble().coerceIn(0.0, 1.0),
+                            bottom = bottom.toDouble().coerceIn(0.0, 1.0),
+                        ),
+                    )
+                },
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(Space.s),
@@ -464,9 +536,14 @@ private fun LabelCamera(
 }
 
 /**
- * Restrained corner-bracket frame showing roughly where the nutrition table should sit. Purely a
- * visual guide — OCR still processes the full frame, since cropping to this region has no
- * demonstrated recognition benefit and would only add risk.
+ * Corner-bracket frame showing where the nutrition table should sit.
+ *
+ * No longer purely decorative: a still capture is cropped to this rectangle plus a safety margin
+ * before recognition (§10). It previously said cropping "has no demonstrated recognition benefit" —
+ * that was written against rendered fixtures, where the frame contains a table and nothing else. On
+ * a real package the rest of the frame is the ingredient list, marketing copy, a barcode and a
+ * best-before date, and every one of those adds rows and stray numbers for the table reconstruction
+ * to survive. The user has already said which part matters by putting it in here.
  */
 @Composable
 private fun ScanRegionOverlay(modifier: Modifier = Modifier) {
@@ -707,6 +784,17 @@ private fun CandidateChoice(candidate: CarbCandidate, onUse: (BigDecimal, Nutrit
     }
 }
 
+/**
+ * The recovery for a failed read (§19).
+ *
+ * *Try again* is primary and returns to a clean live scanner — not straight to another capture. A
+ * failed read usually means the framing or the light was wrong, and firing the shutter again from
+ * the same position mostly reproduces the same failure; going back to the live view is what lets the
+ * user re-aim. Capture stays one tap away for when they already have.
+ *
+ * Nothing here navigates away, so the user never has to go back to Home to retry the task they are
+ * in the middle of (§20).
+ */
 @Composable
 private fun NotFoundCard(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () -> Unit) {
     ScannerCard {
@@ -716,14 +804,18 @@ private fun NotFoundCard(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () 
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        CaptureButton(onCapture)
+        Button(
+            onClick = onRetry,
+            shape = RoundedCornerShape(Space.buttonRadius),
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+        ) { Text(stringResource(R.string.ocr_try_again)) }
         OutlinedButton(
             onClick = onEdit,
             shape = RoundedCornerShape(Space.buttonRadius),
             modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
         ) { Text(stringResource(R.string.ocr_enter_manually)) }
-        TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
-            Text(stringResource(R.string.ocr_scan_again))
+        TextButton(onClick = onCapture, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+            Text(stringResource(R.string.ocr_capture_label))
         }
     }
 }

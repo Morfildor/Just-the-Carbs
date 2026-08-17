@@ -57,6 +57,11 @@ data class NutritionParseReport(
     val diagnostics: List<OcrDiagnostic>,
     /** A per-serving figure read alongside the canonical per-100 result (spec §5). Never gates live scanning. */
     val servingCandidate: ServingCarbCandidate? = null,
+    /**
+     * Where the accepted value came from. Null when there is no accepted value (`NotFound`) or when
+     * the reading is `Ambiguous` — an ambiguity has no single source to attribute.
+     */
+    val provenance: CandidateProvenance? = null,
 )
 
 /**

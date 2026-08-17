@@ -81,8 +81,18 @@ class LabelAnalyzer(
      * live-frame path below is deliberately unchanged and still deals only in [LabelReading] — a
      * camera frame must never be able to persist anything.
      */
-    fun analyzeStill(context: Context, file: File, onComplete: (NutritionParseReport) -> Unit) {
-        val request = StillRequest(context.applicationContext, file, onComplete)
+    fun analyzeStill(
+        context: Context,
+        file: File,
+        /**
+         * What the user framed, as fractions of the visible preview (§10). Null means "read the
+         * whole frame", which is what happens before the overlay has been measured and is the
+         * behaviour that shipped before this pass.
+         */
+        region: NormalizedRegion?,
+        onComplete: (NutritionParseReport) -> Unit,
+    ) {
+        val request = StillRequest(context.applicationContext, file, region, onComplete)
         val replaced = pendingStill.getAndSet(request)
         if (replaced != null) {
             replaced.file.delete()
@@ -107,16 +117,33 @@ class LabelAnalyzer(
                 BitmapFactory.decodeFile(request.file.absolutePath, options)
             }
             OcrDiagnosticsLogger.stillResolution(dimensions.outWidth, dimensions.outHeight)
-            val input = InputImage.fromFilePath(request.context, Uri.fromFile(request.file))
+
+            // Crop to what the user framed. Falling back to the whole file — via ML Kit's own
+            // EXIF-aware loader — whenever there is no region or the bitmap could not be decoded,
+            // so the worst case is the behaviour that shipped before this pass rather than a
+            // failed capture.
+            val cropped = request.region?.let { region ->
+                StillImageLoader.load(request.file, ScanRegionMapper.expand(region))
+            }
+            val input = if (cropped != null) {
+                OcrDiagnosticsLogger.stillCropped(cropped.width, cropped.height)
+                InputImage.fromBitmap(cropped, 0)
+            } else {
+                InputImage.fromFilePath(request.context, Uri.fromFile(request.file))
+            }
+            val ocrWidth = cropped?.width ?: dimensions.outWidth
+            val ocrHeight = cropped?.height ?: dimensions.outHeight
+
             recognizer.process(input)
                 .addOnSuccessListener { text ->
-                    request.onComplete(parse(text, dimensions.outWidth, dimensions.outHeight, started))
+                    request.onComplete(parse(text, ocrWidth, ocrHeight, started, full = true))
                 }
                 .addOnFailureListener {
                     OcrDiagnosticsLogger.failure("Still OCR failed", it)
                     request.onComplete(NutritionParseReport(LabelReading.NotFound, emptyList()))
                 }
                 .addOnCompleteListener {
+                    cropped?.recycle()
                     if (!request.file.delete()) {
                         OcrDiagnosticsLogger.failure("Temporary label image was already absent")
                     }
@@ -132,9 +159,21 @@ class LabelAnalyzer(
         }
     }
 
-    private fun parse(text: Text, width: Int, height: Int, started: Long): NutritionParseReport {
-        val report = NutritionTableParser.parseWithDiagnostics(MlKitOcrMapper.toDocument(text, width, height))
+    /**
+     * [full] asks for the complete pipeline trace (§9), which only a deliberate still capture gets:
+     * a live frame arrives many times a second and would bury the capture that matters.
+     */
+    private fun parse(
+        text: Text,
+        width: Int,
+        height: Int,
+        started: Long,
+        full: Boolean = false,
+    ): NutritionParseReport {
+        val document = MlKitOcrMapper.toDocument(text, width, height)
+        val report = NutritionTableParser.parseWithDiagnostics(document)
         OcrDiagnosticsLogger.report((System.nanoTime() - started) / 1_000_000, report)
+        if (full) OcrDiagnosticsLogger.stillDiagnostics(document, report)
         return report
     }
 
@@ -148,6 +187,7 @@ class LabelAnalyzer(
     private data class StillRequest(
         val context: Context,
         val file: File,
+        val region: NormalizedRegion?,
         val onComplete: (NutritionParseReport) -> Unit,
     )
 }

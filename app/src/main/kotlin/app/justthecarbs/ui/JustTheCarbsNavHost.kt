@@ -296,6 +296,16 @@ fun JustTheCarbsNavHost(
                 onEnterManually = { navController.navigate(Routes.manual(barcode)) },
                 onRetry = { viewModel.load(barcode) },
                 onSearch = { navController.navigate(Routes.SEARCH) },
+                // One tap from *Product not found* back to the camera (§5). The not-found product is
+                // popped rather than left underneath: it is a dead end the user is leaving, and
+                // keeping it would put a stale failure between the next result and Home. `SCAN` is a
+                // fresh entry, so its analyzer — and with it BarcodeStabilityTracker's held-barcode
+                // count and one-shot latch — is rebuilt from scratch.
+                onScanAgain = {
+                    navController.navigate(Routes.SCAN) {
+                        popUpTo(Routes.PRODUCT) { inclusive = true }
+                    }
+                },
                 onApplyNewerRemote = viewModel::applyNewerRemoteValue,
                 onDismissNewerRemote = viewModel::dismissNewerRemoteValue,
                 onSwitchToGrams = viewModel::switchToGrams,

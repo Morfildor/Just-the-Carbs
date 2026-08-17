@@ -37,7 +37,33 @@ object NutritionTerminology {
         NutritionTerms("fi", setOf("hiilihydraatti", "hiilihydraatit"), setOf("josta sokereita", "sokerit", "ravintokuitu", "kuitu", "tärkkelys", "polyolit"), setOf("annos", "annosta kohden")),
         NutritionTerms("cs", setOf("sacharidy"), setOf("z toho cukry", "cukry", "vláknina", "škrob", "polyoly"), setOf("porce", "na porci")),
         NutritionTerms("ro", setOf("glucide", "carbohidrați"), setOf("din care zaharuri", "zaharuri", "fibre", "amidon", "polioli"), setOf("porție", "per porție")),
+        // Added 2026-08-16 by reading the actual ML Kit output for the real Kinder package, whose
+        // panel carries all five of these alongside NL/FR/DE. Not speculative coverage: each term
+        // below was observed in the recognized text of a photograph in this repo's test assets.
+        //
+        // The Croatian entry is already load-bearing rather than decorative. ML Kit merged
+        // "od kojih šećeri" with "Kohlenhydrate" onto one recognized row on that photograph; without
+        // "šećeri" as an exclusion that row types as TOTAL_CARBOHYDRATE on the strength of the
+        // German word, which is a sugars-row-as-total waiting for a frame where it carries numbers.
+        //
+        // Diacritics are written out for reviewability and normalized away on both sides before
+        // matching, so "šećeri" is compared as "seceri" and Macedonian "шеќери" as "шекери".
+        NutritionTerms("hr", setOf("ugljikohidrati"), setOf("od čega šećeri", "od kojih šećeri", "šećeri", "šećer", "vlakna", "škrob", "polioli"), setOf("porcija", "po porciji")),
+        NutritionTerms("sl", setOf("ogljikovi hidrati"), setOf("od tega sladkorji", "sladkorji", "sladkor", "vlaknine", "škrob", "polioli"), setOf("porcija", "na porcijo")),
+        NutritionTerms("sr", setOf("ugljeni hidrati"), setOf("od kojih šećeri", "šećeri", "vlakna", "skrob"), setOf("porcija", "na porciju")),
+        NutritionTerms("mk", setOf("јаглехидрати"), setOf("од кои шеќери", "шеќери", "шеќер"), setOf("порција")),
+        NutritionTerms("sq", setOf("karbohidrate"), setOf("nga të cilat sheqerna", "sheqerna", "sheqer"), setOf("porcion")),
     )
+
+    /**
+     * Words that introduce a column header ("per 100 g", "par pièce", "na porciju").
+     *
+     * One list, because three stages need it — [ColumnClassifier] to find a serving column,
+     * [RowClassifier] to recognise the row it sits on, and [InlineBasisSpans] to find a basis printed
+     * inside a value row. They previously kept private copies with a comment asking the reader to
+     * keep them in step, which is the arrangement that drifts.
+     */
+    internal val connectives = setOf("per", "pro", "par", "pr", "na", "w", "voor")
 
     internal val carbohydrateTerms = languages.flatMap { it.carbohydrate }.distinct()
     internal val exclusionTerms = languages.flatMap { it.exclusions }.distinct()

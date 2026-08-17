@@ -136,6 +136,11 @@ android {
     sourceSets {
         getByName("androidTest") {
             assets.srcDirs("$projectDir/schemas")
+            // Photographs of real packages for RealImageOcrTest (§8). Kept out of the repo — they
+            // are ordinary photos, and the directory is git-ignored — so the test skips itself when
+            // the directory is empty rather than failing a clean checkout. See
+            // app/src/androidTest/assets/ocr_real/README.md.
+            assets.srcDirs("$projectDir/src/androidTest/assets")
         }
     }
 
@@ -204,6 +209,10 @@ dependencies {
     implementation(libs.camera.view) {
         exclude(group = "androidx.camera", module = "camera-video")
     }
+    // A captured JPEG carries its rotation in EXIF, which BitmapFactory ignores. StillImageLoader
+    // has to apply it itself before cropping to the scan region, or the crop takes a region of the
+    // package the user never framed.
+    implementation(libs.exifinterface)
     // ML Kit. NOTE: com.google.android.datatransport (Google's CCT telemetry transport) arrives
     // transitively via com.google.mlkit:common and CANNOT be excluded. Tested 2026-08-14: removing
     // it produces a fatal NoClassDefFoundError on CCTDestination the moment the scanner opens, so

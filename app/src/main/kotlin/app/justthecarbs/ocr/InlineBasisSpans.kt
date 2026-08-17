@@ -36,8 +36,8 @@ object InlineBasisSpans {
     /** How many consecutive elements a basis phrase may span, e.g. "per" "100" "ml". */
     private const val MAX_SPAN = 3
 
-    /** Words that introduce the phrase. Matches [ColumnClassifier]'s own connective list. */
-    private val CONNECTIVES = setOf("per", "pro", "par", "pr", "na", "w", "voor")
+    /** Words that introduce the phrase. The one shared list — see [NutritionTerminology]. */
+    private val CONNECTIVES = NutritionTerminology.connectives
 
     /**
      * Every basis phrase on the row, left to right.

@@ -29,6 +29,8 @@
 
     <string name="scanner_title">Streepjescode scannen</string>
     <string name="scanner_hint">Richt de camera op de streepjescode</string>
+    <string name="scanner_hint_aim">Houd de streepjescode binnen het kader</string>
+    <string name="scanner_hint_steady">Houd stil</string>
     <string name="scanner_torch_on">Zaklamp aan</string>
     <string name="scanner_torch_off">Zaklamp uit</string>
     <string name="scanner_torch_unavailable">Dit toestel heeft geen zaklamp</string>
@@ -80,6 +82,7 @@
     <string name="notfound_title">Product niet gevonden</string>
     <string name="notfound_body">Deze streepjescode staat niet in de productdatabase. Je kunt de waarde van de verpakking gebruiken.</string>
     <string name="notfound_barcode">Streepjescode %1$s</string>
+    <string name="notfound_scan_again">Streepjescode opnieuw scannen</string>
 
     <string name="unusable_title">Koolhydraatwaarde niet beschikbaar</string>
     <string name="unusable_body">De database heeft voor dit product geen koolhydraatwaarde die veilig te gebruiken is.</string>
@@ -130,6 +133,7 @@
     <string name="ocr_not_found_body">Maak een scherpe, rechte foto van de hele voedingswaardetabel of voer de waarde zelf in.</string>
     <string name="ocr_enter_manually">Handmatig invoeren</string>
     <string name="ocr_scan_again">Opnieuw live scannen</string>
+    <string name="ocr_try_again">Opnieuw proberen</string>
     <string name="ocr_detected">Gevonden — %1$s %2$s / 100 %3$s</string>
     <string name="ocr_detected_basis_unknown">Gevonden — %1$s %2$s; basis per 100 niet vastgesteld</string>
     <string name="ocr_use">Gebruik %1$s</string>

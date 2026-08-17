@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -132,6 +134,14 @@ fun FavoriteButton(favorite: Boolean, onToggle: () -> Unit, modifier: Modifier =
  *
  * Callers always pass at least one action. A message with no way forward is precisely the dead end
  * the brief forbids.
+ *
+ * **Scrollable, and that is load-bearing.** *Product not found* now offers four ways forward, and
+ * this was a plain Column: at a large font scale on a short display the last action would have been
+ * clipped with nothing to reveal it, which is not "below the fold" but *gone*. This repo has been
+ * caught by that twice already — an action ordered after tall content that `LazyColumn` never
+ * composed, and a control under the keyboard that swallowed its own clicks. An unreachable recovery
+ * action on a dead-end screen is the same defect with worse consequences, since this screen exists
+ * precisely because the user is already stuck.
  */
 @Composable
 fun RecoveryPanel(
@@ -141,7 +151,10 @@ fun RecoveryPanel(
     actions: @Composable () -> Unit,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth().padding(Space.l),
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(Space.l),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Space.s),
     ) {

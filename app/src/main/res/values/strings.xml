@@ -38,6 +38,13 @@
     <!-- Scanner -->
     <string name="scanner_title">Scan barcode</string>
     <string name="scanner_hint">Point the camera at the barcode</string>
+    <!--
+      Two states only (§4). The scanner refuses barcodes that are off to one side, still far away, or
+      seen for a single frame, so it needs to say why it has not fired — but a confidence percentage
+      would be technical noise about a decision the user cannot influence.
+    -->
+    <string name="scanner_hint_aim">Point the barcode inside the frame</string>
+    <string name="scanner_hint_steady">Hold steady</string>
     <string name="scanner_torch_on">Turn on flashlight</string>
     <string name="scanner_torch_off">Turn off flashlight</string>
     <string name="scanner_torch_unavailable">This device has no flashlight</string>
@@ -289,6 +296,7 @@
     <string name="notfound_title">Product not found</string>
     <string name="notfound_body">This barcode isn\'t in the product database. You can read the value from the package instead.</string>
     <string name="notfound_barcode">Barcode %1$s</string>
+    <string name="notfound_scan_again">Scan barcode again</string>
 
     <!-- Unusable value (§13) -->
     <string name="unusable_title">Carbohydrate value unavailable</string>
@@ -349,6 +357,7 @@
     <string name="ocr_not_found_body">Try a clear, straight photo of the full nutrition table, or enter the value yourself.</string>
     <string name="ocr_enter_manually">Enter manually</string>
     <string name="ocr_scan_again">Scan live again</string>
+    <string name="ocr_try_again">Try again</string>
     <string name="ocr_detected">Detected — %1$s %2$s / 100 %3$s</string>
     <string name="ocr_detected_basis_unknown">Detected — %1$s %2$s; per-100 basis not established</string>
     <string name="ocr_use">Use %1$s</string>

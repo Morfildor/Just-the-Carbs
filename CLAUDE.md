@@ -484,6 +484,360 @@ then the pre-release half of it implemented. Review:
   `settings_results_whole` / `settings_results_decimal` removed from both locales — `ResultStyle`
   has two entries and only the `_first` variants were ever referenced.
 
+## Real-image OCR generalization (2026-08-17) — nine real packages, prose labels, provenance
+
+Seven more real package photographs were added to the two existing ones and put through the
+**production** pipeline. Design:
+`docs/superpowers/specs/2026-08-16-real-image-ocr-generalization-design.md`; plan and its three
+owner amendments: `docs/superpowers/plans/2026-08-16-real-image-ocr-generalization.md`.
+
+**What the baseline found, and why it mattered.** Before any change, three of the nine fixtures
+returned a **confident wrong** carbohydrate value, and two of those returned the **saturated-fat
+figure** as total carbohydrate. That is the single worst outcome this app can produce. 537 JVM tests
+were green throughout, because every synthetic fixture placed a printed row's elements at identical
+y and none reproduced a wrapped prose sentence. **A green suite is not evidence that the scanner
+reads packaging.**
+
+Interpretation-level confident-wrong went **2 → 0**. One confident-wrong remains (fixture 2, 2.09
+where the package prints 2.0) and is **recognition-originated** — ML Kit genuinely returns `2,09`,
+so no honest downstream rule recovers it. Do not add one.
+
+### The four changes
+
+1. **`CandidateProvenance`** (`FromRow` / `FromProseSpan`) on `NutritionParseReport`, populated on
+   every parse and **not** `BuildConfig.DEBUG`-gated. It exists because on several labels the sugars
+   figure **equals** the total — fixture 3 prints `1,6 g` for both — so a value assertion cannot
+   detect a sugars misread. Provenance is part of the golden assertion for prose fixtures, not
+   decoration. R8 correctly retains it while stripping the diagnostics renderer.
+2. **`CarbohydrateTermAnchor`** — on a total-carbohydrate row, a number belongs to the **nearest
+   nutrient name to its left**. This is what killed the two fat-figure results: a wrapped sentence
+   puts the previous nutrient's clause tail and the carbohydrate clause head on one reconstructed
+   row, and no *distance* rule can separate them (the fat figure sat 21 px from the basis column's
+   centre, the true carbohydrate figure 336 px away). Reading order can. It only ever **removes**
+   candidates, never invents one, and is inert on an ordinary table row. Anchoring on "nearest
+   nutrient name to the left" rather than "left of the carbohydrate term" is load-bearing: a table
+   may print its label column to the *right* of its values, and there the figure survives because
+   nothing else claimed it.
+3. **`ProseNutritionReader`** — reads a total from a running sentence
+   (`Voedingswaarde per 100 g: … koolhydraten 46 g, waarvan suikers 1,0 g`). Non-scoring by
+   construction: no ranking, no "closest number", no tunable distance. Runs **only** after a tabular
+   `NotFound` and **only** when a positive two-part eligibility predicate holds.
+4. **Serving column carrying its own weight**, with `PrintedWeightResult`. See below.
+
+### The prose eligibility predicate — three rules that each cost a measurement to find
+
+**Condition 1 — ordered structure, evaluated over the DECLARATION, not one row.** The sequence is
+`TOTAL_CARBOHYDRATE → total value → CARBOHYDRATE_CHILD → child value` in reading order. **Bare
+co-occurrence of a total term and a child term on one row is forbidden as a predicate** — that is
+exactly what a *failed table* produces through row merging, i.e. the 2026-08-16 chaining bug, and
+using it would hand the prose reader the tables it must never touch. Tokens may cross row boundaries
+only **within one declaration span**, because ML Kit wraps a printed sentence wherever the line ends
+and the child clause routinely lands on the next row.
+
+**Condition 2 — absence of a USABLE basis column, not of any resolved one.** On a prose label the
+basis phrase is embedded in a sentence, so `ColumnClassifier` resolves a column from it regardless —
+fixture 6 resolved three, two of them from the **ingredients** prose. Measured: the original
+"no resolved column" predicate could **never** fire on any real prose label. A column is *usable*
+only when aligned numeric nutrient-value cells sit at its x-position (`MIN_ALIGNED_VALUE_CELLS = 3`;
+prose tops out at 2, every genuine table reaches ≥3). **Never infer usability from the existence of
+a `NutritionColumn` object** — that is precisely what the old predicate wrongly trusted.
+
+This is what keeps the merged-table guard intact: a merged table's basis column has real values
+aligned under it, so it *is* usable, so eligibility refuses. `aMergedTableRowIsNotProse` asserts that
+**reason** (`hasUsableBasisColumn == true`), not just the verdict, so the guard cannot silently
+erode.
+
+**A rule that looks right and is dangerous:** counting cells aligned to the column's *header*
+x-centre. Sondey's header centre sits 6 text heights from its value column, so that rule marks the
+canary table unusable and hands it to the prose reader. It was tried and discarded.
+
+### Serving weights: two acquisition sites, deliberately different failure modes
+
+`withPrintedWeight` returns a sealed `PrintedWeightResult`. A weight found on its **own line** is the
+parser's own geometric inference — if the arithmetic refuses it, drop the weight and keep the
+per-serving figure (the label really did print it). A weight stated **inside the header** is a claim
+about what the column *is* — if the arithmetic refuses it, header and column contradict each other
+and the **entire `ServingCarbCandidate` is dropped**, because `carbsPerServing` came out of that same
+column. Both sites route through the one existing `ServingWeightAssociator.agreesWithTable`; a second
+tolerance is how the two drift apart.
+
+### Deferred deliberately (owner, 2026-08-17) — do not "fix" these casually
+
+- **Fixtures 3 and 4 return `NotFound` because they open zero prose declarations.** `basisPhraseAt`
+  requires a connective; these print `Næringsindhold (100g)` (a Danish noun) and a fused
+  `PourPerlPro 100g:`. Widening it is **its own task with its own safety envelope**: a constrained
+  declaration grammar, *never* arbitrary "noun + 100 g" or generic fused-token matching, strong
+  carbohydrate-term anchoring and declaration boundaries established independently of the returned
+  value, and adversarial negatives for ingredients, sugars, fat, serving prose and unrelated "100 g"
+  text **before** enabling it. Fixture 3 must keep asserting provenance/anchor identity rather than
+  the bare number; fixture 4 must keep `2.5` and `19` forbidden.
+- **`Ø/portie` is left unresolved.** The package prints `Ø/portie` (the European "average per"
+  symbol) and ML Kit reads `Ø` as `o` — it is *not* a `per` misread. Adding bare `o` to the
+  connectives is too permissive. Fixture 2's primary result is unrecoverable anyway.
+- **Preprocessing: tried, NOT retained.** A 2× upscale rescued fixture 5 but regressed **two**
+  working fixtures (kinder and stokbrood, Confident → `NotFound`). It failed "improves at least one,
+  degrades none" and was deleted. Record kept so it is not retried blindly.
+
+### Verified
+
+JVM **568/568**, instrumented **167/167**, both 0 skipped. `RealImageOcrTest` is now **mandatory** —
+every `assumeTrue` removed, so a missing fixture fails the suite instead of silently skipping (a
+skip is how a green suite coexisted with a scanner that did not work). Lint clean; debug and minified
+release both build; the diagnostics renderer is absent from release `mapping.txt` while
+`CandidateProvenance` is correctly retained.
+
+**Nine-fixture production state:** 1 `NotFound`(recognition) · 2 **2.09 confident-wrong**(recognition,
+accepted) · 3 `NotFound`(deferred) · 4 `NotFound`(deferred) · 5 `NotFound`(recognition) ·
+6 **46.0 `FromProseSpan`** · 7 5.0 `FromRow` · 8 61.9 `FromRow` · 9 53.5 + 6.7/PIECE `FromRow`.
+
+**Still NOT verified on a physical device.** The parser is proven on real optics (the fixtures are
+hand-held phone photographs run through the real recognizer), but the **camera path is not**.
+`docs/manual-qa.md` §15f and the new §15g are the open gates.
+
+**A JVM trap this repo has now hit twice:** `BigDecimal("50").stripTrailingZeros()` is `5E+1` at
+**scale −1**, and `BigDecimal.equals` compares scale. Any assertion on a `stripTrailingZeros()`
+result whose value is a multiple of ten must use `compareTo`.
+
+## Real-device scanner pass (2026-08-16) — READ THIS BEFORE TOUCHING OCR GEOMETRY
+
+Driven by two physical-device failures, both treated as release blockers. Nothing about the
+calculation, the schema, migrations or the §10 lookup priority changed.
+
+### The nutrition scanner failed on real packaging because rows chained on tilt
+
+**Root cause, measured, not guessed.** `LogicalRowBuilder` decided row membership by comparing an
+element's vertical overlap against the row's *running union box*. That box grows as members are
+added, so on a photograph — where the same printed row drifts steadily down across the table's
+width — it inflated well past the text height, and any element of the **next** row falling inside it
+scored a full overlap ratio and joined. Classic single-linkage chaining. The carbohydrate row
+swallowed the sugars row, `RowClassifier` typed the merged row `CARBOHYDRATE_CHILD` by the
+(correct, unconditional) exclusion rule, and there was then **no total-carbohydrate row at all** →
+`NotFound`. The safety rule turned a geometry bug into a total wipeout.
+
+Measured on a reconstruction of the Kinder table before the fix:
+
+```
+pitch=30 slope=2%  -> Confident
+pitch=30 slope=4%  -> NotFound  (carbohydrate and sugars rows merged)
+pitch=40 slope=5%  -> NotFound  (merged)
+pitch=50 slope=8%  -> NotFound  (fragmented; all values landed on the child row)
+```
+
+**4% slope is about 2.3 degrees of hand tilt.** Every pre-existing OCR fixture places a printed
+row's elements at *identical* y — slope exactly 0 — which is why 459 tests were green while the
+feature did not work. **Do not add an axis-aligned fixture and believe it proves anything about a
+photograph.**
+
+**The fix** is `RowSlopeEstimator` + de-skewed banding, not a loosened threshold:
+
+- one global skew scalar (dy/dx) estimated from the image itself, then rows grouped on de-skewed
+  centres against the row's **median**, never against a growing union or the previously added
+  element — both of those are single-linkage rules that walk;
+- ML Kit's `blockId`/`lineId` contribute **only** that scalar. Row membership is still geometry-only,
+  so the architecture's core claim is intact. The estimator refuses a line spanning >2.5 text heights
+  (the documented "two printed rows merged into one line" case), refuses a line under 4 text heights
+  wide (that measures box jitter, not slope), and takes the median so one survivor cannot move it.
+
+`TiltedTableRowReconstructionTest` sweeps 4 row pitches x 7 slopes and asserts `Confident` in all 28.
+
+### Three more real defects the same fixtures exposed
+
+1. **`ColumnClassifier` swallowed a bare `%` header.** The greedy longest-span pass matched
+   `"per stuk %"` as one PER_SERVING span: it dragged that column's centre 38 px toward the
+   percentages, emitted **no** REFERENCE_PERCENT column, and destroyed the serving descriptor
+   (`"stuk %"` parses as no unit word). A bare `%` is now its own column and can never end another
+   span.
+2. **Split percent tokens never recovered a column.** The cell fallback tested `\d\s*%` against raw
+   element text, so `"3"` + `"%"` — the other tokenization ML Kit produces — was invisible. It now
+   goes through `PercentAssociation`, which already handled both.
+3. **A serving weight printed on its own line was ignored.** `"per stuk"` / `"(12,5 g)"` gave a
+   descriptor with no weight. `ServingWeightAssociator` now adopts it **only** when the table's own
+   arithmetic reproduces the printed per-serving figure (53.5 x 12.5 / 100 = 6.6875 vs printed 6.7).
+   That corroboration is the whole safety argument — proximity to the right column is not evidence.
+
+**A bug I introduced and caught in review:** the printed weight is the weight of the *whole serving*,
+which is exactly what `ServingDescriptor.weightOrVolume` means; I initially multiplied it by
+`descriptor.count`. Invisible on a count-of-one label — i.e. on every fixture — and it would have
+doubled every portion from a "per 2 stuks (25 g)" label. There is now a test for count > 1.
+
+### The scan region is no longer decorative
+
+Its own KDoc used to say cropping "has no demonstrated recognition benefit". That was written
+against rendered fixtures, where the frame contains a table and nothing else. On a real package the
+rest of the frame is the ingredient list, marketing copy, a barcode and a date — more rows to
+survive, and words like "suikers" and stray "100 g" appear in prose as readily as in a table.
+
+A still capture is now cropped to the overlay + 12% margin before recognition. **The mapping is
+trivial only because the camera binds all three use cases through one `ViewPort` matched to the
+`PreviewView`** — that makes the capture cover the preview's field of view, so a fraction of the
+preview is the same fraction of the JPEG. Without it the crop would need the preview crop, both
+aspect ratios and the rotation, and would be wrong per-device in a way nobody could see.
+**Correctness lives in the binding, not in `ScanRegionMapper`'s arithmetic.** Every refusal in that
+mapper falls back to reading the whole image, which is the pre-pass behaviour.
+
+Binding happens inside `doOnLayout` because `PreviewView.viewPort` is null before measurement.
+Still capture went 1920x1440 -> 3264x2448 (§12); analysis stays 1280x720, since live frames are
+guidance only.
+
+### Barcode: it fired on one decoded frame
+
+`BarcodeAnalyzer` accepted the first frame that decoded anything, latched by an `AtomicBoolean`.
+Raising the phone toward a shelf decodes a neighbouring product for one frame, and the app committed
+to a lookup — landing on *Product not found*, which offered **no way back to the camera at all**.
+
+Policy now lives in `domain/` (`BarcodeStabilityTracker`, `BarcodeFrameReader`), pure and
+JVM-testable with no camera: supported format -> valid check digit -> centre inside a generous
+central region -> longest side >= 20% of the frame -> held for 3 frames (or 250 ms at low frame
+rates, never fewer than 2) -> one-shot latch. Validation happens *before* the tracker sees anything,
+so a misread digit cannot accumulate stability. The largest qualifying barcode wins when two are in
+shot. `Scan barcode again` is now the primary action on *Product not found* and pops that dead end.
+
+### Verified against the real photographs, and what that caught
+
+The owner supplied the two packages mid-session. `RealImageOcrTest` (androidTest) runs the actual
+photographs through the production ML Kit recognizer, `MlKitOcrMapper` and the real parser.
+**All 5 cases pass**: Sondey **61.9 g/100 g** (never 47.6), Kinder **53.5 g/100 g** (never 3, 7 or
+53.3), plus **6.7 g per piece** with a `PIECE` descriptor. Both photographs contain a *second*
+package's ingredient panel in the frame and are only 900x1600 (WhatsApp-compressed), and the reading
+is still correct — before the ROI crop and the 8 MP capture, which the test does not exercise.
+
+**Three defects only the real ML Kit output could reveal.** Every one of them was invisible to 537
+JVM tests, and each is now pinned by `RealMlKitFindingsTest`:
+
+1. **A letter misread as a digit became a carbohydrate value.** ML Kit read Slovenian "**O**gljikovi"
+   as "**0**gjikovi". That `0` is a well-formed number and 0 g of carbohydrate is legitimate, so it
+   cleared the validator, became a second interpretation, and turned a correct confident **53.5 into
+   an ambiguity between 53.5 and 0** — asking the user to choose between the right answer and a
+   misread letter. A value cell must now stand alone, or carry only a real unit: `53,5g` is a cell,
+   `0gjikovi` is a word. Testing that the suffix merely *starts* with "g" would accept both and fix
+   nothing.
+2. **`RowClassifier` and `ColumnClassifier` disagreed about what a serving header looks like.** The
+   per-piece header spans several printed lines of eight languages; the line carrying "Par pièce"
+   names no per-100 basis, no generic serving word and no reference intake, so it was typed `OTHER`
+   — and `ColumnClassifier`, which only ever looks at `HEADER` rows, never got to apply the
+   countable-unit vocabulary it already had. The per-piece column did not exist and 6.7 was
+   discarded with `no column`. Both stages now route through `ServingSizeParser`.
+3. **The serving header arrives as `"/ Par pièce"`** — a slash from the language separator, a
+   connective that is not the English "per", and an accent `ServingSizeParser`'s unit table does not
+   carry. Each alone defeated `descriptorFromHeader`'s `removePrefix("per")`. It normalizes first now.
+
+The Croatian terminology added earlier in the pass turned out to be load-bearing rather than
+decorative: ML Kit merged "od kojih šećeri" with "Kohlenhydrate" onto one recognized row, which
+without the exclusion types as `TOTAL_CARBOHYDRATE` on the strength of the German word.
+Serbian/Macedonian/Albanian were added from the same observed text.
+
+**Read `OcrDiagnosticsReport` output before touching any threshold.** Every finding above came from
+the diagnostics dump naming the stage that ran out of evidence, not from reading code. It is
+`BuildConfig.DEBUG`-gated and R8 strips the whole renderer from the release build — verified absent
+from `mapping.txt`.
+
+### Still not verified on a physical device
+
+The photographs are hand-held phone shots, so the parser is now proven on real optics — but the
+**camera path is not**. Emulator-only, and in risk order: the `ViewPort`-cropped 8 MP capture
+(CameraX must crop the saved JPEG to the viewport for `ScanRegionMapper`'s fractions to mean
+anything), memory at 8 MP, and the barcode acceptance thresholds against real hand movement.
+`docs/manual-qa.md` §15f is the gate. The images live in `app/src/androidTest/assets/ocr_real/` and
+are **committed** as of 2026-08-16 — the earlier "git-ignored" note is obsolete; see "Nine-fixture
+real-image corpus" below for the policy reversal and what is still ignored.
+
+## Nine-fixture real-image corpus + the prose reader (2026-08-16/17)
+
+**READ THIS BEFORE ADDING ANY OCR RULE TO MAKE A LABEL "WORK".**
+
+### The corpus is committed and mandatory — the gitignore policy reversed
+
+Nine sanitized crops live in `app/src/androidTest/assets/ocr_real/` and are **tracked**. The
+previous arrangement (images local-only, `Assume`-skipped) is exactly how a green suite coexists
+with a broken scanner: with no assets every case *skipped* and CI reported success for a run that
+measured nothing. `RealImageOcrTest` now **fails** on a missing fixture, and there is no
+`assumeTrue` anywhere in it.
+
+What stays ignored is unchanged and non-negotiable: `Test labels/` and
+`ocr_real/originals/` hold full-frame originals (surroundings, other packages, people) and the repo
+is public. Only the cropped nutrition panels are tracked.
+
+### Prose reader: two independent gates, both required
+
+Some labels print nutrition as a run-on multilingual sentence with no table at all.
+`ProseNutritionReader` (pure Kotlin) reads those, but only on **tabular NotFound** and only when
+`isProseLabel` holds. It is a recognizer of one printed form, **not a second scoring model** — it
+has no notion of a best candidate, which is what keeps it from reintroducing the scoring path the
+geometry-first rewrite removed.
+
+1. **Condition 1 — positive sentence structure**: `TOTAL_CARBOHYDRATE → value → CARBOHYDRATE_CHILD
+   → value`, in reading order. Bare co-occurrence of a total term and a child term on one row is
+   **forbidden** as a predicate: that is the signature of a *merged table row* (the 2026-08-16
+   chaining bug), so keying on it would hand the prose reader precisely the tables it must never
+   touch.
+2. **Condition 2 — no *usable* basis column.** Amended 2026-08-17 from "no *resolved* column",
+   which could never be satisfied: on a prose label the basis phrase sits inside running text, so
+   `ColumnClassifier` resolves a column from it regardless — all three prose fixtures resolve one,
+   two of fixture 6's come from the *ingredients* prose. A column is **usable** only when
+   ≥3 value cells the interpreter would bind to it are also **mutually aligned with each other**
+   (`MIN_ALIGNED_VALUE_CELLS`). Binding alone is not evidence — that tolerance is deliberately
+   generous to survive photographic skew. **Never infer usability from a `NutritionColumn` object
+   existing**; that is what the old predicate wrongly trusted.
+
+**The merged-table guard is intact and pinned by its reason, not its verdict.**
+`aMergedTableRowIsNotProse` asserts `hasUsableBasisColumn == true` — a merged table still prints its
+values one under another, so the column stays usable and condition 2 refuses. The reconstruction
+defect moved the *rows*, not the *columns*. If a future change makes that column "unusable", the
+guard has silently eroded and the assertion catches it.
+
+### The window is the declaration, not the row (owner amendment, 2026-08-17)
+
+Condition 1 originally evaluated within a single reconstructed row. ML Kit wraps a printed sentence
+wherever the line ends, so the child clause routinely lands on the *next* row. **The predicate did
+not change**; only the window did, and it moved to the declaration span `read` already assembles —
+the same assembly, not a second token stream, so the gate and the reader cannot disagree about where
+a declaration ends.
+
+That boundary is what stops it becoming document-wide chaining: a declaration runs from one basis
+phrase to the next, so the walk cannot reach into a *neighbouring* declaration to borrow the child
+clause it is missing. Pinned by `aSequenceCompletedAcrossTwoDeclarationsIsNotProse`, whose
+preconditions assert the fixture really produces **two** declarations and that the four tokens
+*would* satisfy a document-wide window — without those it would pass vacuously and pin nothing.
+
+### Span- vs row-level provenance, and why row level is insufficient
+
+`CandidateProvenance` is `FromRow(rowText, rowBox)` or `FromProseSpan(nutrientTerm, …)`. Row
+granularity suffices for a table — total and sugars occupy different rows. It is **not** sufficient
+for prose, where both share one reconstructed row and, on the real corpus, *the same printed number*:
+fixture 3 prints **1,6 g for its total and 1,6 g for its sugars**. A numeric assertion there proves
+nothing — a sugars misread passes it — so the golden tests assert the **bound nutrient term** is a
+carbohydrate term and is *not* a child term, checked against `NutritionTerminology`'s own
+vocabularies so the test cannot drift from what the parser treats as a child.
+
+### Measured state of all nine, 2026-08-17 (see the task-9-10 report for the full table)
+
+Four Confident and correct (stokbrood 46 via prose; yoghurt 5.0, sondey 61.9, kinder 53.5 + 6.7/piece
+via row), four NotFound, one Confident-and-wrong.
+
+**Fixtures 3 and 4 are blocked upstream of the prose reader, not by it.** Neither opens a
+declaration at all, because a declaration must begin at a recognized basis phrase and neither label
+prints one: fixture 3's is `Naringsindhold (100g):` (a Danish noun, no connective) and fixture 4's
+arrives as the fused token `PourPerlPro 100g:` (ML Kit welded the trilingual "Pour / Per / Pro"
+together). Verified by control — substituting a literal `per` into the same recognized text yields
+one declaration and prose eligibility, so the amendment works and the blocker is elsewhere.
+**Widening basis phrases to bare nouns is not authorized**, and fixture 3 is precisely the label
+where a wrongly-bound term would be undetectable by value.
+
+**Fixture 2 is Confident 2.09 where the package prints 2,0 — a recognition-stage failure that is
+unrecoverable at the parser.** ML Kit genuinely returns the token `2,09`; every downstream stage
+then behaves correctly, and 2.09 is a legitimate carbohydrate quantity so nothing can refuse it.
+It is asserted **as measured**, with a comment, rather than papered over. **Do not write a rule that
+trims a digit from a value adjacent to another column** — that repair silently corrupts correct
+readings elsewhere. A false confident value is substantially worse than `NotFound`, because the user
+doses insulin from it.
+
+### Preprocessing: tried, NOT retained
+
+A plain 2x bilinear upscale before recognition was measured against the corpus. It rescued fixture 5
+(NotFound → Confident) but **regressed two canaries** — kinder and stokbrood both fell Confident →
+NotFound. The acceptance condition was "improves at least one and degrades none", so it was
+discarded and the experiment deleted. Do not re-try upscaling without re-running all nine.
+
 ## The quick-adjust test failure — fixed, and worth reading before trusting a click
 
 **Resolved 2026-08-16. It was a test bug, not an app bug**, and it predates this pass (it fails on

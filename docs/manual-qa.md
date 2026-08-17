@@ -267,6 +267,98 @@ previously misread, not just any label.
 | 15e.4 | Tapping it creates a usable countable unit on that product, shown as verified | ☐ |
 | 15e.5 | A "per 2 slices" column halves correctly — the saved unit is per *one* slice | ☐ |
 
+## 15f. The two real packages (2026-08-16) — *the release gate for OCR*
+
+The nutrition scanner failed on real packaging while 459 automated tests passed. The cause was
+row reconstruction collapsing on ordinary camera tilt (see CLAUDE.md, "Real-device scanner pass").
+It is fixed and covered by geometry regressions at 4 row pitches x 7 tilts — but **a synthetic
+reconstruction of a label is not the label**. These two packages are the acceptance criteria.
+
+The standard is not "it worked once, held perfectly square". Repeat each row with a slight angle,
+ordinary hand shake, moderate glare, the table off-centre inside the frame, and the package
+slightly rotated. Robust normal use, not laboratory photographs.
+
+**This section stays OPEN, and the nine-fixture instrumented suite does not close it.** Be precise
+about what those passing JPEGs do and do not establish (2026-08-17):
+
+> **Proven:** a real photographed JPEG → ML Kit → `MlKitOcrMapper` → the parser, on nine real
+> packages, including tilt, curvature, multilingual rows and a second package in frame.
+>
+> **Still requires hardware:** live CameraX capture → `ViewPort` → shutter → `ImageCapture` → EXIF
+> orientation → ROI crop → OCR. Every stage before `MlKitOcrMapper` is emulator-only, and the crop's
+> correctness lives in the camera *binding*, which no fixture exercises.
+
+### Sondey / Lidl biscuits — trilingual NL/FR/DE, decimal comma
+
+| # | Check | Pass |
+|---|---|---|
+| 15f.1 | Reports **61.9 g per 100 g** | ☐ |
+| 15f.2 | Never reports **47.6** (that is the sugars row) | ☐ |
+| 15f.3 | Reads `61,9` as 61.9 — never 619, never a choice between 61 and 9 | ☐ |
+| 15f.4 | Still correct with the table tilted a few degrees | ☐ |
+| 15f.5 | Still correct with the table off-centre inside the frame | ☐ |
+
+### Kinder / Ferrero chocolate — per 100 g + per piece + %RI
+
+| # | Check | Pass |
+|---|---|---|
+| 15f.6 | Reports **53.5 g per 100 g** | ☐ |
+| 15f.7 | Never reports **3** or **7** (reference percentages) | ☐ |
+| 15f.8 | Never reports **53.3** (sugars per 100 g) | ☐ |
+| 15f.9 | The per-piece figure read is **6.7**, from the carbohydrate row and not the sugars row | ☐ |
+| 15f.10 | Where recognition permits, the piece weight is **12.5 g** and `1 piece` — or no weight at all, never a different one | ☐ |
+
+### The crop, which is the highest-risk new behaviour
+
+The still capture is cropped to the on-screen frame before recognition, and that mapping depends on
+CameraX cropping the saved JPEG to the `ViewPort`. It is emulator-checked only.
+
+| # | Check | Pass |
+|---|---|---|
+| 15f.11 | With the table filling the frame, the reading is correct (crop is not cutting the table) | ☐ |
+| 15f.12 | With the table near an edge of the frame, the reading still succeeds (the 12% margin is enough) | ☐ |
+| 15f.13 | `adb logcat -s JustTheCarbsOCR` shows `still cropped to=` roughly the frame's share of `still resolution=` | ☐ |
+| 15f.14 | Capturing repeatedly does not slow down or run out of memory at 8 MP | ☐ |
+
+### Barcode acceptance (§1–§4)
+
+| # | Check | Pass |
+|---|---|---|
+| 15f.15 | Raising the phone past a shelf does **not** fire a lookup for a product not aimed at | ☐ |
+| 15f.16 | Deliberately aiming at a barcode still scans quickly — a brief steadying moment, not a wait | ☐ |
+| 15f.17 | A distant barcode does not fire while walking toward it | ☐ |
+| 15f.18 | The hint reads "Point the barcode inside the frame", then "Hold steady" | ☐ |
+| 15f.19 | From *Product not found*, **Scan barcode again** returns straight to the camera in one tap | ☐ |
+| 15f.20 | After that, a new barcode scans normally (the latch really reset) | ☐ |
+
+## 15g. The seven new real packages (2026-08-17) — *still open*
+
+Seven more package photographs were added as committed fixtures and are pinned by
+`RealImageOcrTest` (now **mandatory** — a missing fixture fails the suite rather than skipping it).
+Those tests run the real ML Kit recognizer over the committed crops, so the **parser** is proven on
+real optics. The **camera path is not**: nothing below has been done on a phone.
+
+Two of these labels are prose (running sentences, not tables) and are read by `ProseNutritionReader`
+behind its eligibility gate. Two more currently return `NotFound` by design — see the table.
+
+| # | Check | Pass |
+|---|---|---|
+| 15g.1 | Juice (per 100 **ml**): either a correct 9.0 per 100 ml or a clean "couldn't read" — never a per-100-**g** answer | ☐ |
+| 15g.2 | Grated cheese: reports 2.0 per 100 g. **Known:** the committed crop yields 2.09 because ML Kit misreads the digit; a real capture may do better or worse | ☐ |
+| 15g.3 | Jar (multilingual prose): reports **1.6**, or `NotFound`. Never 20 (that is the saturated-fat figure) | ☐ |
+| 15g.4 | Lid (curved prose): reports **3**, or `NotFound`. Never **2.5** (sugars) and never **19** (saturated fat) | ☐ |
+| 15g.5 | Witte kaas: reports 2.3 per 100 g, or a clean "couldn't read" | ☐ |
+| 15g.6 | Stokbrood (dense prose): reports **46**. Never 1.0 (sugars), 4.7 (fibre) or 12 (protein) | ☐ |
+| 15g.7 | Yoghurt: reports **5.0** per 100 g. Never 3.0 (that is a %RI figure) | ☐ |
+| 15g.8 | On any label above, a wrong-looking number is **never** presented confidently — an unreadable label must say so | ☐ |
+
+**Known-open at the time of writing, all safe (`NotFound`, never a wrong confident value):** fixtures
+1 and 5 fail at recognition (ML Kit fuses or loses the basis header); fixture 2 returns 2.09 because
+recognition itself produces `2,09`; fixtures 3 and 4 open no prose *declaration*, because their basis
+headers print as `Næringsindhold (100g)` and a fused `PourPerlPro 100g:` with no connective. Widening
+the declaration grammar to accept those is deliberately **deferred to its own task with its own
+safety envelope** (owner, 2026-08-17) — see `CLAUDE.md`.
+
 ## 16. Temporary meal (2026-08-14) — *not yet verified on hardware*
 
 The meal is deliberately one unnamed, undated list. If any check below reveals a date, a name, a

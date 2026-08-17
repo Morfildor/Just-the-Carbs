@@ -24,6 +24,28 @@ data class NutritionColumn(
     val centerX: Double,
     /** The header text this column was read from, or "" when recovered from cell shape. */
     val headerText: String,
+    /**
+     * The band of rows this column is evidence about, or null when it applies document-wide.
+     *
+     * Non-null only for a column recovered from cell shape rather than read from a header. A stated
+     * header is a claim about the table it heads, and a table's rows run below its header for an
+     * unbounded distance — on the real packaging in this repo's fixtures a correct per-100 header
+     * sits seven reconstructed rows above the carbohydrate row it governs. A cluster of
+     * percent-shaped cells, by contrast, is evidence only about the rows it was found on: it says
+     * "these particular rows have a percentage in this x-band", and nothing whatever about a table
+     * printed elsewhere in the frame that it never touched.
+     *
+     * That distinction matters because a crop of a real package routinely retains a second printed
+     * block — a reference-intake summary, a marketing paragraph, a neighbouring package. Its
+     * percentages cluster on an x position of their own, the fallback recovers a column from them,
+     * and that column then vetoes the real table's grams cells as "percentages". The reading is lost
+     * to a panel it has no relationship with.
+     *
+     * Bounding a recovered column to its own rows is a narrowing of what it may *claim*. It is not a
+     * preference for whichever column sits nearer the values — that would be a proximity score, and
+     * proximity scoring is the mechanism the geometry-first rewrite removed.
+     */
+    val verticalExtent: IntRange? = null,
 )
 
 /**
@@ -60,6 +82,24 @@ object ColumnClassifier {
         var spanStart = 0
 
         while (spanStart < row.elements.size) {
+            // A lone "%" heading its own column, which is how a reference-intake column is printed
+            // on a dense multilingual label. Handled before the span walk so it can never be
+            // absorbed into a neighbouring header: on a reconstruction of the Kinder table the
+            // greedy pass matched "per stuk %" as one PER_SERVING span, which both dragged that
+            // column's centre 38 px toward the percentages and left no percent column at all. It
+            // also destroyed the serving descriptor, since "stuk %" parses as no unit word.
+            if (isBarePercent(row.elements[spanStart].text)) {
+                val box = row.elements[spanStart].box
+                columns += NutritionColumn(
+                    kind = NutritionColumnKind.REFERENCE_PERCENT,
+                    headerBox = box,
+                    centerX = box.centerX,
+                    headerText = row.elements[spanStart].text,
+                )
+                spanStart++
+                continue
+            }
+
             var matched = false
             // Longest span first: "per 100 ml" must beat a bare "100" prefix.
             for (length in minOf(MAX_HEADER_SPAN, row.elements.size - spanStart) downTo 1) {
@@ -67,8 +107,10 @@ object ColumnClassifier {
                 // A span ending on a connective has over-reached into the next column: "per 100 g
                 // per" is the grams column plus the start of another one, and consuming that
                 // trailing word both widens this column's centre and hides the column it belongs
-                // to. Shorter spans are tried instead.
-                if (isConnective(span.last().text)) continue
+                // to. A bare "%" is over-reach of the same kind — normalization strips the sign, so
+                // "per stuk %" would otherwise still match the serving vocabulary. Shorter spans
+                // are tried instead.
+                if (isConnective(span.last().text) || isBarePercent(span.last().text)) continue
                 val text = span.joinToString(" ") { it.text }
                 val kind = kindOf(NutritionTerminology.normalize(text)) ?: continue
                 val box = span.drop(1).fold(span.first().box) { acc, element -> acc.union(element.box) }
@@ -86,6 +128,12 @@ object ColumnClassifier {
     /** A word that only ever introduces a header, never ends one. */
     private fun isConnective(text: String): Boolean =
         NutritionTerminology.normalize(text) in CONNECTIVES
+
+    /**
+     * An element that is a percent sign and nothing else, in the tokenizations ML Kit produces for a
+     * percent-column header: "%", "% RI", "%RI*". A token carrying a digit is a cell, not a header.
+     */
+    private fun isBarePercent(text: String): Boolean = BARE_PERCENT_HEADER.matches(text.trim())
 
     /**
      * The kind this span names, or null if it names none — or more than one.
@@ -141,8 +189,16 @@ object ColumnClassifier {
     private fun percentColumnsFromCells(rows: List<LogicalRow>, documentWidth: Int): List<NutritionColumn> {
         val percentCells = rows
             .filter { RowClassifier.classify(it) != NutritionRowKind.HEADER }
-            .flatMap { it.elements }
-            .filter { PERCENT_CELL.containsMatchIn(it.text) }
+            .flatMap { row ->
+                // Both tokenizations, decided once in PercentAssociation rather than re-tested here
+                // against the element's own text. A split "3" + "%" is the shape a bare-text filter
+                // misses, and it is the shape that leaves a percentage column unrecovered — exactly
+                // when its header was also lost, which is the only case this fallback exists for.
+                val indices = PercentAssociation.percentElementIndices(row, documentWidth)
+                indices.mapNotNull { index ->
+                    row.elements.getOrNull(index)?.takeIf { cell -> cell.text.any { it.isDigit() } }
+                }
+            }
 
         if (percentCells.size < MIN_PERCENT_CELLS) return emptyList()
 
@@ -158,11 +214,19 @@ object ColumnClassifier {
         }
 
         return clusters.filter { it.size >= MIN_PERCENT_CELLS }.map { cluster ->
+            // The band is grown by one row pitch either side of the cells themselves, so a table
+            // whose percentages OCR'd on only some of its rows still protects the rows between and
+            // immediately around them. A pitch is measured from the cells' own text height, so it
+            // scales with the image rather than assuming a resolution.
+            val margin = cluster.map { it.box.height }.average() * PERCENT_BAND_MARGIN_IN_HEIGHTS
+            val top = cluster.minOf { it.box.top } - margin
+            val bottom = cluster.maxOf { it.box.bottom } + margin
             NutritionColumn(
                 kind = NutritionColumnKind.REFERENCE_PERCENT,
                 headerBox = null,
                 centerX = cluster.map { it.box.centerX }.average(),
                 headerText = "",
+                verticalExtent = top.toInt()..bottom.toInt(),
             )
         }
     }
@@ -176,12 +240,21 @@ object ColumnClassifier {
     /** How close two x-centres must be to count as the same column. */
     private const val NEAR_COLUMN_FRACTION = 0.08
 
-    /** Words that introduce a column header. Multilingual, matching the terminology table's reach. */
-    private val CONNECTIVES = setOf("per", "pro", "par", "pr", "na", "w", "voor")
+    /**
+     * How far beyond its own cells a recovered percent column still claims, in text heights.
+     *
+     * One and a half heights is about one row pitch, which is what lets a column recovered from the
+     * rows above and below a gap keep covering the row in between when its own percentage failed to
+     * recognise. It is not enough to reach a separate printed block, which is the whole point.
+     */
+    private const val PERCENT_BAND_MARGIN_IN_HEIGHTS = 1.5
+
+    /** Words that introduce a column header. One shared list — see NutritionTerminology. */
+    private val CONNECTIVES = NutritionTerminology.connectives
 
     private val PER_100 = Regex("(?:^|\\s)100\\s*(g|ml)(?:$|\\s)")
     private val REFERENCE_PERCENT = Regex("(?:^|\\s)(?:ri|dv|gda|reference intake|daily value)(?:$|\\s)")
 
-    /** Runs against RAW element text — normalization would strip the "%" this depends on. */
-    private val PERCENT_CELL = Regex("\\d\\s*%")
+    /** Runs against RAW element text — normalization would strip the "%" these depend on. */
+    private val BARE_PERCENT_HEADER = Regex("^%\\s*(?:ri|dv|gda)?\\*?$", RegexOption.IGNORE_CASE)
 }
