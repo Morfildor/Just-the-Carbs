@@ -37,7 +37,41 @@ data class CarbCandidate(
     val score: Int,
     val geometry: OcrBox,
     val evidence: List<CandidateEvidence>,
-)
+    /**
+     * Which table column this value was taken from, when it came from a column at all.
+     *
+     * Null means "no column was involved" — an inline basis declaration or a prose sentence, where
+     * the basis is stated in running text rather than by a column header. It does **not** mean
+     * "unknown column": that is [NutritionColumnKind.UNKNOWN], and a cell in such a column is never
+     * turned into a candidate.
+     *
+     * ### What this is for
+     *
+     * `basis` alone cannot answer "what was this number measured against on the printed label".
+     * A per-serving figure and a per-100 figure are both bare grams, and a device scan
+     * (`20260825-123828-500`) produced exactly the failure that makes the distinction load-bearing:
+     * the per-100 cell was corrupted, the per-portion cell in the next column was the only survivor,
+     * and it was reported as a per-100 reading. Retaining the column kind makes the claim checkable
+     * rather than implicit, and [NutritionTableInterpreter] asserts on it — see
+     * `CarbCandidate.requireQuantityColumn`.
+     */
+    val column: NutritionColumnKind? = null,
+) {
+    /**
+     * Fails loudly if this candidate came from a column that cannot state a carbohydrate quantity.
+     *
+     * The safety invariant of the whole parser, in one line: **a safe non-result is better than a
+     * confidently wrong carbohydrate value.** A serving, percent-of-reference-intake or unresolved
+     * column can never supply the per-100 figure the calculator scales from, so a candidate carrying
+     * one is a programming error rather than a bad reading — there is no user-facing recovery for it
+     * and it must not be allowed to reach a screen.
+     */
+    init {
+        require(column == null || column == NutritionColumnKind.PER_100_G || column == NutritionColumnKind.PER_100_ML) {
+            "A carbohydrate candidate may not come from a $column column"
+        }
+    }
+}
 
 /** The three explicit OCR outcomes. Every value still requires user confirmation. */
 sealed interface LabelReading {

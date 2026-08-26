@@ -1,9 +1,12 @@
 # Google Play release readiness — Just the Carbs
 
-**Decision: NO-GO as of 2026-08-14.** The app is technically close to release, but public
-publication is blocked by the unresolved §44 qualification assessment. Production signing,
-privacy-policy hosting, final Play declarations, and real-device release testing also remain owner
-actions. A disposable test signature is not a production signature.
+**Decision: NO-GO as of 2026-08-26.** The app is technically close to release, but public
+publication is blocked by the unresolved §44 qualification assessment. Final Play declarations and
+real-device release testing also remain owner actions.
+
+Production signing is **no longer a blocker**: an owner-controlled upload key exists and has signed
+a real bundle (§2, §7). That closes the signature gate and nothing else — the artifact still comes
+from an uncommitted tree, the keystore still has no tested backup, and §44 still governs go/no-go.
 
 This is the owner's release order. Do not skip a blocked item and do not turn an unverified item
 into a claim.
@@ -14,11 +17,14 @@ into a claim.
 |---|---|---|
 | **BLOCKED** | §44 qualification and intended-purpose assessment | A manufacturer's assessment is **drafted but unsigned**, held locally and outside version control at `docs/regulatory-qualification-assessment.md` (conclusion: not a medical device; EU only; conditional on its §7 constraints). Sign it, then close the remaining rows in [regulatory-release-checklist.md](regulatory-release-checklist.md) — independent review (A2) and market scope (A5) are still open. Do not publish or select a health/medical status until this is resolved. |
 | **OPEN** | Correct Play developer account type | Google says developers providing health apps, including medical apps, must register as an Organization. The §44/Play health classification determines whether this applies. Record the account and verification result in the regulatory checklist. |
-| **OPEN** | Production upload key | No owner keystore or signing secrets existed on 2026-08-14. Follow §2; do not upload the disposable test-signed bundle. |
-| **OPEN** | Public privacy-policy URL and in-app link | Host `docs/privacy-policy.html` on a stable, public, non-geofenced, non-editable HTML URL. Then add that URL to Play Console and Settings → About before the health-app release path is used. |
+| **DONE 2026-08-26** | Production upload key | Owner-controlled keystore generated at `C:\secure\JustTheCarbs-upload.jks` (alias `justthecarbs-upload`) and used to sign `app-release.aab`. Signer DN `C=NL, L=Haarlem, O=JustTheCarbs, OU=Release, CN=Tunc Bilen`, 2048-bit RSA, valid 2026-08-26 → 2051-08-20. Evidence in §2. **Backup of the keystore and its passwords is still unverified** and remains an owner action. |
+| **ACTION** | Republish the privacy policy | The page is live at `https://morfildor.github.io/Just-the-Carbs/privacy-policy.html`, served by GitHub Pages from `docs/` on `main`, and `SettingsScreen` opens that same `BuildConfig.PRIVACY_POLICY_URL` (pinned by `SettingsScreenTest`). **Both `privacy-policy.md` and `privacy-policy.html` were edited on 2026-08-26** — the "Your control" section now describes what the two clear actions really do, because the old wording ("delete everything the app has stored") overstated Clear saved products. The live page still shows the old text until the commit is pushed. Push, reload the URL, confirm the new text and the 26 August date, then record the URL in Play Console. |
+| **OPEN** | Regulatory assessment in public Git history | `docs/regulatory-qualification-assessment.md` (`7a3b43a`) and its PDF (`7212efb`) are untracked today but remain in reachable history on a **public** repository. Procedure, the ordering question that decides severity, and why a force-push is not a full remedy: [git-history-remediation.md](git-history-remediation.md). Owner action; no history was rewritten. |
 | **OPEN** | Data Safety answers confirmed | Use §4. Search text and ML Kit collection must not be omitted. Confirm Open Food Facts' handling of search text/IP at submission. |
 | **OPEN** | Health Apps declaration | Use the §44-dependent branches in [play-health-declaration.md](play-health-declaration.md). Save as draft while unresolved. |
-| **OPEN** | Store assets | Produce a 512×512 store icon, 1024×500 feature graphic, and at least two real-device screenshots. Current repository contains none of these upload assets. |
+| **OPEN** | Store assets | `Logo.png` at the repository root **is** a 512×512 mark and is the traced source of `ic_launcher_foreground.xml`, so the store icon exists but has never been checked against Play's icon rules (no transparency, no rounded-corner masking of its own). Still missing entirely: the 1024×500 feature graphic and at least two real-device screenshots. |
+| **DONE 2026-08-26** | One shipping language | The app ships English only. `values-nl/strings.xml` held 206 of 298 strings and none of the 10 plurals, so a Dutch device saw a mixed interface; it is deleted and `androidResources { localeFilters += "en" }` also stops AndroidX/Material supplying their own translations. Verified: the release APK carries no language configurations. Open Food Facts input is still parsed in Dutch — that is separate. |
+| **DONE 2026-08-26** | Release CI actually gates | `.github/workflows/release-gate.yml`: JVM (`--rerun-tasks`), instrumented, lint and the release build all block, with 0-skipped assertions read from JUnit XML and the R8 privacy barriers checked as build steps. `ci.yml`'s instrumented job keeps `continue-on-error` for branch work and is now labelled as such. Before this, **no workflow required the instrumented suite to pass.** |
 | **OPEN** | Physical-device release QA | Only barcode scanning and label OCR have been confirmed on physical hardware, and not with this release artifact. Run the release checklist in §8. |
 | **OPEN** | Project licence | The repository has no project licence. The owner must choose one or explicitly keep all rights reserved; this pass does not choose for them. |
 | **DONE 2026-08-14** | Target/compile SDK | `app/build.gradle.kts`: `targetSdk = 36`, `compileSdk = 37`. Google requires API 36 for new apps and updates from 2026-08-31. These values are intentionally independent. |
@@ -65,16 +71,56 @@ $env:ANDROID_HOME='C:\atools\sdk'
 Get-FileHash 'app\build\outputs\bundle\release\app-release.aab' -Algorithm SHA256
 ```
 
+**Check the certificate name, not just that signing succeeded.** The Gradle guard refuses to package
+a release without all four secrets, but it cannot tell an upload key from a test key — both are
+four valid properties pointing at a real keystore. On 2026-08-25 a full clean release build produced
+a signed APK and AAB whose signer was:
+
+```
+Signer #1 certificate DN: CN=DISPOSABLE TEST KEY, OU=NOT FOR PLAY, O=JustTheCarbs Test, C=NL
+```
+
+A green `bundleRelease` is therefore **not** evidence that an uploadable artifact exists. Read the DN
+before recording anything below. `apksigner` cannot read an AAB, and a bundle-only build (what
+Android Studio's *Build → Generate Signed App Bundle* produces) leaves no release APK on disk at
+all — so verify the bundle directly:
+
+```powershell
+& 'C:\atools\jdk-21.0.12+8\bin\keytool.exe' -printcert `
+  -jarfile 'app\build\outputs\bundle\release\app-release.aab'
+```
+
+Use `apksigner verify --print-certs` only when an APK from the *same* build actually exists.
+
+`NOT FOR PLAY` in the DN means the keystore on this machine is still the disposable one and the
+upload key has not been generated yet.
+
+**Resolved 2026-08-26.** `keystore.properties` now points at the owner's real upload keystore and
+the same check reads `C=NL, L=Haarlem, O=JustTheCarbs, OU=Release, CN=Tunc Bilen`. Two deviations
+from the recipe above, both recorded rather than corrected:
+
+- The key is **2048-bit RSA**, not the 3072 bits the `keytool` command above specifies. 2048 meets
+  Google's documented minimum, so this is acceptable and is **not** worth regenerating — but the
+  upload key is fixed once published, so decide now if a larger key is wanted.
+- `app/build.gradle.kts` is unchanged: the fail-closed guard and `signingConfigs` are exactly as
+  committed, and Android Studio picked up the real key through the existing `keystore.properties`
+  path. No signing logic was edited to make this build succeed.
+
 Owner records before upload:
 
 | Field | Value |
 |---|---|
-| Build date | *(owner)* |
-| Version code/name | *(owner; must be `1` / `1.0.0` for the first upload unless intentionally changed)* |
-| AAB byte size | *(owner)* |
-| SHA-256 | *(owner)* |
-| Upload certificate SHA-256 | *(owner; export/read with `keytool -list -v`)* |
-| Offline backup locations tested | *(owner)* |
+| Build date | 2026-08-26 (Android Studio, `bundleRelease`) |
+| Version code/name | `1` / `1.0.0` — read from the packaged release manifest, package `app.justthecarbs` |
+| AAB byte size | 35,689,027 bytes (34.03 MiB) |
+| SHA-256 | `00876FA9B2A73B44F585A0D792948921F7BC6F2DE181D76DC22914237FBBB4A2` |
+| Upload certificate SHA-256 | `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` |
+| Offline backup locations tested | **NOT DONE** *(owner)* — the keystore exists only at `C:\secure\JustTheCarbs-upload.jks`. Losing it before Play App Signing enrollment means no updates are possible; after enrollment Google documents an upload-key reset. Back it up and the passwords in two independent secure locations, then restore-test one. |
+
+**This artifact is not the release candidate.** It was built from the current *uncommitted* working
+tree, not from a clean tagged commit, so it does not satisfy step 10 of §8. It proves the upload key
+works end to end. Rebuild and re-hash from the final commit before uploading anything but an
+internal-testing throwaway.
 
 ## 3. Official sources checked on 2026-08-14
 
@@ -218,6 +264,24 @@ Recommended owner path:
 
 Final results are recorded only after fresh commands complete:
 
+### 2026-08-26 — first production-key signed bundle
+
+Built in Android Studio from the uncommitted working tree. Verified afterwards from the command
+line against the artifact on disk; no test was re-run in this pass.
+
+| Check | Result |
+|---|---|
+| Release AAB | Built. 35,689,027 bytes. SHA-256 `00876FA9B2A73B44F585A0D792948921F7BC6F2DE181D76DC22914237FBBB4A2`. |
+| Signature | **UPLOADABLE KEY** — `jarsigner -verify` reports `jar verified`, signer `C=NL, L=Haarlem, O=JustTheCarbs, OU=Release, CN=Tunc Bilen`, SHA256withRSA, 2048-bit, valid 2026-08-26 → 2051-08-20. The "self-signed" and "no timestamp" warnings jarsigner prints are expected and correct for an Android upload key; do not treat them as defects. |
+| Identity in the packaged manifest | `package="app.justthecarbs"`, `versionCode="1"`, `versionName="1.0.0"`. |
+| Release APK | **NOT BUILT** — this was a bundle-only build, so `app/build/outputs/apk/release/` does not exist. Any check written against that APK cannot be run on this artifact. |
+| R8 privacy barriers | **PASS** — re-checked on this build's `mapping.txt`. `ScanEvidenceRecorder` and `OcrDiagnosticsLogger` map to `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`, `OcrDiagnosticsReport` and `ScanTrace` have no mapping entry at all; `UnitMarkerFilter`, `CandidateProvenance` and `CarbCandidate` are retained as real classes. |
+| Release manifest providers | **PASS** — only the ML Kit init provider and `androidx.startup`. Zero matches for `FileProvider` or `evidence`, so the debug evidence provider does not ship. |
+| Signing guard intact | **PASS** — `app/build.gradle.kts` is byte-unchanged in the signing region; the real key was picked up through the existing `keystore.properties` path. |
+| Tests / lint on this artifact | **NOT RE-RUN.** Last full green run is the 2026-08-25 release-closure pass (JVM 726, instrumented 214, lint exit 0) against a different tree. |
+| Physical-device QA of this artifact | **NOT DONE** — unchanged standing gap. |
+| Keystore backup | **NOT DONE** — see §2. |
+
 ### 2026-08-15 re-verification (commit `6de524e`, Light-theme default)
 
 Re-run on the exact final commit, per step 10 of the owner release sequence. The artifacts below
@@ -257,6 +321,8 @@ are **test-signed and not uploadable**; the go/no-go gates in §1 are unchanged 
 3. Choose the project licence disposition.
 4. Host the privacy policy, add the in-app link, and verify public access.
 5. Generate and back up the production upload key; build and hash the production AAB.
+   *(Key generated and a bundle signed and hashed 2026-08-26 — see §2. **Backup still outstanding**,
+   and the hashed bundle must be rebuilt from the final commit.)*
 6. Capture real-device store screenshots and produce the icon/feature graphic.
 7. Complete Data Safety, Health Apps, target audience, content rating, app access, ads, and store
    listing forms from this checklist. Save screenshots/PDF exports of submitted answers as evidence.
@@ -269,7 +335,9 @@ are **test-signed and not uploadable**; the go/no-go gates in §1 are unchanged 
 
 ## 9. Explicitly unverified
 
-- No production-signed AAB exists; only a disposable test-signed artifact exists.
+- A production-key-signed AAB now exists (2026-08-26, §2 and §7), but it was built from an
+  uncommitted tree and is **not** a release candidate. The keystore has no tested backup, and Play
+  App Signing enrollment has not happened.
 - Nothing has been uploaded to Play Console and no Play form has been submitted.
 - No privacy-policy URL is live or linked in the app.
 - Only barcode scanning and label OCR have ever been confirmed on physical hardware. Everything

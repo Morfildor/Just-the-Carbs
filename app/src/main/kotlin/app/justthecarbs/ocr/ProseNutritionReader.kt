@@ -102,7 +102,7 @@ object ProseNutritionReader {
     ): Boolean {
         val medianHeight = medianTextHeight(rows)
         val boundCenters = rows
-            .filter { RowClassifier.classify(it) in NUTRIENT_ROW_KINDS }
+            .filter { statesANutrientValue(it) }
             .flatMap { row -> valueCellsOf(row, documentWidth) }
             .filter { cell -> columnForCell(cell, columns, documentWidth) === column }
             .map { it.centerX }
@@ -146,6 +146,60 @@ object ProseNutritionReader {
         NutritionRowKind.TOTAL_CARBOHYDRATE,
         NutritionRowKind.CARBOHYDRATE_CHILD,
     )
+
+    /**
+     * Whether [row] states some nutrient's value — carbohydrate, one of its children, **or any other
+     * declared nutrient** (fat, saturates, protein, salt, energy).
+     *
+     * ### Why the non-carbohydrate rows had to be counted (2026-08-25)
+     *
+     * Counting only carbohydrate rows made this gate blind to the commonest table on a European
+     * package, and a real device produced a **confident wrong** because of it. On a trilingual
+     * NL/FR/DE label the values `13g 12g 869 54g 0,99 007g` printed one under another at x≈818–940 —
+     * six cells, unmistakably a column — but only two of their rows (`Kohlenhydrate` and its sugars
+     * child) were carbohydrate rows. Two is below [MIN_ALIGNED_VALUE_CELLS], so the per-100 column
+     * was judged unusable, the document was declared prose, and the prose reader bound the word
+     * `Kohlenhydrate` to the **per-portion** cell `22 g` and reported it as per 100 g. The table was
+     * never in doubt; only this predicate's view of it was.
+     *
+     * A nutrition table's defining structure is its *column of nutrient values*, and fat and protein
+     * lines are part of that column just as carbohydrate is. Excluding them measured the wrong thing.
+     *
+     * ### And why they must also be short (measured the same day)
+     *
+     * Counting *any* row that names a nutrient went too far in the other direction and cost this
+     * repo's bread fixture, which prints its whole declaration as one running sentence. Its rows name
+     * `vetten`, `eiwitten` and `zout` too — inside sentences — so their scattered numbers were
+     * suddenly counted, a coincidental column crossed [MIN_ALIGNED_VALUE_CELLS], the label was judged
+     * a table, and a page that has no table at all lost its prose reading.
+     *
+     * A table's nutrient row is a *line*: a name, a value, perhaps a unit and a second column. A
+     * prose declaration is a *sentence* that happens to contain nutrient names. [MAX_WORDS_IN_A_ROW]
+     * separates them, and it is a statement about printed form rather than a tuned score — every
+     * genuine table row in this repo's corpus is far below it and every prose row far above.
+     *
+     * Membership is by named nutrient **and** row shape, never by "row containing numbers". That is
+     * what keeps genuine prose labels passing: their nutrient names sit in sentences, and ingredient
+     * text, batch codes and marketing claims name no nutrient at all.
+     */
+    private fun statesANutrientValue(row: LogicalRow): Boolean {
+        if (RowClassifier.classify(row) in NUTRIENT_ROW_KINDS) return true
+        if (row.elements.size > MAX_WORDS_IN_A_ROW) return false
+        val normalized = NutritionTerminology.normalize(row.text)
+        return CarbohydrateTermAnchor.OTHER_NUTRIENT_TERMS.any {
+            NutritionTerminology.containsTerm(normalized, NutritionTerminology.normalize(it))
+        }
+    }
+
+    /**
+     * How many recognized elements a *table* row may hold before it is read as running text.
+     *
+     * Eight. A printed nutrient line is a name and its cells — the widest real one in this corpus is
+     * a trilingual `Vetten/Matieres grasses/Fett:` with two value columns and a percentage, which
+     * lands well inside it. A prose declaration runs to dozens of elements. The gap between the two
+     * populations is large, so the exact number is not delicate; it only has to sit inside the gap.
+     */
+    private const val MAX_WORDS_IN_A_ROW = 8
 
     /**
      * A cell a table would print in a column: a number standing on its own, optionally carrying a
@@ -515,14 +569,14 @@ object ProseNutritionReader {
         return basisFor(unit.normalized)?.let { it to 3 }
     }
 
-    private fun basisFor(unit: String): NutritionBasis? = when (unit) {
-        "g" -> NutritionBasis.PER_100_G
-        "ml" -> NutritionBasis.PER_100_ML
-        else -> null
-    }
+    /** One shared unit vocabulary, so this cannot drift from [InlineBasisSpans]. */
+    private fun basisFor(unit: String): NutritionBasis? = NutritionTerminology.basisUnitFor(unit)
 
-    /** "100g" / "100ml" as one token, the shape a printed `per 100g:` produces after splitting. */
-    private val FUSED_HUNDRED = Regex("^100(g|ml)$")
+    /**
+     * `100g` / `100ml` / `100gram` as one token, the shape a printed `per 100g:` produces after
+     * splitting. Longest-first alternation, anchored at both ends, so `g` cannot match inside `gram`.
+     */
+    private val FUSED_HUNDRED = Regex("^100(${NutritionTerminology.basisUnitAlternation})$")
 
     /**
      * Every nutrient term in [tokens], in reading order.

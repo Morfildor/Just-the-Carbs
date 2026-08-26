@@ -22,7 +22,15 @@ data class ProductSearchHit(
     /** Free text as printed, e.g. "390 gram". Shown to help tell 390 g from 600 g on the shelf. */
     val packageQuantity: String?,
     val carbsPer100: BigDecimal?,
-    val basis: NutritionBasis,
+    /**
+     * Grams or millilitres, or **null** when the record established neither (see
+     * [PackageBasisResolver]).
+     *
+     * A null basis forces [carbsPer100] to null as well, at the one place hits are built: a figure
+     * whose denominator is unknown is not a figure the user can act on, and showing it beside a
+     * package size would read as "per 100 g" to anyone who has seen the rest of the app.
+     */
+    val basis: NutritionBasis?,
     val imageUrl: String?,
 )
 

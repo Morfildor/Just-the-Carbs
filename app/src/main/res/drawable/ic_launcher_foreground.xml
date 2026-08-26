@@ -1,9 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Icon concept (rebrand): a rounded container split by a gap, with three drips hanging from the
-  underside of the top band — the mark submitted to the Play Store listing. Two shapes (top band,
-  drip band), so it stays readable at 48dp in a launcher folder and works as a monochrome/themed
-  icon on Android 13+.
+  Just the Carbs mark: a solid rounded-square container, crossed by a horizontal gap, with three
+  drips hanging from the underside of that gap. Traced from the 512x512 store asset (`Logo.png` at
+  the repo root) — that PNG is the source of truth and this vector must not drift from it.
+
+  THE DRIPS ARE CUT OUT OF A SOLID BODY, NOT DRAWN AS SHAPES. An earlier version drew them as
+  standing prongs on a hollow cup, which renders as an upside-down mark. The body is one filled
+  path; the split band and the three drip slots are subtracted from it with evenOdd fill. Keep it
+  that way — drawing the red parts positively is what produced the wrong artwork before.
+
+  THE 108dp VIEWPORT IS NOT THE VISIBLE AREA. A launcher masks an adaptive icon to a 72dp shape
+  (circle, squircle, teardrop) centred at (54,54); only the inner 66dp circle survives every mask.
+  Geometry below is scaled so the body's furthest point sits at radius 33.00 — exactly on the 66dp
+  safe circle, with 3dp of clearance to the 36dp mask edge. A previous version painted to radius
+  46.8 and real launchers sliced it into red-and-white stripes.
+
+  Measured source geometry (px, in the 512 canvas), for anyone re-deriving this:
+    body        x 114..398, y 97..392, corner radius 75
+    split band  y 225..258, full width
+    drip slots  width 33, centres x 190 / 256 / 322, bottoms y 337 / 372 / 303
+  Scale to the 108dp viewport is 0.18996, mark centred on (54,54).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -11,16 +27,47 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Top band: the rounded-top half of the container -->
+    <!--
+      One path, evenOdd: outer rounded square, then five subpaths punched out of it —
+      the split band and the three drips (each a slot with a rounded bottom).
+    -->
     <path
-        android:pathData="M32,20 h44 a20,20 0 0 1 20,20 v10 h-84 v-10 a20,20 0 0 1 20,-20 z"
-        android:fillColor="#FFFFFF" />
-
-    <!-- Bottom band: rounded-bottom container with three drips hanging from the split -->
-    <path
+        android:fillType="evenOdd"
+        android:fillColor="@color/ic_launcher_mark"
         android:pathData="
-            M22,58
-            h14 v14 a7,7 0 0 0 14,0 v-14 h12 v22 a7,7 0 0 0 14,0 v-22 h10 v20 a20,20 0 0 1 -20,20 h-24 a20,20 0 0 1 -20,-20 z"
-        android:fillColor="#FFFFFF" />
+            M41.28,25.98
+            h25.44
+            a14.25,14.25 0 0 1 14.25,14.25
+            v27.54
+            a14.25,14.25 0 0 1 -14.25,14.25
+            h-25.44
+            a14.25,14.25 0 0 1 -14.25,-14.25
+            v-27.54
+            a14.25,14.25 0 0 1 14.25,-14.25
+            z
+
+            M27.03,50.30
+            h53.94
+            v6.26
+            h-53.94
+            z
+
+            M38.33,56.56
+            h6.26
+            v11.88
+            a3.13,3.13 0 0 1 -6.26,0
+            z
+
+            M50.87,56.56
+            h6.26
+            v18.53
+            a3.13,3.13 0 0 1 -6.26,0
+            z
+
+            M63.41,56.56
+            h6.26
+            v5.42
+            a3.13,3.13 0 0 1 -6.26,0
+            z" />
 
 </vector>

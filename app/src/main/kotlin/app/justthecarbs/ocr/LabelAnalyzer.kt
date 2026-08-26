@@ -1,6 +1,7 @@
 package app.justthecarbs.ocr
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.annotation.OptIn
@@ -18,6 +19,16 @@ import java.util.concurrent.atomic.AtomicReference
 /** On-device structured nutrition-label OCR for live frames and temporary still captures. */
 class LabelAnalyzer(
     private val onReading: (LabelReading) -> Unit,
+    /**
+     * Framing advice from live frames, for the preview's guidance line only.
+     *
+     * A **separate** callback from [onReading] on purpose. Merging them would put a value-bearing
+     * result and a piece of camera advice on one channel, and the single most important property of
+     * the capture-first design is that a live frame can never produce the answer. Keeping the
+     * channels apart makes that structural rather than a convention someone must remember. Defaults
+     * to a no-op so every existing construction site is unaffected.
+     */
+    private val onFraming: (TextResolutionGuidance.Estimate) -> Unit = {},
 ) : ImageAnalysis.Analyzer {
 
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -60,7 +71,9 @@ class LabelAnalyzer(
         val input = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         recognizer.process(input)
             .addOnSuccessListener { text ->
-                val report = parse(text, imageProxy.width, imageProxy.height, started)
+                val document = MlKitOcrMapper.toDocument(text, imageProxy.width, imageProxy.height)
+                if (!paused) onFraming(TextResolutionGuidance.estimate(document))
+                val report = parse(document, started)
                 val toSurface = stability.onFrame(report.reading, System.nanoTime())
                 if (!paused && toSurface != null) onReading(toSurface)
             }
@@ -96,7 +109,45 @@ class LabelAnalyzer(
         val replaced = pendingStill.getAndSet(request)
         if (replaced != null) {
             replaced.file.delete()
-            replaced.onComplete(NutritionParseReport(LabelReading.NotFound, emptyList()))
+            replaced.fail()
+        }
+        startPendingStillIfPossible()
+    }
+
+    /**
+     * Recognises a capture and **retains** the recognised document for later re-parsing.
+     *
+     * This is the capture-then-confirm entry point. Recognition starts the moment the shutter fires,
+     * so ML Kit works while the user is adjusting the crop rectangle rather than after they commit —
+     * on a successful read the "Read table" tap then costs only a re-parse of elements already in
+     * memory, with no second recognition pass.
+     *
+     * The capture file is deleted as before, but the decoded bitmap is **kept** so the crop screen has
+     * something to display and a Strategy B fallback has a full-resolution source to work from. The
+     * caller owns that bitmap from the moment [onComplete] fires and must release it via
+     * [PassAResult.recycle].
+     *
+     * [sessionId] is echoed back untouched. It is the caller's only reliable way to discard a result
+     * belonging to a capture the user has already retaken — see [PassAResult.sessionId].
+     */
+    fun analyzeStillRetaining(
+        context: Context,
+        file: File,
+        sessionId: Long,
+        onComplete: (PassAResult) -> Unit,
+    ) {
+        val request = StillRequest(
+            context = context.applicationContext,
+            file = file,
+            region = null,
+            onComplete = {},
+            retaining = onComplete,
+            sessionId = sessionId,
+        )
+        val replaced = pendingStill.getAndSet(request)
+        if (replaced != null) {
+            replaced.file.delete()
+            replaced.fail()
         }
         startPendingStillIfPossible()
     }
@@ -110,68 +161,230 @@ class LabelAnalyzer(
             return
         }
 
-        val started = System.nanoTime()
         try {
-            val dimensions = BitmapFactory.Options().also { options ->
-                options.inJustDecodeBounds = true
-                BitmapFactory.decodeFile(request.file.absolutePath, options)
-            }
-            OcrDiagnosticsLogger.stillResolution(dimensions.outWidth, dimensions.outHeight)
-
-            // Crop to what the user framed. Falling back to the whole file — via ML Kit's own
-            // EXIF-aware loader — whenever there is no region or the bitmap could not be decoded,
-            // so the worst case is the behaviour that shipped before this pass rather than a
-            // failed capture.
-            val cropped = request.region?.let { region ->
-                StillImageLoader.load(request.file, ScanRegionMapper.expand(region))
-            }
-            val input = if (cropped != null) {
-                OcrDiagnosticsLogger.stillCropped(cropped.width, cropped.height)
-                InputImage.fromBitmap(cropped, 0)
-            } else {
-                InputImage.fromFilePath(request.context, Uri.fromFile(request.file))
-            }
-            val ocrWidth = cropped?.width ?: dimensions.outWidth
-            val ocrHeight = cropped?.height ?: dimensions.outHeight
-
-            recognizer.process(input)
-                .addOnSuccessListener { text ->
-                    request.onComplete(parse(text, ocrWidth, ocrHeight, started, full = true))
-                }
-                .addOnFailureListener {
-                    OcrDiagnosticsLogger.failure("Still OCR failed", it)
-                    request.onComplete(NutritionParseReport(LabelReading.NotFound, emptyList()))
-                }
-                .addOnCompleteListener {
-                    cropped?.recycle()
-                    if (!request.file.delete()) {
-                        OcrDiagnosticsLogger.failure("Temporary label image was already absent")
-                    }
-                    inFlight.set(false)
-                    startPendingStillIfPossible()
-                }
+            runStill(request)
         } catch (error: Exception) {
             OcrDiagnosticsLogger.failure("Could not prepare still image", error)
             request.file.delete()
-            request.onComplete(NutritionParseReport(LabelReading.NotFound, emptyList()))
+            request.fail()
             inFlight.set(false)
             startPendingStillIfPossible()
         }
     }
 
     /**
+     * The single-pass still read: recognise the whole capture, parse it, apply framing as relevance.
+     *
+     * ## Why there is no second recognition pass here
+     *
+     * A two-pass design was built and measured: Pass A locates a table by geometry, the table is
+     * cropped out, and a second recognition of that crop becomes the answer. It was **reverted**, on
+     * evidence, and the reasons are recorded here because the idea is attractive enough to be
+     * re-proposed.
+     *
+     * Re-recognising a crop is not a neutral clean-up. Rescaling changes how ML Kit tokenises, and on
+     * the Kinder canary it turned the printed unit marker `(g)` into `(9)` — a well-formed
+     * single-digit carbohydrate value on the correct row, which then beat the real `53,5`. That is a
+     * **confident-wrong**, the worst output this app can produce, manufactured by the isolation step
+     * itself. Isolation also dropped 12 rows including the basis header band, reproducing exactly the
+     * defect the removal of the overlay crop had fixed.
+     *
+     * The unit-marker hazard is now guarded structurally by [UnitMarkerFilter], so it is no longer a
+     * blocker on its own. The header loss and the fact that vertical banding cannot separate
+     * horizontally adjacent panels are unsolved, so isolation stays out of the answer path until a
+     * localisation approach is measured to beat this baseline. [NutritionTableLocator] is retained,
+     * fully tested and **unwired**, as the starting point for that work.
+     */
+    private fun runStill(request: StillRequest) {
+        val started = System.nanoTime()
+        val trace = ScanTrace()
+
+        // Uncropped. Cropping before recognition removed the basis header band on tall labels and
+        // cost both canaries — sondey reported `rejected: 61.9: REFERENCE_PERCENT column`, the right
+        // value on the right row made unplaceable because its header had been cropped away. A wider
+        // fixed margin cannot fix that: the header's offset varies per package, so any margin is a
+        // guess that is wrong on some label with nothing on screen to show it.
+        val loaded = StillImageLoader.loadWithRotation(request.file, region = null, trace = trace)
+        val upright = loaded.bitmap
+        val input = trace.time("mlkit-input") {
+            if (upright != null) {
+                InputImage.fromBitmap(upright, 0)
+            } else {
+                InputImage.fromFilePath(request.context, Uri.fromFile(request.file))
+            }
+        }
+
+        // The decoded bitmap already knows its own size, so the separate `inJustDecodeBounds` pass
+        // this used to make — a second read of the same multi-megabyte file, purely for two integers
+        // — is gone. Only the fallback path, where no bitmap exists, still has to ask the file.
+        val fallbackBounds = if (upright == null) boundsOf(request.file) else null
+        val ocrWidth = upright?.width ?: fallbackBounds!!.outWidth
+        val ocrHeight = upright?.height ?: fallbackBounds!!.outHeight
+        OcrDiagnosticsLogger.stillResolution(ocrWidth, ocrHeight)
+        OcrDiagnosticsLogger.passA(ocrWidth, ocrHeight, request.region)
+
+        // Debug-only; every call is a no-op in release, where R8 removes the recorder entirely.
+        val evidence = ScanEvidenceRecorder.begin(request.context)
+        val captureBytes = request.file.length()
+        trace.markOffPath("evidence-begin")
+
+        // One place where the still read ends, whichever path reaches it, so `upright` is recycled
+        // exactly once including on the failure paths.
+        val finished = AtomicBoolean(false)
+        fun finish(
+            report: NutritionParseReport,
+            recognitionMs: Long,
+            document: OcrDocument? = null,
+        ) {
+            if (!finished.compareAndSet(false, true)) return
+
+            // Evidence capture is now a **move**, not a copy, and the PNG encode does not happen here
+            // at all (2026-08-25).
+            //
+            // Previously this copied a ~3.5 MB JPEG and PNG-encoded a ~24 MB bitmap, synchronously,
+            // between the parse finishing and the user seeing anything. That is seconds of file I/O
+            // on the critical path of every debug scan, for artefacts nothing about the reading
+            // depends on — a large part of why a measured device spent ~3.3 s of a 3.55 s scan
+            // outside the recognizer.
+            //
+            // The move has to happen before the delete below, because it *replaces* the delete: it
+            // takes ownership of the same file. The encode is scheduled after the result is
+            // delivered, from the moved file rather than from `upright`, whose ownership passes to
+            // the crop screen — see ScanEvidenceRecorder.recordPassAImageAsync.
+            //
+            // Debug-only either way: in release `consumeCapture` returns false without touching
+            // anything, the delete runs exactly as it always did, and R8 removes the recorder
+            // entirely. Shipped behaviour is unchanged.
+            val captureConsumed = ScanEvidenceRecorder.consumeCapture(evidence, request.file)
+            trace.markOffPath("evidence-capture")
+
+            if (!captureConsumed && !request.file.delete()) {
+                OcrDiagnosticsLogger.failure("Temporary label image was already absent")
+            }
+
+            val retaining = request.retaining
+            if (retaining != null) {
+                // Ownership of the bitmap transfers to the caller, which displays it on the crop
+                // screen. Recycling it here would blank that screen — and the receiver cannot
+                // re-decode it, because the capture file has just been deleted.
+                retaining(
+                    PassAResult(
+                        sessionId = request.sessionId,
+                        document = document,
+                        report = report,
+                        bitmap = upright,
+                        evidence = evidence,
+                        recognitionMs = recognitionMs,
+                    ),
+                )
+            } else {
+                upright?.recycle()
+                request.onComplete(report)
+            }
+
+            // The user has the result. Everything from here is off the path they waited on, which is
+            // why the trace records it as such rather than folding it into one total — the only build
+            // that writes evidence is a debug build, so an undifferentiated figure measured on a phone
+            // describes a build nobody ships. See ScanTrace.markOffPath.
+            trace.mark("handoff")
+
+            // After the handover, on a background thread, from the moved capture file. Nothing the
+            // user is waiting for depends on it, and a failure here cannot affect the scan.
+            ScanEvidenceRecorder.recordPassAImageAsync(evidence)
+
+            // Recording meta is itself a debug-only file write, and it used to run *before* the
+            // handover — i.e. the diagnostics that exist to measure the scan were part of what they
+            // measured. It is written from here so the breakdown it carries is complete (it now
+            // includes the capture move and the handover) and costs the user nothing.
+            ScanEvidenceRecorder.recordMeta(
+                folder = evidence,
+                captureBytes = captureBytes,
+                jpegWidth = ocrWidth,
+                jpegHeight = ocrHeight,
+                passAWidth = ocrWidth,
+                passAHeight = ocrHeight,
+                exifRotationDegrees = loaded.rotationDegrees,
+                decodedViaFallback = upright == null,
+                region = request.region,
+                totalMs = (System.nanoTime() - started) / 1_000_000,
+                outcome = report.reading::class.simpleName ?: "unknown",
+                recognitionMs = recognitionMs,
+                timingBreakdown = trace.summary(),
+            )
+            trace.markOffPath("evidence-meta")
+            OcrDiagnosticsLogger.timing(trace.summary())
+
+            inFlight.set(false)
+            startPendingStillIfPossible()
+        }
+
+        val passAStarted = System.nanoTime()
+        recognizer.process(input)
+            .addOnSuccessListener { text ->
+                val passAMs = (System.nanoTime() - passAStarted) / 1_000_000
+                trace.mark("mlkit")
+                val document = trace.time("to-domain") {
+                    MlKitOcrMapper.toDocument(text, ocrWidth, ocrHeight)
+                }
+                val parsed = trace.time("parse") {
+                    NutritionTableParser.parseWithDiagnostics(document)
+                }
+                trace.timeOffPath("evidence-text") {
+                    ScanEvidenceRecorder.recordRecognizedText(evidence, text)
+                }
+
+                // Framing narrows an existing reading and can never create or promote one.
+                val report = trace.time("relevance") {
+                    ScanRegionRelevance.apply(parsed, request.region, ocrWidth, ocrHeight)
+                }
+                OcrDiagnosticsLogger.report(passAMs, report)
+                OcrDiagnosticsLogger.stillDiagnostics(document, report)
+                trace.timeOffPath("evidence-diagnostics") {
+                    ScanEvidenceRecorder.recordDiagnostics(evidence, document, report)
+                }
+                finish(report, passAMs, document)
+            }
+            .addOnFailureListener { error ->
+                OcrDiagnosticsLogger.failure("Still OCR failed", error)
+                finish(
+                    NutritionParseReport(LabelReading.NotFound, emptyList()),
+                    recognitionMs = 0,
+                    document = null,
+                )
+            }
+    }
+
+    /**
      * [full] asks for the complete pipeline trace (§9), which only a deliberate still capture gets:
      * a live frame arrives many times a second and would bury the capture that matters.
      */
+    /**
+     * The capture's pixel dimensions without decoding it, for the fallback path only.
+     *
+     * The ordinary path reads them off the decoded bitmap instead. This used to run unconditionally
+     * before the real decode, which meant every scan read the same multi-megabyte file twice — once
+     * for two integers the next call was about to produce anyway.
+     */
+    private fun boundsOf(file: File): BitmapFactory.Options =
+        BitmapFactory.Options().also { options ->
+            options.inJustDecodeBounds = true
+            BitmapFactory.decodeFile(file.absolutePath, options)
+        }
+
     private fun parse(
-        text: Text,
-        width: Int,
-        height: Int,
+        document: OcrDocument,
         started: Long,
         full: Boolean = false,
+        /**
+         * What the user framed, when known. Applied only to choose between candidates the parser has
+         * already accepted — never to crop, never to promote a refused reading, never to supply a
+         * basis. See [ScanRegionRelevance].
+         */
+        relevance: NormalizedRegion? = null,
     ): NutritionParseReport {
-        val document = MlKitOcrMapper.toDocument(text, width, height)
-        val report = NutritionTableParser.parseWithDiagnostics(document)
+        val parsed = NutritionTableParser.parseWithDiagnostics(document)
+        val report =
+            ScanRegionRelevance.apply(parsed, relevance, document.width, document.height)
         OcrDiagnosticsLogger.report((System.nanoTime() - started) / 1_000_000, report)
         if (full) OcrDiagnosticsLogger.stillDiagnostics(document, report)
         return report
@@ -189,5 +402,64 @@ class LabelAnalyzer(
         val file: File,
         val region: NormalizedRegion?,
         val onComplete: (NutritionParseReport) -> Unit,
-    )
+        /** Set for the capture-then-confirm path, which needs the document and bitmap kept. */
+        val retaining: ((PassAResult) -> Unit)? = null,
+        val sessionId: Long = 0L,
+    ) {
+        /** Reports failure on whichever channel this request was made through. */
+        fun fail() {
+            val empty = NutritionParseReport(LabelReading.NotFound, emptyList())
+            retaining?.invoke(
+                PassAResult(
+                    sessionId = sessionId,
+                    document = null,
+                    report = empty,
+                    bitmap = null,
+                    evidence = null,
+                    recognitionMs = 0,
+                ),
+            ) ?: onComplete(empty)
+        }
+    }
+}
+
+/**
+ * A completed first recognition, retained so the user's crop can be applied without recognising again.
+ *
+ * ## Why the document is kept rather than the image alone
+ *
+ * The whole point of the preferred architecture is that applying the user's rectangle costs no second
+ * ML Kit pass. Re-recognising a crop is not a neutral clean-up: rescaling changes tokenisation, and on
+ * the Kinder canary it turned the printed `(g)` into `(9)` — a well-formed single-digit carbohydrate
+ * value that beat the real 53,5. Keeping [document] means the crop is applied to *the very elements
+ * Pass A produced*, so no character can change between the whole-frame read and the cropped one.
+ *
+ * ## Lifetime
+ *
+ * [bitmap] is the decoded, EXIF-corrected capture, owned by the receiver from the moment it arrives.
+ * It is deliberately not recycled by the analyzer: the crop screen displays it, and a Strategy B
+ * fallback would crop it at full resolution. Call [recycle] when the capture session ends.
+ */
+data class PassAResult(
+    /**
+     * Echoes the id supplied at capture time.
+     *
+     * The state machine's guard against a race that is otherwise invisible: recognition takes
+     * seconds, so a user who taps Retake mid-recognition would otherwise have the *previous*
+     * capture's result arrive and overwrite the new one. Comparing this against the current session
+     * makes a stale result discardable rather than merely unlikely.
+     */
+    val sessionId: Long,
+    /** Null when recognition failed outright; [report] then carries `NotFound`. */
+    val document: OcrDocument?,
+    /** The whole-frame reading, before any crop is applied. */
+    val report: NutritionParseReport,
+    val bitmap: android.graphics.Bitmap?,
+    /** The debug evidence folder for this capture, or null in release. */
+    val evidence: File?,
+    val recognitionMs: Long,
+) {
+    fun recycle() {
+        bitmap?.takeIf { !it.isRecycled }?.recycle()
+    }
 }

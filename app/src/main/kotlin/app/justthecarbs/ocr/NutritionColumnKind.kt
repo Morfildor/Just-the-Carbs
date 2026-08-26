@@ -151,7 +151,7 @@ object ColumnClassifier {
             // losing the ml column entirely and putting its centre between the two.
             PER_100.findAll(normalizedSpan).forEach { match ->
                 add(
-                    if (match.groupValues[1] == "ml") {
+                    if (match.groupValues[1] in NutritionTerminology.millilitreUnits) {
                         NutritionColumnKind.PER_100_ML
                     } else {
                         NutritionColumnKind.PER_100_G
@@ -252,7 +252,12 @@ object ColumnClassifier {
     /** Words that introduce a column header. One shared list — see NutritionTerminology. */
     private val CONNECTIVES = NutritionTerminology.connectives
 
-    private val PER_100 = Regex("(?:^|\\s)100\\s*(g|ml)(?:$|\\s)")
+    /**
+     * `100 g`, `100g`, `100 gram`, `100 ml`, `100 milliliter` — every spelling
+     * [NutritionTerminology.basisUnitAlternation] carries, longest-first so `gram` is preferred over
+     * the `g` that prefixes it. The trailing boundary is what stops `g` matching inside `gram`.
+     */
+    private val PER_100 = Regex("(?:^|\\s)100\\s*(${NutritionTerminology.basisUnitAlternation})(?:$|\\s)")
     private val REFERENCE_PERCENT = Regex("(?:^|\\s)(?:ri|dv|gda|reference intake|daily value)(?:$|\\s)")
 
     /** Runs against RAW element text — normalization would strip the "%" these depend on. */

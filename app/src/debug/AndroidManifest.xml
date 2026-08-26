@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only additions.
+
+  The FileProvider exists so a developer can export scan evidence (the captured JPEG, the bitmap
+  handed to ML Kit, the recognized text and the parser trace) off the device to diagnose a failure
+  that does not reproduce in the instrumented suite.
+
+  It lives in the DEBUG source set rather than behind a runtime flag on purpose. A provider declared
+  in the main manifest would be present in the shipped APK whether or not any code called it, and
+  this one grants read access to captured photographs of whatever the user pointed the camera at.
+  Being absent from the release manifest is a stronger guarantee than any `if (BuildConfig.DEBUG)`.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.evidence"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/scan_evidence_paths" />
+        </provider>
+    </application>
+
+</manifest>

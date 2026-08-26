@@ -9,6 +9,8 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -26,10 +28,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +54,9 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -60,6 +66,7 @@ import app.justthecarbs.R
 import app.justthecarbs.domain.BarcodeAcceptance
 import app.justthecarbs.domain.BarcodeStabilityTracker
 import app.justthecarbs.ui.components.RecoveryPanel
+import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
 import java.util.concurrent.Executors
 
@@ -140,6 +147,19 @@ private fun CameraPreview(
     // to be waiting that the user can act on — aim it, then hold it.
     var holdSteady by remember { mutableStateOf(false) }
 
+    /**
+     * Set the instant a barcode is accepted, and never cleared.
+     *
+     * The screen used to call `onBarcode` and then keep rendering an unchanged live camera with
+     * "Point the barcode inside the frame" still on it, for as long as the product lookup took. The
+     * scan had succeeded and nothing on screen said so, which reads as the app having missed it —
+     * so the user keeps holding the phone at the shelf, or re-aims, or taps.
+     *
+     * One-way on purpose: acceptance is already latched by an `AtomicBoolean` in the analyzer, so
+     * there is no path back to scanning from here. Navigation away is what ends this state.
+     */
+    var acquired by remember { mutableStateOf(false) }
+
     val executor = remember { Executors.newSingleThreadExecutor() }
     val analyzer = remember {
         BarcodeAnalyzer { acceptance ->
@@ -151,6 +171,7 @@ private fun CameraPreview(
                     // HapticFeedbackConstants.CONFIRM, which needs API 30 and would be silently
                     // inlined as an unsupported constant on minSdk 26.
                     if (hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    acquired = true
                     onBarcode(acceptance.value)
                 }
                 BarcodeAcceptance.Stabilizing -> holdSteady = true
@@ -174,7 +195,7 @@ private fun CameraPreview(
         ) {
             Button(
                 onClick = onEnterManually,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
                 shape = RoundedCornerShape(Space.buttonRadius),
             ) { Text(stringResource(R.string.permission_manual)) }
             TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
@@ -232,7 +253,7 @@ private fun CameraPreview(
             },
         )
 
-        ScanFrame(modifier = Modifier.align(Alignment.Center))
+        ScanFrame(acquired = acquired, modifier = Modifier.align(Alignment.Center))
 
         // Top row: close only. Nothing essential lives up here (§40).
         Row(
@@ -254,18 +275,39 @@ private fun CameraPreview(
                 .padding(Space.m),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = stringResource(
-                    if (holdSteady) R.string.scanner_hint_steady else R.string.scanner_hint_aim,
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Space.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (acquired) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White,
+                    )
+                }
+                Text(
+                    text = stringResource(
+                        when {
+                            // Names the work actually in progress rather than a bare spinner, so
+                            // the wait is attributable to something (§2).
+                            acquired -> R.string.scanner_finding_product
+                            holdSteady -> R.string.scanner_hint_steady
+                            else -> R.string.scanner_hint_aim
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    // Announced on change so a TalkBack user hears the scan land, rather than the
+                    // screen going silent until the next destination arrives.
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
             Spacer(Modifier.height(Space.m))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (torchAvailable) {
+                if (torchAvailable && !acquired) {
                     ScrimIconButton(
                         onClick = {
                             torchOn = !torchOn
@@ -284,6 +326,9 @@ private fun CameraPreview(
                 // what its label said.
                 TextButton(
                     onClick = { showBarcodeDialog = true },
+                    // A lookup is already under way and this screen is about to be replaced;
+                    // opening the manual dialog on top of it would start a second, competing one.
+                    enabled = !acquired,
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .height(52.dp)
@@ -309,15 +354,36 @@ private fun CameraPreview(
  * which is why the drawn frame is narrower than the region that actually gates the scan.
  */
 @Composable
-private fun ScanFrame(modifier: Modifier = Modifier) {
+private fun ScanFrame(acquired: Boolean, modifier: Modifier = Modifier) {
     val accent = MaterialTheme.colorScheme.primary
+    // The frame is the one element already holding the user's gaze, so it is where the "got it"
+    // belongs — no new overlay, no toast, nothing that covers the preview. The fill deepens and a
+    // tick appears; the change is confirmation, not decoration, so it is a single short crossfade
+    // rather than anything that delays the result behind an animation.
+    val fillAlpha by animateFloatAsState(
+        targetValue = if (acquired) 0.30f else 0.08f,
+        animationSpec = tween(Motion.QUICK_MS),
+        label = "scanFrameFill",
+    )
     Box(
         modifier = modifier
             .fillMaxWidth(0.68f)
             .height(180.dp)
-            .background(accent.copy(alpha = 0.08f), RoundedCornerShape(26.dp))
+            .background(accent.copy(alpha = fillAlpha), RoundedCornerShape(26.dp))
             .border(3.dp, accent, RoundedCornerShape(26.dp)),
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        // Never colour alone (§39): the hint line below states the same fact in words, and the tick
+        // carries no content description because it would duplicate that line for TalkBack.
+        if (acquired) {
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(56.dp),
+            )
+        }
+    }
 }
 
 @Composable
@@ -375,7 +441,7 @@ private fun PermissionRationale(
         if (!showSettingsHint) {
             Button(
                 onClick = onAllow,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
                 shape = RoundedCornerShape(Space.buttonRadius),
             ) { Text(stringResource(R.string.permission_allow)) }
             Spacer(Modifier.height(Space.s))
@@ -383,7 +449,7 @@ private fun PermissionRationale(
 
         Button(
             onClick = onEnterManually,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
+            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
             shape = RoundedCornerShape(Space.buttonRadius),
         ) { Text(stringResource(R.string.permission_manual)) }
 

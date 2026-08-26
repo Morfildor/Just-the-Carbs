@@ -30,9 +30,15 @@ data class ParsedServingSize(
  */
 object ServingSizeParser {
 
-    /** count + unit word, with an optional bracketed weight. The weight group is now optional. */
+    /**
+     * count + unit word, with an optional bracketed weight. The weight group is optional.
+     *
+     * The unit accepts every spelling in [BasisUnitSpellings], not just `g`/`ml`: Open Food Facts'
+     * Dutch `serving_size` text writes it out ("1 plak (20 gram)"), and requiring the abbreviation
+     * meant the weight was dropped and the countable portion silently lost its size.
+     */
     private val DESCRIPTOR = Regex(
-        """^\s*(?:(\d+(?:[.,]\d+)?)\s*)?(\p{L}+)\s*(?:[(,=]?\s*(\d+(?:[.,]\d+)?)\s*(g|ml)\)?\s*)?$""",
+        """^\s*(?:(\d+(?:[.,]\d+)?)\s*)?(\p{L}+)\s*(?:[(,=]?\s*(\d+(?:[.,]\d+)?)\s*(${BasisUnitSpellings.alternation})\)?\s*)?$""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -63,6 +69,26 @@ object ServingSizeParser {
         // Dutch yoghurt package printed its per-serving column header as "schaaltje (150 g)"; the
         // word is ordinary Dutch for a single-serve pot, not specific to that brand.
         "schaaltje" to PortionUnitKind.SERVING, "schaaltjes" to PortionUnitKind.SERVING,
+        // Added 2026-08-26 for the Dutch-recognition pass. Without these a Dutch "per plak" column
+        // header is not a serving column, so the app reads the per-100 figure correctly and simply
+        // never offers the countable portion the package printed — a lost feature rather than a
+        // wrong number, which is why it went unnoticed.
+        //
+        // "plak" (a cut slice of cheese, meat or cake) is distinct from "sneetje" (a slice of bread)
+        // in Dutch but means the same thing to this app, so both map to SLICE.
+        "plak" to PortionUnitKind.SLICE, "plakken" to PortionUnitKind.SLICE,
+        "plakje" to PortionUnitKind.SLICE, "plakjes" to PortionUnitKind.SLICE,
+        "snee" to PortionUnitKind.SLICE, "sneden" to PortionUnitKind.SLICE,
+        "wafel" to PortionUnitKind.BISCUIT, "wafels" to PortionUnitKind.BISCUIT,
+        "biscuitje" to PortionUnitKind.BISCUIT, "biscuitjes" to PortionUnitKind.BISCUIT,
+        "blokje" to PortionUnitKind.PIECE, "blokjes" to PortionUnitKind.PIECE,
+        "bol" to PortionUnitKind.ROLL, "bollen" to PortionUnitKind.ROLL,
+        // Vessels, mapped to SERVING for the same reason "schaaltje" is: they name what the portion
+        // was served in, not a countable item with a shape of its own.
+        "beker" to PortionUnitKind.SERVING, "bekers" to PortionUnitKind.SERVING,
+        "glas" to PortionUnitKind.SERVING, "glazen" to PortionUnitKind.SERVING,
+        "eetlepel" to PortionUnitKind.SERVING, "eetlepels" to PortionUnitKind.SERVING,
+        "theelepel" to PortionUnitKind.SERVING, "theelepels" to PortionUnitKind.SERVING,
     )
 
     /** Recognises a unit word in isolation — used by the OCR column-header path (spec §4). */
@@ -96,14 +122,9 @@ object ServingSizeParser {
         } else {
             val weight = PortionParser.parse(weightText) ?: return null
             if (weight.signum() <= 0) return null
-            AmountWithBasis(
-                amount = weight,
-                basis = if (unit.equals("ml", ignoreCase = true)) {
-                    NutritionBasis.PER_100_ML
-                } else {
-                    NutritionBasis.PER_100_G
-                },
-            )
+            // Never defaulted to grams: the regex only matched because the unit is one this app
+            // represents, so a null here would mean the two lists had drifted apart.
+            AmountWithBasis(amount = weight, basis = BasisUnitSpellings.basisFor(unit) ?: return null)
         }
 
         return ServingDescriptor(kind = kind, count = count, weightOrVolume = weightOrVolume, rawText = raw)

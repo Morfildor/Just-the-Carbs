@@ -64,18 +64,22 @@ class PackageQuantityParserTest {
     }
 
     @Test
-    fun `infers a millilitre basis from a liquid quantity`() {
-        assertEquals(NutritionBasis.PER_100_ML, PackageQuantityParser.inferBasis("1 l"))
+    fun `a parsed quantity still carries its basis`() {
+        assertEquals(NutritionBasis.PER_100_ML, PackageQuantityParser.parse("1 l")!!.basis)
+        assertEquals(NutritionBasis.PER_100_G, PackageQuantityParser.parse("500 g")!!.basis)
     }
 
+    /**
+     * `inferBasis` used to live here and answered `PER_100_G` for anything it could not read. It was
+     * removed in the 2026-08-26 release pass; the three cases that covered it now live in
+     * [PackageBasisResolverTest], which asserts the opposite outcome — unreadable means unresolved.
+     *
+     * This test exists so the removal is a stated fact rather than an absence someone might restore
+     * by accident: a total function from quantity text to a basis is the defect, not a convenience.
+     */
     @Test
-    fun `infers a gram basis from a solid quantity`() {
-        assertEquals(NutritionBasis.PER_100_G, PackageQuantityParser.inferBasis("500 g"))
-    }
-
-    @Test
-    fun `falls back to grams when the quantity cannot be read`() {
-        assertEquals(NutritionBasis.PER_100_G, PackageQuantityParser.inferBasis(null))
-        assertEquals(NutritionBasis.PER_100_G, PackageQuantityParser.inferBasis("family pack"))
+    fun `unreadable quantities produce no quantity at all`() {
+        assertNull(PackageQuantityParser.parse(null))
+        assertNull(PackageQuantityParser.parse("family pack"))
     }
 }

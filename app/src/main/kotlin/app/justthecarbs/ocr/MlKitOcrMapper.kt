@@ -17,6 +17,15 @@ object MlKitOcrMapper {
                                     box = OcrBox(box.left, box.top, box.right, box.bottom),
                                     blockId = blockIndex,
                                     lineId = lineIndex,
+                                    // Retained rather than discarded (§7). NaN is mapped to null so
+                                    // downstream code has one "unknown" representation and can never
+                                    // accidentally compare against a NaN, which is false for every
+                                    // comparison including equality. Measured as always populated on
+                                    // this engine, but an engine swap must not be able to poison the
+                                    // resolver silently.
+                                    confidence = element.confidence.takeUnless { it.isNaN() },
+                                    recognizedLanguage = element.recognizedLanguage
+                                        ?.takeUnless { it.isBlank() || it == "und" },
                                 ),
                             )
                         }

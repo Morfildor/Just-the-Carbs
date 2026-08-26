@@ -482,6 +482,23 @@ fun JustTheCarbsNavHost(
             }
             val productExists = productExistsCheck == true
 
+            /**
+             * Open manual entry pre-filled with a detected figure, replacing the scanner.
+             *
+             * Shared by *Use* (when there is no product to compare against) and *Correct*, which
+             * navigate identically. Written once rather than twice partly for the obvious reason and
+             * partly for a mundane one: two copies of this expression nested inside sibling lambdas
+             * reproducibly crashed `lintAnalyzeDebug` with an internal UAST resolver failure
+             * (`resolveSyntheticJavaPropertyAccessorCall`, on the enum's synthetic `name` accessor).
+             * The behaviour is identical either way; only lint could tell the two apart.
+             */
+            fun openManualEntryWith(carbs: BigDecimal, basis: NutritionBasis) {
+                val route = Routes.manual(barcode, carbs.toPlainString(), basis.name)
+                navController.navigate(route) {
+                    popUpTo(Routes.LABEL_SCAN) { inclusive = true }
+                }
+            }
+
             LabelScannerScreen(
                 onUseValue = { carbs, basis ->
                     // For a product already on the calculator, a label reading comes back as a
@@ -502,9 +519,7 @@ fun JustTheCarbsNavHost(
                         }
                         navController.popBackStack()
                     } else {
-                        navController.navigate(
-                            Routes.manual(barcode, carbs.toPlainString(), basis.name),
-                        ) { popUpTo(Routes.LABEL_SCAN) { inclusive = true } }
+                        openManualEntryWith(carbs, basis)
                     }
                 },
                 onEditManually = {
@@ -512,6 +527,12 @@ fun JustTheCarbsNavHost(
                         popUpTo(Routes.LABEL_SCAN) { inclusive = true }
                     }
                 },
+                // *Correct* carries the detected figure into the same field the user would
+                // otherwise have to fill from scratch. It uses the create route even when
+                // `compare` is true: correcting a reading means the user has decided the OCR value
+                // is wrong, and a comparison of a value they have already rejected is not what they
+                // asked for — they asked to type the right one.
+                onCorrectValue = ::openManualEntryWith,
                 onClose = { navController.popBackStack() },
                 // Two genuinely different situations, decided by whether the product row actually
                 // exists rather than by whether the barcode string is non-empty (correction §2).

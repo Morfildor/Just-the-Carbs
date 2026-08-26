@@ -66,7 +66,8 @@ class OpenFoodFactsSearchTest {
     private val liveShapedResponse = """
         {"count":243,"page":1,"page_size":2,"products":[
           {"code":"8710496979125","product_name":"Chocoladehagel puur","brands":"De Ruijter",
-           "quantity":"390 gram","nutriments":{"carbohydrates_100g":67},
+           "quantity":"390 gram","product_quantity":390,"product_quantity_unit":"g",
+           "nutriments":{"carbohydrates_100g":67},
            "image_front_url":"https://images.openfoodfacts.org/images/products/front.400.jpg",
            "serving_size":"20 gram"},
           {"code":"8718906716223","product_name":"Puur Hagelslag","brands":"Albert Heijn",
@@ -88,7 +89,87 @@ class OpenFoodFactsSearchTest {
         assertEquals("De Ruijter", first.brand)
         assertEquals("390 gram", first.packageQuantity)
         assertEquals(0, BigDecimal("67").compareTo(first.carbsPer100!!))
+        // "390 gram" is a spelling this app's own parser deliberately does not teach. OFF normalises
+        // it upstream, so the structured unit — which a real response carries and this fixture now
+        // reproduces — is what establishes the basis.
         assertEquals(NutritionBasis.PER_100_G, first.basis)
+    }
+
+    // ---- release pass §4: search uses the same basis rule as a barcode lookup -------------------
+    //
+    // Search and lookup share `PackageBasisResolver`, and this block pins that they share its
+    // *outcome* too. The consequence differs by path — a lookup refuses the product, a hit simply
+    // shows no number — but neither may print a figure under a unit nothing established.
+
+    private suspend fun singleHit(product: String) =
+        hits(dataSource.search("x")).also { assertEquals(1, it.size) }.first()
+
+    @Test
+    fun `a search hit with a structured millilitre unit carries a millilitre basis`() = runTest {
+        respond(
+            """{"count":1,"products":[
+               {"code":"123","product_name":"Sinaasappelsap","quantity":"1,5 liter",
+                "product_quantity":1500,"product_quantity_unit":"ml",
+                "nutriments":{"carbohydrates_100g":9.4}}]}""",
+        )
+
+        val hit = singleHit("")
+
+        assertEquals(NutritionBasis.PER_100_ML, hit.basis)
+        assertEquals(0, BigDecimal("9.4").compareTo(hit.carbsPer100!!))
+    }
+
+    @Test
+    fun `a search hit for a multipack carries the multipack's basis`() = runTest {
+        respond(
+            """{"count":1,"products":[
+               {"code":"123","product_name":"Cola","quantity":"6 x 33 cl",
+                "nutriments":{"carbohydrates_100g":10.6}}]}""",
+        )
+
+        val hit = singleHit("")
+
+        assertEquals(NutritionBasis.PER_100_ML, hit.basis)
+        assertEquals(0, BigDecimal("10.6").compareTo(hit.carbsPer100!!))
+    }
+
+    /**
+     * The search half of the §3 rule.
+     *
+     * A hit is not refused — the user may well recognise the package, and dropping it would hide a
+     * product that exists. What it must not do is print "67 g / 100 g" for a record that never said
+     * grams. The number goes with the basis, so the card falls back to its existing "no value" copy
+     * and selecting the hit runs a normal lookup, which asks the user properly.
+     */
+    @Test
+    fun `a search hit with no establishable basis shows no carbohydrate figure`() = runTest {
+        respond(
+            """{"count":1,"products":[
+               {"code":"123","product_name":"Onbekend","quantity":"family pack",
+                "nutriments":{"carbohydrates_100g":67}}]}""",
+        )
+
+        val hit = singleHit("")
+
+        assertNull("the basis was never established", hit.basis)
+        assertNull("so the figure must not be shown under an assumed unit", hit.carbsPer100)
+        assertEquals("but the hit is still selectable", "Onbekend", hit.name)
+        assertEquals("family pack", hit.packageQuantity)
+    }
+
+    @Test
+    fun `a search hit with an unsupported structured unit shows no carbohydrate figure`() = runTest {
+        respond(
+            """{"count":1,"products":[
+               {"code":"123","product_name":"Imported","quantity":"16 oz",
+                "product_quantity":16,"product_quantity_unit":"oz",
+                "nutriments":{"carbohydrates_100g":67}}]}""",
+        )
+
+        val hit = singleHit("")
+
+        assertNull(hit.basis)
+        assertNull(hit.carbsPer100)
     }
 
     @Test

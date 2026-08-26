@@ -7,6 +7,7 @@ import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductImageType
+import app.justthecarbs.domain.UnusableReason
 import app.justthecarbs.domain.VerificationStatus
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -117,6 +118,7 @@ class OpenFoodFactsDataSourceTest {
             {"product":{
               "product_name":"Chocolate",
               "lang":"de",
+              "quantity":"400 g",
               "nutriments":{"carbohydrates_100g":48.2},
               "selected_images":{
                 "front":{"display":{
@@ -155,7 +157,7 @@ class OpenFoodFactsDataSourceTest {
     @Test
     fun `selected image fallback is deterministic when preferred languages are absent`() = runTest {
         respond(
-            """{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":1.0},
+            """{"product":{"product_name":"X","quantity":"400 g","nutriments":{"carbohydrates_100g":1.0},
                "selected_images":{"front":{"display":{
                  "sv":"https://images.openfoodfacts.org/front-sv.400.jpg",
                  "fr":"https://images.openfoodfacts.org/front-fr.400.jpg"}}}}}
@@ -171,7 +173,7 @@ class OpenFoodFactsDataSourceTest {
 
     @Test
     fun `sends the identifying User-Agent that Open Food Facts requires`() = runTest {
-        respond("""{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":1.0}}}""")
+        respond("""{"product":{"product_name":"X","quantity":"400 g","nutriments":{"carbohydrates_100g":1.0}}}""")
 
         dataSource.fetch(barcode)
 
@@ -181,7 +183,7 @@ class OpenFoodFactsDataSourceTest {
 
     @Test
     fun `requests only the fields the app actually uses`() = runTest {
-        respond("""{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":1.0}}}""")
+        respond("""{"product":{"product_name":"X","quantity":"400 g","nutriments":{"carbohydrates_100g":1.0}}}""")
 
         dataSource.fetch(barcode)
 
@@ -195,7 +197,7 @@ class OpenFoodFactsDataSourceTest {
     @Test
     fun `prefers the localized Dutch product name`() = runTest {
         respond(
-            """{"product":{"product_name":"Chocolate sprinkles","product_name_nl":"Hagelslag puur",
+            """{"product":{"product_name":"Chocolate sprinkles","product_name_nl":"Hagelslag puur","quantity":"400 g",
                "nutriments":{"carbohydrates_100g":48.2}}}""",
         )
 
@@ -269,7 +271,7 @@ class OpenFoodFactsDataSourceTest {
     @Test
     fun `a well-formed serving size becomes a portion unit candidate`() = runTest {
         respond(
-            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0},
+            """{"product":{"product_name":"Bread","quantity":"400 g","nutriments":{"carbohydrates_100g":42.0},
                "serving_size":"1 slice (36 g)"}}""",
         )
 
@@ -289,7 +291,7 @@ class OpenFoodFactsDataSourceTest {
     @Test
     fun `case B - no weight but per-serving carbs yields a direct-carb unit`() = runTest {
         respond(
-            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0,
+            """{"product":{"product_name":"Bread","quantity":"400 g","nutriments":{"carbohydrates_100g":42.0,
                "carbohydrates_serving":25.2},"serving_size":"2 slices"}}""",
         )
 
@@ -304,7 +306,7 @@ class OpenFoodFactsDataSourceTest {
     @Test
     fun `case C - a printed weight wins even when per-serving carbs are also present`() = runTest {
         respond(
-            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0,
+            """{"product":{"product_name":"Bread","quantity":"400 g","nutriments":{"carbohydrates_100g":42.0,
                "carbohydrates_serving":25.2},"serving_size":"2 slices (70 g)"}}""",
         )
 
@@ -320,7 +322,7 @@ class OpenFoodFactsDataSourceTest {
     @Test
     fun `case D - neither a weight nor per-serving carbs yields no candidate`() = runTest {
         respond(
-            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0},
+            """{"product":{"product_name":"Bread","quantity":"400 g","nutriments":{"carbohydrates_100g":42.0},
                "serving_size":"1 slice"}}""",
         )
 
@@ -334,7 +336,7 @@ class OpenFoodFactsDataSourceTest {
     @Test
     fun `a corrupt per-serving carbohydrate figure is refused`() = runTest {
         respond(
-            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0,
+            """{"product":{"product_name":"Bread","quantity":"400 g","nutriments":{"carbohydrates_100g":42.0,
                "carbohydrates_serving":50000.0},"serving_size":"2 slices"}}""",
         )
 
@@ -346,7 +348,7 @@ class OpenFoodFactsDataSourceTest {
     @Test
     fun `an ambiguous serving size yields no candidate, not a guess`() = runTest {
         respond(
-            """{"product":{"product_name":"Bread","nutriments":{"carbohydrates_100g":42.0},
+            """{"product":{"product_name":"Bread","quantity":"400 g","nutriments":{"carbohydrates_100g":42.0},
                "serving_size":"approx. 35 g"}}""",
         )
 
@@ -370,22 +372,174 @@ class OpenFoodFactsDataSourceTest {
 
     @Test
     fun `no serving_size field yields no candidate`() = runTest {
-        respond("""{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":1.0}}}""")
+        respond("""{"product":{"product_name":"X","quantity":"400 g","nutriments":{"carbohydrates_100g":1.0}}}""")
 
         val result = dataSource.fetch(barcode) as ProductFetchResult.Found
 
         assertNull(result.portionUnitCandidate)
     }
 
+    // ---- release pass §3/§4: the basis is proven or the product is refused ---------------------
+    //
+    // This block replaces a test called "an unreadable package quantity still yields a usable
+    // product", which asserted that `quantity: "family pack"` produced a PER_100_G product. That was
+    // the defect written down as an expectation: the app decided the user should measure in grams on
+    // the strength of a string that says nothing about units.
+
+    private suspend fun basisOf(json: String): NutritionBasis {
+        respond(json)
+        return found(dataSource.fetch(barcode)).basis
+    }
+
+    private suspend fun assertRefusedForUnknownBasis(json: String) {
+        respond(json)
+        assertEquals(
+            "expected a refusal, not an assumed basis",
+            ProductFetchResult.Unusable(barcode, UnusableReason.UNKNOWN_BASIS),
+            dataSource.fetch(barcode),
+        )
+    }
+
     @Test
-    fun `an unreadable package quantity still yields a usable product`() = runTest {
-        respond("""{"product":{"product_name":"X","quantity":"family pack",
-                   "nutriments":{"carbohydrates_100g":48.2}}}""")
+    fun `structured product_quantity_unit g gives a gram basis`() = runTest {
+        assertEquals(
+            NutritionBasis.PER_100_G,
+            basisOf(
+                """{"product":{"product_name":"X","quantity":"390 gram","product_quantity":390,
+                   "product_quantity_unit":"g","nutriments":{"carbohydrates_100g":48.2}}}""",
+            ),
+        )
+    }
+
+    @Test
+    fun `structured product_quantity_unit ml gives a millilitre basis`() = runTest {
+        assertEquals(
+            NutritionBasis.PER_100_ML,
+            basisOf(
+                """{"product":{"product_name":"X","quantity":"1,5 liter","product_quantity":1500,
+                   "product_quantity_unit":"ml","nutriments":{"carbohydrates_100g":9.4}}}""",
+            ),
+        )
+    }
+
+    /**
+     * OFF types this field as a bare number in some records and a quoted string in others. Both must
+     * parse: a strictly typed property throws on whichever form it was not declared for, and this
+     * app reports a `SerializationException` as *malformed response* — a whole failed lookup caused
+     * by a field's quoting.
+     */
+    @Test
+    fun `product_quantity parses whether OFF sends a number or a string`() = runTest {
+        assertEquals(
+            NutritionBasis.PER_100_ML,
+            basisOf(
+                """{"product":{"product_name":"X","product_quantity":"1500",
+                   "product_quantity_unit":"ml","nutriments":{"carbohydrates_100g":9.4}}}""",
+            ),
+        )
+        assertEquals(
+            NutritionBasis.PER_100_ML,
+            basisOf(
+                """{"product":{"product_name":"X","product_quantity":1500.0,
+                   "product_quantity_unit":"ml","nutriments":{"carbohydrates_100g":9.4}}}""",
+            ),
+        )
+    }
+
+    /** An explicit JSON null must reach the resolver as "absent", not as a parse failure. */
+    @Test
+    fun `an explicitly null product_quantity does not break the lookup`() = runTest {
+        assertEquals(
+            NutritionBasis.PER_100_G,
+            basisOf(
+                """{"product":{"product_name":"X","quantity":"500 g","product_quantity":null,
+                   "product_quantity_unit":null,"nutriments":{"carbohydrates_100g":48.2}}}""",
+            ),
+        )
+    }
+
+    @Test
+    fun `a centilitre multipack resolves millilitres and no package size`() = runTest {
+        respond(
+            """{"product":{"product_name":"Cola","quantity":"6 x 33 cl",
+               "nutriments":{"carbohydrates_100g":10.6}}}""",
+        )
 
         val product = found(dataSource.fetch(barcode))
 
+        assertEquals(NutritionBasis.PER_100_ML, product.basis)
+        assertNull("whether the pack is one bottle or six is still not decided", product.packageAmount)
+    }
+
+    @Test
+    fun `a millilitre multipack resolves millilitres and no package size`() = runTest {
+        respond(
+            """{"product":{"product_name":"Juice","quantity":"6 x 250 ml",
+               "nutriments":{"carbohydrates_100g":9.4}}}""",
+        )
+
+        val product = found(dataSource.fetch(barcode))
+
+        assertEquals(NutritionBasis.PER_100_ML, product.basis)
         assertNull(product.packageAmount)
-        assertEquals(NutritionBasis.PER_100_G, product.basis)
+    }
+
+    @Test
+    fun `no quantity at all is refused rather than assumed to be grams`() = runTest {
+        assertRefusedForUnknownBasis(
+            """{"product":{"product_name":"X","nutriments":{"carbohydrates_100g":48.2}}}""",
+        )
+    }
+
+    @Test
+    fun `a malformed quantity is refused rather than assumed to be grams`() = runTest {
+        assertRefusedForUnknownBasis(
+            """{"product":{"product_name":"X","quantity":"family pack",
+               "nutriments":{"carbohydrates_100g":48.2}}}""",
+        )
+    }
+
+    @Test
+    fun `an unsupported structured unit is refused rather than assumed to be grams`() = runTest {
+        assertRefusedForUnknownBasis(
+            """{"product":{"product_name":"X","quantity":"16 oz","product_quantity":16,
+               "product_quantity_unit":"oz","nutriments":{"carbohydrates_100g":48.2}}}""",
+        )
+    }
+
+    /**
+     * A record with no number at all reports *no value*, not *which unit?*. Ordering matters here:
+     * both facts are missing, and asking someone to choose grams or millilitres for a value that
+     * does not exist sends them looking for a distinction that changes nothing.
+     */
+    @Test
+    fun `a missing value with a missing basis reports the missing value`() = runTest {
+        respond("""{"product":{"product_name":"X","nutriments":{}}}""")
+
+        assertEquals(
+            ProductFetchResult.Unusable(barcode, UnusableReason.NO_CARB_VALUE),
+            dataSource.fetch(barcode),
+        )
+    }
+
+    /**
+     * The refusal must be a refusal, not a quietly degraded product. Nothing may reach the caller
+     * carrying a value the app could not place.
+     */
+    @Test
+    fun `an unresolved basis never produces a Found result`() = runTest {
+        for (quantity in listOf("", "family pack", "1 bottle", "12 pieces", "assorted")) {
+            respond(
+                """{"product":{"product_name":"X","quantity":"$quantity",
+                   "nutriments":{"carbohydrates_100g":48.2}}}""",
+            )
+            val result = dataSource.fetch(barcode)
+            assertTrue(
+                "quantity=\"$quantity\" produced $result",
+                result is ProductFetchResult.Unusable &&
+                    result.reason == UnusableReason.UNKNOWN_BASIS,
+            )
+        }
     }
 
     // ---- §36: every failure mode gets its own answer --------------------------------------------

@@ -120,7 +120,8 @@ instrumented tests (up from 95), lint clean.
   control that `performClick()` silently no-ops on), not app behaviour. Full suite is green.
 - ✅ **Dependency vulnerability scan run** — `tools/dependency-scan.sh`, 226 shipped artifacts,
   0 known vulnerabilities (2026-08-14). Point-in-time; re-run before release.
-- ❌ Not done: release signing, AAB, systematic multi-device testing
+- ✅ **Release signing done 2026-08-26** — real owner upload key; signed AAB built. See the
+  2026-08-26 section below. ❌ Still not done: keystore backup, systematic multi-device testing
 
 ## Countable portions (2026-08-14)
 
@@ -483,6 +484,914 @@ then the pre-release half of it implemented. Review:
 - **Minor:** `meal_bar_summary` now says "g carbs" not bare "g" (one-vocabulary rule); dead
   `settings_results_whole` / `settings_results_decimal` removed from both locales — `ResultStyle`
   has two entries and only the `_first` variants were ever referenced.
+
+## Production-hardening pass (2026-08-25) — READ FIRST
+
+Not committed. Builds on the same uncommitted working tree as the sections below; nothing about the
+calculation, schema, migrations, the §10 lookup priority or **barcode detection** changed.
+
+### The basis coin-flip is gone, and column provenance is now a field
+
+`CandidateChoice` had a branch, for a candidate whose basis was never established, offering two
+buttons — *Use / 100 g* and *Use / 100 ml* — each of which **committed the value immediately**. That
+is the one question this app must never ask. Bare grams on a nutrition table can equally be per
+100 g, per 100 ml or **per serving**, so the card offered two answers to a three-way question and
+whichever the user picked became indistinguishable from a value the parser had actually placed. It
+now shows the number, says plainly that what it is measured *per* was not read, and routes to manual
+entry pre-filled — where the basis is a visible, changeable chip rather than a one-tap commitment.
+
+The branch was **unreachable from the automatic path** when found (both candidate factories take a
+non-null basis) and is kept as a latent-hazard closure, not a live bug fix. Do not restore the two
+buttons. `ocr_use_per_100_g` / `_ml` are still used by `AssistedReadingScreen`, where the user has
+*tapped the row themselves* and is being asked deliberately — that is a different question.
+
+`CarbCandidate.column: NutritionColumnKind?` makes the provenance checkable. Null means "no column
+was involved" (an inline declaration or prose sentence), **not** "unknown column" — that is
+`UNKNOWN`, and a cell in one never becomes a candidate. The `init` block makes `PER_SERVING`,
+`REFERENCE_PERCENT` and `UNKNOWN` candidates *unconstructible*, so the guarantee is type-level rather
+than a rule someone must remember. `CandidateColumnProvenanceTest` (8 JVM cases) pins it, and states
+the safety invariant in prose: **a safe non-result is better than a confidently wrong carbohydrate
+value.**
+
+### Scan latency: the evidence recorder was the bottleneck, and it is now off the path
+
+`ScanEvidenceRecorder.recordCapture` copied a ~3.5 MB JPEG and `recordPassABitmap` PNG-encoded a
+~24 MB bitmap, **synchronously, between the parse finishing and the user seeing anything**. That is
+most of the ~3.27 s of a 3.55 s device scan that `ScanTrace` measured outside the recognizer.
+
+- `consumeCapture` **moves** the file (`renameTo` within `cacheDir`) instead of copying it, and
+  returns whether the caller must still delete it. In release it returns false without touching
+  anything and the delete runs exactly as before.
+- `recordPassAImageAsync` encodes on a background daemon thread, **after** the result handover, and
+  re-decodes from the moved `capture.jpg` rather than touching the live bitmap. That second part is
+  a correctness fix, not just a scheduling one: the bitmap's ownership transfers to the crop screen,
+  which recycles it on Retake, so encoding it in the background races a recycle into a native crash.
+
+**A `by lazy` on an `object` breaks the release privacy check.** The background writer started as
+`private val writer by lazy { … }` and that alone moved `ScanEvidenceRecorder` from absent to
+**present** in release `mapping.txt` — R8 correctly stripped every method but had to keep `<clinit>`
+for the `Lazy` field, and with it the class and its `ThreadFactory` lambda. A plain null-initialised
+`@Volatile var` plus a `writer()` accessor folds away instead. Now `R8$$REMOVED$$CLASS$$`.
+**When checking these barriers, `R8$$REMOVED$$CLASS$$` on the right-hand side means removed** — a
+mapping to a real short name like `ab3` is what "retained" looks like.
+
+### Other latency work
+
+- `SelectedRegionRecognizer` built and closed a **new ML Kit client per call**, charging the user for
+  native detector setup on the one tap where they are already waiting, and guaranteeing the next tap
+  pays it again. One process-lifetime client now, never closed — unlike `LabelAnalyzer`'s, which
+  belongs to a camera session and is correctly closed with it.
+- Its timeout went 8 s → **5 s**. Deliberately *not* down to the ~2 s the measurements suggest: this
+  is a hang guard whose only effect in the normal case is nothing at all, and setting it near the
+  expected duration converts "slow phone" into "second opinion silently unavailable" — a quality
+  regression bought with a latency win the user never experiences. Unverified on low-end hardware.
+- `readSelectedTable` moved from `Dispatchers.Default` to **`Dispatchers.IO`**. Strategy B parks a
+  thread on a `CountDownLatch`; Default is CPU-count-sized and meant for work that never blocks.
+- Shutter-to-file is now logged (`acquisition …ms`). It happens entirely outside `analyzeStill`, so
+  `ScanTrace` could not see it and the evidence bundles had a hole exactly where sensor readout,
+  JPEG encode and file write live.
+
+### Lookup single-flight, and a stale-result overwrite
+
+`ProductViewModel.load`'s guard tested `product != null` — precisely the field a lookup that has
+*started but not finished* has not written. Two calls close together both saw null and both went to
+the network, against a 15 reads/min/IP budget. Worse, both completion branches write state
+unconditionally, so a **slow abandoned lookup landing after a fast current one put the previous
+product on screen under the new scan's barcode**. Now a `lookupJob`: same barcode in flight → join;
+different barcode → cancel the old one.
+
+`ProductLookupSingleFlightTest` pins both. **Verified non-vacuous by negative control** — with the
+guard and the cancel commented out, both cases fail. The overwrite case needs a **per-barcode** delay
+in the fake: with one shared delay the two lookups complete in start order and the test passes
+without any cancellation whatever.
+
+### A lint crash that is a lint bug, not a code defect
+
+`lintAnalyzeDebug` died with `Unexpected failure … (this is a bug in lint)` —
+`resolveSyntheticJavaPropertyAccessorCall` on `JustTheCarbsNavHost.kt`. Isolated by swapping in
+HEAD's copy of that one file, which lints clean: the trigger was the previous session's 10-line
+`onCorrectValue` addition, a second nested lambda containing the same `basis.name` navigation
+expression as its sibling. Hoisting both into one local `openManualEntryWith` function fixes it.
+Behaviour is identical; only lint could tell the two forms apart. **Do not chase this as a code
+error, and do not suppress it** — deduplicating the expression is the fix.
+
+### Verified this pass
+
+JVM **726/726** (0 failures, 0 errors, **0 skipped**, counted from JUnit XML), lint **exit 0**, debug
+APK, minified release APK (65 MB) and **release AAB** (35 MB) all build from `clean`.
+
+Release R8 barriers re-checked. `ScanEvidenceExport` and `OcrDiagnosticsReport` have no mapping entry
+at all; `ScanEvidenceRecorder` maps to `R8$$REMOVED$$CLASS$$`. `UnitMarkerFilter` and
+`CandidateProvenance` are retained as real classes. `MergedTotalRowRecovery` also reads
+`R8$$REMOVED$$CLASS$$` — that is the **inlined-not-dropped** case this file already warns about for
+`ElementRegionFilter` and `SelectedTableReader`, not a stripped safety rule: it is a single-function
+object on the answer path, inlined into the interpreter. Do not read that marker as "the feature
+shipped disabled" without checking behaviour.
+
+**Still NOT verified on a physical device — and the whole point of the latency work is a device
+number.** The before figure (3.55 s median / 8.1 s worst) is measured; the after figure is not. Also
+unverified on hardware: the 5 s Strategy B bound on a low-end phone, and the async evidence writer
+under repeated rapid captures.
+
+## Dutch label recognition (2026-08-26) — READ FIRST
+
+Owner instruction: the **UI stays English**, and **scanning Dutch packaging must work superbly** —
+"the app can't detect carbs text in Dutch very well, especially nutritional table scan." It could
+not, and the reasons were vocabulary, not architecture. No parser rule was relaxed and no threshold
+was tuned; the real-image corpus is unchanged.
+
+**Do not conflate the two halves.** English UI strings and Dutch *input recognition* are separate
+decisions (owner decision 10). `values-nl/strings.xml` is gone; `ServingSizeParser`'s Dutch words,
+`product_name_nl` preference and everything below are input recognition and are being **extended**.
+
+### Measure first — and check the harness before believing it
+
+`DutchLabelDiagnosticTest` (JVM, prints, asserts almost nothing) runs printed Dutch label forms
+through the real interpreter and reports the outcome per form. `DutchNutritionTableTest` asserts what
+it found. Shared geometry lives in `DutchLabelFixtures`.
+
+**The first version of that harness produced six false failures.** It laid every header word
+left-to-right from one origin, so `Voedingswaarde per 100 g` pushed its own `per 100 g` hundreds of
+pixels right of the values it heads, and every long Dutch header "failed". Acting on that would have
+meant tuning the parser against a picture no package resembles — the same class of error as the
+geometric regression test that turned out to be measuring the soft keyboard. **A header phrase is
+centred over the column it describes; a leading noun sits left, in the label column.**
+
+The same applies to the merged-row fixture: laying the child to the *right* of the total's value puts
+its number in no column at all, so every case passes because the value was unplaceable. Modelling the
+safe version of a hazard proves nothing. The child keeps the **same value column**, with boxes
+overlapping 25 of 40 px — the geometry the 2026-08-16 chaining bug produced.
+
+### Three findings, all measured before and after
+
+1. **`per 100 gram` resolved no column, so the scan returned `NotFound`** with a correct value on a
+   correct total row. `per 100 milliliter` likewise. **Five** places each held a private `g|ml`
+   literal, and fixing `ColumnClassifier` alone did nothing: `RowClassifier` must type the row
+   `HEADER` before the column vocabulary is ever consulted. One shared
+   `domain/BasisUnitSpellings` now feeds `ColumnClassifier`, `RowClassifier`, `InlineBasisSpans`,
+   `ProseNutritionReader`, `ServingWeightAssociator`, `NutritionTableInterpreter` and
+   `ServingSizeParser`. It lives in `domain/` because `ServingSizeParser` is there and `domain/` may
+   not depend on `ocr/`. Only spellings of the two bases the app *has* — an ounce still resolves
+   nothing, pinned by a test.
+2. **Dutch child-nutrient names were missing**, and the measured consequence on a merged row was
+   `Ambiguous [62.0, 35.0]` — the app asking someone about to dose insulin to choose between the
+   total and the sugars figure with nothing on screen to say which is which. Not a confident-wrong
+   (the architecture held), but not acceptable either. Dutch prints **`sacharose`** where English
+   prints `sucrose`, and uses transparent compounds — **`melksuiker`** (lactose), **`druivensuiker`**
+   (dextrose), **`vruchtensuiker`** (fructose) — that share no stem with their Latin equivalents, so
+   the shared English list could never have covered them. Also added: `suikeralcoholen`,
+   `meervoudige alcoholen`, `voedingsvezel` (singular), `vezelstoffen`, `zetmelen`, `glucosestroop`.
+   All now type `CARBOHYDRATE_CHILD`, and the merged row refuses.
+3. **`Koolhydraat`, `Koolhydr.` and `Kool-hydraten` were not the word for carbohydrate**, so those
+   labels read nothing at all. Dutch hyphenates long compounds across a line break and normalization
+   turns the hyphen into a space, so the printed `Kool-hydraten` arrives as two words — hence
+   `"kool hydraten"` as a term, with a test that a bare `Rode kool` still reads nothing. German
+   `Kohlen-hydrate` gets the same treatment, plus `Milchzucker`/`Traubenzucker`/`Fruchtzucker`.
+
+Dutch countable words were also extended (`plak`, `plakje`, `snee`, `wafel`, `blokje`, `bol`,
+`beker`, `glas`, `eetlepel`, `theelepel`). Those only ever create a `PER_SERVING` column, which by
+construction can never supply the per-100 figure — the cost of missing one was a lost feature, not a
+wrong number, which is why nobody noticed.
+
+### Verified
+
+JVM **771/771** (0 skipped, `--rerun-tasks`). The nine-photograph corpus is **unchanged**:
+`RealImageOcrTest` 15, `ProductionStillPipelineTest` 8, `SelectedTableProductionTest` 6 and
+`EvidencePipelineProductionTest` 8 — **37/37 on device, run after these changes**. Negative control
+is the diagnostic's own before/after output, on the same fixtures: the unlisted child terms measured
+`Ambiguous [62.0, 35.0]` and now measure `NotFound`; `per 100 gram` measured `NotFound` and now
+measures `Confident 62.0`.
+
+**The full 218-test instrumented suite was NOT completed after these changes.** The last clean
+whole-suite run is **218/218 (0 skipped, 14m19s)**, taken earlier the same day — after the
+release-blocker fixes but **before** the Dutch vocabulary work. The ~180 tests not covered by the
+37/37 OCR run are Compose UI and Room tests that this vocabulary work does not touch, but that is an
+argument, not a measurement. Do not record 218/218 as evidence for the Dutch changes.
+
+### The AVD went into a crash loop — recognise this before blaming a test
+
+Four consecutive attempts aborted, presenting as three different problems and sharing one cause:
+**the emulator process was dying and restarting under the run.**
+
+| Symptom | What it actually was |
+|---|---|
+| `Adb connection Error: Connection reset` → `Connection refused` | adb losing a device that had gone away, not adb misbehaving |
+| `Unable to find instrumentation target package` + `DELETE_FAILED_INTERNAL_ERROR` | a package operation issued while the device was going down |
+| `JustTheCarbsDatabaseMigrationTest > migratingFromV4…` **FAILED** | not a migration defect — see below |
+
+That last one is the trap: it names a real test and reads like a genuine regression. The per-test
+logcat says otherwise:
+
+```
+Failed to open APK '/data/app/…/app.justthecarbs.debug-…/base.apk': I/O error
+java.io.IOException: Failed to load asset path …/base.apk
+PackageManager$NameNotFoundException: app.justthecarbs.debug
+```
+
+The app under test was **physically unreadable on the emulator's virtual disk**. No migration ran.
+Confirmed independently: `uptime` reported `up 0 min` three separate times without anyone rebooting
+it, and the qemu process reappeared at 436 MB where it had been 2.8 GB.
+
+**Diagnosis order that works**: read the per-test logcat under
+`app/build/outputs/androidTest-results/connected/<avd>/logcat-<class>-<method>.txt` **before**
+reading the assertion. An I/O error on `base.apk`, or `NameNotFoundException` on the app's own
+package, means the device is broken and the named test is a bystander. Host RAM was 9 GB free of
+32 GB throughout, so this was not host pressure.
+
+**The repair is `emulator -avd carbscan -wipe-data`** — a corrupt AVD disk image does not recover on
+its own, and the self-reboots only clear the orphaned package directory, not the corruption.
+
+**Still unverified:** no Dutch package has been scanned on physical hardware since this change. The
+forms above come from Dutch and Belgian packaging conventions, not from photographs in this repo —
+which is exactly why the diagnostic prints rather than asserts, and why the next real Dutch failure
+should be added to it before anything is changed.
+
+## Final release-blocker pass (2026-08-26) — READ FIRST
+
+Six concrete defects, all confirmed by reading the code and then reproduced by a test that fails on
+HEAD. Nothing about the calculation, the OCR architecture, barcode detection, the §10 lookup
+priority or the signing key changed.
+
+### "Clear recent history" and "Clear saved products" both under-delivered
+
+Two privacy controls that did less than their labels said, in ways nothing surfaced.
+
+`clearRecentHistory` was `UPDATE products SET lastUsedAt = NULL, lastPortion = NULL WHERE favorite
+= 0`. Three things wrong with one statement:
+
+1. **`lastInputMode`, `lastSelectedPortionUnitId` and `lastCount` were never cleared.** Together
+   those three *are* a remembered portion — they are exactly "2 slices" — so a cleared product still
+   pre-filled the count the user last ate.
+2. **`WHERE favorite = 0` exempted every favourite**, which kept its entire usage history through an
+   action whose label says nothing about exempting rows.
+3. **`portion_usage` was untouched**, so the *Usual* shortcuts survived and reappeared on the next
+   visit to the same product.
+
+`deleteAllProducts` was `DELETE FROM products`. `portion_units` cascades and went with it;
+**`portion_usage` has no foreign key at all** — deliberately, so per-product usage is not coupled to
+the product row's lifetime — so every usage aggregate was orphaned in place. Re-scanning the same
+barcode recreated the product row, the orphans matched it by string, and portions from a product the
+user had deleted came back as shortcuts. `rescanningAClearedBarcodeResurrectsNoUsageHistory` drives
+the whole round trip, because a `SELECT` straight after the delete does not show the defect.
+
+Both are now `@Transaction` methods on `ProductDao`, which is why that DAO issues statements against
+three tables — one atomic user action whose entire claim is that nothing survives it should not be
+split across DAOs. `current_meal_items` is deliberately **not** cleared by either: a meal item is an
+immutable snapshot designed to outlive its product (that is why `MIGRATION_3_4` gave it no FK), and
+the meal is the plate being assembled right now, not saved product data.
+
+**The privacy policy said "Delete everything the app has stored".** It does not — settings and the
+in-progress meal survive. Both `docs/privacy-policy.md` and the **live** `docs/privacy-policy.html`
+now spell out exactly what each action clears, and the in-app confirmation strings were corrected to
+match. Policy and behaviour have to move together; the HTML is what is actually published.
+
+### An unproven Open Food Facts basis no longer becomes grams
+
+`PackageQuantityParser.inferBasis` returned `PER_100_G` for any `quantity` it could not parse, and
+its own comment argued this was safe because the app never converts between units.
+
+**That argument is true of the arithmetic and beside the point.** The basis decides *the unit the
+portion field asks a human to measure in*. A drink whose quantity reads "1,5 liter" produced a
+product asking for grams; a user who complies — weighing 250 ml of a syrup that weighs 330 g — types
+a number a third too large, and every downstream stage then behaves perfectly on it. Nothing can
+detect it afterwards.
+
+`inferBasis` is deleted. `PackageBasisResolver` (pure, 16 JVM cases) resolves in order:
+
+1. **`product_quantity_unit`** — OFF's own normalized unit, now requested and deserialised. This is
+   what rescues "390 gram", "1,5 liter" and multipack notation without teaching this app's parser
+   grammar it should not have.
+2. **An unambiguous free-text quantity** — `PackageQuantityParser` for a single size, and otherwise
+   the consistency rule: a basis is read from free text only when **every** unit token attached to a
+   number agrees. `6 x 33 cl` is ambiguous about the pack *size* and not about *centilitres*, so the
+   basis resolves and `packageAmount` stays null. `250 g / 300 ml` disagrees and resolves nothing.
+3. **`Unresolved`** → `ProductFetchResult.Unusable(barcode, UnusableReason.UNKNOWN_BASIS)`.
+
+A structured unit that contradicts an unambiguous printed quantity refuses rather than ranking the
+two — there is no evidence for preferring either.
+
+**Ordering matters and is pinned:** "is there a number at all?" is answered *before* "what is it
+measured per?", using the permissive millilitre ceiling, so a record missing both facts reports *no
+value* rather than asking someone to choose a unit for a number that does not exist.
+
+The new `Failure.UnknownBasis` leads with **Enter manually**, not the label scanner: the figure was
+never in doubt, only its denominator, and manual entry is the one screen where the basis is a visible
+changeable chip. Search hits with no established basis keep their name, brand and photo and show
+**no number** — `ProductSearchHit.basis` is now nullable and `SearchResultRow` reads value and unit
+together, so a hit built inconsistently degrades to "no value" instead of printing an assumed unit.
+
+`product_quantity` is deserialised through a `LooseNumericText` serializer because OFF sends it as a
+bare number in some records and a quoted string in others; a strictly typed property throws on
+whichever form it was not declared for, and this app reports that as *malformed response*. Scoped to
+that one field rather than switching the parser to `isLenient`, which would relax quoting for the
+carbohydrate values too.
+
+**Fixture note:** eleven existing tests had to gain an explicit `"quantity"`. They were silently
+relying on the grams default, which is the clearest possible evidence that the default was doing
+real work nobody had noticed.
+
+### Dutch localization removed — the app ships in English only
+
+`values-nl/strings.xml` carried **206 of 298 strings and none of the 10 plurals**. A Dutch device got
+about two thirds of the interface in Dutch and every countable-portion plural in English mid-sentence.
+
+It was a leftover from an earlier draft of the brief; the owner's 2026-08-14 decision is that
+displayed UI strings are English-only. Finishing it would have meant shipping ~100 unreviewed strings
+— including the safety and provenance copy — with no native speaker to check them before release.
+The file is deleted and `androidResources { localeFilters += "en" }` makes it structural, which also
+stops AndroidX and Material supplying a Dutch "Cancel" inside an English dialog. Verified: the
+release APK contains **no language configurations at all**.
+
+**Parsing is untouched and must stay so.** `ServingSizeParser` still recognises Dutch `serving_size`
+text and `product_name_nl` is still preferred. Recognising Dutch input and displaying Dutch are
+separate facts — do not "fix" one by changing the other.
+
+### The CI release gate did not gate on instrumented tests
+
+`ci.yml`'s `instrumented` job carries `continue-on-error: true`, and its comment claimed the
+`release` job was "the actual release gate" — but that job ran only JVM tests and `assembleRelease`.
+**No workflow anywhere required the instrumented suite to pass**, which is the suite that covers the
+Room migrations, the committed real-image OCR corpus and every Compose behaviour test.
+
+New `.github/workflows/release-gate.yml`: `workflow_dispatch` plus `v*` tags, three sequential
+blocking jobs, **no `continue-on-error` anywhere** and none may be added. It runs JVM with
+`--rerun-tasks` (a plain run restores FROM-CACHE and proves nothing), asserts **0 skipped** from the
+JUnit XML on both suites, and checks the R8 privacy barriers and the absence of a release
+`FileProvider` as build steps rather than as something a human remembers to look at. `ci.yml`'s
+tolerance is unchanged and now honestly labelled as branch-only.
+
+### Verified this pass
+
+JVM **754/754** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — up from
+726). Instrumented **218/218** (up from 214). Lint exit 0, 34 advisories, 0 errors. Debug APK
+(89.4 MB), minified release APK (66.8 MB) and release AAB (35.6 MB) all built from `clean`. OSV scan
+re-run: 226 resolved release artifacts, 0 known vulnerabilities, control query passing.
+
+R8 barriers re-checked: `ScanEvidenceRecorder` and `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`;
+`ScanEvidenceExport`, `OcrDiagnosticsReport` and `ScanTrace` absent entirely; `UnitMarkerFilter`,
+`CandidateProvenance`, `CarbCandidate` and the new `PackageBasisResolver` retained as real classes.
+Release manifest: CAMERA, INTERNET, ACCESS_NETWORK_STATE (transitive, disclosed); one exported
+component of ours (`MainActivity`); no `FileProvider`. Both release artifacts signed with the real
+upload key (`1E:21:23:F3:…:C4:F5`), not the disposable one.
+
+### Two things found and deliberately NOT changed
+
+- **`uses-feature android:name="android.hardware.camera"` ships as *required*** — implied by the
+  CAMERA permission. The app genuinely works without a camera (manual entry is a first-class path and
+  the privacy policy says so), so `android:required="false"` would be correct. It is left alone
+  because it changes which devices Play offers the app to, and that is a distribution decision for
+  the owner rather than something to alter inside a release-blocker pass.
+- **The §44 regulatory assessment is still in reachable public Git history** — `7a3b43a` (the .md)
+  and `7212efb` (the .pdf), removed in `5675c45`, both ancestors of `main`. Untracked today, exposed
+  historically. No history was rewritten; the procedure, the ordering question that decides whether
+  this is a cleanup or an incident, and the reasons a force-push is not a full remedy are in
+  `docs/git-history-remediation.md`. **Owner action.**
+
+## Real upload key exists (2026-08-26) — SUPERSEDES THE "NOT FOR PLAY" SECTION BELOW
+
+The owner generated a production upload keystore in Android Studio and built a signed AAB with it.
+**No code changed** — `app/build.gradle.kts` is untouched in the signing region and the fail-closed
+guard is exactly as committed; only `keystore.properties` (gitignored) now points at the real key.
+
+| | |
+|---|---|
+| Keystore | `C:\secure\JustTheCarbs-upload.jks`, alias `justthecarbs-upload` |
+| Signer DN | `C=NL, L=Haarlem, O=JustTheCarbs, OU=Release, CN=Tunc Bilen` |
+| Key | 2048-bit RSA, SHA256withRSA, valid 2026-08-26 → 2051-08-20 |
+| Cert SHA-256 | `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` |
+| AAB | 35,689,027 bytes, SHA-256 `00876FA9…BBB4A2`, `versionCode 1` / `versionName 1.0.0` |
+
+**`apksigner` cannot read an AAB, and this was a bundle-only build** — there is no
+`app/build/outputs/apk/release/` at all, so the verification command in the section below cannot be
+run on this artifact. Use `keytool -printcert -jarfile <aab>` or `jarsigner -verify -certs <aab>`
+instead. jarsigner's "self-signed certificate" and "no timestamp" warnings are **expected and
+correct** for an Android upload key; they are not defects and do not need fixing.
+
+Barriers re-checked on *this* build's `mapping.txt`: `ScanEvidenceRecorder` and
+`OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`, `OcrDiagnosticsReport` and
+`ScanTrace` absent entirely; `UnitMarkerFilter`, `CandidateProvenance`, `CarbCandidate` retained as
+real classes. Release manifest carries only the ML Kit init provider and `androidx.startup` — zero
+`FileProvider`/evidence matches.
+
+**What this does NOT close.** The bundle was built from the **uncommitted working tree**, so it is
+not a release candidate and does not satisfy step 10 of the release sequence. No test, lint or OSV
+run was repeated against it. The keystore exists in exactly one place with **no tested backup** —
+before Play App Signing enrollment, losing it means the app can never be updated. §44 remains the
+publication blocker and the overall decision is still **NO-GO**. Full record:
+`docs/play-release-readiness.md` §1, §2 and §7.
+
+## Release-closure pass (2026-08-25, later same day) — READ FIRST
+
+Verification pass over the production-hardening section above. Nothing about the calculation, schema,
+migrations, the §10 lookup priority, barcode detection or any parser rule changed. Not committed.
+
+### The release AAB is signed with a key that says NOT FOR PLAY — RESOLVED 2026-08-26, see above
+
+*(Historical. The keystore was replaced with a real upload key on 2026-08-26. The reasoning below is
+still why the DN must be read on every release build, so it is kept rather than deleted.)*
+
+`assembleRelease` and `bundleRelease` both succeed, and the artifact they produce is signed
+`CN=DISPOSABLE TEST KEY, OU=NOT FOR PLAY, O=JustTheCarbs Test, C=NL`. The Gradle guard
+(`gradle.taskGraph.whenReady`) refuses to package a release without all four secrets, which is
+correct and worth keeping — but four valid properties pointing at a real keystore is exactly what a
+test key also looks like, so **the guard cannot tell an upload key from a disposable one and a green
+`bundleRelease` is not evidence that an uploadable artifact exists.** Read the DN:
+
+```powershell
+& 'C:\atools\sdk\build-tools\36.0.0\apksigner.bat' verify --print-certs `
+  'app\build\outputs\apk\release\app-release.apk'
+```
+
+Recorded as a gate in `docs/play-release-readiness.md` §2. Generating the real upload key is an owner
+action; do not "fix" this in code.
+
+### Debug-only evidence work was still on the user-visible path, in two places
+
+The production-hardening pass moved the *heavy* writes off the critical path and that part holds
+(`consumeCapture` moves rather than copies; `recordPassAImageAsync` re-decodes from the moved file on
+a background thread, so it cannot race the crop screen's recycle). Two smaller sites survived:
+
+1. **`recordSelection` on the "Read table" tap.** It wrote every retained and rejected element with
+   geometry *between* `SelectedTableResolution.resolve` returning and the outcome reaching the screen
+   — i.e. on the critical path of the second half of the very scan these bundles exist to time. Now
+   written after the outcome is applied. Safe because `releaseCapture` recycles only the bitmap; the
+   evidence folder handle and the document outlive it.
+2. **`recordMeta` ran before the handover**, so the diagnostics that exist to measure the scan were
+   part of what they measured. Moved after it.
+
+### `ScanTrace` now separates on-path from off-path, and that distinction is load-bearing
+
+**Only a debug build records evidence, so every device latency measurement is taken on a build
+carrying work a user will never pay for.** A single total therefore overstates the shipped experience
+with no way to subtract the difference — which is how "3.55 s" gets quoted about a release build that
+never wrote a PNG.
+
+`markOffPath`/`timeOffPath` flag debug-only and post-handover stages; `userVisibleMs()` is the total
+without them; `summary()` prints both and marks off-path stages with a trailing `*`:
+
+```
+scan 1180ms (user-visible 640ms) | evidence-text 280* · jpeg-decode 210 · mlkit 190 · … · handoff 3
+```
+
+**The ≤2 s acceptance target is about `user-visible`, never `scan`.** Also added the missing `handoff`
+mark. `evidence-capture` was previously marked *after* `summary()` had already been taken, so it
+appeared in no log at all — dead instrumentation, now live. In release the whole trace folds away:
+its only consumers are `OcrDiagnosticsLogger.timing` and `recordMeta`, both of which R8 removes.
+
+The device stage map and the 20-item release sweep are `docs/release-closure-device-verification.md`.
+
+### Two comments that were wrong about the artifact
+
+- `app/build.gradle.kts` claimed excluding `camera-video` keeps `ACCESS_NETWORK_STATE` out of the
+  manifest. **It does not — that permission ships.** The release manifest-merger report attributes it
+  to `com.google.android.datatransport:transport-backend-cct`, which arrives via `com.google.mlkit:common`
+  and cannot be excluded. It is correctly disclosed in `docs/privacy-policy.md`,
+  `docs/google-play-data-safety.md` and `docs/security-review.md`; only the build comment was wrong.
+  The exclusion is still worth keeping — it drops media3 and the muxer.
+- The same file said the `ocr_real` assets are git-ignored and the test skips itself when they are
+  absent. Both halves have been false since 2026-08-16.
+
+### Verified this pass
+
+JVM **726/726** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — a plain
+`clean test` restores from the Gradle build cache and proves nothing). Instrumented **214/214**
+(0 failures, 0 errors, 0 skipped) in **one complete run** after an AVD reboot, including
+`RealImageOcrTest` 15, `ProductionStillPipelineTest` 8, `SelectedTableProductionTest` 6,
+`EvidencePipelineProductionTest` 8, `JustTheCarbsDatabaseMigrationTest` 10 and `ProductScreenTest`
+32/32. There is no `@Ignore` and no `assumeTrue` anywhere in either test source set, so "0 skipped"
+cannot be a silent skip. Lint exit 0. Debug APK (90 MB), minified release APK (67 MB) and release AAB
+(35 MB) all built from `clean`.
+
+Release R8 re-checked on this build: `ScanEvidenceRecorder` and `OcrDiagnosticsLogger` map to
+`R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport` and `OcrDiagnosticsReport` have no mapping entry at all;
+`UnitMarkerFilter`, `CandidateProvenance` and `CarbCandidate` are retained as real classes; the
+evidence `FileProvider` is absent from the release manifest and the only providers in it are ML Kit's
+init provider and `androidx.startup`. `TextResolutionGuidance` reads `R8$$REMOVED$$CLASS$$` — that is
+the **inlined-not-dropped** case this file already warns about, not a stripped feature.
+
+Dependency scan re-run 2026-08-25 (`tools/dependency-scan.sh`, OSV.dev querybatch): **226 resolved
+release artifacts, 0 known vulnerabilities**, control query passing.
+
+The privacy policy is **live** at the URL in `branding.gradle.kts`
+(`https://morfildor.github.io/Just-the-Carbs/privacy-policy.html`, last updated 15 August 2026),
+and `SettingsScreen` opens that same `BuildConfig.PRIVACY_POLICY_URL`, pinned by `SettingsScreenTest`.
+Recording that as evidence against checklist row C7 is still the owner's.
+
+### Not a defect, so do not "fix" it
+
+`onProductLoaded` launches a second coroutine that is not a child of `lookupJob`, so `lookupJob.cancel()`
+cannot stop it once a lookup has completed. Reachability was checked rather than assumed: the route is
+`product/{barcode}` and the ViewModel is scoped to the `NavBackStackEntry`, so one ViewModel only ever
+serves one barcode and `LaunchedEffect(barcode)` fires once. The single-flight guard defends the
+repeated-`load()`-for-the-same-barcode case, which is what its KDoc claims.
+
+## Multi-source evidence scanner (2026-08-18) — READ FIRST, SUPERSEDES THE CROP SECTIONS BELOW
+
+The nutrition scanner no longer has *one* recognition whose result becomes the answer. It gathers up
+to four opinions and resolves them conservatively. **Not committed.** Full measurements:
+`docs/plans/2026-08-18-scanner-reliability-measurements.md`; checkpoint report:
+`docs/plans/2026-08-18-scanner-reliability-checkpoint.md`.
+
+Barcode is untouched and proven so: all four barcode files hash-identical to HEAD, 43 tests green.
+
+### The architecture
+
+```
+capture ─┬→ Pass A (whole frame, ML Kit)          ─┐
+         └→ user rectangle ─┬→ Strategy A (filter Pass A's elements, re-parse; no OCR)
+                            └→ Strategy B (fresh ML Kit over the NATIVE-RESOLUTION crop)
+   pre-shutter live stable consensus              ─┘
+                                    ↓
+                            EvidenceResolver
+             Resolved | NeedsVerification | Conflicted | Nothing→assisted
+```
+
+### Three findings that must not be re-derived
+
+1. **Re-recognition damage does not require rescaling.** The `(g)`→`(9)` failure was blamed on
+   rescaling changing tokenisation. Measured with **no resize at all**: a native-resolution crop at
+   the production overlay turned kinder, yoghurt and stokbrood from `Confident` to `NotFound` and
+   invented a new wrong value on grated cheese (`2.09`→`2.04`). Losing basis headers and prose
+   declaration spans is sufficient on its own.
+
+2. **No crop tightness is safe** (swept 0.00/0.05/0.10/0.15 × 6 fixtures). kinder dies at 0.05,
+   sondey and yoghurt at 0.10, and **stokbrood is non-monotonic** — readable at 0.00, lost at 0.05,
+   readable again at 0.10. Do not tune this constant. But re-recognition genuinely **recovers**
+   labels the full frame cannot read: witte kaas `NotFound`→`2.3` (correct) and grated cheese's
+   known-wrong `2.09`→`2` (the printed value). Hence: evidence, never an oracle.
+
+3. **Consensus must be counted over recognition RUNS, not evidence sources.** `FULL_FRAME_PASS_A` and
+   `FILTERED_PASS_A` are two *parses of one recognition*, so their agreeing proves nothing. The first
+   wired implementation counted sources and therefore **resolved grated cheese confidently to the
+   known-wrong `2.09`** *and* skipped the independent recognition that would have contradicted it.
+   `EvidenceSource.recognitionRun` fixes this structurally. Pinned by
+   `EvidenceResolverTest.the two pass A views cannot corroborate each other`.
+
+### The dead end is gone (§17–§19)
+
+A failed automatic read keeps the **frozen photograph on screen** and offers: tap the carbohydrate
+row (candidates restricted to that row, so sugars is unreachable), tap the number, or type it in.
+The basis is always asked, never assumed. This weakens no safety rule — every parser refusal exists
+because the app could not tell *which nutrient a number belongs to*, and the tap supplies exactly
+that from a human reading the package.
+
+### `2.09` is no longer "unrecoverable" — but do not add a repair rule
+
+The note further down this file saying grated cheese's `2.09` is unrecoverable at the parser remains
+correct **about parser repair rules**. It is recoverable by re-recognising *different pixels*, which
+invents nothing. The pipeline now refuses it as a conflict rather than resolving it.
+
+### ML Kit confidence is populated and is now retained
+
+Measured: **zero NaN** across all nine fixtures, element and symbol level. Diagnostic — the mangled
+Kinder token `Uokohidiat/0gjikovi` scores 0.452 while clean numerics score 0.88+. Retained on
+`OcrElement` as nullable fields with defaults (no existing fixture changed). Used only to *withhold*
+a proposal, **never** to decide which nutrient a number is.
+
+### §12 bake-off: the two ML Kit artifacts CANNOT coexist
+
+`com.google.mlkit:text-recognition` and `com.google.android.gms:play-services-mlkit-text-recognition`
+both define `com.google.mlkit.vision.text.latin.TextRecognizerOptions` — interchangeable
+implementations of one API, duplicate-class if both are added. Use the sequential dependency swap
+documented in `OcrEngineBakeOffTest`. Bundled scored 4/9; the Play Services model reported
+`UNAVAILABLE` on every fixture because the `carbscan` AVD has no Play Services, so it is
+**unevaluated**, not worse. Adopting it would break the scanner on any device without Play Services.
+
+## User-confirmed table crop (2026-08-17) — superseded above, kept for its rejected experiments
+
+The nutrition scanner is now **Capture → freeze → confirm the table rectangle → Read table → result**.
+Nothing about the calculation, schema, migrations, the §10 lookup priority or **barcode scanning**
+changed. Not committed.
+
+### Why the architecture changed
+
+A physical device kept returning *Couldn't confidently find carbohydrates* on a Kinder table that was
+large, sharp, well lit and square-on, with the `per 100 g` header and the `53,5` both plainly visible.
+Three automatic localisation attempts had already been measured and rejected (vertical banding dropped
+the basis header; connected-component clustering had no cross-fixture threshold; re-recognising an
+isolated crop **manufactured a confident-wrong** by re-tokenising `(g)` as `(9)`). The dominant
+remaining cause is surrounding package text merging into table rows during reconstruction — something a
+person separates in a second and no algorithm in this repo has managed.
+
+### Strategy A: filter Pass A's elements, never recognise twice
+
+```
+capture -> ML Kit ONCE -> raw elements + geometry -> user rectangle
+        -> ElementRegionFilter -> unchanged parser
+```
+
+`LabelAnalyzer.analyzeStillRetaining` keeps the recognised `OcrDocument` and the decoded bitmap in a
+`PassAResult`; `SelectedTableReader` re-filters and re-parses **in memory**. There is deliberately no
+second recognition pass: reusing Pass A's elements makes the `(g)` → `(9)` class of failure
+*structurally unreachable*, because no character can differ between the whole-frame read and the
+cropped one. Recognition starts the moment the shutter fires, so it overlaps the user's crop gesture
+and "Read table" costs only a re-parse.
+
+`ElementRegionFilter` keeps an element when ≥50% of **its own area** is inside the rectangle
+(normalising by element area makes the rule independent of ML Kit's tokenisation). It returns **null**
+rather than an empty document when the selection retains nothing — "your crop enclosed no text" is a
+different statement from "this label has no carbohydrate row", and `SelectedTableReader` keeps the
+whole-frame reading in that case.
+
+### The automatic initial proposal was BUILT, MEASURED and REMOVED
+
+Do not rebuild it without reading this. An `InitialCropProposal` that located the table from nutrient
+terms, clustered the label column and padded outward **damaged two of four canaries, in two different
+ways**:
+
+- **kinder** — proposed `[0.115,0.346,0.473,0.475]`, 13% of the frame. The winning candidate's own box
+  spans x=137..896 and the crop ended at x=426, so the answer was physically cut off. `Confident 53.5`
+  → `NotFound`.
+- **yoghurt** — proposed `[0.000,0.094,0.929,0.923]`, **77% of the frame**, and the winning candidate's
+  box was fully **inside** it. Still `NotFound`, because the 21 removed elements included the basis
+  header. **Size and position said nothing at all.**
+
+Four successive fixes (largest-cluster selection, a minimum-area guard, explicit header inclusion, a
+wider column-gap threshold) each moved the failure rather than removing it. That is the architectural
+signal, not a tuning opportunity: *deciding where a table ends* is the same problem three earlier
+localisation attempts failed at. The starting rectangle is now the **scan guide the user was already
+aiming with**, expanded by `ScanRegionMapper.SAFETY_MARGIN` — better precisely because it is not a
+guess about the table.
+
+A parser-verified gate (keep the narrowing only if it still reads) was also tried. It works, and it is
+still not enough: it can only preserve a reading the whole frame already had, so it cannot help the
+labels the crop exists for. Removed with the proposal.
+
+### Safety is unchanged, and that is asserted rather than assumed
+
+The rectangle asserts *"the nutrition table is in here"*, **never** *"a number in here is the
+carbohydrate value"*. `SelectedTableSafetyTest` (9 JVM cases) runs selections that **include** each
+hazard and asserts the parser still refuses it: `(9)` cannot win, sugars/saturated-fat/protein cannot
+supply the total, a merged total+child row is still refused, and — the most important case — **a
+selection excluding the basis header does not manufacture a basis**. A legitimate single-digit
+carbohydrate value still reads, so the guard is positional and not magnitude-based.
+
+### Measured
+
+- **Real corpus through the shipped starting crop** (`SelectedTableProductionTest`, real photographs,
+  real ML Kit): sondey 61.9, kinder 53.5, yoghurt 5.0, stokbrood 46.0 — **no canary regression, zero
+  confident-wrong**, and filtering never increases the element count.
+- **Synthetic interference sweep** (`SelectedTableInterferenceTest`, report separately from real
+  fixtures): a table with an adjacent prose panel that the full frame **cannot** read is read
+  correctly once filtered, on all four sides and on two structurally different tables, with provenance
+  asserted against `RowClassifier` rather than a literal.
+- JVM **653/653** (0 skipped, `--rerun-tasks`, counted from JUnit XML). Instrumented **189/189**
+  (0 skipped) — a **complete single-run suite**, not per-class aggregation; the AVD was rebooted
+  first, which is what the 2.5 GB emulator needs after the 8 MP still work. Lint exit 0.
+- Confirming a crop costs a **re-parse only**, pinned by `SelectedTableLatencyTest` against a real
+  recognition on the same image — the guard against someone reintroducing OCR behind the crop.
+- Release R8: `ScanEvidenceRecorder`/`ScanEvidenceExport`/`OcrDiagnosticsReport` all absent from
+  `mapping.txt`; the crop strings and classes are present in the release APK, so the feature ships
+  while the evidence writer does not. Note `ElementRegionFilter`, `SelectedTableReader` and
+  `CropSelectionGeometry` show as `R8$$REMOVED$$CLASS$$` — they are **inlined, not dropped**;
+  verified by finding the crop strings and behaviour in the release APK itself. Grep the
+  class-definition line (`^app\.justthecarbs\.ocr\.X ->`), never a bare substring: a line-number
+  mapping entry mentions a stripped class and reads as a false positive.
+- **Barcode freeze verified**: `ScannerScreen.kt`, `BarcodeAnalyzer.kt`, `BarcodeStabilityTracker.kt`
+  and `BarcodeFrameReader.kt` all hash-identical to their pre-pass values and git-clean; no crop
+  type is referenced anywhere in the barcode flow.
+
+### Not verified
+
+**Nothing in this pass has been seen on a physical device.** The crop gesture, the frozen-photo
+layout, the coordinate mapping against a real 8 MP capture and whether the crop actually rescues the
+Kinder and Stroopwafel failures are all open. `CropSelectionGeometry` is pinned by 12 JVM cases
+(letterboxing, orientation, EXIF-upright dimensions, degenerate and inverted selections, round-trip)
+because a visually correct box mapping to the wrong bitmap coordinates would reproduce the original
+crop bug invisibly — but that is arithmetic, not the device.
+
+## Autonomous scanner reliability pass (2026-08-17) — READ FIRST
+
+Supersedes nothing below; it corrects two things and adds one guard. Nothing was committed.
+
+### The Pass B two-pass isolation experiment was REVERTED. Do not rebuild it as it was.
+
+A previous attempt made a second recognition of a geometrically isolated table the primary result
+source (Pass A locates, Pass B answers). **It produced a confident-wrong and was reverted.**
+Measured on the Kinder canary at table-to-frame ratio 0.80: `Confident 9.0` where the package prints
+`53,5`. Two independent defects, both recorded so they are not rediscovered:
+
+1. **Re-recognising a crop can manufacture a wrong value.** Rescaling changes ML Kit's tokenisation.
+   The printed unit marker `(g)` came back as `(9)` — a well-formed single-digit carbohydrate value,
+   on the correct total-carbohydrate row, introduced by the correct nutrient term. Every existing
+   guard passed it. An independent recognition pass is **a new opportunity to be wrong**, not merely
+   a cleaner look at the same pixels. This is why any multi-scale work must be an evidence ensemble
+   that can only corroborate, never a replacement result.
+2. **A vertical band cannot isolate horizontally adjacent panels, and it dropped the header.**
+   Isolation chose `[98,419,900,914]` and discarded **12 of 24 rows including the basis header band**,
+   giving `rejected: 53.5: no column` — precisely the defect that removing the overlay crop had fixed.
+   `MAX_HEADER_GAP_IN_PITCHES` is not the fix; a multilingual header spans many reconstructed rows.
+   Worse, the Kinder fixture contains a **second package's ingredient panel horizontally adjacent**, so
+   reconstructed rows already span both panels before any locator sees them. Any future locator must
+   work on **raw elements before `LogicalRowBuilder`** and cluster in two dimensions.
+
+`NutritionTableLocator` and its 11 JVM tests are **retained but unwired**, with the failure recorded
+in its own KDoc. `RawElementClusteringDiagnosticTest` is the measurement harness for the next attempt.
+
+### `UnitMarkerFilter` — new, and the reason the above is no longer a live hazard
+
+A number occupying a **unit-marker position** can no longer become a carbohydrate value. The rule is
+positional and structural: **a bracketed numeric token that is the first number after a nutrient name
+on the row is the unit annotation, not the value.** It only ever removes candidates.
+
+**A cross-row version of this rule was tried and is WRONG — do not reinstate it.** Treating "shares an
+x position with unit markers on two or more other rows" as a marker column regressed the **sondey
+canary** to `NotFound`, because real labels overwhelmingly print the unit to the **right** of the value
+(`61,9` `g`). Those trailing `g` elements cluster beautifully — right next to the value column — so the
+rule identified the value column and deleted the answer. Unit repetition says nothing about which side
+of the value the unit sits on. Reading order does.
+
+Bracketing is **required** and is a deliberate limit: an unbracketed leading number on a nutrient row
+is genuinely ambiguous (it may be the value on a table whose columns did not resolve), so excluding it
+would cost correct readings. `UnitMarkerFilterTest` pins this, and carries a **verified negative
+control**: with the filter disabled its main fixture yields `Confident 9.0`, so the test cannot pass
+vacuously. Note the geometry in that fixture is load-bearing — the resolved basis column must sit over
+the *marker* column, which is the only arrangement in which `(9)` is placeable at all.
+
+### `TextResolutionGuidance` — advisory framing signal, calibrated not guessed
+
+Median recognized text height as a fraction of frame height, surfaced as *Move closer* on the label
+scanner. **It never gates the shutter and never touches a value.** It reaches the UI on a separate
+`onFraming` callback from `onReading`, so camera advice and a value-bearing reading cannot be confused.
+
+Calibrated by `TextResolutionCalibrationTest` against the real corpus at five ratios. **There is no
+clean separating value** — two successes sit at 0.0094 and 0.0098 while failures continue well above
+any candidate cutoff — so the threshold is placed *below every observed success* (0.0090) rather than
+mid-overlap. A false "move closer" contradicts a user whose framing was fine, which is how advisory
+guidance gets ignored; a false READY costs only the retry they were making anyway.
+
+**Text size explains only part of the failures and the docs say so.** Kinder and yoghurt fail at their
+*largest* rendering, where surrounding prose is best recognised and competes hardest. That cause is
+invisible to any size metric.
+
+### Measured state after this pass
+
+Framing sweep (synthetic composites — **report separately from real-fixture results**):
+
+```
+                 1.00        0.30        0.45        0.60        0.80
+kinder      Conf 53.5    NotFound    NotFound    NotFound    NotFound
+sondey      Conf 61.9    NotFound   Conf 61.9   Conf 61.9   Conf 61.9
+yoghurt     Conf 5.0     Ambig(2)    Ambig(2)    Ambig(2)   NotFound
+stokbrood   Conf 46.0    NotFound   Conf 46.0   Conf 46.0   NotFound
+CONFIDENT-WRONG: none
+```
+
+Against the failed Pass B checkpoint: same number correct, **one confident-wrong eliminated**, and the
+Kinder@1.00 regression (Confident → NotFound) undone.
+
+### Research measured and REJECTED this pass (do not repeat)
+
+- **Connected-component clustering of raw elements** as the successor to vertical banding. Fails three
+  independent ways: no gap threshold works across the corpus (sondey needs 1.0h, kinder 2.0h, and at
+  2.0h stokbrood and yoghurt collapse to the whole document); kinder's "usable" cluster still spans
+  x 0.13..1.00, i.e. it never separated the adjacent panel it existed to separate; and package text is
+  spatially connected — prose sits closer to a table than a table's own column spacing. **A locator
+  must key on table STRUCTURE (repeated aligned value columns, consistent row pitch), not whitespace.**
+  Harness: `RawElementClusteringDiagnosticTest`, with the result table in its KDoc.
+- **Widening the declaration opener** for fixtures 3 and 4 (`Naringsindhold (100g)`, fused
+  `PourPerlPro 100g`). Measured: **it would fix neither.** Both already resolve a `PER_100_G` column
+  from that very phrase — `ColumnClassifier` matches `100g` without a connective — and both then fail
+  at `Total-carbohydrate row found but no usable per-100 cell`. The prose reader is correctly refused
+  because a document with a resolved basis column belongs to the tabular path. **The real blocker is
+  cell-to-column association on curved/prose labels**, not the declaration grammar. Harness:
+  `BlockedDeclarationDiagnosticTest`.
+
+### Verified this pass
+
+JVM **609/609** (0 skipped, counted from JUnit XML after `--rerun-tasks`), mandatory real-image
+**15/15**, production-path **8/8**, lint clean (exit 0; the 29 advisories are all pre-existing — 17
+unused strings, 7 newer-version notices, and 5 assorted).
+
+**Instrumented, verified per class on the final build:** `RealImageOcrTest` 15/15,
+`ProductionStillPipelineTest` 8/8, `MealScreenTest` 19/19, `SettingsScreenTest` 4/4,
+`LabelVerificationScreenTest` 8/8, `CountablePortionScreenTest` 12/12, `ThemeDefaultTest` 7/7, DAO and
+migration classes all green. `ProductScreenTest` is **31/32**: `quickAdjustNeverProducesANegativePortion`
+fails on the known below-the-fold harness issue documented further down this file. It is **not** from
+this pass — `ProductScreenTest.kt` is unmodified, and this pass touched only `ui/scan/` and
+`ui/settings/`, never the product calculator. (`RealMlKitFindingsTest` is a **JVM** test, not
+instrumented; trying to run it via `am instrument` gives a misleading `ClassNotFoundException`.)
+
+**181/181 with 0 skipped was recorded from JUnit XML on the whole-suite run that completed.** Later
+attempts to reproduce that whole-suite number kept dying part way through, and the cause is the
+**emulator, not the code**: `carbscan` has only 2.5 GB and `/proc/meminfo` showed 237 MB free after the
+8 MP still-path work, so the instrumentation process is killed mid-run. Per-class and per-package runs
+pass. When re-verifying, reboot the AVD first, or give it more RAM.
+
+Both privacy barriers re-verified independently on the release build: `ScanEvidenceRecorder`,
+`ScanEvidenceExport` and `OcrDiagnosticsReport` are **absent** from release `mapping.txt` while
+`UnitMarkerFilter` and `TextResolutionGuidance` are correctly retained, and the evidence `FileProvider`
+is present in the debug merged manifest and **absent** from release.
+
+**Barcode freeze verified structurally:** `ScannerScreen.kt`, `BarcodeAnalyzer.kt`,
+`BarcodeStabilityTracker.kt` and `BarcodeFrameReader.kt` are untouched in the working tree,
+`ScannerScreen` contains no `ImageCapture` reference at all, and 49 barcode/scanner tests pass.
+
+**A Windows trap that wastes a run:** `connectedDebugAndroidTest` can fail with
+`FileSystemException: ...logcat-<test>.txt: The process cannot access the file` — a stale lock on the
+per-test logcat file, **not** a test failure, and the wrapper may still report exit 0. Delete
+`app/build/outputs/androidTest-results`, restart the adb server, or drive the suite with
+`adb shell am instrument -w -r` and count `INSTRUMENTATION_STATUS_CODE` directly.
+
+### A measurement method worth reusing
+
+**900x1600 is the Kinder fixture's own size, not a phone capture.** An evidence line reading
+`capture.jpg = 900x1600` was read as proof that CameraX negotiated a 1.4 MP still; it was a replay of a
+committed fixture. `ImageCapture` is configured with `ResolutionStrategy(Size(3264, 2448),
+FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)` and `CAPTURE_MODE_MAXIMIZE_QUALITY`, bound through one
+`ViewPort` with preview and analysis. **The negotiated resolution on physical hardware is still
+unmeasured** — the emulator's virtual camera does not answer that question, and `meta.txt` on a real
+device will.
+
+## Capture-first scanner pass (2026-08-17) — READ BEFORE TRUSTING ANY OCR NUMBER BELOW
+
+**The single most important correction in this file: the nine-fixture results recorded further down
+are PARSER results, not production results.** `RealImageOcrTest` recognises each whole asset with
+`InputImage.fromBitmap(asset, 0)`, bypassing `StillImageLoader`, `ScanRegionMapper` and
+`LabelAnalyzer.analyzeStill` entirely. It measures the parser's reaction to real recognizer output.
+It is **not** evidence about what a user gets from the scanner, and it never was.
+
+Full audit: `docs/plans/2026-08-17-nutrition-scanner-audit.md`. Design:
+`docs/plans/2026-08-17-capture-first-scanner-design.md`.
+
+### What the gap was hiding: the ROI crop destroyed both canaries
+
+Measured, not inferred. Running the corpus through the **production** still path:
+
+| | golden suite (whole asset) | production path (before) | production path (after) |
+|---|---|---|---|
+| sondey | Confident 61.9 | **NotFound** | Confident 61.9 |
+| kinder | Confident 53.5 | **NotFound** | Confident 53.5 |
+| yoghurt | Confident 5 | **NotFound** | Confident 5 |
+| witte kaas | NotFound | Confident 2.3 | **NotFound** (regression, see below) |
+| **totals** | 4 correct | **2 correct** | **5 correct, 0 confident-wrong** |
+
+The shipped still path cropped the capture to the scan overlay **before** recognition. On a tall
+label that removes the basis header band, so `ColumnClassifier` reclassified the per-100 column as
+`REFERENCE_PERCENT` and the interpreter correctly refused an unplaceable value. Sondey's diagnostics
+said it exactly: `rejected: 61.9: REFERENCE_PERCENT column` — the right value, on the right
+total-carbohydrate row, thrown away for want of a header the app had itself cropped off.
+
+**No parser rule was at fault and none was relaxed.** The safety architecture behaved as designed on
+a truncated input. This is the clearest evidence yet that these guards are worth keeping.
+
+### The fix: recognise first, crop later (never a bigger margin)
+
+`analyzeStill` now runs **Pass A on the whole uncropped capture**. A wider fixed margin was rejected
+on evidence: the header's offset varies per package, so any margin is a guess that is wrong on some
+label with nothing on screen to show it. The header's position is *observable after recognition* and
+only guessable before it.
+
+The scan rectangle is now **relevance, not a boundary** — `ScanRegionRelevance` (pure, 10 JVM tests).
+Its safety contract is the load-bearing part and is pinned by negative tests: it may only ever
+**narrow** an existing reading. It can never turn `NotFound` into a reading, never alter a `Confident`
+candidate, never introduce a candidate the parser did not produce, and never supply a basis — a
+single surviving candidate with a null basis stays `Ambiguous` rather than being promoted.
+
+### Capture-first gating
+
+`LaunchedEffect(reading) { if (reading != null) analyzer.pause() }` latched the UI on the **first
+live 1280x720 frame** that produced any interpretation. Because the primary capture button renders
+only inside `SearchingCard` (shown only while `reading == null`), **the user frequently never reached
+the 8 MP path at all** — the app answered from an analysis frame of a table they were still aiming.
+
+Live frames now write `liveReadiness`, which drives framing guidance only and can never become the
+result. `reading` is set exclusively from a still capture. `ocr_looking` was reworded from "Looking
+for carbohydrates…" to "Point at the nutrition table" because under capture-first the old string
+promised something that state cannot deliver.
+
+### Focus and metering
+
+There was **no `FocusMeteringAction` anywhere in the app**; capture fired on whatever AF state existed.
+Now AF+AE+AWB are requested on the framed region before capture, bounded by `FOCUS_TIMEOUT_MS = 1200`.
+The bound is the contract: `startFocusAndMetering` can legitimately never complete on a low-contrast
+surface, so the capture fires on focus completion **or** timeout, exactly once, guarded by an
+`AtomicBoolean`. A missed focus costs a softer photo; a hung shutter costs the feature.
+
+### The honest regression
+
+**Witte kaas went Confident 2.3 -> NotFound.** It was the one fixture the crop *helped*: cropping
+removed prose that was defeating row reconstruction. This is a real trade — 3 gained (2 of them
+canaries), 1 lost — and it is recorded rather than hidden. It is the first target for the targeted
+re-read layer (priority 5), which can recover it without reinstating a crop that costs two canaries.
+
+### Known-scale finding, for the targeted re-read work
+
+Grated cheese reads `2.09` at full scale and **`2` (the printed value) at 0.5x and 0.75x**. The
+"unrecoverable recognition failure" recorded below is unrecoverable *at that scale only*. This is
+evidence that independent re-recognition of a tighter/rescaled crop can recover it **without any
+numeric-repair rule**. It does **not** license a global downscale: the same run breaks sondey and
+kinder at those scales. Scale sensitivity runs both ways per label.
+
+### Verified
+
+JVM **578/578** (0 skipped, counted from JUnit XML after `--rerun-tasks`), instrumented **178/178**
+(0 skipped), lint clean. `ProductionStillPipelineTest` is the new suite that measures the **shipped**
+feature — put production-path regressions there, not in `RealImageOcrTest`.
+
+**Still NOT verified on a physical device.** The camera path — focus, exposure, 8 MP memory, and
+whether capture-first gating engages in the hand — is emulator-only. Protocol written for the owner:
+`docs/physical-device-scanner-qa.md`.
 
 ## Real-image OCR generalization (2026-08-17) — nine real packages, prose labels, provenance
 

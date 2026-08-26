@@ -119,6 +119,25 @@ android {
         resValues = true
     }
 
+    // The app ships in English only (release pass §5).
+    //
+    // A `values-nl/strings.xml` existed carrying 206 of 298 strings and none of the 10 plurals, so a
+    // Dutch-locale device got roughly two thirds of the interface in Dutch, the rest in English, and
+    // every countable-portion plural ("2 slices") in English mid-sentence. It was a leftover from an
+    // earlier draft of the brief; the owner's 2026-08-14 decision is that displayed UI strings are
+    // English-only. Finishing it instead would have meant shipping ~100 unreviewed strings — several
+    // of them the carefully worded safety and provenance copy — into a release with no native
+    // speaker to check them, which is a worse outcome than one consistent language.
+    //
+    // This filter makes it structural rather than a property of which files happen to exist: it also
+    // stops AndroidX and Material shipping their own translations, so a Dutch device does not get a
+    // Dutch "Cancel" inside an English dialog. Parsing is untouched and must stay so — the app still
+    // reads Dutch `serving_size` text from Open Food Facts and still prefers `product_name_nl`.
+    // Recognising Dutch input and displaying Dutch are separate facts.
+    androidResources {
+        localeFilters += "en"
+    }
+
     packaging {
         resources.excludes += setOf(
             "/META-INF/{AL2.0,LGPL2.1}",
@@ -136,9 +155,10 @@ android {
     sourceSets {
         getByName("androidTest") {
             assets.srcDirs("$projectDir/schemas")
-            // Photographs of real packages for RealImageOcrTest (§8). Kept out of the repo — they
-            // are ordinary photos, and the directory is git-ignored — so the test skips itself when
-            // the directory is empty rather than failing a clean checkout. See
+            // Sanitized nutrition-panel crops for RealImageOcrTest (§8). These are COMMITTED, and
+            // the test is mandatory: it fails on a missing fixture rather than skipping, because a
+            // suite that skips its highest-value regression tests reports success for a run that
+            // measured nothing. Only the full-frame originals stay local. See
             // app/src/androidTest/assets/ocr_real/README.md.
             assets.srcDirs("$projectDir/src/androidTest/assets")
         }
@@ -202,10 +222,16 @@ dependencies {
     implementation(libs.camera.core)
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
-    // camera-view drags in camera-video -> androidx.media3, which merges ACCESS_NETWORK_STATE into
-    // the manifest. §9 permits CAMERA and INTERNET only, and the app never records video: it binds
-    // Preview and ImageAnalysis, never VideoCapture. Excluding it honours §9 and drops the media3
-    // and muxer code from the APK. (LifecycleCameraController would need this — PreviewView does not.)
+    // camera-view drags in camera-video -> androidx.media3, and the app never records video: it binds
+    // Preview, ImageAnalysis and ImageCapture, never VideoCapture. Excluding it drops the media3 and
+    // muxer code from the APK. (LifecycleCameraController would need this — PreviewView does not.)
+    //
+    // This exclusion does NOT remove ACCESS_NETWORK_STATE, and an earlier version of this comment
+    // wrongly claimed it did. Checked against the release manifest-merger report: that permission is
+    // added by `com.google.android.datatransport:transport-backend-cct`, which arrives via
+    // `com.google.mlkit:common` and cannot be excluded (see the ML Kit note below). It ships, and it
+    // is disclosed as transitive in docs/privacy-policy.md, docs/google-play-data-safety.md and
+    // docs/security-review.md rather than quietly assumed away.
     implementation(libs.camera.view) {
         exclude(group = "androidx.camera", module = "camera-video")
     }

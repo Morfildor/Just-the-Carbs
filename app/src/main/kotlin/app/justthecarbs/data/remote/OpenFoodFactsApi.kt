@@ -63,6 +63,12 @@ interface OpenFoodFactsApi {
             "product_name_nl",
             "brands",
             "quantity",
+            // OFF's own normalized quantity and unit. Requested on BOTH paths, not just the full
+            // product read: a search hit shows a carbohydrate figure, and a figure whose basis was
+            // never established must not be shown as though it were per 100 g. See
+            // app.justthecarbs.domain.PackageBasisResolver.
+            "product_quantity",
+            "product_quantity_unit",
             "nutriments",
             "image_front_small_url",
             // The 400 px display variant, for the calculator's hero image (§5). Adding one URL

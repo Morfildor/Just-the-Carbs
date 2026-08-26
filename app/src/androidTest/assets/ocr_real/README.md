@@ -46,6 +46,24 @@ laboratory-perfect scan would pass while telling us nothing. The full-frame orig
 (hands, background, barcodes, unrelated packaging) never leave local disk; see
 `tools/derive-ocr-fixtures.md`.
 
+## Wanted: the Stroopwafel/Lidl label (2026-08-18)
+
+The highest-value missing fixture. A physical-device recording shows this package reaching
+*"Table in view — tap to capture"* — meaning a live frame produced a usable interpretation — and the
+deliberate still capture that follows returning *"Couldn't confidently find carbohydrates."* Printed
+total carbohydrate is **61.9 g / 100 g**.
+
+The 2026-08-18 reliability pass addressed that failure **architecturally** (pre-shutter live evidence
+is now retained and can be offered for verification; a failed automatic read falls through to
+assisted tap-the-row rather than a dead end) but **could not measure it**, because no fixture and no
+exported evidence bundle for this package exist. Until one is added, the Stroopwafel case is
+reasoned about, not verified.
+
+Adding it needs only the usual sanitization: crop to the nutrition panel plus whatever header text is
+needed to interpret it, no other processing. An exported evidence bundle (`capture.jpg` + `meta.txt`)
+from a failing device scan is worth even more, since `meta.txt` now records the camera's negotiated
+capture resolution.
+
 ## Running
 
 ```powershell

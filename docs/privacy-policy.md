@@ -1,6 +1,6 @@
 # Privacy policy — Just the Carbs
 
-**Last updated:** 2026-08-15
+**Last updated:** 2026-08-26
 **Contact:** albinogorillassupport@gmail.com
 
 This describes what the app actually does, verified against the source code (§48).
@@ -108,9 +108,20 @@ Google account. The trade-off: your saved products do not transfer to a new phon
 | You want to | Do this |
 |---|---|
 | Remove usage history, keep verified products | Settings → Clear recent history |
-| Delete everything the app has stored | Settings → Clear saved products |
+| Delete every saved product and everything derived from it | Settings → Clear saved products |
 | Remove all data permanently | Uninstall the app |
 | Stop all network requests | Use the app offline; saved products keep working |
+
+Precisely what each of those two does:
+
+- **Clear recent history** forgets *that you used* anything. For every product — favourites
+  included — it clears the last-used time, the last portion, the remembered portion mode, the
+  remembered countable unit and the remembered count, and it deletes every usual-portion record.
+  Your products, their carbohydrate values, your verifications and your favourites all stay.
+- **Clear saved products** deletes every saved product, every countable portion unit and every
+  usual-portion record. It does **not** change your app preferences (theme, result style, haptics)
+  or discard the meal you are currently assembling — neither is saved product data, and this row
+  previously said "delete everything the app has stored", which overstated it.
 
 There is no account to delete, because there is no account.
 

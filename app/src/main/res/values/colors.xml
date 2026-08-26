@@ -2,5 +2,11 @@
 <resources>
     <color name="window_background">#FFF6EE</color>
     <color name="splash_background">#FFF6EE</color>
-    <color name="ic_launcher_background">#FF5C4D</color>
+    <!--
+      Launcher icon matches the 512x512 Play store asset: RED MARK ON CREAM, not the inverse.
+      The launcher tile and the store listing are the same image to a user installing the app, so
+      they must not be colour-inverted versions of each other.
+    -->
+    <color name="ic_launcher_background">#FFF6EE</color>
+    <color name="ic_launcher_mark">#FF5C4D</color>
 </resources>

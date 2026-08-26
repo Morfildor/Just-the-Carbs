@@ -42,3 +42,8 @@ app/src/androidTest/assets/ocr_real/originals/
 # Full-frame source photographs for the OCR fixtures. Sanitized crops under
 # app/src/androidTest/assets/ocr_real/ are committed; these originals never are.
 Test labels/
+
+# Scan evidence bundles pulled off a device for debugging. Debug builds only ever write these to
+# app-private cache; a copy landing in the working tree is a local investigation artifact, and the
+# repository is public. Diagnostics dumps quote recognized label text and can carry a capture.
+docs/scan evidence/

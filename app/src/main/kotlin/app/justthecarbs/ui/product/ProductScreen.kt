@@ -83,6 +83,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.justthecarbs.R
@@ -237,7 +238,7 @@ fun ProductScreen(
             )
 
             when {
-                state.loading -> LoadingBody()
+                state.loading -> LoadingBody(state.barcode)
                 state.failure != null -> FailureBody(
                     failure = state.failure,
                     barcode = state.barcode,
@@ -306,6 +307,10 @@ private fun ProductTopBar(
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,
+            // Home already ellipsised its product names and this did not, so the same long name was
+            // cut mid-character here and cleanly on the previous screen. An ellipsis also tells the
+            // user the name continues, which a hard clip leaves them to infer.
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = Space.s)
@@ -351,10 +356,34 @@ private fun ProductTopBar(
 }
 
 @Composable
-private fun LoadingBody() {
+private fun LoadingBody(barcode: String) {
     // §37: a brief, quiet loading state. Never a full-screen blocking spinner.
+    //
+    // The spinner now says what it is waiting for. A bare indeterminate circle is the same picture
+    // whether the app is reading its own database in 20ms or waiting on a slow mobile connection to
+    // Open Food Facts, and this screen is reached with the phone still pointed at a shelf — "is it
+    // working, or did my scan fail?" is exactly the question that makes people re-scan. Naming the
+    // work also names the recovery: if it stalls, the barcode underneath is what they can act on.
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(strokeWidth = 2.dp)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Space.m),
+        ) {
+            CircularProgressIndicator(strokeWidth = 2.dp)
+            Text(
+                text = stringResource(R.string.product_finding),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+            if (barcode.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.notfound_barcode, barcode),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -373,6 +402,7 @@ private fun FailureBody(
     val title = when (failure) {
         Failure.NotFound -> stringResource(R.string.notfound_title)
         Failure.NoUsableValue -> stringResource(R.string.unusable_title)
+        Failure.UnknownBasis -> stringResource(R.string.unknown_basis_title)
         is Failure.Lookup -> when (failure.error) {
             LookupError.OFFLINE -> stringResource(R.string.error_offline_title)
             LookupError.TIMEOUT -> stringResource(R.string.error_timeout_title)
@@ -384,6 +414,7 @@ private fun FailureBody(
     val body = when (failure) {
         Failure.NotFound -> stringResource(R.string.notfound_body)
         Failure.NoUsableValue -> stringResource(R.string.unusable_body)
+        Failure.UnknownBasis -> stringResource(R.string.unknown_basis_body)
         is Failure.Lookup -> when (failure.error) {
             LookupError.OFFLINE -> stringResource(R.string.error_offline_body)
             LookupError.RATE_LIMITED -> stringResource(R.string.error_rate_limited_body)
@@ -411,10 +442,20 @@ private fun FailureBody(
                 PrimaryAction(text = stringResource(R.string.notfound_scan_again), onClick = onScanAgain)
                 SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
                 SecondaryAction(text = stringResource(R.string.search_action), onClick = onSearch)
+            } else if (failure is Failure.UnknownBasis) {
+                // Manual entry leads here, not the label scanner. The database already supplied a
+                // carbohydrate figure; the single missing fact is whether it is per 100 g or per
+                // 100 ml, and manual entry is the one screen that asks that as a visible chip.
+                // Sending the user to photograph a nutrition table would make them re-read a number
+                // that was never in doubt.
+                PrimaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
+                SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
             } else {
                 PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
             }
-            SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
+            if (failure !is Failure.UnknownBasis) {
+                SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
+            }
             if (failure is Failure.Lookup) {
                 SecondaryAction(text = stringResource(R.string.error_retry), onClick = onRetry)
             }
@@ -530,13 +571,21 @@ private fun CalculatorBody(
                 .verticalScroll(portionScroll)
                 .padding(horizontal = Space.screenEdge),
         ) {
-            Text(
-                text = stringResource(R.string.product_portion_question),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-            )
+            // Dropped while the keyboard is open, for the same reason `SourceBadge` drops its
+            // advisory line: it is a prompt to start, and once the user is typing into a focused
+            // field it has been answered. Keeping it cost real legibility rather than height alone
+            // — with the IME up, the pinned result panel cut the line through the middle of its
+            // glyphs, and a half-rendered sentence reads as a broken screen. Verified on the
+            // emulator at 65 g with the keyboard open.
+            if (!imeVisible) {
+                Text(
+                    text = stringResource(R.string.product_portion_question),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            }
 
             // Only rendered when countable units genuinely exist (§11 of the countable-portions
             // brief) — a product with none keeps today's exact single-field layout, unchanged.

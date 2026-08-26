@@ -35,8 +35,34 @@ sealed interface ProductFetchResult {
     data class Found(val product: Product, val portionUnitCandidate: PortionUnitCandidate? = null) :
         ProductFetchResult
     data object NotFound : ProductFetchResult
-    data class Unusable(val barcode: String) : ProductFetchResult
+    data class Unusable(
+        val barcode: String,
+        val reason: UnusableReason = UnusableReason.NO_CARB_VALUE,
+    ) : ProductFetchResult
     data class Failed(val error: LookupError) : ProductFetchResult
+}
+
+/**
+ * Why a record exists but cannot be turned into a [Product].
+ *
+ * The two are kept apart because they are different facts about the package in the user's hand, and
+ * telling them apart is the difference between usable advice and a confusing dead end. Saying "no
+ * carbohydrate value" to someone holding a bottle that plainly prints one sends them looking for a
+ * problem that is not there.
+ */
+enum class UnusableReason {
+    /** The carbohydrate figure is missing, negative, non-finite, or beyond a physical ceiling. */
+    NO_CARB_VALUE,
+
+    /**
+     * A carbohydrate figure exists, but nothing established whether it is per 100 **g** or per
+     * 100 **ml** (§17, see [PackageBasisResolver]).
+     *
+     * Refused rather than defaulted. The figure itself is not in doubt, so the recovery is cheap —
+     * the user states the unit once, in manual entry, where it is a visible chip rather than an
+     * assumption. That is the same treatment an OCR reading with an unplaced column already gets.
+     */
+    UNKNOWN_BASIS,
 }
 
 /**

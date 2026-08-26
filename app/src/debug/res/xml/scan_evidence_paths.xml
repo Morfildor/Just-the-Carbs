@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only the scan-evidence folder inside the app's own cache is shareable — not cacheDir as a whole.
+  The ordinary capture path writes its temporary JPEG directly into cacheDir and deletes it as soon
+  as recognition finishes; exposing the parent would put those in reach of an export too.
+-->
+<paths>
+    <cache-path
+        name="scan-evidence"
+        path="scan-evidence/" />
+</paths>

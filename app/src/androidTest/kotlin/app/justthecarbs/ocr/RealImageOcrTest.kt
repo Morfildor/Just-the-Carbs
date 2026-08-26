@@ -18,10 +18,24 @@ import java.math.BigDecimal
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-// Suite: the complete camera-to-parser pipeline, on photographs of real packages.
+// Suite: RECOGNITION-TO-PARSER, on photographs of real packages.
 //
-// Invariant: a person points their phone at an ordinary readable nutrition table and the app returns
-// the total carbohydrate, refusing to substitute sugars, percentages or unrelated numbers.
+// SCOPE, corrected 2026-08-17 — this class does NOT test the camera pipeline. It recognises each
+// whole asset with `InputImage.fromBitmap(asset, 0)`, which bypasses `StillImageLoader` (decode, EXIF
+// rotation, region handling) and `LabelAnalyzer.analyzeStill` entirely. It therefore measures how the
+// parser reacts to real ML Kit output — valuable, and the reason the geometry rewrite was possible —
+// but it is NOT evidence about what a user gets from the scanner.
+//
+// That gap hid a defect that cost BOTH canaries. The shipped still path cropped to the scan region
+// before recognition, which removed the basis header band on tall labels: sondey and kinder each went
+// Confident here and `NotFound` on the device, sondey reporting `rejected: 61.9: REFERENCE_PERCENT
+// column`. Every case below was green throughout.
+//
+// **`ProductionStillPipelineTest` is the suite that measures the shipped feature.** Add production
+// -path regressions there. Keep this class for parser-vs-recognition questions.
+//
+// Invariant here: given real recognizer output, the parser returns the total carbohydrate and refuses
+// to substitute sugars, percentages or unrelated numbers.
 //
 // Every other OCR test in this repo starts from an OcrDocument — text and boxes a human typed into a
 // fixture — so it exercises the parser's reaction to recognition that already succeeded. It cannot

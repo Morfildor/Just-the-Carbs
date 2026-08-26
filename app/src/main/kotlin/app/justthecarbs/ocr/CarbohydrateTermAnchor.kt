@@ -63,19 +63,23 @@ internal object CarbohydrateTermAnchor {
         // on the wrapped-sentence row this exists for puts the anchor after the very number it must
         // exclude.
         val anchors = mutableListOf<Anchor>()
-        fun record(terms: Collection<String>, isCarbohydrate: Boolean) {
+        fun record(terms: Collection<String>, isCarbohydrate: Boolean, isChild: Boolean = false) {
             terms.forEach { term ->
                 val termWords = NutritionTerminology.normalize(term).split(' ').filter { it.isNotBlank() }
                 if (termWords.isEmpty()) return@forEach
                 for (start in 0..words.size - termWords.size) {
                     if (termWords.indices.all { words[start + it] == termWords[it] }) {
-                        anchors += Anchor(row.elements[ownerOfWord[start]].box.left, isCarbohydrate)
+                        anchors += Anchor(
+                            left = row.elements[ownerOfWord[start]].box.left,
+                            isCarbohydrate = isCarbohydrate,
+                            isChild = isChild,
+                        )
                     }
                 }
             }
         }
         record(NutritionTerminology.carbohydrateTerms, isCarbohydrate = true)
-        record(NutritionTerminology.exclusionTerms, isCarbohydrate = false)
+        record(NutritionTerminology.exclusionTerms, isCarbohydrate = false, isChild = true)
         record(OTHER_NUTRIENT_TERMS, isCarbohydrate = false)
 
         return anchors.sortedBy { it.left }
@@ -90,8 +94,16 @@ internal object CarbohydrateTermAnchor {
     fun isCarbohydrateValue(anchors: List<Anchor>, right: Int): Boolean =
         anchors.lastOrNull { it.left < right }?.isCarbohydrate ?: true
 
-    /** A nutrient name's left edge, and whether it is the carbohydrate. */
-    data class Anchor(val left: Int, val isCarbohydrate: Boolean)
+    /**
+     * A nutrient name's left edge, and what kind of nutrient it names.
+     *
+     * [isChild] separates a *carbohydrate child* (sugars, polyols, fibre, starch) from an unrelated
+     * nutrient (fat, protein, salt). Both are `isCarbohydrate = false` and both equally disqualify a
+     * number they introduce, so value binding does not care which it is — but
+     * [MergedTotalRowRecovery] does: only a child term explains why [RowClassifier] excluded a row,
+     * and so only a child term may bound a recovered total span.
+     */
+    data class Anchor(val left: Int, val isCarbohydrate: Boolean, val isChild: Boolean = false)
 
     /**
      * Nutrient names that are neither carbohydrate nor one of its children, so that a figure they
@@ -108,7 +120,7 @@ internal object CarbohydrateTermAnchor {
      * term costs nothing that was not already lost; inventing one that collides with a carbohydrate
      * word would cost a correct reading, so nothing unobserved is guessed at.
      */
-    private val OTHER_NUTRIENT_TERMS: Set<String> = setOf(
+    internal val OTHER_NUTRIENT_TERMS: Set<String> = setOf(
         // fat
         "vetten", "vet", "fett", "fedt", "fat", "matieres grasses", "matières grasses",
         "lipides", "yag", "yağ", "grasse", "grasses",

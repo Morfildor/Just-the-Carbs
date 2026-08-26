@@ -204,6 +204,18 @@ object Space {
     val chipRadius = 999.dp
 
     val minTouchTarget = 48.dp
+
+    /**
+     * A primary action's height.
+     *
+     * Already the de facto standard — 56dp was written as a literal at sixteen call sites across
+     * seven screens, which is a convention held by hand rather than by the design system, and the
+     * kind that drifts the moment someone types 48 or 60. Comfortably above [minTouchTarget]
+     * because the primary action on these screens is routinely tapped one-handed while holding a
+     * package in the other.
+     */
+    val primaryButtonHeight = 56.dp
+
     val screenEdge = 20.dp
 
     /** Product thumbnails — big enough to recognise a packet, small enough to stay secondary (§7). */

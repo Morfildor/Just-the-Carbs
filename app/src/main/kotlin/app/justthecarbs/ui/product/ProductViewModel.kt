@@ -24,7 +24,9 @@ import app.justthecarbs.domain.PortionUsage
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.ProductFetchResult
+import app.justthecarbs.domain.UnusableReason
 import app.justthecarbs.domain.VerificationStatus
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -122,6 +124,17 @@ sealed interface Failure {
     /** A record exists but its carbohydrate value cannot be trusted (§13). */
     data object NoUsableValue : Failure
 
+    /**
+     * A record exists with a carbohydrate value, but nothing said whether it is per 100 g or per
+     * 100 ml (§17).
+     *
+     * Separate from [NoUsableValue] because the recovery differs in kind. There, the number itself
+     * is missing or corrupt and the user has to read one off the package. Here the number is fine
+     * and only its unit is open, so the user answers one question — which is why this state points
+     * at manual entry, where the basis is a chip they can see and change.
+     */
+    data object UnknownBasis : Failure
+
     /** Network or server problem. Retryable (§36). */
     data class Lookup(val error: LookupError) : Failure
 }
@@ -168,18 +181,44 @@ class ProductViewModel(
         }
     }
 
+    /**
+     * The lookup currently in flight, so one barcode never causes two network requests.
+     *
+     * The already-loaded guard below cannot do this job: it tests `product != null`, which is
+     * precisely what a lookup that has *started but not finished* has not set yet. Two calls close
+     * together — a recomposition re-running the load effect, a user retrying a slow lookup — both
+     * saw a null product and both went to the network. Open Food Facts allows 15 reads per minute
+     * per IP, so duplicate requests are not merely wasteful; they spend a budget the whole app
+     * shares, and the second answer would overwrite the first for no benefit.
+     */
+    private var lookupJob: Job? = null
+
     /** Load a stored or remote product by barcode. */
     fun load(barcode: String) {
         if (_state.value.barcode == barcode && _state.value.product != null) return
+        // A lookup already running for this same barcode is the answer this call wants; joining it
+        // costs nothing and starting a second one costs a request.
+        if (lookupJob?.isActive == true && _state.value.barcode == barcode) return
+
+        // A lookup for a *different* barcode is stale the moment this one is asked for. Cancelling
+        // rather than letting it finish is what stops a slow previous scan delivering its product
+        // over the new one — the state writes below are unconditional, so whichever job completed
+        // last would otherwise win regardless of which the user actually asked for.
+        lookupJob?.cancel()
         _state.update { it.copy(loading = true, barcode = barcode, failure = null) }
 
-        viewModelScope.launch {
+        lookupJob = viewModelScope.launch {
             when (val result = repository.lookup(barcode)) {
                 is ProductFetchResult.Found -> onProductLoaded(result.product)
                 is ProductFetchResult.NotFound ->
                     _state.update { it.copy(loading = false, failure = Failure.NotFound) }
-                is ProductFetchResult.Unusable ->
-                    _state.update { it.copy(loading = false, failure = Failure.NoUsableValue) }
+                is ProductFetchResult.Unusable -> {
+                    val failure = when (result.reason) {
+                        UnusableReason.NO_CARB_VALUE -> Failure.NoUsableValue
+                        UnusableReason.UNKNOWN_BASIS -> Failure.UnknownBasis
+                    }
+                    _state.update { it.copy(loading = false, failure = failure) }
+                }
                 is ProductFetchResult.Failed ->
                     _state.update { it.copy(loading = false, failure = Failure.Lookup(result.error)) }
             }

@@ -83,17 +83,16 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
-  # Instrumented tests need an emulator, which is slow and flaky on shared runners.
-  # Kept as a separate job so a device hiccup never blocks a pull request on the
-  # unit-tested logic, which is where the calculation safety actually lives.
+  # Instrumented tests need an emulator, which is slow and flaky on shared runners, so on ordinary
+  # pushes and pull requests they stay non-blocking: a device hiccup should not block a change to
+  # the unit-tested logic, which is where the calculation safety actually lives.
   #
-  # continue-on-error here is safe specifically because it no longer means "failures are invisible":
-  # the `release` job below is the actual release gate, has no continue-on-error anywhere in it, and
-  # is what must pass before anything is considered release-worthy. A red run of this debug-only job
-  # still shows as a failed check on the PR — it just does not block merging on known emulator
-  # flakiness (CLAUDE.md documents prior flaky-emulator incidents in this project).
+  # This is NOT the release gate. `release-gate.yml` runs the same suite with no continue-on-error
+  # at all, and it is what must be green before an artifact is considered uploadable. The claim that
+  # a passing release gate means the instrumented suite passed is true there and only there —
+  # this job's tolerance is deliberately confined to day-to-day branch work.
   instrumented:
-    name: Instrumented tests (Room DAO) [debug, non-blocking]
+    name: Instrumented tests [debug, non-blocking — see release-gate.yml]
     runs-on: ubuntu-latest
     continue-on-error: true
 

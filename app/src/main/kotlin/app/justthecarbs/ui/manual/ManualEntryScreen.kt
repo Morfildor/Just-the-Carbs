@@ -204,7 +204,7 @@ fun ManualEntryScreen(
                         disabledContainerColor = MaterialTheme.extendedColors.disabledButton,
                         disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
                     ),
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
                 ) { Text(stringResource(R.string.manual_save)) }
             }
         }

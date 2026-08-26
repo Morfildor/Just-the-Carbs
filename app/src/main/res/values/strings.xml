@@ -22,6 +22,7 @@
     <string name="home_empty_step_carbs">Carbs</string>
     <string name="home_empty_scan_label">Scan nutrition label</string>
     <string name="home_settings">Settings</string>
+    <string name="product_finding">Finding product…</string>
     <string name="home_search_label">Search products</string>
     <string name="home_action_barcode_subtitle">Fastest way to find a packaged product</string>
     <string name="home_action_label_subtitle">Read carbs straight from the package</string>
@@ -45,6 +46,7 @@
     -->
     <string name="scanner_hint_aim">Point the barcode inside the frame</string>
     <string name="scanner_hint_steady">Hold steady</string>
+    <string name="scanner_finding_product">Barcode found — finding product…</string>
     <string name="scanner_torch_on">Turn on flashlight</string>
     <string name="scanner_torch_off">Turn off flashlight</string>
     <string name="scanner_torch_unavailable">This device has no flashlight</string>
@@ -301,6 +303,8 @@
     <!-- Unusable value (§13) -->
     <string name="unusable_title">Carbohydrate value unavailable</string>
     <string name="unusable_body">The database entry for this product has no carbohydrate value that can be used safely.</string>
+    <string name="unknown_basis_title">Grams or millilitres?</string>
+    <string name="unknown_basis_body">This product has a carbohydrate value, but the database does not say whether it is measured per 100 g or per 100 ml. Enter it yourself and pick the unit printed on the package — the app never guesses between the two.</string>
 
     <!-- Errors (§36) -->
     <string name="error_offline_title">No internet connection</string>
@@ -349,17 +353,81 @@
     <string name="ocr_title">Scan nutrition label</string>
     <string name="ocr_hint">Frame the nutrition table</string>
     <string name="ocr_align_title">Align the nutrition table</string>
-    <string name="ocr_looking">Looking for carbohydrates…</string>
+    <!--
+      Pre-capture guidance. Deliberately describes the FRAMING, not a search for a value: under
+      capture-first the live frames never produce the answer, so "Looking for carbohydrates" promised
+      something this state cannot deliver.
+    -->
+    <string name="ocr_looking">Point at the nutrition table</string>
+    <!-- A live frame could read the table. Reports what the camera can see, not that the scan will succeed. -->
+    <string name="ocr_ready_to_capture">Table in view — tap to capture</string>
+    <string name="ocr_move_closer">Move closer to the nutrition table</string>
     <string name="ocr_capture_label">Capture label</string>
     <string name="ocr_capturing">Capturing label…</string>
     <string name="ocr_processing">Reading captured label…</string>
+
+    <!--
+      Crop confirmation. The instruction names the two parts of the table that must be enclosed,
+      because the one failure the user cannot diagnose from the result is a crop that cut the
+      "per 100 g" header off — the value is then unplaceable and the app refuses a table they can
+      plainly see.
+    -->
+    <string name="crop_title">Tighten the box around the table</string>
+    <string name="crop_body">Drag the corners so only the nutrition table is inside — leave out ingredients and other text. Keep the “per 100 g” heading and the carbohydrate row.</string>
+    <string name="crop_read">Read table</string>
+    <string name="crop_retake">Retake</string>
+    <string name="crop_reading">Reading table…</string>
+    <string name="crop_preparing">Preparing photo…</string>
+    <string name="crop_handle_top_left">Move top-left corner</string>
+    <string name="crop_handle_top_right">Move top-right corner</string>
+    <string name="crop_handle_bottom_left">Move bottom-left corner</string>
+    <string name="crop_handle_bottom_right">Move bottom-right corner</string>
+    <string name="crop_selection">Nutrition table selection</string>
+
+    <!-- Assisted reading (§17-§19). The frozen table stays on screen; the user points at the answer
+         rather than being ejected from the task when automatic recognition gives up. -->
+    <string name="action_back">Back</string>
+    <string name="assist_title">Couldn\'t read it automatically</string>
+    <string name="assist_body">The photo is still here. Point at the carbohydrate figure and it\'s done.</string>
+    <string name="assist_body_tighten">Your box kept nearly the whole photo, so this read the same thing as before. Retake and tighten it, or just point at the figure below.</string>
+    <string name="assist_pick_row">Tap the carbohydrate row</string>
+    <string name="assist_pick_value">Tap the number instead</string>
+    <string name="assist_type_it">Type it in</string>
+    <string name="assist_tap_row_title">Tap the carbohydrate row</string>
+    <string name="assist_tap_row_body">Tap the row on the photo that says carbohydrate.</string>
+    <string name="assist_tap_value_title">Tap the number</string>
+    <string name="assist_tap_value_body">Every number found is outlined. Tap the carbohydrate figure.</string>
+    <string name="assist_basis_title">Check this is right</string>
+    <string name="assist_basis_body">Choose what the figure is printed per.</string>
+    <string name="assist_confirm_value">%1$s g carbs — per what?</string>
+    <string name="assist_type_title">Type the value</string>
+    <string name="assist_type_body">Read it off the photo above.</string>
+    <string name="assist_type_label">Carbs per 100 g/ml</string>
+
+    <!-- Evidence resolution (§8). A value one recognition pass found and nothing corroborated, and
+         the case where two passes disagreed and the app must not choose between them. -->
+    <string name="verify_found_title">Check this against the label</string>
+    <string name="verify_found_body">Read once, not confirmed. Compare it with the package before using it.</string>
+    <string name="verify_found_value">%1$s g per 100 %2$s</string>
+    <string name="verify_found_confirm">That\'s right — use it</string>
+    <string name="verify_found_reject">Not right</string>
+    <string name="conflict_title">Two different readings</string>
+    <string name="conflict_body">The photo was read more than once and the results disagreed (%1$s), so nothing is being guessed. Point at the right figure instead.</string>
+    <string name="conflict_assist">Point at the figure</string>
+
     <string name="ocr_not_found_title">Couldn’t confidently find carbohydrates.</string>
     <string name="ocr_not_found_body">Try a clear, straight photo of the full nutrition table, or enter the value yourself.</string>
     <string name="ocr_enter_manually">Enter manually</string>
     <string name="ocr_scan_again">Scan live again</string>
     <string name="ocr_try_again">Try again</string>
-    <string name="ocr_detected">Detected — %1$s %2$s / 100 %3$s</string>
-    <string name="ocr_detected_basis_unknown">Detected — %1$s %2$s; per-100 basis not established</string>
+    <!-- The detected figure itself, e.g. "40.3 g / 100 g". Rendered large: checking this number
+         against the package is the user's entire job on that card. -->
+    <string name="ocr_detected_value">%1$s g / 100 %2$s</string>
+    <string name="ocr_detected_value_no_basis">%1$s g</string>
+    <string name="ocr_basis_unknown_prompt">This number was read, but not what it\'s measured per. Check the package and enter it yourself.</string>
+    <string name="ocr_basis_unknown_correct">Enter it myself</string>
+    <string name="ocr_confirm">Confirm</string>
+    <string name="ocr_correct">Correct</string>
     <string name="ocr_use">Use %1$s</string>
     <string name="ocr_use_per_100_g">Use / 100 g</string>
     <string name="ocr_use_per_100_ml">Use / 100 ml</string>
@@ -397,8 +465,8 @@
     <string name="settings_data">Data</string>
     <string name="settings_clear_recents">Clear recent history</string>
     <string name="settings_clear_products">Clear saved products</string>
-    <string name="settings_clear_recents_confirm">Clear recent history? Verified products and favourites are kept.</string>
-    <string name="settings_clear_products_confirm">Delete every saved product, including values you verified? This cannot be undone.</string>
+    <string name="settings_clear_recents_confirm">Clear recent history for every product, including favourites? Your saved products, verified values and favourites are kept.</string>
+    <string name="settings_clear_products_confirm">Delete every saved product, including values you verified, and every portion saved for them? This cannot be undone.</string>
     <string name="settings_confirm">Delete</string>
     <string name="settings_cancel">Cancel</string>
     <string name="settings_about">About</string>

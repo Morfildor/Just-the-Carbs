@@ -3,7 +3,7 @@ package app.justthecarbs.data.remote
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.NutritionValueValidator
-import app.justthecarbs.domain.PackageQuantityParser
+import app.justthecarbs.domain.PackageBasisResolver
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitCandidate
 import app.justthecarbs.domain.Product
@@ -17,6 +17,7 @@ import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
 import app.justthecarbs.domain.ServingSizeParser
+import app.justthecarbs.domain.UnusableReason
 import app.justthecarbs.domain.VerificationStatus
 import kotlinx.serialization.SerializationException
 import java.io.IOException
@@ -92,8 +93,13 @@ class OpenFoodFactsDataSource(
             ?.trim()
             ?: return null
 
-        val parsedQuantity = PackageQuantityParser.parse(quantity)
-        val basis = parsedQuantity?.basis ?: PackageQuantityParser.inferBasis(quantity)
+        // A hit whose basis was never established shows no number at all. The card still carries the
+        // name, brand, package text and photo — everything the user needs to recognise their
+        // package — and selecting it runs a normal barcode lookup, which routes the basis question
+        // to the user through the same safe path. Printing a figure here would mean printing it
+        // under an assumed unit, which is the whole defect this pass removes.
+        val resolution = PackageBasisResolver.resolve(productQuantityUnit, quantity)
+        val basis = (resolution as? PackageBasisResolver.Resolution.Resolved)?.basis
 
         return ProductSearchHit(
             barcode = barcode,
@@ -102,10 +108,12 @@ class OpenFoodFactsDataSource(
             packageQuantity = quantity?.takeIf { it.isNotBlank() }?.trim(),
             // Still validated: an out-of-range figure is shown as "no value" rather than as a
             // number, so a card can never display something the calculator would refuse (§13).
-            carbsPer100 = NutritionValueValidator.validateCarbsPer100(
-                raw = nutriments?.carbohydrates100g,
-                basis = basis,
-            ),
+            carbsPer100 = basis?.let {
+                NutritionValueValidator.validateCarbsPer100(
+                    raw = nutriments?.carbohydrates100g,
+                    basis = it,
+                )
+            },
             basis = basis,
             imageUrl = imageFrontUrl?.takeIf { it.isNotBlank() }
                 ?: imageFrontSmallUrl?.takeIf { it.isNotBlank() },
@@ -145,13 +153,31 @@ class OpenFoodFactsDataSource(
             ?.trim()
             ?: return ProductFetchResult.NotFound
 
-        val quantity = PackageQuantityParser.parse(remote.quantity)
-        val basis = quantity?.basis ?: PackageQuantityParser.inferBasis(remote.quantity)
+        // "Is there a number at all?" is answered before "what is it measured per?", and the order
+        // is deliberate: asking someone whether a value is per 100 g or per 100 ml, when the record
+        // holds no value, sends them looking for a distinction that changes nothing. The permissive
+        // ceiling is used here on purpose — this pass rejects only what no basis could rescue
+        // (missing, negative, non-finite, or beyond even the millilitre bound), and the real
+        // basis-specific ceiling is applied below once the basis is known.
+        val rawCarbs = remote.nutriments?.carbohydrates100g
+        if (NutritionValueValidator.validateCarbsPer100(rawCarbs, NutritionBasis.PER_100_ML) == null) {
+            return ProductFetchResult.Unusable(barcode, UnusableReason.NO_CARB_VALUE)
+        }
 
-        val carbs = NutritionValueValidator.validateCarbsPer100(
-            raw = remote.nutriments?.carbohydrates100g,
-            basis = basis,
-        ) ?: return ProductFetchResult.Unusable(barcode)
+        // Grams or millilitres, established or admitted absent (§17, release pass §3). The old code
+        // read `PackageQuantityParser.inferBasis`, which answered PER_100_G for any quantity it could
+        // not parse — so a drink whose `quantity` was "1,5 liter" produced a product whose portion
+        // field asked for grams, indistinguishable from one where the app had actually read a weight.
+        val resolution = PackageBasisResolver.resolve(remote.productQuantityUnit, remote.quantity)
+        val basis = when (resolution) {
+            is PackageBasisResolver.Resolution.Resolved -> resolution.basis
+            PackageBasisResolver.Resolution.Unresolved ->
+                return ProductFetchResult.Unusable(barcode, UnusableReason.UNKNOWN_BASIS)
+        }
+        val quantity = resolution.quantity
+
+        val carbs = NutritionValueValidator.validateCarbsPer100(rawCarbs, basis)
+            ?: return ProductFetchResult.Unusable(barcode, UnusableReason.NO_CARB_VALUE)
 
         val servingSize = portionUnitCandidate(remote, basis)
 

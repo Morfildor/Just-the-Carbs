@@ -1,5 +1,7 @@
 package app.justthecarbs.ocr
 
+import app.justthecarbs.domain.BasisUnitSpellings
+import app.justthecarbs.domain.NutritionBasis
 import java.text.Normalizer
 import java.util.Locale
 
@@ -23,8 +25,46 @@ object NutritionTerminology {
         // The named sugars are the same words across these Latin-script languages, so they live in
         // the shared English set rather than being repeated in each one.
         NutritionTerms("en", setOf("carbohydrate", "carbohydrates"), setOf("of which sugars", "sugars", "sugar", "added sugars", "added sugar", "fibre", "fiber", "starch", "polyols", "polyol", "dextrose", "glucose", "fructose", "sucrose", "lactose", "maltose", "maltodextrin", "glucose syrup"), setOf("serving", "portion")),
-        NutritionTerms("nl", setOf("koolhydraten"), setOf("waarvan suikers", "suikers", "suiker", "vezels", "voedingsvezels", "zetmeel", "polyolen"), setOf("portie", "per portie")),
-        NutritionTerms("de", setOf("kohlenhydrate"), setOf("davon zucker", "zucker", "ballaststoffe", "stärke", "mehrwertige alkohole", "polyole"), setOf("portion", "pro portion")),
+        // Dutch is the app owner's own market and was extended on 2026-08-26 after measuring, not
+        // after guessing — see DutchLabelDiagnosticTest, which prints what each printed form does.
+        //
+        // What the measurement showed: a merged total+child row whose child term is NOT listed here
+        // comes back `Ambiguous [62.0, 35.0]`. That is not a confident-wrong — the architecture holds
+        // — but it asks someone about to dose insulin to choose between the total and the sugars
+        // figure with nothing on screen to tell them which is which. Listing the term turns that into
+        // `NotFound`, which is the documented correct outcome for a row the parser cannot separate.
+        //
+        // The Dutch-specific sugar names are the reason the shared English list was not enough:
+        // Dutch prints "sacharose" where English prints "sucrose", and uses transparent compounds —
+        // melksuiker (lactose), druivensuiker (dextrose), vruchtensuiker (fructose) — that share no
+        // stem with their Latin equivalents.
+        NutritionTerms(
+            "nl",
+            setOf(
+                "koolhydraten", "koolhydraat", "totale koolhydraten",
+                // Abbreviated on small packs.
+                "koolhydr",
+                // Dutch hyphenates long compounds across a line; normalization turns the hyphen into
+                // a space, so the printed "Kool-hydraten" arrives here as two words.
+                "kool hydraten",
+            ),
+            setOf(
+                "waarvan suikers", "suikers", "suiker",
+                "sacharose", "saccharose", "melksuiker", "druivensuiker", "vruchtensuiker",
+                "invertsuiker", "rietsuiker", "kristalsuiker", "glucosestroop",
+                "vezels", "vezel", "voedingsvezels", "voedingsvezel", "vezelstoffen",
+                "zetmeel", "zetmelen",
+                "polyolen", "suikeralcoholen", "suikeralcohol", "meervoudige alcoholen",
+            ),
+            setOf("portie", "per portie"),
+        ),
+        NutritionTerms(
+            "de",
+            // Same hyphenation reasoning as Dutch: German splits "Kohlen-hydrate" across a line.
+            setOf("kohlenhydrate", "kohlenhydrat", "kohlen hydrate"),
+            setOf("davon zucker", "zucker", "ballaststoffe", "stärke", "mehrwertige alkohole", "polyole", "milchzucker", "traubenzucker", "fruchtzucker", "saccharose"),
+            setOf("portion", "pro portion"),
+        ),
         NutritionTerms("fr", setOf("glucides"), setOf("dont sucres", "sucres", "fibres alimentaires", "fibres", "amidon", "polyols"), setOf("portion", "par portion")),
         NutritionTerms("es", setOf("hidratos de carbono", "carbohidratos"), setOf("de los cuales azúcares", "azúcares", "fibra alimentaria", "fibra", "almidón", "polialcoholes", "polioles"), setOf("porción", "por porción")),
         NutritionTerms("it", setOf("carboidrati"), setOf("di cui zuccheri", "zuccheri", "fibre", "amido", "polioli"), setOf("porzione", "per porzione")),
@@ -64,6 +104,22 @@ object NutritionTerminology {
      * keep them in step, which is the arrangement that drifts.
      */
     internal val connectives = setOf("per", "pro", "par", "pr", "na", "w", "voor")
+
+    /**
+     * The basis-unit spellings, from the one place both layers can see
+     * ([app.justthecarbs.domain.BasisUnitSpellings]).
+     *
+     * Re-exported here rather than imported at each call site so the four OCR stages that need it —
+     * [ColumnClassifier], [RowClassifier], [InlineBasisSpans] and [ProseNutritionReader] — keep
+     * reading their vocabulary from one object, which is what this file is for. Each of them held a
+     * private `g|ml` literal until 2026-08-26, and fixing one of the four was not enough: a row must
+     * be typed `HEADER` before the column vocabulary is ever consulted.
+     */
+    internal val millilitreUnits = BasisUnitSpellings.millilitre
+    internal val basisUnitAlternation = BasisUnitSpellings.alternation
+
+    internal fun basisUnitFor(normalizedWord: String): NutritionBasis? =
+        BasisUnitSpellings.basisFor(normalizedWord)
 
     internal val carbohydrateTerms = languages.flatMap { it.carbohydrate }.distinct()
     internal val exclusionTerms = languages.flatMap { it.exclusions }.distinct()

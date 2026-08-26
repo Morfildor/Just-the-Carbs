@@ -1,0 +1,262 @@
+name: Release gate
+
+# The gate that has to be green before anything is uploaded (§64, release pass §6).
+#
+# `ci.yml` is the everyday workflow and deliberately tolerates emulator flakiness on branches, which
+# means a green CI run is NOT evidence that the instrumented suite passed. That distinction is fine
+# for day-to-day work and unacceptable for a release: the Room migrations, the real-image OCR corpus
+# and every Compose behaviour test only exist on a device, so a release verified without them is
+# verified by the JVM tests alone.
+#
+# Every step here blocks. There is no `continue-on-error` anywhere in this file, and none may be
+# added — a gate with an exception in it is not a gate. If the emulator is genuinely flaky, re-run
+# the workflow; do not make the job tolerant.
+#
+# Runs on demand and on a release tag, not on every push, so branch work is not slowed by a job that
+# takes far longer than the rest of CI.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  jvm:
+    name: JVM tests and lint (blocking)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure gradlew is executable
+        run: chmod +x ./gradlew
+
+      - name: Install Android SDK platform 37
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
+
+      # --rerun-tasks, not a plain test run. A `clean test` restores from the Gradle build cache and
+      # reports FROM-CACHE, which proves the tests passed at some point on some input — exactly the
+      # thing a release gate must not accept as evidence.
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --rerun-tasks --no-daemon
+
+      # A suite that skips its highest-value cases reports success for a run that measured nothing,
+      # which is how this project once shipped a scanner that did not work behind a green suite.
+      - name: Assert no test was skipped
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          total = failures = errors = skipped = 0
+          files = glob.glob('app/build/test-results/testDebugUnitTest/*.xml')
+          if not files:
+              sys.exit('::error::No JUnit XML found — the test task did not actually run.')
+          for f in files:
+              r = ET.parse(f).getroot()
+              total += int(r.get('tests', 0)); failures += int(r.get('failures', 0))
+              errors += int(r.get('errors', 0)); skipped += int(r.get('skipped', 0))
+          print(f'JVM: {total} tests, {failures} failures, {errors} errors, {skipped} skipped')
+          if failures or errors or skipped:
+              sys.exit('::error::Release gate requires 0 failures, 0 errors and 0 skipped.')
+          PY
+
+      - name: Lint
+        run: ./gradlew :app:lintDebug --no-daemon
+
+      - name: Upload JVM reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-jvm-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-debug.html
+          retention-days: 30
+
+  instrumented:
+    name: Instrumented tests (blocking)
+    runs-on: ubuntu-latest
+    needs: jvm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure gradlew is executable
+        run: chmod +x ./gradlew
+
+      - name: Install Android SDK platform 37
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # This covers the Room migrations, the committed real-image OCR corpus (RealImageOcrTest,
+      # mandatory — it fails rather than skips on a missing fixture), the production still pipeline,
+      # the selected-table suites and every Compose behaviour test.
+      #
+      # ram-size is explicit: CLAUDE.md records the instrumentation process being OOM-killed part way
+      # through on a 2.5 GB device once the 8 MP still path is exercised, which surfaces as a driver
+      # error rather than a test failure and is easy to misread as flakiness.
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon
+
+      - name: Assert no instrumented test was skipped
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          total = failures = errors = skipped = 0
+          files = glob.glob('app/build/outputs/androidTest-results/connected/**/*.xml', recursive=True)
+          files = [f for f in files if 'logcat' not in f]
+          if not files:
+              sys.exit('::error::No instrumented JUnit XML found — the suite did not run.')
+          for f in files:
+              r = ET.parse(f).getroot()
+              total += int(r.get('tests', 0)); failures += int(r.get('failures', 0))
+              errors += int(r.get('errors', 0)); skipped += int(r.get('skipped', 0))
+          print(f'Instrumented: {total} tests, {failures} failures, {errors} errors, {skipped} skipped')
+          if total == 0:
+              sys.exit('::error::0 instrumented tests ran.')
+          if failures or errors or skipped:
+              sys.exit('::error::Release gate requires 0 failures, 0 errors and 0 skipped.')
+          PY
+
+      - name: Upload instrumented reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-instrumented-reports
+          path: app/build/outputs/androidTest-results/
+          retention-days: 30
+
+  release-build:
+    name: Minified release build (blocking)
+    runs-on: ubuntu-latest
+    needs: instrumented
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure gradlew is executable
+        run: chmod +x ./gradlew
+
+      - name: Install Android SDK platform 37
+        run: |
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
+
+      # A throwaway key generated on the runner and never persisted. This is NOT the production
+      # upload key (§53); it exists only so the fail-closed signing guard in app/build.gradle.kts has
+      # something to attach, letting the job exercise the real minified configuration. The signed
+      # artifact this produces is therefore NOT uploadable, and the job does not pretend otherwise.
+      - name: Generate an ephemeral CI-only test keystore
+        run: |
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/ci-release-test.jks" \
+            -storepass "ci-test-only" -keypass "ci-test-only" -alias ci-test \
+            -keyalg RSA -keysize 2048 -validity 1 \
+            -dname "CN=CI Test Only, OU=NOT FOR PLAY, O=Just the Carbs, L=None, S=None, C=US"
+          echo "JUSTTHECARBS_STORE_FILE=$RUNNER_TEMP/ci-release-test.jks" >> "$GITHUB_ENV"
+          echo "JUSTTHECARBS_STORE_PASSWORD=ci-test-only" >> "$GITHUB_ENV"
+          echo "JUSTTHECARBS_KEY_ALIAS=ci-test" >> "$GITHUB_ENV"
+          echo "JUSTTHECARBS_KEY_PASSWORD=ci-test-only" >> "$GITHUB_ENV"
+
+      - name: Assemble minified release and bundle
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon
+
+      - name: Verify the release artifacts were produced
+        run: |
+          for f in app/build/outputs/apk/release/app-release.apk \
+                   app/build/outputs/bundle/release/app-release.aab; do
+            [ -f "$f" ] || { echo "::error::Missing release artifact: $f"; exit 1; }
+            echo "$f  $(du -h "$f" | cut -f1)  sha256=$(sha256sum "$f" | cut -d' ' -f1)"
+          done
+
+      # The privacy barrier, asserted rather than assumed. These classes write OCR captures and
+      # diagnostics and must not survive R8. Grep the class-definition line specifically: a
+      # line-number mapping entry can mention a stripped class and read as a false positive.
+      - name: Verify diagnostics and evidence classes are stripped from release
+        run: |
+          MAP=app/build/outputs/mapping/release/mapping.txt
+          [ -f "$MAP" ] || { echo "::error::No mapping.txt — R8 did not run."; exit 1; }
+          fail=0
+          for c in ScanEvidenceRecorder ScanEvidenceExport OcrDiagnosticsReport OcrDiagnosticsLogger; do
+            line=$(grep -E "^app\.justthecarbs\.ocr\.$c ->" "$MAP" || true)
+            if [ -z "$line" ]; then
+              echo "OK  $c: absent from mapping.txt"
+            elif echo "$line" | grep -q 'R8\$\$REMOVED\$\$CLASS\$\$'; then
+              echo "OK  $c: removed by R8"
+            else
+              echo "::error::$c is RETAINED in the release build: $line"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Verify no evidence FileProvider in the release manifest
+        run: |
+          MANIFEST=app/build/intermediates/merged_manifest/release/AndroidManifest.xml
+          [ -f "$MANIFEST" ] || MANIFEST=$(find app/build/intermediates -name AndroidManifest.xml -path '*release*' | head -1)
+          if grep -q 'androidx.core.content.FileProvider' "$MANIFEST"; then
+            echo "::error::A FileProvider is declared in the release manifest — evidence export must be debug-only."
+            exit 1
+          fi
+          echo "OK: no FileProvider in $MANIFEST"
+
+      - name: Upload release artifacts (CI-test-signed, NOT uploadable to Play)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-artifacts-ci-test-signed
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/mapping/release/mapping.txt
+          retention-days: 30

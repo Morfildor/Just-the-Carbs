@@ -51,7 +51,31 @@ object NutritionTableInterpreter {
             diagnostics += OcrDiagnostic("column", "${it.kind.name} '${it.headerText}' @ x=${it.centerX}")
         }
 
-        val totalRows = typed.filter { it.second == NutritionRowKind.TOTAL_CARBOHYDRATE }.map { it.first }
+        val classifiedTotals = typed.filter { it.second == NutritionRowKind.TOTAL_CARBOHYDRATE }.map { it.first }
+        // A row whose total declaration was printed BEFORE the child term that excluded it. Only
+        // consulted when the classifier found no total row at all, so a table that reads normally is
+        // untouched by this. See [MergedTotalRowRecovery].
+        //
+        // Skipped entirely on a prose label. A running sentence names the total and its child on one
+        // reconstructed row by nature rather than by reconstruction damage, so recovery would fire on
+        // every prose document and quietly move it off the prose path — reaching the right value with
+        // the wrong provenance, and bypassing the eligibility gate that decides prose is safe to read
+        // at all. Prose keeps its own stage; this exists for tables whose rows chained.
+        val totalRows = classifiedTotals.ifEmpty {
+            if (ProseNutritionReader.isProseLabel(rows, columns, document.width)) {
+                emptyList()
+            } else {
+                typed.filter { it.second == NutritionRowKind.CARBOHYDRATE_CHILD }
+                    .mapNotNull { (row, _) ->
+                        MergedTotalRowRecovery.recover(row)?.also {
+                            diagnostics += OcrDiagnostic(
+                                "merged-row",
+                                "recovered total span '${it.text}' from child row '${row.text}'",
+                            )
+                        }
+                    }
+            }
+        }
         if (totalRows.isEmpty()) {
             diagnostics += OcrDiagnostic("result", "No total-carbohydrate row")
             proseFallback(rows, columns, document.width, diagnostics)?.let { return it }
@@ -77,6 +101,31 @@ object NutritionTableInterpreter {
         var servingColumn: NutritionColumn? = null
         // Rows that contributed a per-100 reading, so a candidate quotes the line it came from.
         val contributingRows = mutableMapOf<Pair<BigDecimal, NutritionBasis>, LogicalRow>()
+        // Which column each accepted reading came out of, keyed exactly like [contributingRows].
+        //
+        // Kept beside `perHundred` rather than inside it because the printed-serving-weight
+        // arithmetic in `withPrintedWeight` consumes that list and has no business knowing about
+        // columns. An absent entry means the reading came from an inline basis declaration, which is
+        // a statement in running text rather than a column — see [CarbCandidate.column].
+        val contributingColumns = mutableMapOf<Pair<BigDecimal, NutritionBasis>, NutritionColumnKind>()
+        // A cell landed in a real per-100 column but its value could not be a carbohydrate figure —
+        // i.e. the table's own answer WAS found, and was unusable.
+        //
+        // This distinction decides whether any fallback may run at all (2026-08-25). A real device
+        // photographed a label whose printed `86g` came back from ML Kit as **`869`**. The validator
+        // correctly refused 869 as impossible per 100 g, `distinct` fell empty, and the prose
+        // fallback then bound the carbohydrate term to the **per-portion** cell `22 g` sitting in the
+        // next column along and reported it as a confident per-100 value. Both stages behaved as
+        // designed; the composition was wrong.
+        //
+        // "No usable per-100 cell" covers two situations that must not share an outcome. When the
+        // table printed nothing in that column, another reading of the document is a legitimate
+        // second opinion. When the table printed a value there and it was refused, the label's own
+        // answer is known and unusable — substituting a neighbouring column's number is not a second
+        // opinion but a different quantity wearing the same label. A degraded value is a reason to
+        // ask for a better photograph, never a licence to answer from a cell the user did not print
+        // there.
+        var perHundredCellRejected = false
 
         totalRows.forEach { totalRow ->
             // A basis printed inside the value row itself, e.g. "Carbohydrate per 100 g 45 g", on a
@@ -94,7 +143,7 @@ object NutritionTableInterpreter {
                 )
             }
 
-            numbersIn(totalRow, document.width, inlineBases, anchors).forEach { cell ->
+            numbersIn(totalRow, document, rows, inlineBases, anchors, diagnostics).forEach { cell ->
                 val column = columnFor(cell, columns, document.width)
                 // An inline basis only applies when no classified column claims the cell, so a real
                 // header row always wins and this cannot quietly override a resolved table.
@@ -128,6 +177,7 @@ object NutritionTableInterpreter {
                         val validated =
                             NutritionValueValidator.validateCarbsPer100(cell.value.toDouble(), basis)
                         if (validated == null) {
+                            perHundredCellRejected = true
                             diagnostics += OcrDiagnostic(
                                 "rejected",
                                 "${cell.value.toPlainString()}: outside the possible per-100 range",
@@ -136,6 +186,7 @@ object NutritionTableInterpreter {
                             val key = validated.stripTrailingZeros() to basis
                             perHundred += validated to basis
                             contributingRows.putIfAbsent(key, totalRow)
+                            contributingColumns.putIfAbsent(key, column.kind)
                         }
                     }
                     NutritionColumnKind.PER_SERVING -> {
@@ -184,7 +235,17 @@ object NutritionTableInterpreter {
         val reading = when {
             distinct.isEmpty() -> {
                 diagnostics += OcrDiagnostic("result", "Total-carbohydrate row found but no usable per-100 cell")
-                proseFallback(rows, columns, document.width, diagnostics)?.let { return it }
+                // The table answered and its answer was unusable — see [perHundredCellRejected]. No
+                // other stage may substitute a different number for the one this label actually
+                // printed in its per-100 column.
+                if (perHundredCellRejected) {
+                    diagnostics += OcrDiagnostic(
+                        "prose",
+                        "per-100 cell was rejected as implausible; no fallback may replace it",
+                    )
+                } else {
+                    proseFallback(rows, columns, document.width, diagnostics)?.let { return it }
+                }
                 LabelReading.NotFound
             }
             distinct.size == 1 -> {
@@ -192,13 +253,20 @@ object NutritionTableInterpreter {
                 diagnostics += OcrDiagnostic("selected", "${value.toPlainString()} ${basis.name}")
                 val row = rowFor(value, basis, contributingRows, totalRows)
                 provenance = CandidateProvenance.FromRow(row.text, row.box)
-                LabelReading.Confident(candidate(row, value, basis))
+                val column = contributingColumns[value.stripTrailingZeros() to basis]
+                diagnostics += OcrDiagnostic("column", column?.name ?: "inline declaration (no column)")
+                LabelReading.Confident(candidate(row, value, basis, column))
             }
             else -> {
                 diagnostics += OcrDiagnostic("ambiguous", "${distinct.size} distinct total-carbohydrate readings")
                 LabelReading.Ambiguous(
                     distinct.map { (value, basis) ->
-                        candidate(rowFor(value, basis, contributingRows, totalRows), value, basis)
+                        candidate(
+                            rowFor(value, basis, contributingRows, totalRows),
+                            value,
+                            basis,
+                            contributingColumns[value.stripTrailingZeros() to basis],
+                        )
                     },
                 )
             }
@@ -380,7 +448,7 @@ object NutritionTableInterpreter {
         val kind = ServingSizeParser.kindForWord(word) ?: return null
         val weight = PortionParser.parse(weightText) ?: return null
         if (weight.signum() <= 0) return null
-        val basis = if (unit.equals("ml", ignoreCase = true)) NutritionBasis.PER_100_ML else NutritionBasis.PER_100_G
+        val basis = NutritionTerminology.basisUnitFor(unit.lowercase()) ?: return null
         return ServingDescriptor(
             kind = kind,
             count = BigDecimal.ONE,
@@ -391,7 +459,10 @@ object NutritionTableInterpreter {
 
     /** A unit word directly followed by a weight, with no leading count: "portie 50 g", "stuk (25 g)". */
     private val HEADER_WEIGHT =
-        Regex("""^(\p{L}+)\s*[(,=]?\s*(\d+(?:[.,]\d+)?)\s*(g|ml)\)?\s*$""", RegexOption.IGNORE_CASE)
+        Regex(
+            """^(\p{L}+)\s*[(,=]?\s*(\d+(?:[.,]\d+)?)\s*(${NutritionTerminology.basisUnitAlternation})\)?\s*$""",
+            RegexOption.IGNORE_CASE,
+        )
 
     private fun isGenericServingWord(text: String): Boolean {
         val normalized = NutritionTerminology.normalize(text)
@@ -407,7 +478,13 @@ object NutritionTableInterpreter {
      */
     private val GENERIC_SERVING_WORDS = setOf("serving", "portion", "portie", "schaaltje")
 
-    private fun candidate(row: LogicalRow, value: BigDecimal, basis: NutritionBasis) = CarbCandidate(
+    private fun candidate(
+        row: LogicalRow,
+        value: BigDecimal,
+        basis: NutritionBasis,
+        /** Null when the basis came from an inline declaration rather than a column header. */
+        column: NutritionColumnKind? = null,
+    ) = CarbCandidate(
         sourceLine = row.text,
         label = row.elements.firstOrNull()?.text.orEmpty().replaceFirstChar { it.uppercase() },
         value = value,
@@ -419,6 +496,7 @@ object NutritionTableInterpreter {
             CandidateEvidence("${basis.name} column", NutritionParserThresholds.PER_100_HEADER),
             CandidateEvidence("column-resolved cell", NutritionParserThresholds.STRONG_COLUMN_ALIGNMENT),
         ),
+        column = column,
     )
 
     /**
@@ -455,22 +533,38 @@ object NutritionTableInterpreter {
      *   a confident answer (correction pass §6).
      * - **Numbers a different nutrient named on the same row already claimed**, per [anchors]. See
      *   [CarbohydrateTermAnchor] for why reading order settles this and a distance cannot.
+     * - **Numbers occupying a unit-marker position**, per [UnitMarkerFilter]. A printed `(g)` read as
+     *   `(9)` is a well-formed carbohydrate quantity on the correct row that every other guard here
+     *   accepts, and it produced a measured confident-wrong.
      */
     private fun numbersIn(
         row: LogicalRow,
-        documentWidth: Int,
+        document: OcrDocument,
+        allRows: List<LogicalRow>,
         inlineBases: List<InlineBasisSpans.Span>,
         anchors: List<CarbohydrateTermAnchor.Anchor> = emptyList(),
+        diagnostics: MutableList<OcrDiagnostic>,
     ): List<NumberCell> = buildList {
-        val percentIndices = PercentAssociation.percentElementIndices(row, documentWidth)
+        val percentIndices = PercentAssociation.percentElementIndices(row, document.width)
         val basisIndices = inlineBases.flatMap { it.elementIndices }.toSet()
         val fragmentPartners = decimalFragmentPartners(row)
+        val medianHeight = document.elements.map { it.box.height }.sorted()
+            .let { if (it.isEmpty()) 1 else it[it.size / 2] }
+        val markerIndices = UnitMarkerFilter.markerElementIndices(row, allRows, medianHeight)
+        markerIndices.forEach {
+            diagnostics += OcrDiagnostic(
+                "unit-marker",
+                "'${row.elements[it].text}' occupies a unit-marker position, not a value",
+            )
+        }
 
         row.elements.forEachIndexed { index, element ->
             if (index in percentIndices) return@forEachIndexed
             if (index in basisIndices) return@forEachIndexed
             // Consumed as the tail of "61," + "9" by the element before it.
             if (index in fragmentPartners.values) return@forEachIndexed
+            // A misread unit annotation, not a cell in a value column.
+            if (index in markerIndices) return@forEachIndexed
             // Claimed by a different nutrient named to its left on this same row.
             if (!CarbohydrateTermAnchor.isCarbohydrateValue(anchors, element.box.right)) {
                 return@forEachIndexed
@@ -507,9 +601,32 @@ object NutritionTableInterpreter {
      *
      * The trailing unit must match **exactly**, which is the whole difficulty: testing that the
      * suffix merely *starts* with "g" would accept "0gjikovi" and change nothing.
+     *
+     * ### The leading check spans the number's own token (2026-08-25)
+     *
+     * It originally inspected only the character immediately before the matched digits, which left a
+     * hole a real device fell into: ML Kit read a printed `5,00` as **`b,00`**, the `NUMBER` regex
+     * matched the `00` after the separator, the character before *that* was a comma rather than a
+     * letter, and the parser reported a **confident 0.0 g** for a product containing about 5 g. A
+     * false zero is the worst shape this failure can take — it reads as a legitimate answer for a
+     * carbohydrate-free food, so nothing downstream can doubt it, and the user doses from it.
+     *
+     * The check now spans back to the nearest whitespace: a letter anywhere in the number's **own
+     * whitespace-delimited token** disqualifies it, so a corrupted integer part can no longer be
+     * salvaged into a clean-looking fraction. `b,00`, `o,5` and `S,0` are refused.
+     *
+     * Stopping at whitespace rather than scanning the whole element is deliberate and was corrected
+     * after it broke two existing tests. ML Kit frequently returns a nutrient name and its value as
+     * one element — `"Carbohydrate 52.4 g"`, and every prose label in this repo's corpus — where
+     * letters legitimately precede the number with a space between. Rejecting on those would have
+     * discarded correct readings, which is the opposite of the safety this rule exists for.
      */
     private fun isStandaloneNumber(text: String, match: MatchResult): Boolean {
-        text.getOrNull(match.range.first - 1)?.let { if (it.isLetter()) return false }
+        // The token the number sits in, not the whole element: "Carbohydrate 52.4 g" is a legitimate
+        // label-and-value element, while "b,00" is one corrupted token.
+        if (text.take(match.range.first).takeLastWhile { !it.isWhitespace() }.any { it.isLetter() }) {
+            return false
+        }
         val after = text.substring(match.range.last + 1)
         if (after.isEmpty() || !after.first().isLetter()) return true
         return after.trimEnd { !it.isLetter() }.lowercase() in TRAILING_UNITS

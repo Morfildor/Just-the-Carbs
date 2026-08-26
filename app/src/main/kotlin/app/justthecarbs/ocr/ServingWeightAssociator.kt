@@ -32,7 +32,10 @@ internal object ServingWeightAssociator {
 
     /** Nothing but a weight, optionally bracketed: "(12,5 g)", "12.5 g", "[30 ml]". */
     private val WEIGHT_ONLY =
-        Regex("""^[(\[]?\s*(\d{1,4}(?:[.,]\d{1,3})?)\s*(g|ml)\s*[)\]]?$""", RegexOption.IGNORE_CASE)
+        Regex(
+            """^[(\[]?\s*(\d{1,4}(?:[.,]\d{1,3})?)\s*(${NutritionTerminology.basisUnitAlternation})\s*[)\]]?$""",
+            RegexOption.IGNORE_CASE,
+        )
 
     /** How far below the header the weight line may sit, in text heights. */
     private const val MAX_VERTICAL_GAP_IN_HEIGHTS = 3.0
@@ -69,7 +72,7 @@ internal object ServingWeightAssociator {
         val match = WEIGHT_ONLY.find(text.replace(" ", "")) ?: return null
         val amount = match.groupValues[1].replace(',', '.').toBigDecimalOrNull() ?: return null
         if (amount.signum() <= 0) return null
-        val basis = if (match.groupValues[2].equals("ml", ignoreCase = true)) {
+        val basis = if (match.groupValues[2].lowercase() in NutritionTerminology.millilitreUnits) {
             NutritionBasis.PER_100_ML
         } else {
             NutritionBasis.PER_100_G

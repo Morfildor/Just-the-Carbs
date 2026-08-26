@@ -193,7 +193,7 @@ fun PrimaryAction(text: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         shape = RoundedCornerShape(Space.buttonRadius),
-        modifier = Modifier.fillMaxWidth().height(56.dp),
+        modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
     ) { Text(text) }
 }
 
@@ -224,16 +224,25 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
  * Says only what is known. A record with no carbohydrate value says so in words rather than showing
  * a zero — a "0 g carbs" card would be a confident wrong answer about food, which is exactly the
  * failure this app is built to avoid.
+ *
+ * The same applies to a value whose **basis** is unknown, which is why the number and the unit are
+ * read together rather than the unit being defaulted: `search_carbs` renders "48.2 g / 100 g", so
+ * with no established basis there is no honest way to fill the second half. The data source already
+ * drops the figure in that case; reading both here means a hit built any other way degrades to
+ * "no value" instead of printing a unit nothing supports.
  */
 @Composable
 fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit) {
-    val carbsText = hit.carbsPer100?.let { carbs ->
+    val basis = hit.basis
+    val carbsText = if (hit.carbsPer100 != null && basis != null) {
         stringResource(
             R.string.search_carbs,
-            carbs.stripTrailingZeros().toPlainString(),
-            hit.basis.unitLabel,
+            hit.carbsPer100.stripTrailingZeros().toPlainString(),
+            basis.unitLabel,
         )
-    } ?: stringResource(R.string.search_no_carbs)
+    } else {
+        stringResource(R.string.search_no_carbs)
+    }
 
     Row(
         modifier = Modifier

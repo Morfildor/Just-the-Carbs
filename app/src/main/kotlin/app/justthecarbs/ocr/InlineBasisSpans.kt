@@ -77,11 +77,10 @@ object InlineBasisSpans {
         if (NutritionTerminology.normalize(hundred.text) != "100") return null
 
         val unitElement = row.elements.getOrNull(start + 2) ?: return null
-        val basis = when (NutritionTerminology.normalize(unitElement.text)) {
-            "g" -> NutritionBasis.PER_100_G
-            "ml" -> NutritionBasis.PER_100_ML
-            else -> return null
-        }
+        // Every spelling a package uses, not just the two-letter abbreviations — "per 100 gram" is an
+        // ordinary Dutch and German form. See NutritionTerminology.gramUnits.
+        val basis = NutritionTerminology.basisUnitFor(NutritionTerminology.normalize(unitElement.text))
+            ?: return null
 
         return Span(basis, (start until start + MAX_SPAN).toSet())
     }

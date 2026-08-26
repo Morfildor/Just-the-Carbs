@@ -48,14 +48,9 @@ object PackageQuantityParser {
         return PackageQuantity(amount = amount.multiply(multiplier).stripTrailingZeros(), basis = basis)
     }
 
-    /**
-     * The measurement basis for a product, inferred from its declared quantity.
-     *
-     * Falls back to grams when the quantity is unreadable. That default is a labelling choice, not
-     * a calculation one — the arithmetic is identical either way, because the app never converts
-     * between units. A mislabelled basis is corrected by the user in the Verify flow (§23), which
-     * is why an unreadable quantity does not make the product unusable.
-     */
-    fun inferBasis(quantity: String?): NutritionBasis =
-        parse(quantity)?.basis ?: NutritionBasis.PER_100_G
+    // `inferBasis(quantity)` used to live here, returning PER_100_G for anything it could not read.
+    // It was removed in the 2026-08-26 release pass; see PackageBasisResolver, which replaces it and
+    // records why a grams default is not the harmless labelling choice the old comment claimed.
+    // Do not reintroduce a total function from quantity text to a basis — the whole point is that
+    // the function is partial.
 }

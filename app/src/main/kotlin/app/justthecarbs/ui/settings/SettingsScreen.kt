@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -45,6 +46,8 @@ import app.justthecarbs.R
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.ThemeChoice
+import app.justthecarbs.ocr.ScanEvidenceExport
+import app.justthecarbs.ocr.ScanEvidenceRecorder
 import app.justthecarbs.ui.components.SectionLabel
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
@@ -69,7 +72,9 @@ fun SettingsScreen(
     var confirmClearRecents by remember { mutableStateOf(false) }
     var confirmClearProducts by remember { mutableStateOf(false) }
     var privacyPolicyLinkFailed by remember { mutableStateOf(false) }
+    var evidenceExportFailed by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -235,6 +240,47 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = Space.xs),
             )
+
+            // Debug builds only, and gated on the recorder's own flag rather than a second copy of
+            // the condition — in a release build `enabled` is a compile-time false, so this whole
+            // block is removed along with the recorder itself. It is intentionally the last thing on
+            // the screen: it is a developer tool, not a feature.
+            if (ScanEvidenceRecorder.enabled) {
+                HorizontalDivider(modifier = Modifier.padding(top = Space.m))
+                SectionLabel("Scan diagnostics (debug)")
+                Text(
+                    text = "Exports the last few nutrition-label captures: the photo, the image " +
+                        "handed to OCR, the recognized text and the parser trace.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (evidenceExportFailed) {
+                    Text(
+                        text = "Nothing recorded yet — capture a nutrition label first.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                SettingsAction(
+                    text = "Export scan evidence",
+                    onClick = {
+                        val intent = ScanEvidenceExport.share(context)
+                        if (intent == null) {
+                            evidenceExportFailed = true
+                        } else {
+                            evidenceExportFailed = false
+                            runCatching { context.startActivity(intent) }
+                        }
+                    },
+                )
+                SettingsAction(
+                    text = "Clear recorded captures",
+                    onClick = {
+                        ScanEvidenceRecorder.clear(context)
+                        evidenceExportFailed = false
+                    },
+                )
+            }
             Spacer(Modifier.height(Space.l))
         }
     }

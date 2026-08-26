@@ -87,7 +87,16 @@ object RowClassifier {
     /** The one shared list — see [NutritionTerminology]. */
     private val CONNECTIVES = NutritionTerminology.connectives
 
-    private val PER_100 = Regex("(?:^|\\s)100\\s*(?:g|ml)(?:$|\\s)")
+    /**
+     * Every spelling of the basis unit, from the one shared list.
+     *
+     * This was a private `(?:g|ml)` literal until 2026-08-26 — a fourth independent copy of the same
+     * pattern — and it is why extending [ColumnClassifier] alone did not make `per 100 gram` work: a
+     * row that names no nutrient and no recognised basis is typed `OTHER`, and `ColumnClassifier`
+     * only ever looks at `HEADER` rows, so the column vocabulary never got a chance to run. Two
+     * stages have to agree that a row is a header before either can act on it.
+     */
+    private val PER_100 = Regex("(?:^|\\s)100\\s*(?:${NutritionTerminology.basisUnitAlternation})(?:$|\\s)")
 
     /** "%RI", "%DV", "reference intake", "RI*" — the percentage column's vocabulary. */
     private val REFERENCE_INTAKE = Regex("(?:^|\\s)(?:ri|dv|gda|reference intake|daily value)(?:$|\\s)")
