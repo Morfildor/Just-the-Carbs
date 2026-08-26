@@ -5,8 +5,21 @@ publication is blocked by the unresolved §44 qualification assessment. Final Pl
 real-device release testing also remain owner actions.
 
 Production signing is **no longer a blocker**: an owner-controlled upload key exists and has signed
-a real bundle (§2, §7). That closes the signature gate and nothing else — the artifact still comes
-from an uncommitted tree, the keystore still has no tested backup, and §44 still governs go/no-go.
+a real bundle (§2, §7). That closes the signature gate and nothing else — §44 still governs
+go/no-go.
+
+**2026-08-26 (later same day):** the working tree behind this build is now committed (`68c85a3` on
+`main`) rather than uncommitted, closing that specific caveat. JVM 771/771 (0 skipped,
+`--rerun-tasks`), instrumented 218/218 (0 skipped, fresh AVD after a `-wipe-data` repair — the
+instance had a corrupted disk image, see CLAUDE.md's "AVD went into a crash loop" note), lint clean.
+`app-release.aab` rebuilt from `clean` on this commit: 35,624,186 bytes, SHA-256
+`37be02324dec011c74edd876d346077a03dc611096eae4d98374ab791c7e604b`, signed with the real upload key
+(fingerprint `1E:21:23:F3:...:C4:F5`, matching §2). R8 barriers re-checked on this build's
+`mapping.txt`: `ScanEvidenceRecorder`/`OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`;
+`ScanEvidenceExport`/`OcrDiagnosticsReport` absent entirely; `UnitMarkerFilter`,
+`CandidateProvenance`, `PackageBasisResolver` retained as real classes. Release manifest carries only
+the ML Kit init provider and `androidx.startup` — no `FileProvider`. The keystore still has no
+tested backup (owner action, unchanged).
 
 This is the owner's release order. Do not skip a blocked item and do not turn an unverified item
 into a claim.
@@ -30,7 +43,7 @@ into a claim.
 | **DONE 2026-08-14** | Target/compile SDK | `app/build.gradle.kts`: `targetSdk = 36`, `compileSdk = 37`. Google requires API 36 for new apps and updates from 2026-08-31. These values are intentionally independent. |
 | **DONE 2026-08-14** | Version source | `branding.gradle.kts` is the only source for version code/name. First release is `1` / `1.0.0`; incrementing requires one edit in that file. Play requires a higher version code for every update. |
 | **DONE 2026-08-14** | Release fails closed | `:app:bundleRelease` without all signing inputs exits with `Release signing is incomplete; refusing to create an unsigned release artifact.` |
-| **DONE 2026-08-14** | AAB build path exercised | `app-release.aab` built and signed with an ignored, 30-day **DISPOSABLE TEST KEY**. Size: 34,961,985 bytes (33.34 MiB). It proves the path only and must not be uploaded. |
+| **DONE 2026-08-26** | AAB build path exercised | `app-release.aab` built from `clean` on committed commit `68c85a3`, signed with the real owner upload key (§2). Size: 35,624,186 bytes (34.0 MiB), SHA-256 `37be02324dec011c74edd876d346077a03dc611096eae4d98374ab791c7e604b`. This is upload-eligible signing-wise; §44 still blocks publication. |
 | **DONE 2026-08-14** | Resolved dependency inventory | 226 release-runtime artifacts recorded in [resolved-release-dependencies.md](resolved-release-dependencies.md), resolved only from Google Maven and Maven Central. |
 
 ## 2. Production upload key and signed AAB
