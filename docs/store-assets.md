@@ -25,16 +25,19 @@ so it stays legible at 48dp in a launcher folder.
 Deliberately **not** a syringe, blood drop, glucose meter, pump, medical cross, calorie flame, or
 bathroom scale. The app is a calculator for packaged food and the icon must not suggest otherwise.
 
-☐ Export the 512×512 32-bit PNG store icon from the same vectors
+☑ 512×512 32-bit PNG store icon exported *(owner, 2026-08-26)*
 
-## Store assets to produce
+## Store assets — complete
+
+Assets are held by the owner, not in this repository. The specifications and the shot list below
+remain the reference for any re-capture.
 
 | Asset | Current specification | Status |
 |---|---|---|
-| Store icon | 512 × 512, 32-bit PNG with alpha, ≤1,024 KB | **MISSING** |
-| Feature graphic | 1024 × 500 JPEG or 24-bit PNG, no alpha | **MISSING** |
-| Phone screenshots | Produce at least 2; JPEG/24-bit PNG, no alpha; each side 320–3,840 px; long side ≤2× short side | **MISSING** |
-| Tablet screenshots | Not a universal publication minimum; use real tablet captures if tablet quality/distribution is claimed | **OPEN owner scope decision** |
+| Store icon | 512 × 512, 32-bit PNG with alpha, ≤1,024 KB | **DONE 2026-08-26** *(owner)* |
+| Feature graphic | 1024 × 500 JPEG or 24-bit PNG, no alpha | **DONE 2026-08-26** *(owner)* |
+| Phone screenshots | Produce at least 2; JPEG/24-bit PNG, no alpha; each side 320–3,840 px; long side ≤2× short side | **DONE 2026-08-26** *(owner)* — real-device captures |
+| Tablet screenshots | Not a universal publication minimum; use real tablet captures if tablet quality/distribution is claimed | Optional owner scope decision |
 | Promo video | Optional — recommended to skip | **SKIP for first release** |
 
 ## Screenshot sequence
@@ -84,8 +87,9 @@ superlatives, no medical imagery, no numbers that could read as a health claim.
 
 ## Localisation
 
-English is the primary listing. A Dutch listing is worthwhile given the target market — the app
-already ships Dutch strings. Translate title, short and full descriptions, and screenshot captions;
-screenshots can be re-captured with the device set to Dutch.
+English is the only listing for v1, and **the app ships English only** — `values-nl/strings.xml` was
+deleted and `localeFilters += "en"` makes that structural. A Dutch *listing* is still worthwhile
+given the target market and would not require translating the app: Play listing localisation is
+independent of in-app strings. Optional after launch.
 
-☐ Dutch listing — *(owner decides)*
+☐ Dutch listing — *(owner decides; optional, post-launch)*

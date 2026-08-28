@@ -1,18 +1,43 @@
 # Regulatory release gate — Just the Carbs
 
-**NO-GO. Every OPEN row blocks public publication.** This document records engineering evidence
-and owner actions; it is not a regulatory determination. Last engineering review: 2026-08-14.
+**Scope of this gate: public production publication.** It does **not** gate internal or closed
+testing, which distribute to named testers the owner controls rather than to the public.
+
+**Internal testing is DEPLOYED (2026-08-26) and CLOSED TESTING IS ACTIVE** — `1.0.0` /
+`versionCode 1`, the same artifact progressing through both tracks, with 12+ testers opted in and
+the closed-testing period running.
+That was correct: no row here applied to it, and none is applied retroactively.
+
+**Production status: GATED.** This document records engineering evidence and owner actions; it is not
+a regulatory determination. Last engineering review: 2026-08-14; scope and classification review
+2026-08-26.
+
+**Launch scope is EU-only for v1** (assessment Annex A.1), set in Play Console under
+countries/regions. Rows conditional on other markets are not blockers for this release.
+
+**Which open rows actually block production.** Only two:
+
+- **A1/A3 signature** — the assessment is written and its conclusion complete; it needs the
+  manufacturer's signature and date (§9 of that document).
+- **A6 / E4 listing wording** — the §44 conclusion is conditional on its §7.1 marketing constraints,
+  so published copy must be read against them.
+
+Every other open row below is either **conditional on a market the owner is not releasing to**
+(A5 — v1 is EU-only), **the owner's own conservative recommendation rather than a legal
+precondition** (A2 — under the MDR the manufacturer is the responsible party, so a manufacturer
+self-assessment is the expected record), or **a Play Console form completed at submission**
+(C3–C8). Those are tracked in the readiness document's §1b/§1c and are not restated as blockers here.
 
 Status vocabulary is strict:
 
 - **DONE** includes dated evidence.
 - **OPEN — Owner** names the decision or evidence the owner must obtain.
 - **DRAFTED — Owner signature required** means the written record exists but is unsigned. It is
-  **not** a completed row and blocks release exactly as OPEN does; it exists only so the owner can
-  see which rows need a signature rather than new work.
+  **not** a completed row, and it blocks *production publication* as OPEN does; it exists so the
+  owner can see which rows need a signature rather than new work.
 - **NOT REACHED** means the row is conditional on a row above that has not concluded.
 - There is no “in progress,” implied completion, or disclaimer-based bypass. A drafted record
-  confers no permission to publish.
+  confers no permission to publish publicly.
 
 ## A. Qualification decision — all rows block release
 
@@ -28,10 +53,10 @@ one, and a self-assessment is not an independent one.
 | ID | Status | Required record | Evidence / date |
 |---|---|---|---|
 | A1 | **DRAFTED — Owner signature required** | Define the exact intended purpose, intended users, use environment, markets, and public claims | Assessment §1 (intended purpose), §7.1 (marketing constraints), Annex A.1 (EU only). Becomes DONE when §9 is signed and dated |
-| A2 | **OPEN — Owner** | Obtain a competent qualification assessment against Regulation (EU) 2017/745 Article 2 and the actual intended purpose | Assessment §3 is a **manufacturer self-assessment**; no assessor competence is recorded. Independent review is Annex A.6 and remains outstanding — see note below |
+| A2 | **OPTIONAL — Owner discretion** | Obtain a competent qualification assessment against Regulation (EU) 2017/745 Article 2 and the actual intended purpose | Assessment §3 is a **manufacturer self-assessment**. Under the MDR the manufacturer is the party responsible for qualification, so this is the legitimate and expected record; independent review is the assessment's own conservative recommendation (Annex A.6), not a legal precondition for a product concluded not to be a device. Closes when either an independent reviewer records an opinion **or** the owner records a reasoned decision to proceed on the self-assessment, with competence basis stated — see note below |
 | A3 | **DRAFTED — Owner signature required** | Assess current software guidance: MDCG 2019-11 rev.1 (June 2025) | Assessment §4 analyses the current revision, confirmed live 2026-08-14. Annex A.2 requires reconfirming the revision at signature |
 | A4 | **NOT REACHED** | If qualification applies, determine classification using current guidance, including MDCG 2021-24 rev.1 (April 2026), and determine conformity route | Conditional on A2. The drafted assessment concludes qualification does not apply, so no class, rule or conformity route is determined. If A2 overturns that conclusion, this row reopens as OPEN — Owner |
-| A5 | **OPEN — Owner** | Assess every distribution market separately; EU work does not answer UK/US/other markets | Assessment covers the **EU only** (Annex A.1). UK (MHRA) and US (FDA) are unassessed. Distribution must be restricted to the EU until this is done |
+| A5 | **NOT BLOCKING for v1 — scoped out** | Assess every distribution market separately; EU work does not answer UK/US/other markets | Assessment covers the **EU only** (Annex A.1). **v1 distribution is set to EU countries only in Play Console**, which makes the signed assessment coextensive with the markets served and removes UK (MHRA) / US (FDA) assessment from this release. This row reopens as **OPEN — Owner** the moment distribution is widened beyond the EU |
 | A6 | **OPEN — Owner** | Record the final conclusion and approve matching app/listing wording | Assessment §8 states a conclusion but is unsigned; listing wording review against §7.1 is Annex A.5 and is not done. See B |
 
 Primary sources retrieved 2026-08-14:
@@ -44,15 +69,18 @@ Primary sources retrieved 2026-08-14:
 A disclaimer cannot complete A1–A6. The software’s limited feature set also cannot decide them by
 itself.
 
-**Why A2 remains OPEN even though an assessment exists.** The drafted assessment is the
-manufacturer's own. Under the MDR the manufacturer is the party responsible for qualification, so a
-self-assessment is a legitimate and expected record — but it is not evidence of assessor competence,
-which is what A2 asks for. The assessment itself identifies its adjacency to insulin dosing (§5.4)
-as the point on which a competent authority could most plausibly disagree, and recommends
-independent review (Annex A.6). Given the app's proximity to the owner's own insulin dosing, that
-review is the conservative course. A2 closes when either an independent reviewer records an opinion,
-or the owner records a reasoned decision to proceed on the self-assessment alone, with competence
-basis stated.
+**Why A2 is optional rather than blocking.** The drafted assessment is the manufacturer's own. Under
+the MDR the manufacturer is the party responsible for qualification, so a self-assessment is a
+legitimate and expected record — it is simply not evidence of assessor *competence*, which is the
+extra assurance A2 describes. Nothing in the MDR requires a non-device to obtain an independent
+opinion before distribution, so holding the release for one is the owner's choice, not an external
+requirement.
+
+It remains the conservative course, and the reason is recorded rather than dismissed: the assessment
+itself identifies adjacency to insulin dosing (§5.4) as the point on which a competent authority
+could most plausibly disagree, and recommends independent review (Annex A.6). The owner may
+reasonably obtain that review after launch, or record a reasoned decision to proceed on the
+self-assessment with the competence basis stated. Either closes the row.
 
 ## B. Owner decision record — drafted, unsigned
 
@@ -77,12 +105,12 @@ summarises; the assessment governs.
 |---|---|---|---|
 | C1 | **DONE** | Current Health Content and Services policy fetched | Google primary source, 2026-08-14; linked in `play-release-readiness.md` |
 | C2 | **DONE** | Current Health Apps declaration categories fetched | Google primary source, 2026-08-14; conditional branches in `play-health-declaration.md` |
-| C3 | **OPEN — Owner** | Select the accurate Health Apps branch | Depends on A1–A6; save form as draft meanwhile |
-| C4 | **OPEN — Owner** | Provide regulatory proof/fields if the regulated branch applies | Use only documents from the completed legal route |
-| C5 | **OPEN — Owner** | Insert Google's current disclaimer if the non-regulated health-app branch applies | Use exact sourced text; do not use it to influence A1–A6 |
-| C6 | **OPEN — Owner** | Confirm Organization developer account | Google says health-app providers must register as an Organization; final category/account evidence required |
-| C7 | **OPEN — Owner** | Host privacy policy and add Play Console + in-app links | Public URL and release-build evidence required |
-| C8 | **OPEN — Owner** | Submit/export the final Health Apps declaration | Retain submitted answers and date |
+| C3 | **OPEN — Owner decision** | Select the accurate Health Apps branch | **Play classification is a separate question from A1–A6** and is not derived from them — "not a medical device" does not mean "not a Google Play health app". The app calculates carbohydrate amounts for portions and meals, which may fall close to **Nutrition and Weight Management**. Facts on both sides: `play-release-readiness.md` §4a. Decided by the owner against Google's current form wording |
+| C4 | **NOT REACHED** | Provide regulatory proof/fields if the regulated branch applies | Conditional on C3 selecting the regulated branch |
+| C5 | **NOT REACHED** | Insert Google's current disclaimer if the non-regulated health-app branch applies | Conditional on C3 selecting a health category. If it does, use Google's exact sourced text; it does not influence A1–A6 |
+| C6 | **CONDITIONAL on C3** | Confirm Organization developer account | Google requires an Organization account of developers providing **health apps**. Attaches only if C3 lands in a health category, and never as a consequence of §44. Record whether it is required now, required after a stated policy effective date, or not applicable |
+| C7 | **DONE 2026-08-26** | Host privacy policy and add Play Console + in-app links | Live at `https://morfildor.github.io/Just-the-Carbs/privacy-policy.html` (GitHub Pages, public repo, `docs/` on `main`); `SettingsScreen` opens the same `BuildConfig.PRIVACY_POLICY_URL`, pinned by `SettingsScreenTest`. Entering the URL in Play Console remains part of submission |
+| C8 | **OPEN — Owner (submission step)** | Submit/export the final Health Apps declaration | Retain submitted answers and date |
 
 ## D. Implemented scope and safety controls
 
@@ -114,11 +142,23 @@ These facts reduce misuse risk but do not answer qualification.
 
 ## F. Final gate sign-off
 
-The owner may change the decision below to GO only when every OPEN row above has evidence.
+This gate governs **public production publication only**. Internal and closed testing are not gated
+by it.
+
+Every outstanding row, classified strictly:
+
+| Classification | Rows | Note |
+|---|---|---|
+| **LEGALLY REQUIRED BEFORE EU PRODUCTION** | **A1, A3, B** — sign and date the assessment (§9 of that document). **A6 / E4** — read the final listing against §7.1. | The assessment's conclusion is already written; A1/A3/B need the owner's signature, which only the owner can give. A6/E4 is a read-through of copy already claim-audited (E1). |
+| **INTERNAL / OPTIONAL** | **A2** (independent review — the MDR makes the manufacturer the responsible party, so the self-assessment is the expected record); **E5** (OFF licence review); **E6** (project licence) | Worth doing; no external party requires any of them for this launch. |
+| **NOT APPLICABLE TO EU-ONLY V1** | **A4** (conclusion is that qualification does not apply); **A5** (UK/US markets not in scope) | A5 reopens only if distribution is widened. |
+| **CONDITIONAL — depends on the C3 outcome** | **C4, C5, C6** | Apply only if the Health Apps declaration lands in a health category. Not resolvable until C3 is decided. |
+| **OWNER DECISION / PLAY SUBMISSION STEP** | **C3** (category choice — owner's), **C8** (submit and retain) | C3 is a genuine decision, not a form-filling step; see `play-release-readiness.md` §4a. |
 
 | Field | Current value |
 |---|---|
-| Decision | **NO-GO** |
-| Open blocking rows | A1 and A3 (drafted, awaiting signature); A2, A5, A6; B signature; C3–C8; E4–E6 |
+| Internal testing | **DEPLOYED 2026-08-26** — not gated by this document |
+| Closed testing | **ACTIVE** — same artifact, 12+ testers, period running; not gated by this document |
+| Production publication | **GATED** — by the LEGALLY REQUIRED row above and the Play forms in `play-release-readiness.md` §5a |
 | Owner approval | *(OPEN — Owner)* |
 | Date | *(OPEN — Owner)* |

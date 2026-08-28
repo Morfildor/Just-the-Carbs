@@ -19,6 +19,15 @@ data class SearchUiState(
     val hits: List<ProductSearchHit> = emptyList(),
     /** True once a search has run and matched nothing — distinct from "not searched yet". */
     val noMatches: Boolean = false,
+    /**
+     * A submission was refused for being shorter than [SearchViewModel.MIN_QUERY_LENGTH].
+     *
+     * Distinct from every other state here because nothing was asked of the network: it is not a
+     * failure, not an empty result, and not a search in progress. It exists because refusing the
+     * request silently left the tap with no observable consequence at all — same screen, same
+     * prompt, no spinner — which reads as the button having missed rather than as the app declining.
+     */
+    val queryTooShort: Boolean = false,
     val error: LookupError? = null,
 )
 
@@ -70,6 +79,9 @@ class SearchViewModel(private val searchSource: ProductSearchSource) : ViewModel
                 query = text,
                 hits = emptyList(),
                 noMatches = false,
+                // The notice belongs to one submission, not to the field. Left standing it would sit
+                // beside a query that is now long enough and has not been submitted.
+                queryTooShort = false,
                 error = null,
                 searching = false,
             )
@@ -79,9 +91,14 @@ class SearchViewModel(private val searchSource: ProductSearchSource) : ViewModel
     /** Explicit search trigger — IME "Search" action or a search button, never a keystroke. */
     fun search() {
         val terms = _state.value.query.trim()
+        // An empty field is not a refused search: the user has not asked for anything, and the
+        // screen's own prompt already says what to type. A "3 characters" message here would be an
+        // error about a mistake nobody made.
         if (terms.isBlank()) return
         if (terms.length < MIN_QUERY_LENGTH) {
-            _state.update { it.copy(searching = false, hits = emptyList(), noMatches = false) }
+            _state.update {
+                it.copy(searching = false, hits = emptyList(), noMatches = false, queryTooShort = true)
+            }
             return
         }
         // A result for exactly this text is already showing: no duplicate submission.
@@ -94,7 +111,7 @@ class SearchViewModel(private val searchSource: ProductSearchSource) : ViewModel
     }
 
     private suspend fun runSearch(terms: String, thisRequestId: Long) {
-        _state.update { it.copy(searching = true, error = null) }
+        _state.update { it.copy(searching = true, error = null, queryTooShort = false) }
         val result = searchSource.search(terms)
         // A newer search may have started (and won the dedupe/cancel above) while this one was in
         // flight; only the most recent request is allowed to write into state.
@@ -123,8 +140,13 @@ class SearchViewModel(private val searchSource: ProductSearchSource) : ViewModel
         search()
     }
 
-    private companion object {
-        /** Below this a search is all noise — "ha" matches thousands of products. */
+    companion object {
+        /**
+         * Below this a search is all noise — "ha" matches thousands of products.
+         *
+         * Public so the screen can state the requirement in the notice using the same number the
+         * refusal is made with, rather than repeating "3" in a string that could drift from it.
+         */
         const val MIN_QUERY_LENGTH = 3
     }
 }

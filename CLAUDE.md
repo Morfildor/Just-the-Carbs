@@ -873,12 +873,348 @@ Barriers re-checked on *this* build's `mapping.txt`: `ScanEvidenceRecorder` and
 real classes. Release manifest carries only the ML Kit init provider and `androidx.startup` — zero
 `FileProvider`/evidence matches.
 
-**What this does NOT close.** The bundle was built from the **uncommitted working tree**, so it is
-not a release candidate and does not satisfy step 10 of the release sequence. No test, lint or OSV
-run was repeated against it. The keystore exists in exactly one place with **no tested backup** —
-before Play App Signing enrollment, losing it means the app can never be updated. §44 remains the
-publication blocker and the overall decision is still **NO-GO**. Full record:
-`docs/play-release-readiness.md` §1, §2 and §7.
+**What this bundle did NOT close** *(historical — superseded by the release-candidate section below)*.
+It was built from the **uncommitted working tree**, so it was not a release candidate, and no test,
+lint or OSV run was repeated against it. That bundle (`00876FA9…BBB4A2`) is **superseded**; do not
+upload it.
+
+## Closed-beta quality pass (2026-08-28) — READ FIRST
+
+Conservative pass taken **while `versionCode 1` is live to internal testers**. Nothing about the
+calculation, the schema, migrations, the §10 lookup priority, barcode detection or any OCR safety
+rule changed.
+
+**`versionCode` was bumped to 2 / `versionName` 1.0.1 in this pass, and that version is OPEN.**
+Several builds go out over the beta as findings come in; 1.0.1 is the first of them. The working
+rules for the open cycle live in **"Version and track state"** below — that section is authoritative,
+this one only records that the bump happened here.
+
+Two defects reproduced by a test that fails on HEAD before the fix, one hardening change, plus one
+latency change.
+
+1. **The label scanner's focus timeout outlived the screen.** `focusThenCapture` posts a
+   `postDelayed(FOCUS_TIMEOUT_MS)` fallback that fires the shutter if autofocus never reports back.
+   **Nothing cancelled it.** Closing the scanner within 1.2 s of tapping capture left it queued; it
+   then ran after `onDispose` had called `executor.shutdown()` and unbound the camera, and
+   `takePicture` hands its callback to that executor — `RejectedExecutionException` on the main
+   thread from an ordinary "tap capture, change your mind" gesture. The existing session guard
+   cannot cover it: that guard is read *inside* the callback which never gets to run. Fixed by
+   checking the existing `disposed` flag in `fireOnce`, the single chokepoint both paths go
+   through, and by delivering the focus listener on `mainExecutor` — a listener registered on a
+   shut-down `ExecutorService` is rejected at dispatch, before `fireOnce`'s own guard is reached.
+2. **The lookup single-flight guard had a gap after the fetch.** See the superseded "Not a defect"
+   section below, which this pass corrects.
+3. **Hardening, not a fixed defect — `activeHandle` in `CropConfirmationScreen` was a private
+   top-level `var`**, process-wide mutable state shared by every crop screen, on the argument that
+   `onDragStart` always sets it first. `detectDragGestures` runs `onDragEnd`/`onDragCancel` only
+   while its pointer input is alive, so a drag interrupted by *Retake* could leave it set. Now a
+   per-instance `remember`. **An earlier revision of this file stated that the next capture's first
+   drag then resized from a stale corner instead of translating. That was never reproduced and is
+   withdrawn** — reachable state, unproven consequence, the same distinction the focus-timeout entry
+   is now careful about. The proven crop defect is the accumulation one in the stabilization section
+   below. Keep the per-instance state; it costs nothing and isolates the state by construction.
+
+**Latency:** `LabelAnalyzer.analyze` ran the full geometry-first parse on live frames whose result
+the two `!paused` checks then discarded. `paused` is set the instant the user taps capture, so that
+discarded parse sat directly between the shutter and `startPendingStillIfPossible()` — the call that
+begins recognising the 8 MP still. It now returns before the parse. Behaviour-neutral by
+construction: `resume()` calls `stability.reset()`, so tracker state from skipped frames could never
+have surfaced anyway (already pinned by `explicit reset clears tracking`).
+
+**Patch notes are now kept, and split in two** (owner instruction): `CHANGELOG.md` at the repo root
+carries Unreleased plus the version currently on a track, and `docs/version-history.md` is the
+append-only archive holding each uploaded artifact's hash, size, signer and dates. A version's
+section is copied across **verbatim** when superseded — the point of the archive is that it records
+what was believed at the time. Do not rewrite shipped entries; add a dated note instead.
+
+Every version also carries a **Play Store release notes** block (owner instruction) — the text for
+Play Console's *What's new*, deliberately far less granular than the engineering change list. Rules
+are in `docs/version-history.md`; the ones easy to get wrong: **500 characters max**, group small
+fixes into one line rather than enumerating them, describe what the user sees rather than what
+moved, and **never make a health claim or mention diabetes** — this field is published material and
+§44 §7.1 binds it exactly as it binds the store listing.
+
+**Larger ideas found and deliberately deferred** are in
+`docs/plans/2026-08-28-post-beta-backlog.md` — including the two most honest gaps in this pass:
+`LabelAnalyzer` has no JVM coverage at all (the pause-ordering change is argued from
+`AmbiguityStabilityTracker.reset()`, not demonstrated), and neither scanner fix has an instrumented
+test, because both need a composable disposed mid-gesture against a faked camera.
+
+**Verified:** JVM **773/773** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit
+XML — up from 771). Lint exit 0, 0 errors, 41 advisories. Debug APK builds.
+
+**Instrumented: 216/218, and the 2 failures are a PRE-EXISTING FLAKE, proven by worktree control.**
+**→ SUPERSEDED 2026-08-28: root-caused to the soft keyboard and FIXED. The suite is now 218/218 in
+one whole-suite run. See "The instrumented flake is fixed" below — the analysis in this section was
+right that it was pre-existing and not a code regression, and wrong that it was unfixable harness
+noise.**
+The whole-suite run reported `MealScreenTest.addingTwoPortionsTotalsThemInTheBar` and
+`addAndScanNextRecordsTheItemAndLeavesForTheScanner` failing with "is not displayed". Do not read
+that as a regression from this pass, and do not "fix" `MealScreenTest`:
+
+- **`MealScreenTest` never constructs `ProductViewModel`.** `showCalculatorWithMeal` builds a
+  `ProductUiState` literal and renders `ProductScreen` directly, so the `load`/`onProductLoaded`
+  change cannot reach it. Checked, not assumed.
+- **Clean HEAD flakes identically.** A `git worktree` at `cc01789` — none of this pass's changes —
+  run three times gave 19/19, **18/19**, 19/19, failing
+  `addingToTheMealKeepsThePortionFieldAndResultVisible`: a *third* test name, same "is not
+  displayed" mode. Three runs, three different victims, on unmodified code.
+- `ProductScreenTest` gave **1 then 2** failures across two identical runs, the top one being
+  `quickAdjustNeverProducesANegativePortion` — the below-the-fold harness issue this file already
+  documents.
+
+The failures are visibility/settling artefacts of the Compose harness (see the two existing
+sections on keyboard-covered and scrolled-out-of-view controls), not app behaviour. **`exit code 0`
+from `connectedDebugAndroidTest` did not mean the suite passed** — the wrapper reported 0 while
+Gradle printed `BUILD FAILED`. Always count from the JUnit XML.
+
+**The classes covering what this pass actually changed are green**, run individually on the final
+build: **`RealImageOcrTest` 15/15, `ProductionStillPipelineTest` 8/8, `SelectedTableProductionTest`
+6/6, `EvidencePipelineProductionTest` 8/8 — the full 37/37 nine-photograph corpus**, which is the
+suite that would catch an OCR regression from the `LabelAnalyzer` change.
+
+**Not** re-verified in this pass: the release/AAB build and the R8 privacy barriers — no release
+build was made. `versionCode 2` is claimed but nothing has been built or uploaded against it.
+
+## Stabilization pass (2026-08-28, later same day) — READ FIRST
+
+Still `versionCode 2` / `1.0.1`, still **OPEN**; nothing built or uploaded. Nothing about the
+calculation, the schema, migrations, the §10 lookup priority, barcode detection or any OCR safety
+rule changed. Two real defects fixed, one unproven claim corrected, and the instrumented flake
+root-caused and closed.
+
+### Every fresh product lookup cost TWO Open Food Facts requests
+
+Not a race and not an edge case — **every** first-time scan. `lookup` misses the cache, fetches,
+and saves; `onProductLoaded` then calls `refreshFromRemote`, which reads that just-written row,
+sees a product worth refreshing, and re-fetches the same barcode microseconds later. Against
+15 reads/min/IP shared by everyone behind one address.
+
+**The existing test could not see it, and the reason is the important part.** `EmptyLocal.save` in
+`ProductLookupSingleFlightTest` was a no-op, so nothing was ever stored, so `refreshFromRemote`
+returned at its first `local.fetch` and its request never happened. *A fake that cannot store is not
+a cache*, and the single-flight guarantees it asserted were being measured over half the path. With
+a persisting fake, **four** tests fail on HEAD, all reporting `[barcode, barcode]` — including the
+two that were previously green.
+
+Fixed at the one place that owns the lookup priority, not at the call site: `lookup` stamps
+`remoteUpdatedAt` when it saves a freshly fetched product, and `refreshFromRemote` skips a product
+synced inside `REMOTE_FRESHNESS_WINDOW` (30 s). The window is sized to cover one load and nothing
+more — it must never become a cache policy, because the background refresh is the only thing that
+can notice a reformulation for a product served from cache (§24, correction #10).
+
+Two properties decide whether the guard is safe, and both are pinned: **a null `remoteUpdatedAt` is
+not fresh** (it means never-refreshed — a pre-existing row or a user-authored one, which must still
+be checked), and **a future timestamp is not fresh** (a backwards clock change would otherwise
+freeze every refresh until real time caught up). Verified non-vacuous by negative control: removing
+the stamp fails all four cases.
+
+**Say what it does, not "nothing else changed".** The window is a time rule, not a rule about which
+call site asked, so it suppresses more than the one duplicate it was written for: a product synced
+within the last 30 s is not refreshed *whoever* asks, which includes reopening the same product
+inside half a minute. Anything synced longer ago refreshes exactly as before. Do not write "cached
+products still refresh exactly as before" — that was in an earlier draft and is not true of the
+30 s window. Accepted for 1.0.1: the cost is one skipped re-check within half a minute, against a
+duplicate request on every first-time scan.
+
+**Corrected 2026-08-28 (documentation pass):** `lookup` saved the stamped copy and returned the
+unstamped one, so the record handed to the caller and the record in the cache disagreed about
+`remoteUpdatedAt` — the returned product read as never-synced. Nothing read that field off the
+returned value, so this was latent rather than an observed defect. `lookup` now returns
+`fetched.copy(product = stamped)`; a cache hit still returns the cached row untouched, because
+stamping a read would make every product look freshly synced and silently suppress the refresh.
+Pinned by `a fresh lookup returns the same product it cached` and `a cached lookup returns the
+cached product unstamped`.
+
+### The crop rectangle moved a tenth as far as the finger did
+
+`detectDragGestures` suspends inside one `pointerInput` block for the whole gesture, so the lambda
+reads the `selection` captured when that block last started — and the block's key is `displayed`,
+which cannot change while the user drags inside the image. `dragAmount` is an **increment**, not a
+total, so every event computed `rectangleAsAtGestureStart + thisDelta` and the increments replaced
+each other instead of accumulating.
+
+**Measured, not argued:** ten 10 px events moved the rectangle to x=210 instead of x=300. Every
+corner resize was affected identically, and a second gesture restarted from the original rectangle,
+silently discarding the first — which is the ordinary way anyone adjusts a crop.
+
+Gesture state now lives in `ui/scan/CropGestureState.kt`, a pure class with no Compose or Android
+types, so the transition sequence is JVM-testable (8 cases). Reintroducing the captured-value read
+fails exactly the four accumulation cases. Recomposition was never a fix for this and depending on
+one landing between two pointer events would be the same bug with better luck.
+
+### A crash mechanism that was documented as fact and was not proven
+
+The previous pass's comment stated that the uncancelled focus timeout firing after `onDispose`
+throws `RejectedExecutionException` on the main thread. **The reachable state is provable by reading
+the code; the specific exception is not** — it was never reproduced on a device, and CameraX may
+catch it, surface an error callback, or fail differently. Comment rewritten to separate what is
+established from what is not, and the changelog entry moved out of *Fixed* into a *Hardening* group.
+The guard itself is kept: it costs nothing and the state it guards is real.
+
+**The general rule this is an instance of:** a reachability argument establishes that code *can* run
+in a given state. It does not establish what that run *does*. Do not promote the second to fact
+without a reproduction.
+
+**The same correction was applied to the crop handle on 2026-08-28** (documentation pass). The
+process-global `activeHandle` really could survive a Retake mid-drag — reachable — but the claim
+that the next capture's first drag then *resized instead of moved* was never reproduced and is
+withdrawn everywhere it appeared: `CropGestureState.kt`, `CropConfirmationScreen.kt`,
+`CropGestureStateTest.kt`, `CHANGELOG.md` and the pass entry above. The per-instance `remember`
+stays, described as state isolation. **The proven crop defect is the accumulation one above** — do
+not let the two merge back into one story.
+
+### The instrumented flake is fixed — it was the soft keyboard
+
+Previously recorded here as unfixable Compose-harness noise with an arbitrary victim per run. It is
+neither arbitrary nor noise.
+
+**Measured in three steps.** (1) Run alone, the meal bar sits at `Rect(53, 954, 1027, 1039)` in a
+1080x2400 root, `placed=true`, stable across six samples and three runs — so there is no layout
+defect and nothing that needs longer to settle. (2) Logcat shows Gboard as
+`SoftKeyboardView{0,0-1080,641}`: a real 641 px window over the bottom of the screen, and every
+failing assertion was on an element pinned there. `assertIsDisplayed` tests visibility against the
+window, so it was reporting the truth. (3) **The control that settles it:** with the IME disabled
+via `adb shell ime disable`, `MealScreenTest` passed **19/19 three times consecutively**; with it
+enabled, exactly one arbitrary test failed per run. The variable is the keyboard.
+
+The victim looked random because it was whichever test ran while a previous test's IME was still up
+— which is also why a worktree control at clean HEAD reproduced it on a *third* test name and was
+misread as proof of irreducible flakiness.
+
+Fixed in the tests, where the defect is: `typePortion` types, dismisses the keyboard and waits for
+idle, which is what a real user does before reading the total. **No retries, no `@FlakyTest`, no
+`@Ignore`, no sleeps, no weakened assertions.** `ProductScreenTest` had the same defect and needed
+the same fix — note it passed **32/32 on three consecutive runs and then failed on runs 4 and 5**,
+which is the reason this file now insists on repeated runs rather than two.
+
+**Result: 8 consecutive clean runs of each class (19/19 and 32/32), then the full suite 218/218 in
+one whole-suite run, 0 failures and 0 ignored.**
+
+### Verified
+
+JVM **789/789** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — up from
+773). Instrumented **218/218** in one complete run, 0 ignored, counted from instrumentation status
+codes. Real-image OCR corpus **37/37**, unchanged, which is what clears the `LabelAnalyzer` pause
+change. Lint exit 0, 0 errors, 41 advisories. Debug APK builds (89.6 MB).
+
+**Not** done in this pass, deliberately: no release/AAB build, no R8 barrier re-check, no
+`versionCode` change. Still unverified on physical hardware — the crop drag fix, the scanner
+disposal guard and the latency work all remain emulator-and-JVM-only.
+
+## Documentation-consistency pass (2026-08-28, third pass same day)
+
+Still `versionCode 2` / `1.0.1`, still **OPEN**; nothing built or uploaded. No feature work, no
+schema, migration, calculation, parser or UI change. Three documentation corrections plus one small
+production change:
+
+1. **The version/track story was contradictory across five files** — some passages still read as if
+   `versionCode 1` were the development target and creating `versionCode 2` were the thing to avoid.
+   Replaced with one authoritative section: **"Version and track state"** below. Fix that section and
+   let the others defer to it; do not restate the rules in a third place.
+2. **The crop-handle claim was demoted from defect to hardening** (see the reachability rule above).
+3. **The 30 s freshness window is now described by what it does**, not as "cached products refresh
+   exactly as before" — see the correction in the stabilization section above.
+4. **`ProductRepository.lookup` returns the record it caches**, stamp included. Latent inconsistency,
+   not an observed defect; details in the stabilization section above.
+
+**Verified:** JVM **791/791** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit
+XML — up from 789, the two new repository tests). Negative control run: reverting the return value to
+the unstamped product fails `a fresh lookup returns the same product it cached`. Lint exit 0. **The
+instrumented suite was not re-run** — the only production change is a repository return value with
+JVM coverage and no UI surface, and the standing figure is the stabilization pass's 218/218.
+
+## Version and track state (2026-08-28) — THE AUTHORITATIVE ANSWER, READ BEFORE ANY RELEASE CLAIM
+
+Everything else in this file and in `docs/` is subordinate to this section. Where an older passage
+disagrees, this one is right — and fix the older passage rather than working around it.
+
+| Question | Answer |
+|---|---|
+| What is on a Play track? | `1.0.0` / **`versionCode 1`**, one artifact, one hash |
+| Which tracks? | **Internal testing: DEPLOYED** (2026-08-26) → **Closed testing: ACTIVE**, promoted unchanged |
+| Closed-testing period | **Running.** 12+ testers opted in |
+| What is in development? | `1.0.1` / **`versionCode 2`** — already set in `branding.gradle.kts` |
+| Is 1.0.1 released? | **No.** Never built for release, never uploaded |
+| Is 1.0.1 open? | **Yes.** Safe fixes keep accumulating into it until the owner decides to push |
+| What do I develop against? | **`versionCode 2`**, unless the owner says otherwise |
+| Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
+
+**One artifact, two tracks — never two releases.** `versionCode 1` reached the closed track by
+promotion of the same bundle: same bytes, same hash, same version code. `docs/version-history.md`
+records it **once**, keyed by hash, with the track progression noted. Do not add a second entry, and
+do not describe the promotion as a release.
+
+The shipped artifact is `app-release.aab` from `clean` on **`68c85a3`** (recorded in `0b2312f`):
+35,624,186 bytes, SHA-256 `37be02324dec011c74edd876d346077a03dc611096eae4d98374ab791c7e604b`,
+signed with the real upload key `1E:21:23:F3:…:C4:F5`. Hash and certificate were re-verified against
+the file on disk, and **Play has since accepted the same artifact** — so bundle format, upload
+signing and Play App Signing enrollment are proven, not open items. Play still shows the temporary
+name `app.justthecarbs (unreviewed)`; that is expected pre-review and is not a defect.
+
+### Working rules for the open 1.0.1 cycle
+
+- **Do not bump `versionCode` again.** 2 is claimed and is worth one upload. Bumping mid-version
+  strands the notes against a number that never shipped.
+- **Add changes to 1.0.1's existing section in `CHANGELOG.md`.** Do not open a new version heading.
+- **Nothing goes into `docs/version-history.md` until Play accepts a build.** That file is the
+  append-only record of artifacts that actually shipped. A pending version is not history.
+- **Do not rebuild or upload `versionCode 1`.** It is on an active track and Play refuses a
+  duplicate code; a replacement is what `versionCode 2` is for. Superseded artifacts stay superseded
+  — in particular the earlier bundle `00876FA9…BBB4A2`, built from an uncommitted tree.
+- The test figures and the Play *What's new* text in 1.0.1's open section describe the work **so
+  far** and must be re-checked and rewritten before upload.
+- **A release build is a deliberate, instructed act.** Building or uploading an AAB is never part of
+  an ordinary development pass; when 1.0.1 is actually pushed, follow
+  `docs/play-release-readiness.md` §2c/§2d — build from a committed tree, verify the R8 privacy
+  barriers and the signer DN, then copy the section into `docs/version-history.md` with the hash.
+
+**Historical note.** Earlier revisions of this file and of `docs/play-release-readiness.md` said
+"DO NOT REBUILD … any replacement needs `versionCode 2`" as if creating 2 were the thing to avoid.
+That was written while 1 was the only version that existed and 2 had not been opened. It is stale:
+`versionCode 2` **exists and is the development target**. What still holds from it is only that
+`versionCode 1`'s artifact is not to be rebuilt or re-uploaded.
+
+**Next technical action (unchanged):** install the Play-delivered build on the Samsung device via
+the **tester link** — not a local APK — and run the ten-step smoke test
+(`docs/play-release-readiness.md` §8a).
+
+**The 14-day clock is RUNNING.** If this account is subject to Play's **12-testers / 14-days
+closed-testing requirement** (some personal accounts created from Nov 2023 onward are; organization
+accounts are not), the closed track is now satisfying it in progress: 12+ testers opted in, period
+elapsing. **Internal testing never counted toward it** — a separate track, no credit — which is
+exactly why the closed track was needed; it now exists, so nothing remains to create or enrol. What
+is left is elapsed time and keeping testers opted in. Console's Production track is the authority on
+days remaining. Still the longest pole, and still the one item outside this repo's evidence.
+
+Production gates (full detail §1b and the §5a Console matrix): complete the app-content forms
+(Data Safety, content rating, target audience, app access, ads); sign the §44 assessment; read the
+final listing against §44 §7.1; set countries to EU only.
+
+**Health Apps declaration is an OWNER DECISION — do not answer it in documentation.** The app
+calculates carbohydrate amounts for portions and meals, which may fall close to Google's **Nutrition
+and Weight Management** category. An earlier revision of these docs recommended "My app doesn't
+provide any health features"; that recommendation is **withdrawn** — it was not this document's call
+to make. `docs/play-release-readiness.md` §4a now states the facts on both sides without choosing.
+**Never equate "not a medical device" (§44/MDR) with "not a Google Play health app" (Play policy)**;
+they are separate classifications by separate authorities, and the Organization-account requirement
+attaches to the Play one only.
+
+**Two distinctions that were being conflated and must stay separate:**
+
+- **§44 medical-device qualification ≠ Google Play health-app classification.** Different authorities,
+  different questions; neither answer follows from the other. The Organization-account requirement
+  attaches to the *Play* classification, never to §44.
+- **Upload key ≠ app-signing key.** The developer holds the upload key; Google generates and holds
+  the separate app-signing key under Play App Signing. The upload key never becomes the app-signing
+  key, and after enrollment a lost upload key is recoverable via Google's upload-key reset — so the
+  untested keystore backup is a strong recommendation, not a release blocker.
+
+Demoted from blocker to optional, with reasons in `docs/play-release-readiness.md` §1c: independent
+regulatory review (the MDR makes the manufacturer the responsible party, so a self-assessment is the
+expected record), non-EU market assessment (moot while EU-only), restore-tested keystore backup, the
+20-item device sweep (replaced by a 10-minute smoke test, §8a), git-history remediation, and the
+project licence.
 
 ## Release-closure pass (2026-08-25, later same day) — READ FIRST
 
@@ -977,13 +1313,29 @@ The privacy policy is **live** at the URL in `branding.gradle.kts`
 and `SettingsScreen` opens that same `BuildConfig.PRIVACY_POLICY_URL`, pinned by `SettingsScreenTest`.
 Recording that as evidence against checklist row C7 is still the owner's.
 
-### Not a defect, so do not "fix" it
+### ~~Not a defect, so do not "fix" it~~ — SUPERSEDED 2026-08-28, it was reachable
 
-`onProductLoaded` launches a second coroutine that is not a child of `lookupJob`, so `lookupJob.cancel()`
-cannot stop it once a lookup has completed. Reachability was checked rather than assumed: the route is
-`product/{barcode}` and the ViewModel is scoped to the `NavBackStackEntry`, so one ViewModel only ever
-serves one barcode and `LaunchedEffect(barcode)` fires once. The single-flight guard defends the
-repeated-`load()`-for-the-same-barcode case, which is what its KDoc claims.
+*(Kept because the reasoning is instructive: it was careful, and still wrong.)*
+
+The original note said `onProductLoaded` launching a coroutine outside `lookupJob` was harmless,
+because the route is `product/{barcode}`, the ViewModel is scoped to the `NavBackStackEntry`, and
+`LaunchedEffect(barcode)` fires once — so one ViewModel only ever serves one barcode.
+
+All of that is true and **it does not close the hole**, because it reasons about how many *distinct
+barcodes* reach one ViewModel and the guard's failure is about how many *calls* reach it for the
+same one. `load` returns early on `lookupJob?.isActive == true` or `product != null`; between the
+fetch completing and `onProductLoaded`'s detached coroutine writing the product, **neither holds** —
+the job is finished and the product is still null. Any second `load` in that window re-fetches.
+`LaunchedEffect(barcode)` re-running after a configuration change is enough to reach it.
+
+Measured, not argued: `a second load after the fetch resolves but before the product lands costs no
+extra fetch` fails on the old code with `[barcode, barcode]` and passes now. `onProductLoaded` is a
+`suspend fun` awaited inside `lookupJob`, so the job spans the whole load and both guards cover the
+delivery phase too. A failed lookup still leaves no product, so *Try again* still re-fetches —
+pinned by `retrying after a failed lookup fetches again`.
+
+**The general lesson:** a reachability argument about the *navigation graph* cannot establish a
+claim about *call timing*. Only the timing test settled it.
 
 ## Multi-source evidence scanner (2026-08-18) — READ FIRST, SUPERSEDES THE CROP SECTIONS BELOW
 
@@ -1956,14 +2308,16 @@ Key invariants, each pinned by a test:
 
 ## Open findings needing the owner
 
-1. **§44 regulatory assessment is drafted but unsigned, and still blocks publication.** The
-   manufacturer's assessment is `docs/regulatory-qualification-assessment.md` (conclusion: **not a
-   medical device**, EU only, conditional on its §7 marketing constraints); a PDF export exists for
+1. **§44 regulatory assessment is written but unsigned — it blocks public production, not upload.**
+   The manufacturer's assessment is `docs/regulatory-qualification-assessment.md` (conclusion: **not
+   a medical device**, EU only, conditional on its §7 marketing constraints); a PDF export exists for
    signature. **Both files are deliberately untracked** (see `.gitignore`) — they contain the
    owner's personal information and the repo is public. They are on disk; read them there.
-   Signing it closes checklist rows A1/A3 — **A2 (independent review), A5 (non-EU
-   markets) and A6 (listing wording) stay open**, so publication remains NO-GO. Gate rows are in
-   `docs/regulatory-release-checklist.md`; the release order is `docs/play-release-readiness.md`.
+   The conclusion is complete; what is missing is the signature and date in §9, which closes A1/A3
+   and B. **A2 is owner discretion, not a legal precondition** (the MDR makes the manufacturer the
+   responsible party), and **A5 is moot while v1 is EU-only** — so the remaining production gates are
+   the signature and A6 listing-wording review. Gate rows are in
+   `docs/regulatory-release-checklist.md`; the deployment sequence is `docs/play-release-readiness.md`.
    §7.1 forbids marketing the app for diabetes, and forbids the owner's personal circumstances
    appearing in any published material — binding on store copy and review replies. Do not restate
    those circumstances in tracked files, including this one.

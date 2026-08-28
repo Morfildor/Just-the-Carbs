@@ -50,6 +50,16 @@ data class ManualEntryUiState(
      */
     val portionSaveFailed: Boolean = false,
     /**
+     * The product itself could not be written.
+     *
+     * Distinct from [portionSaveFailed], which reports a product that *was* saved without its
+     * portion. Here nothing was stored, so there is nothing to carry on to — which is exactly why
+     * it has to be said. Clearing `saving` alone re-enabled the button and changed nothing else on
+     * screen, so a failed save was indistinguishable from a tap that never registered, and the
+     * obvious response to that is to tap again and fail again.
+     */
+    val saveFailed: Boolean = false,
+    /**
      * A save is in flight (release-freeze audit §8).
      *
      * The write is asynchronous and navigation only happens once it lands, so without this the Save
@@ -102,15 +112,19 @@ class ManualEntryViewModel(
         }
     }
 
+    // Every edit clears [ManualEntryUiState.saveFailed]: the notice describes one attempt, and
+    // leaving it standing would make the next successful save look like it had failed too.
     fun onNameChanged(value: String) =
-        _state.update { it.copy(name = value, nameError = false) }
+        _state.update { it.copy(name = value, nameError = false, saveFailed = false) }
 
     fun onCarbsChanged(value: String) =
-        _state.update { it.copy(carbsPer100 = value, carbsError = null) }
+        _state.update { it.copy(carbsPer100 = value, carbsError = null, saveFailed = false) }
 
-    fun onBasisChanged(basis: NutritionBasis) = _state.update { it.copy(basis = basis) }
+    fun onBasisChanged(basis: NutritionBasis) =
+        _state.update { it.copy(basis = basis, saveFailed = false) }
 
-    fun onPackageChanged(value: String) = _state.update { it.copy(packageAmount = value) }
+    fun onPackageChanged(value: String) =
+        _state.update { it.copy(packageAmount = value, saveFailed = false) }
 
     fun save() {
         val current = _state.value
@@ -156,32 +170,57 @@ class ManualEntryViewModel(
                 // A failed product write must not leave the button disabled forever: the screen would
                 // be stuck with no way to retry and no explanation.
                 runCatching { repository.saveUserAuthoredProduct(product, origin = ProductDataOrigin.MANUAL) }
-                    .onSuccess { _state.update { it.copy(savedBarcode = key, saving = false) } }
-                    .onFailure { _state.update { it.copy(saving = false) } }
+                    .onSuccess {
+                        _state.update { it.copy(savedBarcode = key, saving = false, saveFailed = false) }
+                    }
+                    // Reported, not merely survived. The failure is cleared by the next edit or the
+                    // next successful save, so it always describes the most recent attempt.
+                    .onFailure { _state.update { it.copy(saving = false, saveFailed = true) } }
                 return@launch
             }
 
-            // Product first, portion second, through the repository's one ordered boundary — the
-            // portion's foreign key needs the product row to exist (correction pass §2). The OCR
-            // provenance is preserved: the portion was read off the package by the camera even
-            // though the surrounding product was typed.
-            val saved = runCatching {
-                repository.saveProductWithPortionUnit(
-                    product = product,
+            // Product first, portion second — the portion's foreign key needs the product row to
+            // exist (correction pass §2). The two writes are made as two separate calls rather than
+            // through `saveProductWithPortionUnit`, which performs exactly this pair in exactly this
+            // order, precisely so **which one failed is known from where the failure happened**
+            // instead of being inferred afterwards.
+            //
+            // The previous form wrapped both writes in one `runCatching` and then asked the store
+            // whether a product row existed. That misclassifies whenever the barcode was already
+            // known locally: a stale row from an earlier scan answers "yes" for a reason unrelated to
+            // this save, so a failed *product* write was reported as a portion failure and the user
+            // was sent to a calculator showing the old record. Nothing in the caught exception can
+            // distinguish the two cases, so the ordering has to be visible here.
+            val productSaved = runCatching {
+                repository.saveUserAuthoredProduct(product, origin = ProductDataOrigin.OCR)
+            }
+            if (productSaved.isFailure) {
+                // Nothing was stored, so there is nothing to navigate to and no portion was
+                // attempted — the ordering guarantees that, rather than a check asserting it.
+                _state.update { it.copy(saving = false, saveFailed = true) }
+                return@launch
+            }
+
+            // The OCR provenance is preserved: the portion was read off the package by the camera
+            // even though the surrounding product was typed.
+            val portionSaved = runCatching {
+                repository.saveUserPortionUnit(
+                    barcode = key,
                     kind = pending.kind,
                     conversion = pending.conversion,
                     origin = ProductDataOrigin.OCR,
                 )
             }
-
-            saved.onFailure {
-                // The product may still have landed — the portion is the write that can fail on its
-                // own. Report the portion honestly instead of claiming a capture that did not
-                // happen; the user reaches the calculator either way and can add it by hand.
-                _state.update { it.copy(savedBarcode = key, portionSaveFailed = true, saving = false) }
-            }
-            saved.onSuccess {
-                _state.update { it.copy(savedBarcode = key, portionSaveFailed = false, saving = false) }
+            // The product genuinely exists either way, so the user reaches the calculator either
+            // way — but a portion that did not persist is reported rather than passed off as a
+            // capture that happened. Unchanged behaviour; only how the case is identified moved.
+            _state.update {
+                it.copy(
+                    savedBarcode = key,
+                    portionSaveFailed = portionSaved.isFailure,
+                    saving = false,
+                    saveFailed = false,
+                )
             }
         }
     }

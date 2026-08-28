@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
@@ -221,6 +222,42 @@ class MealScreenTest {
      * are clickable where they already are is the stronger claim anyway: it is exactly the property
      * the pinned layout exists to provide.
      */
+    /**
+     * Type a portion, then close the soft keyboard and wait for the layout to settle.
+     *
+     * ## Why this exists — measured, not guessed
+     *
+     * Every `assertIsDisplayed()` failure this class produced was the soft keyboard, and the reason
+     * it looked like flakiness is that the victim was arbitrary: whichever test ran while a previous
+     * one's IME was still up.
+     *
+     * The measurements. Run alone, the meal bar sits at `Rect(53, 954, 1027, 1039)` in a 1080x2400
+     * root, `placed=true`, non-zero size, stable across six consecutive samples and three runs — so
+     * there is no layout defect and nothing that needs longer to settle. Meanwhile logcat shows
+     * Gboard's window as `SoftKeyboardView{0,0-1080,641}`: a real 641 px window over the bottom of
+     * the screen. `assertIsDisplayed` tests visibility against the window, so a pinned bottom
+     * element is legitimately not displayed while that window is up.
+     *
+     * The control that settles it: with the IME disabled via `adb shell ime disable`, this class
+     * passed **19/19 three times consecutively**; with it enabled, exactly one arbitrary test failed
+     * per run. The variable is the keyboard, not the code under test and not timing.
+     *
+     * So this is a genuine test-synchronization defect, not a UI bug — the app pins the bar to the
+     * bottom on purpose, and a real user who types then looks at the total has dismissed the
+     * keyboard by tapping elsewhere. `closeSoftKeyboard()` performs that dismissal, and the
+     * `waitForIdle()` after it is what makes the resulting layout pass observable before the
+     * assertion reads bounds.
+     *
+     * Deliberately not solved with a sleep, a retry or a weaker assertion: the assertions here are
+     * about the pinned panel genuinely being on screen, which is the property the app promises.
+     */
+    private fun typePortion(text: String) {
+        compose.onNode(hasSetTextAction()).performTextInput(text)
+        compose.onNode(hasSetTextAction()).performImeAction()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+    }
+
     private fun showCalculatorWithMeal(onScanNext: () -> Unit = {}) {
         compose.setContent {
             var portion by remember { mutableStateOf("") }
@@ -289,7 +326,7 @@ class MealScreenTest {
     fun addingAPortionShowsItInTheRunningTotalBar() {
         showCalculatorWithMeal()
 
-        compose.onNode(hasSetTextAction()).performTextInput("50")
+        typePortion("50")
         compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
 
         // 48.2 g/100 g × 50 g = 24.1 g, via the production calculator.
@@ -301,7 +338,7 @@ class MealScreenTest {
     fun addingTwoPortionsTotalsThemInTheBar() {
         showCalculatorWithMeal()
 
-        compose.onNode(hasSetTextAction()).performTextInput("50")
+        typePortion("50")
         compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
         compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
 
@@ -314,7 +351,7 @@ class MealScreenTest {
         var scannedNext = false
         showCalculatorWithMeal(onScanNext = { scannedNext = true })
 
-        compose.onNode(hasSetTextAction()).performTextInput("50")
+        typePortion("50")
         compose.onNodeWithTag(MEAL_ADD_AND_SCAN_TAG).performClick()
 
         compose.onNodeWithText("Meal · 1 item · 24.1 g carbs").assertIsDisplayed()
@@ -349,7 +386,7 @@ class MealScreenTest {
     fun addingToTheMealKeepsThePortionFieldAndResultVisible() {
         showCalculatorWithMeal()
 
-        compose.onNode(hasSetTextAction()).performTextInput("50")
+        typePortion("50")
         compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
 
         compose.onNodeWithTag(MEAL_BAR_TAG).assertIsDisplayed()

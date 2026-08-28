@@ -128,6 +128,73 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun `a too-short submitted query says why nothing happened`() = runTest {
+        // Refusing the request is right — two characters match thousands of products — but refusing
+        // it *silently* is a dead end: the button is tapped, no request is made, no spinner appears,
+        // and the screen still shows the same "type a product name" prompt it showed before. The
+        // only reading available to the user is that the tap did not register.
+        val source = FakeSearchSource()
+        val viewModel = SearchViewModel(source)
+        viewModel.onQueryChanged("ha")
+
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, source.callCount)
+        assertTrue("a refused submission must say why", viewModel.state.value.queryTooShort)
+    }
+
+    @Test
+    fun `editing the query clears the too-short notice`() = runTest {
+        // The notice belongs to one submission, not to the field. Left up, it would still be on
+        // screen next to a query that is now long enough and has not been submitted.
+        val source = FakeSearchSource()
+        val viewModel = SearchViewModel(source)
+        viewModel.onQueryChanged("ha")
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.state.value.queryTooShort)
+
+        viewModel.onQueryChanged("hagelslag")
+
+        assertFalse(viewModel.state.value.queryTooShort)
+    }
+
+    @Test
+    fun `a long enough query submitted after a short one clears the notice and searches`() = runTest {
+        val source = FakeSearchSource()
+        val viewModel = SearchViewModel(source)
+        viewModel.onQueryChanged("ha")
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.onQueryChanged("hagelslag")
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+        source.resolve("hagelslag", ProductSearchResult.Found(listOf(hit())))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.queryTooShort)
+        assertEquals(1, source.callCount)
+        assertEquals(1, viewModel.state.value.hits.size)
+    }
+
+    @Test
+    fun `a blank submission is not reported as too short`() = runTest {
+        // An empty field is not a refused search — the user has not asked for anything yet, and the
+        // screen's own prompt already says what to do. Telling them "3 characters" there would be
+        // an error message about a mistake nobody made.
+        val source = FakeSearchSource()
+        val viewModel = SearchViewModel(source)
+        viewModel.onQueryChanged("   ")
+
+        viewModel.search()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.queryTooShort)
+    }
+
+    @Test
     fun `submitting the same query twice in a row does not duplicate the request`() = runTest {
         val source = FakeSearchSource()
         val viewModel = SearchViewModel(source)

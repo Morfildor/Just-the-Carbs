@@ -5,6 +5,7 @@ import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.LocalProductDataSource
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.MealStore
+import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.PortionUnitKind
@@ -209,6 +210,153 @@ class ManualEntryViewModelTest {
 
         assertNull(viewModel.state.value.savedBarcode)
         assertTrue("save must be available again after a failure", viewModel.state.value.canSave)
+    }
+
+    @Test
+    fun `a failed product write says so instead of failing silently`() = runTest(dispatcher) {
+        // Re-enabling the button is necessary but not sufficient. With only that, the tap looks like
+        // it missed: the screen is unchanged, nothing says the product was not saved, and the user's
+        // only available reading is that the button did not register. The failure must be stated.
+        val journal = Journal()
+        val failing = object : FakeLocal(journal) {
+            override suspend fun save(product: Product) = throw IllegalStateException("disk full")
+        }
+        val viewModel = ManualEntryViewModel(repositoryOf(failing, FakeUnits(journal)))
+        viewModel.start(barcode)
+        viewModel.fillIn()
+
+        viewModel.save()
+        advanceUntilIdle()
+
+        assertTrue("a failed save must be reported to the user", viewModel.state.value.saveFailed)
+        assertNull(viewModel.state.value.savedBarcode)
+    }
+
+    @Test
+    fun `editing after a failed save clears the failure notice`() = runTest(dispatcher) {
+        // The notice describes one attempt, not a permanent property of the screen. Leaving it up
+        // while the user edits would make a subsequent successful save look like it also failed.
+        val journal = Journal()
+        val failing = object : FakeLocal(journal) {
+            override suspend fun save(product: Product) = throw IllegalStateException("disk full")
+        }
+        val viewModel = ManualEntryViewModel(repositoryOf(failing, FakeUnits(journal)))
+        viewModel.start(barcode)
+        viewModel.fillIn()
+        viewModel.save()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.saveFailed)
+
+        viewModel.onNameChanged("Volkorenbrood")
+
+        assertFalse(viewModel.state.value.saveFailed)
+    }
+
+    @Test
+    fun `a retried save that succeeds clears the earlier failure`() = runTest(dispatcher) {
+        // The failure must not survive the write that fixes it, or a successful save reads as a
+        // failed one.
+        val journal = Journal()
+        var failNext = true
+        val flaky = object : FakeLocal(journal) {
+            override suspend fun save(product: Product) {
+                if (failNext) throw IllegalStateException("disk full")
+                super.save(product)
+            }
+        }
+        val viewModel = ManualEntryViewModel(repositoryOf(flaky, FakeUnits(journal)))
+        viewModel.start(barcode)
+        viewModel.fillIn()
+        viewModel.save()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.saveFailed)
+
+        failNext = false
+        viewModel.save()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.saveFailed)
+        assertEquals(barcode, viewModel.state.value.savedBarcode)
+    }
+
+    @Test
+    fun `a product write failure over an existing local row is classified as a product failure`() =
+        runTest(dispatcher) {
+            // The case the previous "ask the store afterwards" heuristic got wrong. It inferred which
+            // write failed from whether a product row existed once the exception had been caught —
+            // but a row already present for this barcode makes that question answer "yes" for a
+            // reason that has nothing to do with this save. The product write failed, so the *stale*
+            // row was read as proof the product had landed, and the user was told the portion alone
+            // failed and sent on to a calculator showing the old record.
+            val journal = Journal()
+            val local = object : FakeLocal(journal) {
+                override suspend fun save(product: Product) = throw IllegalStateException("disk full")
+            }
+            // The barcode is already known locally, from an earlier scan or entry.
+            local.stored[barcode] = Product(
+                barcode = barcode,
+                name = "Stale record",
+                carbsPer100 = BigDecimal("1"),
+                basis = NutritionBasis.PER_100_G,
+                dataSource = ProductDataOrigin.MANUAL,
+            )
+            val units = FakeUnits(journal)
+            val viewModel = ManualEntryViewModel(repositoryOf(local, units))
+            viewModel.start(barcode, pendingPortionUnit = slicePortion)
+            viewModel.fillIn()
+
+            viewModel.save()
+            advanceUntilIdle()
+
+            assertTrue("the product write is what failed", viewModel.state.value.saveFailed)
+            assertFalse(
+                "the portion was never attempted, so it did not fail",
+                viewModel.state.value.portionSaveFailed,
+            )
+            assertNull("nothing was saved, so nothing to navigate to", viewModel.state.value.savedBarcode)
+            assertTrue("no orphaned portion may exist", units.stored.isEmpty())
+        }
+
+    @Test
+    fun `a portion write failure after a successful product write is classified as a portion failure`() =
+        runTest(dispatcher) {
+            val journal = Journal()
+            val local = FakeLocal(journal)
+            val units = object : FakeUnits(journal) {
+                override suspend fun save(unit: PortionUnit): PortionUnit =
+                    throw IllegalStateException("constraint failed")
+            }
+            val viewModel = ManualEntryViewModel(repositoryOf(local, units))
+            viewModel.start(barcode, pendingPortionUnit = slicePortion)
+            viewModel.fillIn()
+
+            viewModel.save()
+            advanceUntilIdle()
+
+            assertTrue("the portion is what failed", viewModel.state.value.portionSaveFailed)
+            assertFalse("the product saved fine", viewModel.state.value.saveFailed)
+            // The product genuinely exists, so the user still reaches the calculator and can add the
+            // portion by hand. This is the pre-existing behaviour and must not change.
+            assertEquals(barcode, viewModel.state.value.savedBarcode)
+        }
+
+    @Test
+    fun `both writes succeeding still navigates`() = runTest(dispatcher) {
+        val journal = Journal()
+        val local = FakeLocal(journal)
+        val units = FakeUnits(journal)
+        val viewModel = ManualEntryViewModel(repositoryOf(local, units))
+        viewModel.start(barcode, pendingPortionUnit = slicePortion)
+        viewModel.fillIn()
+
+        viewModel.save()
+        advanceUntilIdle()
+
+        assertEquals(barcode, viewModel.state.value.savedBarcode)
+        assertFalse(viewModel.state.value.saveFailed)
+        assertFalse(viewModel.state.value.portionSaveFailed)
+        assertFalse(viewModel.state.value.saving)
+        assertEquals(listOf("product:$barcode", "portion:$barcode"), journal.entries)
     }
 
     @Test

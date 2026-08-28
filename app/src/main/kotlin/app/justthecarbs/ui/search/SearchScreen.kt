@@ -33,9 +33,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -196,10 +199,25 @@ fun SearchScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = stringResource(R.string.search_prompt),
+                    // A submission refused for being too short says so, rather than leaving the
+                    // generic prompt up — which is the same screen the tap started from and so reads
+                    // as the button not having registered. Not an error colour: nothing has gone
+                    // wrong, the app is stating a requirement.
+                    text = if (state.queryTooShort) {
+                        pluralStringResource(
+                            R.plurals.search_too_short,
+                            SearchViewModel.MIN_QUERY_LENGTH,
+                            SearchViewModel.MIN_QUERY_LENGTH,
+                        )
+                    } else {
+                        stringResource(R.string.search_prompt)
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
+                    // Announced on change so a TalkBack user hears the refusal; without it the
+                    // screen is silent after the tap, which is the same dead end by another route.
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
 

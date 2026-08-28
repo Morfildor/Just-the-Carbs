@@ -71,9 +71,38 @@ class LabelAnalyzer(
         val input = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         recognizer.process(input)
             .addOnSuccessListener { text ->
+                // Bail before the parse, not after it.
+                //
+                // `paused` is set the instant the user taps capture, and the two `!paused` checks
+                // below already discarded everything this frame produced — but only *after* the
+                // full geometry-first pipeline (rows, classifiers, interpreter) had run on it. That
+                // work sits directly between the shutter and `startPendingStillIfPossible()` in
+                // `addOnCompleteListener`, which is what begins recognising the 8 MP still the user
+                // is now waiting on. So the discarded frame was not merely wasted: it delayed the
+                // capture it was discarded for.
+                //
+                // Reading `paused` once keeps the decision consistent within this frame; a pause
+                // arriving mid-parse is handled the same way it always was, by the checks below.
+                if (paused) return@addOnSuccessListener
+
                 val document = MlKitOcrMapper.toDocument(text, imageProxy.width, imageProxy.height)
-                if (!paused) onFraming(TextResolutionGuidance.estimate(document))
+
+                // Re-check after the mapping, before anything is emitted.
+                //
+                // `paused` is set from the main thread the instant the user taps capture, while this
+                // listener runs on ML Kit's callback thread — so it can flip at any point in here.
+                // The check above only covers the moment the listener started. Without this one,
+                // a pause landing during `toDocument` still let `onFraming` fire, and the framing
+                // callback drives the preview's guidance line: the user taps capture, the frozen
+                // capture UI comes up, and a "Move closer" from a discarded live frame arrives on
+                // top of it. Returning here also skips the parse, which is the same work the pause
+                // exists to stop.
+                if (paused) return@addOnSuccessListener
+                onFraming(TextResolutionGuidance.estimate(document))
+
                 val report = parse(document, started)
+                // Still consulted, and still tracked, so a pause landing mid-parse behaves exactly
+                // as before: the tracker sees the frame, the UI does not.
                 val toSurface = stability.onFrame(report.reading, System.nanoTime())
                 if (!paused && toSurface != null) onReading(toSurface)
             }

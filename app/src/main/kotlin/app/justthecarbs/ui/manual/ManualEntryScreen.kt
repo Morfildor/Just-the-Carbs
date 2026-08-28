@@ -34,7 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -196,6 +198,21 @@ fun ManualEntryScreen(
                     .padding(bottom = Space.m)
                     .navigationBarsPadding(),
             ) {
+                // Directly above the button that failed, so the explanation is where the user is
+                // already looking. Without it the tap re-enabled the button and changed nothing
+                // else, which reads as a missed tap rather than a failed save — and the response to
+                // a missed tap is to tap again and fail again.
+                if (state.saveFailed) {
+                    Text(
+                        text = stringResource(R.string.manual_error_save),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = Space.s)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
                 Button(
                     onClick = onSave,
                     enabled = state.canSave,

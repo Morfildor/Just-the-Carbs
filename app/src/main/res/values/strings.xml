@@ -256,6 +256,14 @@
     <string name="search_result" tools:ignore="MissingTranslation">%1$s. %2$s</string>
     <string name="search_clear" tools:ignore="MissingTranslation">Clear search</string>
     <string name="search_submit" tools:ignore="MissingTranslation">Search</string>
+    <!-- Shown when a submitted query is refused for being too short.
+         Written as a plural rather than "%1$d characters", which lint correctly flags: at a limit of
+         one the sentence would read "at least 1 characters". The count is still passed in so the
+         wording tracks SearchViewModel.MIN_QUERY_LENGTH rather than restating it. -->
+    <plurals name="search_too_short" tools:ignore="MissingTranslation">
+        <item quantity="one">Type at least %1$d character to search.</item>
+        <item quantity="other">Type at least %1$d characters to search.</item>
+    </plurals>
 
     <plurals name="portion_kind_slice" tools:ignore="MissingTranslation">
         <item quantity="one">slice</item>
@@ -334,6 +342,9 @@
     <string name="manual_error_name">Enter a product name</string>
     <string name="manual_error_carbs">Enter carbohydrates per 100 as a number</string>
     <string name="manual_error_carbs_range">That value is outside the possible range</string>
+    <!-- The product could not be written at all. Says the save did not happen, so the user retries
+         deliberately rather than assuming the tap was missed. -->
+    <string name="manual_error_save">Could not save the product. Try again.</string>
 
     <!-- Quick calculator (§28) -->
     <string name="quick_title">Quick calculation</string>

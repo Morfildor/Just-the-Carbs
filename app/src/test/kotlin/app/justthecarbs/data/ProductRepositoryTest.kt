@@ -593,6 +593,139 @@ class ProductRepositoryTest {
         assertTrue(local.stored.getValue(barcode).remoteValueDiffers)
     }
 
+    // ---- refresh freshness: one scan must not cost two requests -------------------------------
+
+    /**
+     * A product downloaded moments ago is not refreshed again.
+     *
+     * The calculator calls `refreshFromRemote` immediately after `lookup`, which on a cache miss has
+     * just downloaded and saved the product — so without a freshness rule every first-time scan spent
+     * **two** of the 15 reads/min/IP budget to fetch the same bytes twice. Seeded here at the same
+     * instant as the fixed clock, which is exactly the state `lookup` leaves behind.
+     */
+    @Test
+    fun `a product synced moments ago is not fetched again by a refresh`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2").copy(remoteUpdatedAt = now)))
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0")))
+        val repository = repositoryOf(local, remote)
+
+        val outcome = repository.refreshFromRemote(barcode)
+
+        assertEquals("a freshly synced product was re-fetched", 0, remote.calls)
+        assertEquals(RefreshOutcome.Unchanged, outcome)
+    }
+
+    /**
+     * The freshness rule must not become a cache policy — a stale product still refreshes.
+     *
+     * Without this the fix above would silently disable reformulation detection (§24, correction
+     * #10), which is the entire reason the background refresh exists.
+     */
+    @Test
+    fun `a product synced long ago is still refreshed`() = runTest {
+        val stale = product(PLAIN_OFF, "48.2")
+            .copy(remoteUpdatedAt = now.minusSeconds(3600))
+        val local = FakeLocal(listOf(stale))
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0")))
+        val repository = repositoryOf(local, remote)
+
+        val outcome = repository.refreshFromRemote(barcode)
+
+        assertEquals("a stale product was not refreshed", 1, remote.calls)
+        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("51.0")), outcome)
+    }
+
+    /**
+     * A product that has never recorded a sync is refreshed, not treated as fresh.
+     *
+     * Null means "never refreshed" — a row cached before this stamp existed, or a user-authored one
+     * — and reading null as fresh would permanently freeze exactly those records. This is the case
+     * that decides whether the guard is safe by default.
+     */
+    @Test
+    fun `a product that has never been synced is refreshed`() = runTest {
+        val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2")))
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0")))
+        val repository = repositoryOf(local, remote)
+
+        repository.refreshFromRemote(barcode)
+
+        assertEquals("a never-synced product must still be refreshed", 1, remote.calls)
+    }
+
+    /**
+     * A sync stamp in the future is a clock change, not freshness.
+     *
+     * A device whose clock jumps backwards (a timezone fix, an NTP correction) would otherwise
+     * suppress every refresh until real time caught up.
+     */
+    @Test
+    fun `a sync timestamp in the future does not suppress a refresh`() = runTest {
+        val local = FakeLocal(
+            listOf(product(PLAIN_OFF, "48.2").copy(remoteUpdatedAt = now.plusSeconds(86_400))),
+        )
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0")))
+        val repository = repositoryOf(local, remote)
+
+        repository.refreshFromRemote(barcode)
+
+        assertEquals("a future timestamp was read as freshness", 1, remote.calls)
+    }
+
+    /** The stamp is what makes the whole rule work, so it is asserted directly. */
+    @Test
+    fun `a freshly fetched product records when it was synced`() = runTest {
+        val local = FakeLocal()
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "48.2")))
+        val repository = repositoryOf(local, remote)
+
+        repository.lookup(barcode)
+
+        assertEquals(now, local.stored.getValue(barcode).remoteUpdatedAt)
+    }
+
+    /**
+     * The product handed back is the product cached, stamp included.
+     *
+     * `lookup` saved a stamped copy and returned the unstamped one it came off the wire with, so a
+     * caller inspecting the returned product saw a null `remoteUpdatedAt` — "never synced" — about a
+     * row the same call had just marked as synced. Nothing in the app read that field off the
+     * returned value, so this was a latent inconsistency rather than an observed defect; the point of
+     * the assertion is that the two records cannot drift apart again.
+     */
+    @Test
+    fun `a fresh lookup returns the same product it cached`() = runTest {
+        val local = FakeLocal()
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "48.2")))
+        val repository = repositoryOf(local, remote)
+
+        val returned = repository.lookup(barcode) as ProductFetchResult.Found
+        val cached = local.stored.getValue(barcode)
+
+        assertEquals("returned product must carry the sync stamp", now, returned.product.remoteUpdatedAt)
+        assertEquals("returned and cached product must be the same record", cached, returned.product)
+    }
+
+    /**
+     * A cache hit returns the cached record untouched — including a null stamp.
+     *
+     * The stamp is applied only where a remote fetch actually happened. Stamping a cache hit would
+     * make every read look freshly synced and silently suppress the background refresh.
+     */
+    @Test
+    fun `a cached lookup returns the cached product unstamped`() = runTest {
+        val cachedProduct = product(PLAIN_OFF, "48.2")
+        val local = FakeLocal(listOf(cachedProduct))
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "51.0")))
+        val repository = repositoryOf(local, remote)
+
+        val returned = repository.lookup(barcode) as ProductFetchResult.Found
+
+        assertEquals("a cache hit must not reach the network", 0, remote.calls)
+        assertEquals(cachedProduct, returned.product)
+        assertEquals(null, returned.product.remoteUpdatedAt)
+    }
+
     @Test
     fun `an unchanged online value raises no notice`() = runTest {
         val local = FakeLocal(listOf(product(VERIFIED_OFF, "48.2")))

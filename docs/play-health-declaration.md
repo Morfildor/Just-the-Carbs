@@ -1,6 +1,16 @@
 # Play Health Apps declaration — owner draft
 
-**Status: BLOCKED by §44. Nothing has been submitted. Source check: 2026-08-14.**
+**Status: OWNER DECISION REQUIRED. Nothing has been submitted. Source check: 2026-08-14.**
+
+**This is a Google Play platform classification, not a medical-device question.** It is decided
+against Google's own Health Apps categories and is **not** derived from the §44 MDR assessment —
+neither answer follows from the other. "Not a medical device" and "not a Google Play health app" are
+separate conclusions reached by separate authorities.
+
+The app calculates carbohydrate amounts for food portions and for a meal total, which may fall close
+to Google's **Nutrition and Weight Management** category. The facts on both sides are in
+[play-release-readiness.md](play-release-readiness.md) §4a; this document holds the supporting
+capability facts and the branch logic. **The category choice is the owner's.**
 
 Google requires every published app to complete the Health Apps declaration, even an app that
 offers no health feature. The relevant current categories and follow-up fields are documented in
@@ -29,18 +39,22 @@ assessment and must not be hidden or minimized.
 
 ## Form answer decision tree
 
-Current form action: **open the declaration and save it as a draft. Do not submit a category until
-the signed §44 assessment supplies the branch.**
+**Health Apps declaration: OWNER DECISION REQUIRED.** This document does not select the category.
 
-| §44 / Play conclusion | Draft declaration answer | Follow-up |
+The app calculates carbohydrate amounts for food portions and for a meal total, which may fall close
+to Google's **Nutrition and Weight Management** category. The facts on both sides are set out in
+`play-release-readiness.md` §4a; the choice is the owner's. Answer against Google's **current** form
+wording at submission — the form text governs over any summary here.
+
+**Do not under-declare to avoid account requirements, and do not over-classify functionality that is
+not present.** Both are real failure modes.
+
+| Play conclusion | Declaration answer | Follow-up |
 |---|---|---|
-| Regulated in a market where offered | Select **Medical Device Apps** | Complete every requested legal, compliance, operating, manufacturer, intended-purpose, warning, eIFU, UDI and certificate field that applies. Do not invent or leave required fields unsupported. |
-| Not regulated, but Play classifies the intended purpose as condition management | Assess/select **Diseases and Conditions Management** | Record why that category matches. Apply the non-regulated health-app policy requirements below. |
-| Not regulated and Play classifies it as no health feature | Select **My app doesn’t provide any health features** | Retain the written analysis supporting that answer. Absence of Health Connect data alone is not a sufficient basis. |
-
-Do not select **Nutrition and Weight Management** merely because the calculation uses carbohydrate
-facts. Google's category covers dietary-intake tracking, meal planning, diet/weight management, or
-specific dietary goals. Just the Carbs performs none of those and has no diary or daily totals.
+| **Nutrition and Weight Management** — the closest category, and the owner's decision | Select it if the owner concludes Play treats carbohydrate calculation for portions and meals as dietary-intake functionality | Google's category describes dietary-intake tracking, meal planning, diet/weight management or dietary goals. Against that: this app keeps no diary, no daily totals, no longitudinal history, no goals and no weight, and holds one unnamed current meal with no history. Record the reasoning either way. If selected, the health-app requirements below apply. |
+| No health feature under Play's categories | Select **My app doesn't provide any health features** | Only on a recorded analysis. Absence of Health Connect data alone is **not** a sufficient basis; §4a's category walk is. No disclaimer and no account change follow. |
+| Play classifies the intended purpose as condition management | Assess/select **Diseases and Conditions Management** | Record why that category matches. Apply the non-regulated health-app requirements below, including Google's exact disclaimer wording; the Organization-account requirement then attaches. |
+| Regulated in a market where offered | Select **Medical Device Apps** | Only if a regulatory conclusion says so. Complete every requested legal, compliance, operating, manufacturer, intended-purpose, warning, eIFU, UDI and certificate field that applies. Do not invent or leave required fields unsupported. |
 
 Do not select **Clinical Decision Support** based on adjacency to another calculator. Google's
 examples include professional decision support and drug dosage calculators; Just the Carbs contains
@@ -66,7 +80,15 @@ the non-regulated disclaimer as a substitute for regulatory evidence.
 
 [Play Console Requirements](https://support.google.com/googleplay/android-developer/answer/10788890?hl=en)
 states that developers providing health apps, such as medical apps, must register as an
-Organization. Record the final category and account result:
+Organization.
+
+**This is conditional on the declaration's outcome, not on §44.** If the declaration lands in a
+health category, the Organization requirement attaches at that point and is a genuine external
+blocker; if it does not, no account change is required. Resolve the category first, then record the
+account requirement it implies — and distinguish **required now** from **required only after a
+stated policy effective date** from **not applicable**, noting the date the policy was read.
+
+Record the final category and account result:
 
 | Field | Owner record |
 |---|---|

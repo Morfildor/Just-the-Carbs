@@ -194,8 +194,34 @@ private fun CropOverlay(
     onSelectionChange: (NormalizedRegion) -> Unit,
 ) {
     val rect = CropSelectionGeometry.toViewRect(selection, displayed)
-    val handleRadius = with(androidx.compose.ui.platform.LocalDensity.current) { HANDLE_TOUCH_DP.dp.toPx() }
+    val handleRadius = with(androidx.compose.ui.platform.LocalDensity.current) { CROP_HANDLE_TOUCH_DP.dp.toPx() }
     val selectionLabel = stringResource(R.string.crop_selection)
+
+    /**
+     * The gesture's own current rectangle and grabbed handle.
+     *
+     * Per-instance, replacing a process-global `var` that every scan in the process shared. That is
+     * state isolation rather than a fixed defect: a drag interrupted before `onDragEnd`/`onDragCancel`
+     * could run — Retake mid-drag, the app backgrounding — could leave the global handle set, but
+     * whether that ever changed a subsequent gesture was never reproduced and is not claimed. The
+     * proven defect is the accumulation one described below.
+     *
+     * It also holds the *rectangle*, which is what fixes accumulation. `detectDragGestures` suspends
+     * inside one `pointerInput` block for the whole gesture, so the lambda below reads whatever
+     * `selection` was captured when that block last started — and the block's key is `displayed`,
+     * which cannot change while the user drags inside the image. Since `dragAmount` is an increment
+     * since the previous event rather than a total, recomputing from that captured value made every
+     * event overwrite the one before it: a 100 px drag delivered as ten 10 px events moved 10 px.
+     * Keeping the current rectangle in the gesture makes each event compose onto the last.
+     *
+     * Not `mutableStateOf`: nothing in composition reads it, so snapshot state would add a
+     * recomposition per pointer event for no observable benefit.
+     */
+    val gesture = remember { CropGestureState(selection) }
+    // Adopt a rectangle that changed for a reason the gesture did not cause (a new capture, a
+    // restored proposal). Ignored mid-drag by the holder itself, so this cannot jump the rectangle
+    // under the user's thumb.
+    gesture.syncFromCaller(selection)
 
     Canvas(
         modifier = Modifier
@@ -204,14 +230,12 @@ private fun CropOverlay(
             .semantics { contentDescription = selectionLabel }
             .pointerInput(displayed) {
                 detectDragGestures(
-                    onDragStart = { start -> activeHandle = nearestHandle(start, rectOf(selection, displayed), handleRadius) },
-                    onDragEnd = { activeHandle = null },
-                    onDragCancel = { activeHandle = null },
+                    onDragStart = { start -> gesture.onDragStart(start, displayed, handleRadius) },
+                    onDragEnd = { gesture.onDragFinished() },
+                    onDragCancel = { gesture.onDragFinished() },
                 ) { change, dragAmount ->
                     change.consume()
-                    val current = rectOf(selection, displayed)
-                    val moved = applyDrag(current, activeHandle, dragAmount, displayed)
-                    CropSelectionGeometry.toNormalizedRegion(moved, displayed)?.let(onSelectionChange)
+                    gesture.onDrag(dragAmount, displayed)?.let(onSelectionChange)
                 }
             },
     ) {
@@ -281,79 +305,7 @@ private fun CropOverlay(
     }
 }
 
-private enum class Handle { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, BODY }
-
-/**
- * Which handle a drag grabbed.
- *
- * Deliberately module-level mutable state rather than remembered composable state: it is set in
- * `onDragStart` and read in the drag callback of the *same* gesture, so it never outlives one
- * interaction and never participates in recomposition.
- */
-private var activeHandle: Handle? = null
-
-private fun rectOf(selection: NormalizedRegion, displayed: ViewRect): ViewRect =
-    CropSelectionGeometry.toViewRect(selection, displayed)
-
-private fun nearestHandle(point: Offset, rect: ViewRect, radius: Float): Handle {
-    val corners = mapOf(
-        Handle.TOP_LEFT to Offset(rect.left, rect.top),
-        Handle.TOP_RIGHT to Offset(rect.right, rect.top),
-        Handle.BOTTOM_LEFT to Offset(rect.left, rect.bottom),
-        Handle.BOTTOM_RIGHT to Offset(rect.right, rect.bottom),
-    )
-    val closest = corners.minByOrNull { (_, corner) -> (corner - point).getDistance() }
-    // Falling back to BODY rather than the nearest corner matters: a drag starting in the middle of
-    // a large selection is a reposition, and snapping it to a distant corner would resize instead.
-    return closest?.takeIf { (it.value - point).getDistance() <= radius }?.key ?: Handle.BODY
-}
-
-/** Applies a drag to the rectangle, keeping it inside the displayed image and above a minimum size. */
-private fun applyDrag(
-    rect: ViewRect,
-    handle: Handle?,
-    drag: Offset,
-    displayed: ViewRect,
-): ViewRect {
-    val minSide = MIN_SIDE_PX
-    return when (handle) {
-        Handle.TOP_LEFT -> rect.copy(
-            left = (rect.left + drag.x).coerceIn(displayed.left, rect.right - minSide),
-            top = (rect.top + drag.y).coerceIn(displayed.top, rect.bottom - minSide),
-        )
-        Handle.TOP_RIGHT -> rect.copy(
-            right = (rect.right + drag.x).coerceIn(rect.left + minSide, displayed.right),
-            top = (rect.top + drag.y).coerceIn(displayed.top, rect.bottom - minSide),
-        )
-        Handle.BOTTOM_LEFT -> rect.copy(
-            left = (rect.left + drag.x).coerceIn(displayed.left, rect.right - minSide),
-            bottom = (rect.bottom + drag.y).coerceIn(rect.top + minSide, displayed.bottom),
-        )
-        Handle.BOTTOM_RIGHT -> rect.copy(
-            right = (rect.right + drag.x).coerceIn(rect.left + minSide, displayed.right),
-            bottom = (rect.bottom + drag.y).coerceIn(rect.top + minSide, displayed.bottom),
-        )
-        // Translate, clamped so the whole rectangle stays over the image rather than sliding half
-        // of it into a letterbox bar where it would select nothing.
-        Handle.BODY, null -> {
-            val dx = drag.x.coerceIn(displayed.left - rect.left, displayed.right - rect.right)
-            val dy = drag.y.coerceIn(displayed.top - rect.top, displayed.bottom - rect.bottom)
-            ViewRect(rect.left + dx, rect.top + dy, rect.right + dx, rect.bottom + dy)
-        }
-    }
-}
-
-private fun ViewRect.copy(
-    left: Float = this.left,
-    top: Float = this.top,
-    right: Float = this.right,
-    bottom: Float = this.bottom,
-) = ViewRect(left, top, right, bottom)
-
-/** Generous enough for a thumb, small enough that two corners are separately grabbable. */
-private const val HANDLE_TOUCH_DP = 40
 private const val HANDLE_DRAW_PX = 18f
-private const val MIN_SIDE_PX = 80f
 
 /** Length of each corner bracket arm, in px. Long enough to read as a handle, short enough not to
  * imply the selection edge continues past the rectangle. */

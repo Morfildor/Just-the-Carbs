@@ -588,6 +588,23 @@ private fun LabelCamera(
 
         val fired = java.util.concurrent.atomic.AtomicBoolean(false)
         fun fireOnce() {
+            // `disposed` is checked here, not only at the call sites, because this is the one point
+            // both paths into the shutter go through — the focus listener and the timeout below.
+            //
+            // What is established by reading the code: the timeout is a `postDelayed` on the main
+            // looper that nothing cancels, so closing the scanner within FOCUS_TIMEOUT_MS of tapping
+            // capture leaves it queued, and it runs after `onDispose` has set `disposed`, unbound the
+            // provider, closed the analyzer and called `executor.shutdown()`. Without this guard it
+            // would then call `takePicture` against an unbound camera, handing its callback to that
+            // shut-down executor.
+            //
+            // What is NOT established: the exact failure that produces. It could surface as a
+            // rejected execution, a CameraX error callback, or be swallowed internally — this has
+            // not been reproduced on a device, so no specific exception is claimed here. The guard
+            // is kept as defensive hardening on a state that is provably reachable, not as a fix
+            // for a demonstrated crash. The session guard cannot cover this case: it is read inside
+            // the capture callback, which on this path never runs.
+            if (disposed.get()) return
             if (fired.compareAndSet(false, true)) takePictureNow(capture, file)
         }
 
@@ -622,7 +639,13 @@ private fun LabelCamera(
             return
         }
 
-        focusResult.addListener({ fireOnce() }, executor)
+        // Delivered on `mainExecutor` rather than `executor`, so the guard inside `fireOnce` is
+        // reachable on this path too: `executor` is shut down by `onDispose`, and a listener handed
+        // to a shut-down ExecutorService is not guaranteed to run at all — which would skip the
+        // disposal check rather than perform it. The main executor stays valid for the life of the
+        // process. `fireOnce` is only a compare-and-set plus a volatile read, so this costs the main
+        // thread nothing; the capture work itself is still handed to `executor` by `takePictureNow`.
+        focusResult.addListener({ fireOnce() }, mainExecutor)
         // The bound. Fires the capture even if focus never reports back.
         mainExecutor.execute {
             android.os.Handler(android.os.Looper.getMainLooper())

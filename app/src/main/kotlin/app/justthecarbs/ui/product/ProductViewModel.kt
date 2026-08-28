@@ -182,7 +182,7 @@ class ProductViewModel(
     }
 
     /**
-     * The lookup currently in flight, so one barcode never causes two network requests.
+     * The load currently in flight, so one barcode never causes two network requests.
      *
      * The already-loaded guard below cannot do this job: it tests `product != null`, which is
      * precisely what a lookup that has *started but not finished* has not set yet. Two calls close
@@ -190,6 +190,10 @@ class ProductViewModel(
      * saw a null product and both went to the network. Open Food Facts allows 15 reads per minute
      * per IP, so duplicate requests are not merely wasteful; they spend a budget the whole app
      * shares, and the second answer would overwrite the first for no benefit.
+     *
+     * This job covers the **whole** load, not just the fetch: [onProductLoaded] suspends inside it
+     * rather than launching separately. Otherwise the delivery phase ran outside the job, leaving a
+     * window in which neither guard below could see that a load was still underway.
      */
     private var lookupJob: Job? = null
 
@@ -239,7 +243,20 @@ class ProductViewModel(
         recalculate()
     }
 
-    private fun onProductLoaded(product: Product) {
+    /**
+     * Suspends rather than launching, so delivery is part of [lookupJob] (see its KDoc).
+     *
+     * It used to `viewModelScope.launch` a coroutine of its own. That detached the whole delivery
+     * phase — the portion-unit read, the recalculation and the background refresh — from the job
+     * `load` tracks, which left a window where `lookupJob.isActive` was already false and
+     * `state.product` was still null. Both of `load`'s guards read exactly those two things, so a
+     * second `load` in that window went back to Open Food Facts for a barcode already fetched, and
+     * a superseded lookup's delivery could no longer be cancelled by the newer one.
+     *
+     * Running inline keeps that work inside the job's lifetime, so both guarantees hold for the
+     * whole operation instead of only its network half.
+     */
+    private suspend fun onProductLoaded(product: Product) {
         // Pre-fill the portion the user chose last time, so a repeat product needs no typing at
         // all (§20) — but only if they have not already started typing in this session.
         val restoredPortion = savedState.get<String>(KEY_PORTION)
@@ -247,7 +264,7 @@ class ProductViewModel(
         val restoredMode = savedState.get<String>(KEY_MODE)?.let(InputMode::valueOf)
         val restoredSelectedId = savedState.get<Long>(KEY_SELECTED_UNIT)
 
-        viewModelScope.launch {
+        run {
             // Portion units are fetched ONCE here, never re-subscribed to during the session — the
             // same immutability discipline as the product's own carbs (§9). A background refresh
             // below can only produce a notice, never replace this list.

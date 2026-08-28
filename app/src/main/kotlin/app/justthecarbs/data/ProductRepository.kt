@@ -24,6 +24,7 @@ import app.justthecarbs.domain.VerificationStatus
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.time.Clock
+import java.time.Duration
 
 /**
  * What a background refresh found (corrections #5, #10).
@@ -72,13 +73,24 @@ class ProductRepository(
 
         return when (val fetched = remote.fetch(barcode)) {
             is ProductFetchResult.Found -> {
-                local.save(fetched.product)
+                // Stamped as synced *now*, because it was. Without this the row is saved with a
+                // null `remoteUpdatedAt`, which reads as "never refreshed" — so the background
+                // refresh that follows immediately in the same load re-downloads the bytes still
+                // in hand, spending a second request from the 15 reads/min/IP budget on a product
+                // fetched microseconds earlier. See [refreshFromRemote]'s freshness guard.
+                //
+                // The caller gets the *stamped* product, not the one that came off the wire: the
+                // returned product and the cached row are the same record, so a caller reading
+                // `remoteUpdatedAt` cannot conclude "never synced" about a row this very call has
+                // just marked as synced.
+                val stamped = fetched.product.copy(remoteUpdatedAt = clock.instant())
+                local.save(stamped)
                 // First sighting of this product: a suggested countable unit becomes a stored one
                 // outright, since there is nothing local yet for it to conflict with (§7, §9).
                 fetched.portionUnitCandidate?.let { candidate ->
                     portionUnits.save(newPortionUnitFromCandidate(barcode, candidate))
                 }
-                fetched
+                fetched.copy(product = stamped)
             }
             // NotFound, Unusable and Failed all leave the cache untouched: the app does not record
             // an absence, and it never caches a value it refused to trust (§13).
@@ -96,6 +108,16 @@ class ProductRepository(
     suspend fun refreshFromRemote(barcode: String): RefreshOutcome {
         val existing = (local.fetch(barcode) as? ProductFetchResult.Found)?.product
             ?: return RefreshOutcome.Unchanged
+
+        // Already up to date — nothing a second request could learn.
+        //
+        // The calculator calls this straight after [lookup], which is correct for a product served
+        // from the cache (that path never touched the network, so this is the only thing that can
+        // notice a reformulation) and wasteful for one just downloaded. Deciding here rather than at
+        // the call site keeps the freshness rule in the class that owns the lookup priority, and
+        // means every caller gets it — the ViewModel does not have to know whether the lookup it
+        // just made was a cache hit or a miss.
+        if (isRemotelyFresh(existing)) return RefreshOutcome.Unchanged
 
         val fetchedResult = remote.fetch(barcode) as? ProductFetchResult.Found
             ?: return RefreshOutcome.Unchanged
@@ -572,6 +594,24 @@ class ProductRepository(
             .forEach { portionUsage.delete(it) }
     }
 
+    /**
+     * Whether this record was synced recently enough that refreshing it again would learn nothing.
+     *
+     * A null [Product.remoteUpdatedAt] is deliberately **not** fresh: it means the row has never
+     * been refreshed — a product cached before this stamp existed, or one the user authored — and
+     * those must still be checked. Only a positive, recent timestamp suppresses a request.
+     *
+     * The window is short on purpose. It exists to collapse the duplicate request inside one load,
+     * not to become a cache policy: a user who reopens a product minutes later still gets a fresh
+     * check, which is what keeps the reformulation notice (§24, correction #10) meaningful.
+     */
+    private fun isRemotelyFresh(product: Product): Boolean {
+        val lastSync = product.remoteUpdatedAt ?: return false
+        val age = Duration.between(lastSync, clock.instant())
+        // A negative age means the stamp is in the future — a clock change, not freshness.
+        return !age.isNegative && age < REMOTE_FRESHNESS_WINDOW
+    }
+
     private fun newPortionUnitFromCandidate(barcode: String, candidate: PortionUnitCandidate): PortionUnit {
         val now = clock.instant()
         return PortionUnit(
@@ -649,4 +689,15 @@ class ProductRepository(
     private suspend fun requireExisting(barcode: String): Product =
         (local.fetch(barcode) as? ProductFetchResult.Found)?.product
             ?: error("no local product for barcode $barcode")
+
+    private companion object {
+        /**
+         * How recently a product must have been synced for a refresh to be skipped.
+         *
+         * Sized to cover one load — the fetch, the save and the refresh call that follows it — and
+         * nothing more. Deliberately far shorter than any interval at which a user would revisit a
+         * product, so the only request it ever removes is the redundant one.
+         */
+        val REMOTE_FRESHNESS_WINDOW: Duration = Duration.ofSeconds(30)
+    }
 }

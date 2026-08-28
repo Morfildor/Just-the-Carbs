@@ -16,6 +16,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onAllNodesWithText
@@ -147,7 +148,7 @@ class ProductScreenTest {
         showCalculator()
 
         compose.onNodeWithText("Enter a portion").assertIsDisplayed()
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
 
         // The brief's own worked example: 48.2 x 65 / 100 = 31.33.
         // Default hierarchy is decimal-dominant (correction #6).
@@ -158,7 +159,7 @@ class ProductScreenTest {
     @Test
     fun thereIsNoCalculateButtonToPress() {
         showCalculator()
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
 
         // §16: the result updates as you type. If a Calculate button ever appears, this fails.
         compose.onAllNodesWithText("Calculate", substring = true, ignoreCase = true)
@@ -169,7 +170,7 @@ class ProductScreenTest {
     @Test
     fun clearingThePortionRemovesTheResultRatherThanShowingZero() {
         showCalculator()
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
         compose.onNodeWithText("31.3 g").assertIsDisplayed()
 
         compose.onNode(portionField()).performTextReplacement("")
@@ -185,7 +186,7 @@ class ProductScreenTest {
     @Test
     fun quickAdjustChangesThePortionAndTheResultTogether() {
         showCalculator()
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
 
         // Scrolled into view before clicking, and that is not defensive padding.
         //
@@ -216,7 +217,7 @@ class ProductScreenTest {
     @Test
     fun quickAdjustNeverProducesANegativePortion() {
         showCalculator()
-        compose.onNode(portionField()).performTextInput("5")
+        typePortion("5")
 
         // Scrolled first, for the reason given in full on the sibling test above: below the fold,
         // this button has empty bounds and `performClick()` presses nothing.
@@ -238,7 +239,7 @@ class ProductScreenTest {
         showCalculator(product(carbs = "9.4", basis = NutritionBasis.PER_100_ML, name = "Sinaasappelsap"))
 
         compose.onNodeWithText("9.4 g carbs / 100 ml").assertIsDisplayed()
-        compose.onNode(portionField()).performTextInput("250")
+        typePortion("250")
 
         // 9.4 x 250 / 100 = 23.5 — the same arithmetic as grams, because no density is applied.
         compose.onNodeWithText("23.5 g").assertIsDisplayed()
@@ -328,7 +329,7 @@ class ProductScreenTest {
 
         compose.onNodeWithTag(PRODUCT_HERO_TAG).assertIsDisplayed()
 
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
         compose.onNodeWithText("31.3 g").assertIsDisplayed()
     }
 
@@ -577,7 +578,7 @@ class ProductScreenTest {
                 ),
             ),
         )
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
         compose.onNodeWithText("31.3 g").assertIsDisplayed()
 
         compose.onNodeWithContentDescription("View product images").performClick()
@@ -657,7 +658,7 @@ class ProductScreenTest {
     fun theHeroImageDoesNotBlockTheResult() {
         showCalculator(product())
 
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
 
         compose.onNodeWithText("31.3 g").assertIsDisplayed()
         compose.onNodeWithText("≈ 31 g whole grams").assertIsDisplayed()
@@ -721,7 +722,7 @@ class ProductScreenTest {
     @Test
     fun wholeDominantSettingRestoresTheOriginalHierarchy() {
         showCalculator(settings = AppSettings(resultStyle = ResultStyle.WHOLE_DOMINANT))
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
 
         compose.onNodeWithText("31 g").assertIsDisplayed()
         compose.onNodeWithText("31.3 g calculated").assertIsDisplayed()
@@ -735,7 +736,7 @@ class ProductScreenTest {
     @Test
     fun theWholeGramIsNeverDerivedFromTheDisplayedDecimal() {
         showCalculator(product(carbs = "51.5"))
-        compose.onNode(portionField()).performTextInput("30")
+        typePortion("30")
 
         compose.onNodeWithText("15.5 g").assertIsDisplayed()
         compose.onNodeWithText("≈ 15 g whole grams").assertIsDisplayed()
@@ -752,7 +753,7 @@ class ProductScreenTest {
                     "Extra Grote Familieverpakking Voordeeldoos",
             ),
         )
-        compose.onNode(portionField()).performTextInput("65")
+        typePortion("65")
 
         // The result is what matters; a long name must never displace it.
         compose.onNodeWithText("31.3 g").assertIsDisplayed()
@@ -761,7 +762,7 @@ class ProductScreenTest {
     @Test
     fun aZeroCarbProductCalculatesZeroRatherThanFailing() {
         showCalculator(product(carbs = "0", name = "Bronwater"))
-        compose.onNode(portionField()).performTextInput("500")
+        typePortion("500")
 
         compose.onNodeWithText("0.0 g").assertIsDisplayed()
     }
@@ -769,7 +770,7 @@ class ProductScreenTest {
     @Test
     fun aLargePortionStillProducesAReadableResult() {
         showCalculator()
-        compose.onNode(portionField()).performTextInput("2500")
+        typePortion("2500")
 
         // 48.2 x 2500 / 100 = 1205
         compose.onNodeWithText("1205.0 g").assertIsDisplayed()
@@ -779,7 +780,7 @@ class ProductScreenTest {
     fun aDecimalPortionIsAcceptedWithEitherSeparator() {
         showCalculator()
 
-        compose.onNode(portionField()).performTextInput("32.5")
+        typePortion("32.5")
         // 48.2 x 32.5 / 100 = 15.665
         compose.onNodeWithText("15.7 g").assertIsDisplayed()
 
@@ -789,4 +790,30 @@ class ProductScreenTest {
 
     /** The portion field is the only text input on this screen. */
     private fun portionField() = androidx.compose.ui.test.hasSetTextAction()
+
+    /**
+     * Type a portion, then dismiss the soft keyboard and let the layout settle.
+     *
+     * Used by the tests that go on to assert something is **displayed** in the pinned result panel.
+     * Those assertions are about the panel genuinely being on screen, and the soft keyboard is a
+     * real window over the bottom of the screen — logcat reports Gboard as
+     * `SoftKeyboardView{0,0-1080,641}` — so with it up, a pinned bottom element is legitimately not
+     * displayed and `assertIsDisplayed` correctly says so.
+     *
+     * That is what produced this class's intermittent `product_result … is not displayed` failure:
+     * measured here as 32/32 on three consecutive runs and then a failure on runs 4 and 5, without
+     * any code change between them. It is a test-synchronization defect rather than a UI bug — a
+     * real user who types and then reads the total has dismissed the keyboard — and it is fixed by
+     * performing that dismissal rather than by retrying, sleeping or weakening the assertion.
+     *
+     * Tests that only assert on *absence* or on node counts deliberately keep the plain
+     * `performTextInput`: they do not depend on the pinned panel being visible, and changing them
+     * would be churn.
+     */
+    private fun typePortion(text: String) {
+        compose.onNode(portionField()).performTextInput(text)
+        compose.onNode(portionField()).performImeAction()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+    }
 }
