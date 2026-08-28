@@ -1131,53 +1131,68 @@ disagrees, this one is right — and fix the older passage rather than working a
 
 | Question | Answer |
 |---|---|
-| What is on a Play track? | `1.0.0` / **`versionCode 1`**, one artifact, one hash |
-| Which tracks? | **Internal testing: DEPLOYED** (2026-08-26) → **Closed testing: ACTIVE**, promoted unchanged |
+| What is the latest release? | `1.0.1` / **`versionCode 2`**, uploaded and **accepted by Play 2026-08-28** |
+| Which track? | **Closed testing.** `versionCode 1` preceded it on internal → closed |
 | Closed-testing period | **Running.** 12+ testers opted in |
-| What is in development? | `1.0.1` / **`versionCode 2`** — already set in `branding.gradle.kts` |
-| Is 1.0.1 released? | **No.** Never built for release, never uploaded |
-| Is 1.0.1 open? | **Yes.** Safe fixes keep accumulating into it until the owner decides to push |
-| What do I develop against? | **`versionCode 2`**, unless the owner says otherwise |
+| What is in development? | **Nothing yet.** `versionCode 2` is spent; the next change opens `1.0.2` / `versionCode 3` |
+| Is 1.0.1 released? | **Yes.** Built from `45f3dd9`, uploaded 2026-08-28, in `docs/version-history.md` |
+| What do I develop against? | **`versionCode 3`** — see the versioning rule below |
 | Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
 
-**One artifact, two tracks — never two releases.** `versionCode 1` reached the closed track by
-promotion of the same bundle: same bytes, same hash, same version code. `docs/version-history.md`
-records it **once**, keyed by hash, with the track progression noted. Do not add a second entry, and
-do not describe the promotion as a release.
+**VERSIONING RULE CHANGED 2026-08-28 (owner): a new version number per code change.** The old
+policy — accumulate safe fixes into one open version until the owner decides to push — produced
+1.0.0 and 1.0.1 and **no longer applies**. From now on the first code change after a release bumps
+`brandVersionCode`/`brandVersionName` in `branding.gradle.kts` and opens a new `CHANGELOG.md`
+section. Documentation-only changes open nothing: a version number identifies an artifact, and prose
+that changes no code produces none. Full rule at the top of `CHANGELOG.md`.
 
-The shipped artifact is `app-release.aab` from `clean` on **`68c85a3`** (recorded in `0b2312f`):
-35,624,186 bytes, SHA-256 `37be02324dec011c74edd876d346077a03dc611096eae4d98374ab791c7e604b`,
-signed with the real upload key `1E:21:23:F3:…:C4:F5`. Hash and certificate were re-verified against
-the file on disk, and **Play has since accepted the same artifact** — so bundle format, upload
-signing and Play App Signing enrollment are proven, not open items. Play still shows the temporary
-name `app.justthecarbs (unreviewed)`; that is expected pre-review and is not a defect.
+**`versionCode 1` and `2` are both spent.** Neither is to be rebuilt or re-uploaded — Play refuses a
+duplicate code, and both are on an active track. The next number is **3**.
 
-### Working rules for the open 1.0.1 cycle
+The current artifact is `app-release.aab` from `clean` on **`45f3dd9`** (evidence in `cb2d549`):
+35,626,125 bytes, SHA-256 `8c4e6da7998b81a38fbb23234b008a8088ab57149d0d0f6a8b3e146c4d7bfd30`,
+signed with the real upload key `1E:21:23:F3:…:C4:F5` — **the same key as `versionCode 1`**, which
+is what lets Play accept it as an update. The signer DN was read from the built bundle with
+`keytool -printcert -jarfile` before upload, not inferred from a green build: the Gradle guard
+cannot tell a real upload key from a disposable one.
 
-- **Do not bump `versionCode` again.** 2 is claimed and is worth one upload. Bumping mid-version
-  strands the notes against a number that never shipped.
-- **Add changes to 1.0.1's existing section in `CHANGELOG.md`.** Do not open a new version heading.
+`versionCode 1` (`1.0.0`, `68c85a3`, SHA-256 `37be0232…c7e604b`) reached the closed track by
+**promotion of the same bundle** — same bytes, same hash, same version code. `docs/version-history.md`
+records it **once**, with the track progression noted; a promotion is not a release and does not get
+a second entry. Play still shows the temporary name `app.justthecarbs (unreviewed)`; that is expected
+pre-review and is not a defect.
+
+### Working rules after 1.0.1
+
+- **The first code change opens `1.0.2` / `versionCode 3`.** Bump both `brandVersionCode` and
+  `brandVersionName` in `branding.gradle.kts` and rename `CHANGELOG.md`'s **Unreleased** heading in
+  the same change, so the notes and the number never disagree.
+- **A documentation-only change opens nothing.** No version, no bump, no `CHANGELOG.md` heading.
+- **Do not rebuild or upload `versionCode 1` or `2`.** Both are on an active track and Play refuses
+  a duplicate code. Superseded artifacts stay superseded — in particular the earlier bundle
+  `00876FA9…BBB4A2`, built from an uncommitted tree.
 - **Nothing goes into `docs/version-history.md` until Play accepts a build.** That file is the
-  append-only record of artifacts that actually shipped. A pending version is not history.
-- **Do not rebuild or upload `versionCode 1`.** It is on an active track and Play refuses a
-  duplicate code; a replacement is what `versionCode 2` is for. Superseded artifacts stay superseded
-  — in particular the earlier bundle `00876FA9…BBB4A2`, built from an uncommitted tree.
-- The test figures and the Play *What's new* text in 1.0.1's open section describe the work **so
-  far** and must be re-checked and rewritten before upload.
+  append-only record of artifacts that actually shipped. A built-but-unuploaded version is not
+  history.
+- The test figures and the Play *What's new* text in an unreleased section describe the work **so
+  far** and must be re-checked and rewritten before the build is made.
 - **A release build is a deliberate, instructed act.** Building or uploading an AAB is never part of
-  an ordinary development pass; when 1.0.1 is actually pushed, follow
-  `docs/play-release-readiness.md` §2c/§2d — build from a committed tree, verify the R8 privacy
-  barriers and the signer DN, then copy the section into `docs/version-history.md` with the hash.
+  an ordinary development pass. When one is asked for, follow `docs/play-release-readiness.md`
+  §2c/§2d — build from a committed tree, verify the R8 privacy barriers and **read the signer DN off
+  the artifact**, then copy the section into `docs/version-history.md` with the hash once Play
+  accepts it.
 
 **Historical note.** Earlier revisions of this file and of `docs/play-release-readiness.md` said
-"DO NOT REBUILD … any replacement needs `versionCode 2`" as if creating 2 were the thing to avoid.
-That was written while 1 was the only version that existed and 2 had not been opened. It is stale:
-`versionCode 2` **exists and is the development target**. What still holds from it is only that
-`versionCode 1`'s artifact is not to be rebuilt or re-uploaded.
+"DO NOT REBUILD … any replacement needs `versionCode 2`", then later that `versionCode 2` "exists
+and is the development target". Both are stale: **2 shipped on 2026-08-28**. What survives from them
+is only the general rule — a version code that has reached a track is never rebuilt or re-uploaded,
+which now covers 1 and 2 alike.
 
-**Next technical action (unchanged):** install the Play-delivered build on the Samsung device via
-the **tester link** — not a local APK — and run the ten-step smoke test
-(`docs/play-release-readiness.md` §8a).
+**Next technical action:** install the Play-delivered **1.0.1** build on the Samsung device via the
+**tester link** — not a local APK — and run the ten-step smoke test
+(`docs/play-release-readiness.md` §8a). This is now more valuable than it was for 1.0.0: nothing in
+1.0.1 was verified on physical hardware, and the crop-drag fix is the change a tester is most likely
+to notice.
 
 **The 14-day clock is RUNNING.** If this account is subject to Play's **12-testers / 14-days
 closed-testing requirement** (some personal accounts created from Nov 2023 onward are; organization

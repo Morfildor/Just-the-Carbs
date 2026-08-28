@@ -1,35 +1,48 @@
 # Patch notes — Just the Carbs
 
 Change list per version. **Newest first.** This file carries the version being worked on and the
-one currently on a track; uploaded versions are copied into
+most recent released one; every uploaded version is copied into
 [`docs/version-history.md`](docs/version-history.md), the append-only archive that records each
 artifact's hash, size and signer.
 
-## How this works during the closed beta
+**Latest release: `1.0.1` / `versionCode 2`**, on closed testing since 2026-08-28.
 
-Several builds go out over the testing period, each driven by tester findings and feedback. So at
-any moment there is normally **one open version section at the top** — the next build — which keeps
-accumulating changes until it is actually pushed.
+## Versioning rule — a new version number per code change (owner, 2026-08-28)
 
-- **Add new work to the open version's section.** Do not start a new version heading for each
-  change; a version number is claimed once and is worth one upload.
-- A version stays open until its AAB is built and accepted by Play. Only then is it a closed record
-  and copied into [`docs/version-history.md`](docs/version-history.md).
-- The test figures and the Play *What's new* text inside an open section describe the work **so
-  far**, and must be re-checked and rewritten before upload.
-- `versionCode` is bumped **once**, when the section is opened — not per change. Bumping it again
-  mid-version would strand the notes against a number that never shipped.
+**Every code change from now on gets its own version number.** This replaces the earlier
+accumulate-into-one-open-version policy that 1.0.0 and 1.0.1 were produced under.
+
+- The first code change after a release **opens a new version**: bump `brandVersionCode` and
+  `brandVersionName` in `branding.gradle.kts`, and rename the **Unreleased** heading to that
+  version.
+- `versionCode` increments by one each time and is **never reused** — Play refuses a duplicate,
+  including for a build that was rejected or never uploaded.
+- Documentation-only changes do not open a version. A version number exists to identify an
+  artifact, and prose that changes no code produces none.
+- Test figures and the Play *What's new* text inside an unreleased section describe the work so far
+  and must be re-checked before the build is made.
+- A version moves to [`docs/version-history.md`](docs/version-history.md) only once **Play accepts
+  the upload**. A build that never left the machine is not a release.
+
+### How 1.0.0 and 1.0.1 were produced
+
+Both accumulated several changes under one version number before being uploaded, which was the
+policy at the time. They are left exactly as recorded; the rule above applies to work after
+1.0.1.
 
 ## Conventions
 
-- **Unreleased** is for work not yet assigned to a version. During the beta most work goes straight
-  into the open version section instead; use Unreleased when the next build's number is not decided.
+- **Unreleased** holds the heading waiting for the next code change. Under the versioning rule
+  above it is renamed to a real version as soon as that change lands, so it is normally empty
+  between releases rather than a place work accumulates.
 - A version heading is `## <versionName> (versionCode N) — <date> — <track>`, so a tester report
-  quoting "1.0.0" matches exactly one artifact.
+  quoting "1.0.1" matches exactly one artifact.
 - Entries group by **Fixed / Changed / Added / Internal**, written for whoever reads them next: a
   defect line says what the user would have seen, not which function moved.
 - `versionCode` is unique per upload and **never reused** — Play rejects a duplicate. It is bumped
   when a version section is opened, then left alone until that build ships.
+- **`versionCode 1` and `2` are spent.** Both are on the closed track and neither is to be rebuilt
+  or re-uploaded; the next number is `3`.
 - When a version is uploaded, copy its section verbatim into `docs/version-history.md`. Nothing is
   rewritten on the way across, so the record of what shipped stays what it said at the time.
 - Every version also carries a **Play Store release notes** block — the *What's new* text, written
@@ -39,17 +52,19 @@ accumulating changes until it is actually pushed.
 
 ---
 
-## 1.0.1 (versionCode 2) — BUILT FOR CLOSED TESTING, awaiting upload
+## Unreleased
 
-The **first update of the closed beta**. The change list below is complete, the test figures were
-taken after the last change in it, and a signed release bundle has been built from this committed
-tree for upload to the closed track.
+Nothing yet. **The next code change opens `1.0.2` / `versionCode 3`** — see the versioning rule at
+the top of this file. Rename this heading to that version when the first change lands, and bump
+`brandVersionCode` and `brandVersionName` in `branding.gradle.kts` at the same time.
 
-**It is not history yet.** This section moves to
-[`docs/version-history.md`](docs/version-history.md) — verbatim, with the artifact's hash, size and
-signer — **only once Play has accepted the upload**. A build that never left the machine is not a
-release. Until then `versionCode 2` stays claimed and unshipped, and any further change goes into
-this same section rather than opening a new version.
+---
+
+## 1.0.1 (versionCode 2) — 2026-08-28 — Closed testing
+
+The **first update of the closed beta**, uploaded and accepted by Play on 2026-08-28. Full entry,
+including the artifact hash, size and signer, in
+[`docs/version-history.md`](docs/version-history.md).
 
 A small, conservative quality pass taken during the closed beta. No feature work, no schema change,
 no migration, no new permission or dependency, no change to barcode scanning, and no change to the
@@ -164,17 +179,11 @@ calculation or to any OCR safety rule.
 
 ### Play Store release notes
 
-The text to paste into Play Console's *What's new*. It covers the change list above and nothing
-else; if more work lands in this version before upload, rewrite it and re-count the characters.
-Deliberately much less granular than the list above — see the rules in
-[`docs/version-history.md`](docs/version-history.md).
+**As pasted into Play Console's *What's new* on upload.** 411 characters, within the 500 limit.
 
-Currently 411 characters, within the 500 limit.
-
-Note on wording: the label-scan change is described as *reducing the wait after capture* rather than
-as "faster". The work removed is real and measured in the code, but no before/after figure has been
-taken on a physical device, and the archive's rules forbid promising a fix that has not been
-verified on one.
+The label-scan change is worded as *reducing the wait after capture* rather than as "faster": the
+work removed is real and measured in the code, but no before/after figure was taken on a physical
+device, and the archive's rules forbid promising a fix that has not been verified on one.
 
 ```
 Fixes a problem where dragging the crop box while scanning a nutrition label moved it far less than

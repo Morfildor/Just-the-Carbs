@@ -8,16 +8,17 @@
 | Release artifact | **READY** |
 | Store listing | **READY** |
 | Internal testing | **DEPLOYED** — `1.0.0` / `versionCode 1` |
-| Closed testing | **ACTIVE — running, 12+ testers opted in** — same artifact, promoted |
-| Version in development | `1.0.1` / **`versionCode 2` — OPEN**, never built for release, never uploaded |
-| Play-delivered smoke test | **PENDING** — §8a |
+| Closed testing | **ACTIVE — running, 12+ testers opted in.** Currently `1.0.1` / `versionCode 2`, uploaded 2026-08-28 |
+| Version in development | **None.** `versionCode 2` is spent; the next code change opens `1.0.2` / `versionCode 3` (§2c) |
+| Play-delivered smoke test | **PENDING** — §8a, and not yet run against any build |
 | Production submission | **BLOCKED** — see §1b |
 
-**Closed testing is running.** `1.0.0` (`versionCode 1`) went to internal testers on 2026-08-26 and
-**the same artifact was then promoted to the closed track**, where 12 or more testers are opted in
-and the testing period is under way. It is **one artifact and one hash progressing through two
-tracks**, not two releases — `docs/version-history.md` records it once, by hash, with its track
-progression.
+**Closed testing is running, now on `1.0.1`.** `1.0.0` (`versionCode 1`) went to internal testers on
+2026-08-26 and **the same artifact was then promoted to the closed track** — one artifact and one
+hash progressing through two tracks, not two releases. `1.0.1` (`versionCode 2`) was then built from
+`45f3dd9`, uploaded and accepted on 2026-08-28 as a genuine second artifact. 12 or more testers are
+opted in and the testing period is under way. `docs/version-history.md` records each version once,
+by hash.
 
 Play accepted the bundle and its signature, so **bundle format, upload-key signing and Play App
 Signing acceptance are proven facts, not open items** — do not re-list them.
@@ -231,24 +232,27 @@ on the same day and is **superseded**. Do not upload it.
 `jarsigner`'s "self-signed certificate" and "no timestamp" warnings are expected and correct for an
 Android upload key. They are not defects.
 
-### 2c. `versionCode 1` is final; `versionCode 2` is open
+### 2c. `versionCode 1` and `2` are both final; the next number is `3`
 
-`versionCode 1` is **published to testers and is not to be rebuilt or re-uploaded.** Play refuses a
-duplicate version code, and that artifact has already proven bundle format, upload signing and Play
-App Signing acceptance. Leave it alone.
+`versionCode 1` (`1.0.0`) and `versionCode 2` (`1.0.1`) are **both published to testers and neither
+is to be rebuilt or re-uploaded.** Play refuses a duplicate version code, and both artifacts have
+already proven bundle format, upload signing and Play App Signing acceptance. Leave them alone.
 
-Work continues on **`versionCode 2` / `1.0.1`, which is already open** in `branding.gradle.kts`.
-That number is claimed once: do not bump it again while 1.0.1 is unshipped, and do not open a
-`versionCode 3` section. Changes go into 1.0.1's section in `CHANGELOG.md`.
+**Versioning rule changed 2026-08-28 (owner): a new version number per code change.** The earlier
+policy — accumulate safe fixes into one open version until the owner decides to push — produced
+1.0.0 and 1.0.1 and no longer applies. The first code change after a release bumps
+`brandVersionCode` and `brandVersionName` in `branding.gradle.kts` and renames `CHANGELOG.md`'s
+**Unreleased** heading, in the same change, so the number and the notes never disagree. A
+documentation-only change opens no version: a version number identifies an artifact, and prose that
+changes no code produces none.
 
-**Opening `versionCode 2` was not itself a decision to ship.** Building a release AAB and uploading
-it is a separate, deliberate act the owner asks for — never a step in an ordinary development pass,
-and not warranted by documentation, the native debug-symbols warning (§1c), the temporary
-`(unreviewed)` listing name, dependency upgrades, cosmetics or refactors. 1.0.1 ships when the owner
-decides its accumulated changes are worth an upload.
+**Opening a version is still not a decision to ship.** Building a release AAB and uploading it is a
+separate, deliberate act the owner asks for — never a step in an ordinary development pass, and not
+warranted by documentation, the native debug-symbols warning (§1c), the temporary `(unreviewed)`
+listing name, dependency upgrades, cosmetics or refactors.
 
-When that upload does happen: rebuild from a **committed** tree, verify the signer DN (§2a) and the
-R8 privacy barriers (§7), record the new artifact's hash and size in §2b, and copy 1.0.1's
+When an upload does happen: rebuild from a **committed** tree, verify the signer DN (§2a) and the
+R8 privacy barriers (§7), record the new artifact's hash and size in §7, and copy the version's
 `CHANGELOG.md` section verbatim into `docs/version-history.md` — **only after Play accepts it**.
 
 ### 2d. Patch notes are part of the upload, not an afterthought
@@ -496,10 +500,10 @@ changed.
 
 ## 7. Technical evidence — release candidate
 
-### 2026-08-28 — `versionCode 2` / `1.0.1`, built for closed testing (commit `45f3dd9`)
+### 2026-08-28 — `versionCode 2` / `1.0.1`, the shipped artifact (commit `45f3dd9`)
 
-**Built, verified, and awaiting upload.** This is the candidate for the closed track. It becomes
-history in [`version-history.md`](version-history.md) only once Play accepts it (§2c).
+**Uploaded to closed testing and accepted by Play on 2026-08-28.** This is the current release.
+Archived in [`version-history.md`](version-history.md).
 
 | Check | Result |
 |---|---|
@@ -517,7 +521,7 @@ history in [`version-history.md`](version-history.md) only once Play accepts it 
 | Locale configs in the bundle | **PASS** — none; English-only, so the `localeFilters` restriction still holds. |
 | OSV dependency scan | **PASS 2026-08-28** — 226 resolved release-runtime artifacts, 0 known vulnerabilities, control query positive. |
 | Release APK | **NOT BUILT** — bundle-only, as for `versionCode 1`. |
-| Play acceptance | **PENDING** — not yet uploaded. |
+| Play acceptance | **PASS 2026-08-28** — uploaded to the closed track and accepted. Bundle format and upload signature validated by Play itself. |
 | Play-delivered smoke test on this build | **PENDING** *(owner — §8a)* |
 | Physical-device verification | **NOT DONE** — unchanged standing gap. The crop-drag fix, the scanner disposal guard and the latency work remain emulator-and-JVM-only. |
 
