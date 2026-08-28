@@ -496,6 +496,31 @@ changed.
 
 ## 7. Technical evidence — release candidate
 
+### 2026-08-28 — `versionCode 2` / `1.0.1`, built for closed testing (commit `45f3dd9`)
+
+**Built, verified, and awaiting upload.** This is the candidate for the closed track. It becomes
+history in [`version-history.md`](version-history.md) only once Play accepts it (§2c).
+
+| Check | Result |
+|---|---|
+| Release AAB | **Built from `clean` on the committed tree at `45f3dd9`.** 35,626,125 bytes, SHA-256 `8c4e6da7998b81a38fbb23234b008a8088ab57149d0d0f6a8b3e146c4d7bfd30`. |
+| Signature | **UPLOADABLE KEY** — signer `C=NL, L=Haarlem, O=JustTheCarbs, OU=Release, CN=Tunc Bilen`, SHA256withRSA, 2048-bit, valid 2026-08-26 → 2051-08-20, cert SHA-256 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — **identical to the key that signed `versionCode 1`**, which is what lets Play accept it as an update. Read with `keytool -printcert -jarfile`; `apksigner` cannot read an AAB. |
+| Identity in the merged release manifest | `package="app.justthecarbs"`, `versionCode="2"`, `versionName="1.0.1"`. |
+| JVM tests | **PASS — 801/801**, 0 failures, 0 errors, 0 skipped (`--rerun-tasks`, counted from JUnit XML). |
+| Instrumented tests | **PASS — 218/218**, 0 failures, 0 ignored, in **one whole-suite run** (15m25s), counted from instrumentation status codes. Taken after the last code change in this version. |
+| Lint | **PASS — 0 errors**, 41 advisories (unchanged baseline). |
+| R8 privacy barriers | **PASS** — `ScanEvidenceRecorder` and `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport` and `OcrDiagnosticsReport` absent from `mapping.txt`. Safety classes retained as real classes: `UnitMarkerFilter`→`z34`, `CandidateProvenance`→`v00`, `CarbCandidate`→`f30`, `PackageBasisResolver`→`cl2`. |
+| Release manifest providers | **PASS** — zero `FileProvider` matches, so the debug evidence provider does not ship. |
+| Exported components | **PASS** — one of ours (`MainActivity`, the launcher) plus AndroidX's permission-guarded `ProfileInstallReceiver`. Same as `versionCode 1`. |
+| Permissions | CAMERA, INTERNET, ACCESS_NETWORK_STATE (transitive via ML Kit, disclosed) — unchanged from `versionCode 1`. |
+| `debuggable` / `allowBackup` | **PASS** — not debuggable; `allowBackup="false"`. |
+| Locale configs in the bundle | **PASS** — none; English-only, so the `localeFilters` restriction still holds. |
+| OSV dependency scan | **PASS 2026-08-28** — 226 resolved release-runtime artifacts, 0 known vulnerabilities, control query positive. |
+| Release APK | **NOT BUILT** — bundle-only, as for `versionCode 1`. |
+| Play acceptance | **PENDING** — not yet uploaded. |
+| Play-delivered smoke test on this build | **PENDING** *(owner — §8a)* |
+| Physical-device verification | **NOT DONE** — unchanged standing gap. The crop-drag fix, the scanner disposal guard and the latency work remain emulator-and-JVM-only. |
+
 ### 2026-08-26 — the shipped artifact (commit `68c85a3`, recorded in `0b2312f`)
 
 | Check | Result |
