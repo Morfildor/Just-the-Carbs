@@ -12,9 +12,17 @@ import app.justthecarbs.data.local.RoomMealDataSource
 import app.justthecarbs.data.local.RoomPortionUnitDataSource
 import app.justthecarbs.data.local.RoomPortionUsageDataSource
 import app.justthecarbs.data.local.RoomProductDataSource
+import app.justthecarbs.data.remote.LogcatSearchProviderLog
 import app.justthecarbs.data.remote.NetworkModule
 import app.justthecarbs.data.remote.OpenFoodFactsDataSource
+import app.justthecarbs.data.remote.SearchALiciousDataSource
 import app.justthecarbs.data.settings.SettingsRepository
+import app.justthecarbs.domain.CachedProductSearch
+import app.justthecarbs.domain.FallbackProductSearch
+import app.justthecarbs.domain.GovernedProductSearch
+import app.justthecarbs.domain.ProductSearchSource
+import app.justthecarbs.domain.RemoteSearchGovernor
+import app.justthecarbs.domain.SearchProviderLog
 
 /**
  * Manual dependency container.
@@ -43,12 +51,14 @@ class AppContainer(context: Context) {
     val okHttpClient by lazy { NetworkModule.okHttpClient() }
 
     /**
-     * One Open Food Facts instance serving both roles — it is both the product source and the
-     * search source, and constructing it twice would open two paths to the same host. Exposed
-     * publicly as [searchSource] since [SearchViewModel][app.justthecarbs.ui.search.SearchViewModel]
-     * talks to it directly rather than through [productRepository].
+     * One Open Food Facts instance serving both roles — it is the canonical **product** source
+     * (barcode lookup, the authoritative nutrition path) and the **legacy** search source, and
+     * constructing it twice would open two paths to the same host.
+     *
+     * Its product role is untouched by the 2026-08-28 search migration: every selected search hit,
+     * from either provider, still resolves through this object's `fetch`.
      */
-    val searchSource by lazy {
+    val legacySearchSource by lazy {
         OpenFoodFactsDataSource(
             NetworkModule.openFoodFactsApi(okHttpClient),
             preferredLanguage = {
@@ -57,13 +67,95 @@ class AppContainer(context: Context) {
         )
     }
 
+    /**
+     * The **legacy** Open Food Facts search budget (§9) — 10 reads/min/IP on `cgi/search.pl`.
+     *
+     * Held here rather than inside `SearchViewModel` because there is more than one of those:
+     * Home's inline search and the search screen are separate instances, so a per-ViewModel
+     * cooldown would let the two most-likely-consecutive screens spend the same budget twice over.
+     * One instance for the process is the whole point.
+     *
+     * Since 2026-08-28 it governs the **fallback only**, applied inside [GovernedProductSearch]
+     * rather than in the ViewModel. It is still shared by both screens, so the legacy endpoint sees
+     * the same single budget it always did.
+     */
+    val legacySearchGovernor by lazy { RemoteSearchGovernor() }
+
+    /**
+     * The primary provider's pacing.
+     *
+     * A separate instance with its own, far shorter interval — the two services have different
+     * limits and one governor cannot express both. Shared across screens for the same reason the
+     * legacy one is.
+     */
+    val primarySearchGovernor by lazy {
+        RemoteSearchGovernor(minIntervalMs = RemoteSearchGovernor.PRIMARY_MIN_INTERVAL_MS)
+    }
+
+    /**
+     * Chain diagnostics, shared by the provider chain and the primary source.
+     *
+     * One instance so both report to the same place: the primary's "matches arrived but none were
+     * usable" event and the chain's "falling back" event are two halves of one story, and reading
+     * them from separate logs would hide that the first caused the second.
+     */
+    private val searchProviderLog: SearchProviderLog =
+        if (BuildConfig.DEBUG) LogcatSearchProviderLog else SearchProviderLog.None
+
+    /** Search-a-licious — the primary text-search provider (see [SearchALiciousApi]). */
+    private val searchALiciousSource by lazy {
+        SearchALiciousDataSource(
+            api = NetworkModule.searchALiciousApi(okHttpClient),
+            log = searchProviderLog,
+        )
+    }
+
+    /**
+     * The primary, with a short-lived memory of its own successful answers.
+     *
+     * Wrapping the **primary alone** rather than the whole chain is deliberate. Inside the chain, a
+     * cache hit is an ordinary [app.justthecarbs.domain.ProductSearchResult.Found] from the primary,
+     * so the fallback is not consulted — structurally, not by a rule — and only successful
+     * *primary* answers are ever stored, which keeps "what is in the cache" a statement about one
+     * provider. Wrapping the chain instead would file a legacy answer under the primary's name and
+     * make a cached result's provenance unanswerable.
+     *
+     * One instance for the process, so Home's inline search and the search screen share it; typing
+     * the same term on both is exactly the case this saves a request on.
+     */
+    private val cachedPrimarySearchSource by lazy {
+        CachedProductSearch(searchALiciousSource)
+    }
+
+    /**
+     * The provider chain the whole app searches through.
+     *
+     * Search-a-licious first; the legacy governed endpoint only for the failures
+     * [FallbackProductSearch] classifies as worth a second host. Exposed as a plain
+     * [app.justthecarbs.domain.ProductSearchSource], so no screen or ViewModel knows there are two
+     * providers — which is what keeps the migration reversible: pointing this at
+     * [legacySearchSource] alone restores the previous behaviour exactly, with no other change.
+     */
+    val searchSource: ProductSearchSource by lazy {
+        FallbackProductSearch(
+            primary = cachedPrimarySearchSource,
+            fallback = GovernedProductSearch(legacySearchSource, legacySearchGovernor),
+            log = searchProviderLog,
+        )
+    }
+
     val productRepository by lazy {
         ProductRepository(
             local = localProducts,
-            remote = searchSource,
+            // The canonical product path. Deliberately NOT the search chain: a barcode lookup is
+            // the app's authoritative nutrition source and must keep answering from Open Food
+            // Facts' product API whatever the text-search provider is doing.
+            remote = legacySearchSource,
             portionUnits = localPortionUnits,
             meal = localMeal,
             portionUsage = localPortionUsage,
+            // The repository's own `search` goes through the same chain the screens use, so there
+            // is exactly one text-search stack in the app.
             searchSource = searchSource,
         )
     }

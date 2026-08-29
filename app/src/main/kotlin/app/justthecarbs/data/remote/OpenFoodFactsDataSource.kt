@@ -60,8 +60,16 @@ class OpenFoodFactsDataSource(
         return try {
             val response = api.search(query)
             when {
-                response.code() == HTTP_TOO_MANY_REQUESTS ->
-                    ProductSearchResult.Failed(LookupError.RATE_LIMITED)
+                // The server's own stated wait is carried through rather than discarded: the
+                // governor can then honour exactly what was asked for instead of guessing, and a
+                // 429 with no usable header falls back to its conservative default.
+                response.code() == HTTP_TOO_MANY_REQUESTS -> ProductSearchResult.Failed(
+                    LookupError.RATE_LIMITED,
+                    retryAfterMs = RetryAfterHeader.parseMs(
+                        response.headers()[HEADER_RETRY_AFTER],
+                        System.currentTimeMillis(),
+                    ),
+                )
                 // Observed live on 2026-08-14: this endpoint intermittently answers 503 with an
                 // HTML "temporarily unavailable" page while the product-read endpoint is fine.
                 // Reported as a server problem the user can retry, never as "no matches" — telling
@@ -298,6 +306,9 @@ class OpenFoodFactsDataSource(
     private companion object {
         const val HTTP_NOT_FOUND = 404
         const val HTTP_TOO_MANY_REQUESTS = 429
+
+        /** RFC 9110 §10.2.3 — how long the server wants the client to wait. */
+        const val HEADER_RETRY_AFTER = "Retry-After"
 
         /** Matches the scale [app.justthecarbs.domain.ServingDescriptor] uses for its own division. */
         const val CARBS_PER_UNIT_SCALE = 4

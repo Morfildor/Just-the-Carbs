@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -39,6 +40,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -51,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
@@ -74,6 +77,7 @@ import app.justthecarbs.ui.components.FavoriteButton
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.ProductThumbnail
 import app.justthecarbs.ui.components.RecoveryPanel
+import app.justthecarbs.ui.components.RefreshErrorBanner
 import app.justthecarbs.ui.components.SearchResultRow
 import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.meal.MealBarIfPresent
@@ -86,6 +90,9 @@ import java.math.BigDecimal
 /** Stable handles for instrumented tests. */
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
 const val HOME_SEARCH_RESULTS_TAG = "home_search_results"
+const val HOME_SEARCH_REFRESH_ERROR_TAG = "home_search_refresh_error"
+const val HOME_SEARCH_RATE_LIMITED_TAG = "home_search_rate_limited"
+const val HOME_SEARCH_PENDING_TAG = "home_search_pending"
 const val HOME_SCAN_BARCODE_TAG = "home_scan_barcode"
 const val HOME_SCAN_LABEL_TAG = "home_scan_label"
 const val HOME_FAVORITES_HEADING_TAG = "home_favorites_heading"
@@ -343,13 +350,23 @@ private fun HomeSearchField(
         placeholder = { Text(stringResource(R.string.search_hint)) },
         // Tapping the leading icon also submits: it sits where a "search" affordance is expected,
         // in addition to the IME action, without adding a second visible button to this compact field.
+        //
+        // Sized explicitly, like every other IconButton in the app. A text field's decoration slots
+        // constrain their content, so an unsized IconButton here measured 40dp rather than the
+        // Material default 48 — measured at 105px on a 420dpi device. Undersized targets are hardest
+        // to hit exactly where this app is used: one-handed, in a shop, often in a hurry.
         leadingIcon = {
-            IconButton(onClick = { onSearchSubmit(); focusManager.clearFocus() }) {
+            IconButton(
+                onClick = { onSearchSubmit(); focusManager.clearFocus() },
+                modifier = Modifier.size(Space.minTouchTarget),
+            ) {
                 Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search_submit))
             }
         },
-        // Search is explicit: typing alone never triggers a request (Open Food Facts' search
-        // endpoint is rate-limited and not meant for as-you-type traffic).
+        // Typing searches by itself, debounced in the ViewModel so a typed word costs one request
+        // rather than one per keystroke (Open Food Facts' search endpoint allows 10 reads/min/IP).
+        // The IME action still submits, skipping the wait for anyone who has finished typing; both
+        // go through the same request pipeline so neither duplicates the other's call.
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(
             onSearch = {
@@ -361,7 +378,9 @@ private fun HomeSearchField(
             if (query.isNotEmpty()) {
                 IconButton(
                     onClick = { onQueryChanged("") },
-                    modifier = Modifier.semantics { contentDescription = clearLabel },
+                    modifier = Modifier
+                        .size(Space.minTouchTarget)
+                        .semantics { contentDescription = clearLabel },
                 ) {
                     Icon(Icons.Filled.Close, contentDescription = null)
                 }
@@ -383,6 +402,59 @@ private fun HomeSearchResults(
     modifier: Modifier = Modifier,
 ) {
     when {
+        // Results first, for the same reason as SearchScreen: a refresh failure carries an error
+        // but costs the user nothing, so it must not take the region away from a usable list.
+        state.hits.isNotEmpty() -> Column(modifier = modifier.fillMaxWidth()) {
+            // Home had no refresh indicator at all — its only loading state was the centred spinner
+            // for an empty list, so a refresh over existing results was completely silent. The
+            // reserved height keeps the results from jumping as it appears and disappears.
+            Box(
+                modifier = Modifier.fillMaxWidth().height(Space.s),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (state.searching) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = Space.screenEdge)
+                            .height(2.dp)
+                            .clearAndSetSemantics { },
+                    )
+                }
+            }
+            // No Retry while rate limited — the queued query resumes by itself, and a button there
+            // would invite the hammering the backoff exists to stop. Same rule as SearchScreen.
+            if (state.rateLimited) {
+                RefreshErrorBanner(
+                    text = stringResource(R.string.search_rate_limited),
+                    modifier = Modifier
+                        .padding(horizontal = Space.screenEdge, vertical = Space.xs)
+                        .testTag(HOME_SEARCH_RATE_LIMITED_TAG),
+                )
+            } else if (state.refreshFailed) {
+                RefreshErrorBanner(
+                    text = stringResource(R.string.search_refresh_failed),
+                    retryText = stringResource(R.string.error_retry),
+                    onRetry = onRetry,
+                    modifier = Modifier
+                        .padding(horizontal = Space.screenEdge, vertical = Space.xs)
+                        .testTag(HOME_SEARCH_REFRESH_ERROR_TAG),
+                )
+            }
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.screenEdge)
+                    .testTag(HOME_SEARCH_RESULTS_TAG),
+            ) {
+                items(state.hits, key = { it.barcode }) { hit ->
+                    SearchResultRow(hit = hit, onClick = { onSelect(hit) })
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+        }
+
         state.error != null -> {
             val title = when (state.error) {
                 LookupError.OFFLINE -> stringResource(R.string.error_offline_title)
@@ -405,7 +477,24 @@ private fun HomeSearchResults(
             }
         }
 
-        state.searching && state.hits.isEmpty() -> Box(
+        // Waiting on the shared budget with nothing to show. A word, not a spinner: a spinner held
+        // for several seconds promises a request that has not been sent and reads as a hang.
+        state.awaitingRemotePermit -> Box(
+            modifier = modifier.fillMaxWidth().padding(Space.screenEdge),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(
+                    if (state.rateLimited) R.string.search_rate_limited else R.string.search_updating,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.testTag(HOME_SEARCH_PENDING_TAG),
+            )
+        }
+
+        state.searching -> Box(
             modifier = modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
@@ -424,7 +513,7 @@ private fun HomeSearchResults(
 
         // A query too short to search yet (SearchViewModel.MIN_QUERY_LENGTH) — not an error, not a
         // miss, just not enough to go on.
-        state.hits.isEmpty() -> Box(
+        else -> Box(
             modifier = modifier.fillMaxWidth().padding(Space.screenEdge),
             contentAlignment = Alignment.Center,
         ) {
@@ -434,18 +523,6 @@ private fun HomeSearchResults(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-        }
-
-        else -> LazyColumn(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.screenEdge)
-                .testTag(HOME_SEARCH_RESULTS_TAG),
-        ) {
-            items(state.hits, key = { it.barcode }) { hit ->
-                SearchResultRow(hit = hit, onClick = { onSelect(hit) })
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
         }
     }
 }
@@ -506,12 +583,17 @@ private fun HomeBody(
         // LazyColumn simply never composes it — the action was not merely below the fold, it did not
         // exist. The hero is reassurance; this is a function, and functions come first.
         item(key = "manual") {
+            // Modifier order is load-bearing here, and getting it wrong is invisible. `.height()`
+            // before `.padding()` applies the padding *inside* the 48dp box, so the button measured
+            // 44dp — the explicit minimum was being silently eaten by the very line meant to space
+            // it. Padding first, then a minimum height on the button itself; `heightIn` rather than
+            // `height` so the row still grows with the text at a large font scale.
             TextButton(
                 onClick = onManualEntry,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(Space.minTouchTarget)
-                    .padding(top = Space.xs),
+                    .padding(top = Space.xs)
+                    .heightIn(min = Space.minTouchTarget),
             ) {
                 Text(stringResource(R.string.home_manual_button))
             }

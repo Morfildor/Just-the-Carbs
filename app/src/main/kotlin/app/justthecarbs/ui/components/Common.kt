@@ -29,8 +29,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -203,6 +205,61 @@ fun SecondaryAction(text: String, onClick: () -> Unit) {
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
     ) { Text(text) }
+}
+
+/**
+ * A background refresh failed while usable results are still on screen.
+ *
+ * Deliberately a thin row above the list rather than the [RecoveryPanel] a first-search failure
+ * gets: nothing here is a dead end, so nothing here should look like one. The results underneath
+ * remain correct for the query that produced them and remain tappable, and the two escape hatches
+ * the panel offers — scan the label, enter it manually — are answers to "the database has nothing
+ * for you", which is not what happened.
+ *
+ * Sits *above* the list rather than over it, so it never covers a result (§39: no control may be
+ * obscured), and takes only the height it needs so the list below shifts once rather than jittering.
+ *
+ * Announced politely and once. It appears at the end of a refresh, not during one, so unlike the
+ * progress line it does not toggle per keystroke — but it is still incidental to what a TalkBack
+ * user is reading, hence `Polite` rather than `Assertive`.
+ *
+ * [onRetry] is **optional**, and its absence is a deliberate state rather than a missing feature:
+ * while the app is waiting out a rate limit there is nothing to retry — the queued query resumes on
+ * its own — and offering a button there invites exactly the request hammering the backoff exists to
+ * stop. A row with no action is the honest rendering of "this is handled, please wait".
+ */
+@Composable
+fun RefreshErrorBanner(
+    text: String,
+    modifier: Modifier = Modifier,
+    retryText: String? = null,
+    onRetry: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant,
+                RoundedCornerShape(Space.buttonRadius),
+            )
+            .padding(start = Space.m, end = if (onRetry == null) Space.m else Space.xs)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .weight(1f)
+                // With no button beside it the row has no other source of height, so the text
+                // supplies its own; with one, the button's touch target already sets the height.
+                .padding(vertical = if (onRetry == null) Space.s else 0.dp),
+        )
+        if (onRetry != null && retryText != null) {
+            TextButton(onClick = onRetry) { Text(retryText) }
+        }
+    }
 }
 
 /** A section heading, announced as one so TalkBack can navigate by structure (§39). */

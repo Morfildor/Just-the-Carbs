@@ -100,3 +100,22 @@ When it is ready, follow `docs/play-release-readiness.md` §2c and §2d: build f
 verify the signer DN is the real upload key, re-check the R8 privacy barriers, re-run the tests and
 rewrite the Play *What's new* to cover everything that ended up in the version, then record the
 hash and copy the entry into `docs/version-history.md` **after** Play accepts it.
+
+## 8. `ProductRepository.deletePortionUnit` has no callers (recorded 2026-08-28, not removed)
+
+`deletePortionUnit` is reachable from no production code and no test — verified by repo-wide search,
+not assumed. There is no UI anywhere for deleting a single portion unit; units disappear only when
+their product row does, via the `ON DELETE CASCADE` that "Clear saved products" relies on.
+
+**Deliberately kept.** It is one line, it is the obvious counterpart to the `save`/`verify` methods
+beside it, and removing it changes no behaviour whatsoever — so the deletion would be churn on a
+file that owns the §10 lookup priority.
+
+**The reason it is worth writing down** is a consequence it currently masks. `ProductViewModel`
+.`applyUsualPortion` has a branch for "the recorded unit no longer exists", and that branch
+deliberately **does nothing at all** — no result, no message — because falling back to grams there
+would silently reinterpret a count as a weight, which is the right call. Today that branch is
+unreachable, so the silence costs nothing. **The moment a delete-a-unit affordance is added, a
+visible *Usual* shortcut becomes a control that can be tapped with no response and no explanation.**
+Anyone building that feature owes the user feedback on that path, or the removal of the stale
+shortcut along with the unit.

@@ -4,6 +4,7 @@ import app.justthecarbs.R
 import app.justthecarbs.domain.ThemeChoice
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -314,23 +315,48 @@ private val JustTheCarbsTypography = Typography().run {
     )
 }
 
+/**
+ * The single authoritative rule turning a [ThemeChoice] into an effective dark-theme state.
+ *
+ * Pure and system-free on purpose. The colour scheme and the system bars must never disagree about
+ * which theme is in force — a user who picks Light on a dark phone got dark status-bar icons over a
+ * cream app, and light icons vanished entirely on the light background. Both now read this one
+ * function, so the two cannot drift: the only system input is [systemInDarkTheme], supplied by the
+ * caller, which keeps the rule JVM-testable without an emulator.
+ */
+fun resolveDarkTheme(themeChoice: ThemeChoice, systemInDarkTheme: Boolean): Boolean =
+    when (themeChoice) {
+        ThemeChoice.SYSTEM -> systemInDarkTheme
+        ThemeChoice.LIGHT -> false
+        ThemeChoice.DARK -> true
+    }
+
 @Composable
 fun JustTheCarbsTheme(
     themeChoice: ThemeChoice = ThemeChoice.LIGHT,
     content: @Composable () -> Unit,
 ) {
-    val dark = when (themeChoice) {
-        ThemeChoice.SYSTEM -> isSystemInDarkTheme()
-        ThemeChoice.LIGHT -> false
-        ThemeChoice.DARK -> true
-    }
+    val dark = resolveDarkTheme(themeChoice, isSystemInDarkTheme())
 
     CompositionLocalProvider(LocalExtendedColors provides if (dark) DarkExtendedColors else LightExtendedColors) {
         MaterialTheme(
             colorScheme = if (dark) DarkColors else LightColors,
             typography = JustTheCarbsTypography,
-            content = content,
-        )
+        ) {
+            // Material3's `Surface` is what normally provides `LocalContentColor`; this app draws
+            // its screens with a plain `Modifier.background(...)`, which paints a colour but
+            // provides nothing. Every Icon/Text that did not name a colour therefore inherited
+            // `LocalContentColor`'s default of `Color.Black` — invisible on the dark scheme's
+            // near-black background, which is exactly the Settings back arrow, the Settings title,
+            // the "Haptic feedback" row and Home's gear icon. Provided here rather than by wrapping
+            // every screen in a `Surface`, which would add a second background paint under screens
+            // that already draw their own (and under the camera screens, which are deliberately
+            // black whatever the theme).
+            CompositionLocalProvider(
+                LocalContentColor provides (if (dark) DarkColors else LightColors).onBackground,
+                content = content,
+            )
+        }
     }
 }
 

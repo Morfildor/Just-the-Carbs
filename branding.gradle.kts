@@ -31,5 +31,5 @@ extra["brandContactEmail"] = "albinogorillassupport@gmail.com"
 /** Public, non-geofenced, non-editable HTML privacy policy — the same URL given to Play Console. */
 extra["brandPrivacyPolicyUrl"] = "https://morfildor.github.io/Just-the-Carbs/privacy-policy.html"
 
-extra["brandVersionCode"] = 2
-extra["brandVersionName"] = "1.0.1"
+extra["brandVersionCode"] = 3
+extra["brandVersionName"] = "1.0.2"

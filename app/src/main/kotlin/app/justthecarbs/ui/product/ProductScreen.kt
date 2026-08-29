@@ -995,6 +995,10 @@ private fun PortionModeRow(
     onSelectGrams: () -> Unit,
     onSelectUnit: (Long) -> Unit,
 ) {
+    // Every chip carries the app's minimum touch height, as Settings' and manual entry's already
+    // did. Material's FilterChip defaults to 32dp, and these are the control that decides whether
+    // the number on screen means grams or slices — the one mis-tap here changes what the result is
+    // *of*, not merely its size. Measured at 84px on a 420dpi device before this.
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.xs),
@@ -1004,6 +1008,7 @@ private fun PortionModeRow(
             onClick = onSelectGrams,
             label = { Text(stringResource(R.string.product_mode_grams)) },
             shape = RoundedCornerShape(Space.chipRadius),
+            modifier = Modifier.heightIn(min = Space.minTouchTarget),
         )
         units.forEach { unit ->
             FilterChip(
@@ -1011,6 +1016,7 @@ private fun PortionModeRow(
                 onClick = { onSelectUnit(unit.id) },
                 label = { Text(unit.chipLabel()) },
                 shape = RoundedCornerShape(Space.chipRadius),
+                modifier = Modifier.heightIn(min = Space.minTouchTarget),
             )
         }
     }
@@ -1334,7 +1340,10 @@ private fun AddPortionUnitAction(
     onSave: (PortionUnitKind, PortionConversion, String?) -> Unit,
 ) {
     if (!expanded) {
-        TextButton(onClick = onExpand) {
+        TextButton(
+            onClick = onExpand,
+            modifier = Modifier.heightIn(min = Space.minTouchTarget),
+        ) {
             Text(stringResource(R.string.product_add_portion_unit), style = MaterialTheme.typography.bodyMedium)
         }
         return
@@ -1402,11 +1411,13 @@ private fun AddPortionUnitAction(
                 selected = weightMode,
                 onClick = { weightMode = true },
                 label = { Text(stringResource(R.string.product_unit_mode_weight)) },
+                modifier = Modifier.heightIn(min = Space.minTouchTarget),
             )
             FilterChip(
                 selected = !weightMode,
                 onClick = { weightMode = false },
                 label = { Text(stringResource(R.string.product_unit_mode_carbs)) },
+                modifier = Modifier.heightIn(min = Space.minTouchTarget),
             )
         }
 

@@ -41,7 +41,22 @@ sealed interface ProductSearchResult {
     /** The query ran and matched nothing. Distinct from a failure — retrying will not help. */
     data object NoMatches : ProductSearchResult
 
-    data class Failed(val error: LookupError) : ProductSearchResult
+    /**
+     * The search could not be answered.
+     *
+     * [retryAfterMs] carries the server's own `Retry-After` when it sent one with a 429, so the
+     * client can wait exactly as long as it was asked to instead of guessing. Null means either
+     * "not a rate limit" or "rate limited without a stated duration" — the two are distinguished by
+     * [error], and the governor applies its fallback backoff for the latter.
+     *
+     * Only search carries this. The product-read path has its own budget and its own error type,
+     * and widening [LookupError] itself would put a search-shaped field on every lookup failure in
+     * the app.
+     */
+    data class Failed(
+        val error: LookupError,
+        val retryAfterMs: Long? = null,
+    ) : ProductSearchResult
 }
 
 /**

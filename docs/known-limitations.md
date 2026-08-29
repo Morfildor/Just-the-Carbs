@@ -69,6 +69,45 @@ entry rather than failing.
 serves anything cached without a network call, so this is rare in normal use, and the resulting
 message is distinct from a generic failure.
 
+**A repeated search is answered from memory for about five minutes.** Searching the same words
+again reuses the results already fetched, so the list appears with no request and no wait. It is
+memory only — closing the app clears it, and nothing is written to the device. Only successful
+searches are kept: a failure or a "no results" answer is never remembered, so a momentary problem
+cannot get stuck on screen. This affects only the *list of candidates*; tapping a product always
+loads its current details through the normal product lookup, so a carbohydrate figure is never
+served from this memory.
+
+## Search (2026-08-28)
+
+**Search matches whole words, not prefixes.** Typing part of a word frequently returns nothing at
+all rather than fewer results — measured against the live service, `pindak`, `pindaka` and `nutel`
+each return **zero** products while `pindakaas` and `nutella` work perfectly. This is a property of
+the search service's index, not of the app: there are no results to rank, sort or filter, so nothing
+in the app can recover them. Type the whole word.
+
+*Investigated again on 2026-08-28 and confirmed unfixable from this app.* Asking the service for a
+prefix match (the usual `nutel*` form) changes **nothing at all** — measured over 28 partial
+queries, not one returned a different result, a different count or a different order. The wildcard
+is discarded rather than honoured: `choc*late` returns products called *Late*, because the `*` is
+read as a word separator instead of "continue this word". Fuzzy and field-scoped forms fail too (the
+latter with a server error). The boundary is where the index stops storing whole words: `pindakaa`
+finds 60 products and `pindaka` finds none. A partial word is therefore not a nearly-right search
+the app could improve — it is a search with no answers to work with.
+
+**Relevance is the search service's, and the app does not re-rank it.** Measured over 48
+representative queries, the expected product was first for 34 of the 39 that have one specific right
+answer, and when the service finds the right product it puts it first rather than second or third —
+so there is no near-miss the app could usefully promote. Deliberately no fuzzy matching, no
+spell-correction and no brand weighting: a search box that quietly reorders results according to
+rules of its own would make a wrong choice harder to notice, and choosing the wrong product is the
+one error in this app with a real cost.
+
+**Fewer search results show a carbohydrate figure than before 1.0.2.** The dedicated search service
+does not publish the package-unit field the app uses to establish whether a number is per 100 g or
+per 100 ml, so a result whose unit cannot be established shows its name, brand, size and photo but
+no number. That is deliberate: printing a figure under an assumed unit is exactly the mistake the
+app is built to avoid. Tapping the product loads the full, correct value.
+
 ## Countable portions (2026-08-14)
 
 **A countable unit only appears when Open Food Facts' `serving_size` text is unambiguous, or when

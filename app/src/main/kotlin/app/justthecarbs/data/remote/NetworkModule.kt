@@ -51,4 +51,22 @@ object NetworkModule {
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
         .create(OpenFoodFactsApi::class.java)
+
+    /**
+     * Search-a-licious, the primary text-search provider.
+     *
+     * A second Retrofit instance because it is a second host, but built on the **same**
+     * [OkHttpClient] — so it inherits the identifying User-Agent, the connection pool and, most
+     * importantly here, the existing 10 s connect / 15 s read / 20 s call timeouts.
+     *
+     * Reusing those timeouts is deliberate. A primary that hangs would otherwise delay the fallback
+     * by its own timeout plus the fallback's, and the call timeout is what bounds that: a failing
+     * primary reaches the fallback within 20 s at worst rather than stacking two open-ended waits.
+     */
+    fun searchALiciousApi(client: OkHttpClient = okHttpClient()): SearchALiciousApi = Retrofit.Builder()
+        .baseUrl(SearchALiciousApi.BASE_URL)
+        .client(client)
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+        .create(SearchALiciousApi::class.java)
 }

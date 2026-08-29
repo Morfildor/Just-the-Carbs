@@ -18,13 +18,19 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.CarbCalculator
+import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
+import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.ui.home.HOME_SCAN_BARCODE_TAG
 import app.justthecarbs.ui.home.HOME_SCAN_LABEL_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_FIELD_TAG
+import app.justthecarbs.ui.home.HOME_SEARCH_PENDING_TAG
+import app.justthecarbs.ui.home.HOME_SEARCH_RATE_LIMITED_TAG
+import app.justthecarbs.ui.home.HOME_SEARCH_REFRESH_ERROR_TAG
+import app.justthecarbs.ui.home.HOME_SEARCH_RESULTS_TAG
 import app.justthecarbs.ui.home.HomeScreen
 import app.justthecarbs.ui.home.RecentEntry
 import app.justthecarbs.ui.meal.MEAL_BAR_TAG
@@ -246,6 +252,104 @@ class HomeScreenTest {
         // Search owns the whole middle region, so the starter content and the action cards yield.
         compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
         compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertDoesNotExist()
+    }
+
+    // ---- Home's inline search shares SearchScreen's refresh rules ----------------------------
+
+    private fun searchHit() = ProductSearchHit(
+        barcode = "8710496979125",
+        name = "Chocoladehagel puur",
+        brand = "De Ruijter",
+        packageQuantity = "390 gram",
+        carbsPer100 = java.math.BigDecimal("67"),
+        basis = NutritionBasis.PER_100_G,
+        imageUrl = null,
+    )
+
+    /**
+     * Home renders the same three cases as [app.justthecarbs.ui.search.SearchScreen] and must not
+     * drift from it. Home is the more exposed of the two — it is where someone searches on purpose
+     * rather than after a failure — and before this pass it had no refresh indication at all: its
+     * only loading state was the centred spinner for an empty list, so a refresh over results was
+     * completely silent.
+     */
+    @Test
+    fun refreshingHomesResultsKeepsThemRatherThanShowingTheCentredSpinner() {
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(
+                query = "hagelslag puur",
+                hits = listOf(searchHit()),
+                searching = true,
+            ),
+        )
+
+        compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SEARCH_RESULTS_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun aFailedRefreshOnHomeKeepsTheResultsAndShowsOnlyAnInlineNotice() {
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(
+                query = "hagelslag puur",
+                hits = listOf(searchHit()),
+                error = LookupError.SERVER,
+                refreshFailed = true,
+            ),
+        )
+
+        compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SEARCH_REFRESH_ERROR_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Couldn't refresh results").assertIsDisplayed()
+        compose.onNodeWithText("Enter manually").assertDoesNotExist()
+    }
+
+    /** Home follows the same pacing rules — a governor wait is never an outage there either. */
+    @Test
+    fun waitingForTheRequestBudgetOnHomeIsNotShownAsAnOutage() {
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(
+                query = "chocolate",
+                searching = true,
+                awaitingRemotePermit = true,
+            ),
+        )
+
+        compose.onNodeWithTag(HOME_SEARCH_PENDING_TAG).assertIsDisplayed()
+        compose.onNodeWithText("The product database is unavailable").assertDoesNotExist()
+        compose.onNodeWithText("Try again").assertDoesNotExist()
+    }
+
+    @Test
+    fun aRateLimitOnHomeOffersNoRetryAndKeepsTheResults() {
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(
+                query = "chocolate",
+                hits = listOf(searchHit()),
+                searching = true,
+                awaitingRemotePermit = true,
+                rateLimited = true,
+            ),
+        )
+
+        compose.onNodeWithTag(HOME_SEARCH_RATE_LIMITED_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
+        compose.onNodeWithText("Try again").assertDoesNotExist()
+    }
+
+    @Test
+    fun aFirstSearchFailureOnHomeStillShowsTheFullErrorState() {
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(query = "hagelslag", error = LookupError.SERVER),
+        )
+
+        compose.onNodeWithText("Try again").assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SEARCH_REFRESH_ERROR_TAG).assertDoesNotExist()
     }
 
     // ---- Starter content and the meal bar ---------------------------------------------------

@@ -1124,6 +1124,424 @@ the unstamped product fails `a fresh lookup returns the same product it cached`.
 instrumented suite was not re-run** — the only production change is a repository return value with
 JVM coverage and no UI surface, and the standing figure is the stabilization pass's 218/218.
 
+## Live debounced search (2026-08-28) — opens 1.0.2 / versionCode 3
+
+Search runs as you type. Nothing about the calculation, the schema, migrations, the §10 lookup
+priority, barcode detection, any OCR rule or the 30 s product-refresh window changed — the diff is
+`SearchViewModel`, `SearchScreen`, one comment in `HomeScreen`, and tests.
+
+**One pipeline, not two paths.** `MutableStateFlow<SearchRequest?>` → `flatMapLatest` → the search,
+collected once in `init` on `viewModelScope`. Live edits emit `immediate = false` (debounced
+`LIVE_SEARCH_DEBOUNCE_MS = 600`); the IME action and the search button emit `immediate = true`. The
+reason both go through one flow is the duplicate they would otherwise produce: a debounce pending
+for "hagelslag" plus a keypress for "hagelslag" is two requests for one query, against a
+10 reads/min/IP budget.
+
+**The null emission is load-bearing.** `requests.value = null` is what cancels a pending debounce,
+so nulls must reach `flatMapLatest` — an upstream `filterNotNull()` leaves the queued `delay`
+running and fires a request for a query the user has already deleted. The inner flow returns early
+on null instead.
+
+### Three findings that only running the tests produced
+
+1. **`collectLatest` stalls the pipeline against a transport slow to cancel.** It waits for the
+   previous block to finish unwinding before starting the next, so with a search that does not
+   return promptly on cancellation the **next query is never sent at all** — measured: three
+   stale-protection tests failed with the second query missing from the call list entirely. Each
+   search now runs in its own `launch`ed child, cancelled by the collector when a newer request
+   arrives. Do not "simplify" this back to `collectLatest`.
+2. **The mandatory latest-query-wins test was passing vacuously.** The original fake honoured
+   cancellation, so a superseded search never returned and the test was measuring `flatMapLatest`,
+   not the staleness guard — proven by deleting the generation check and watching that test stay
+   green. `UncancellableSearchSource` (a `withContext(NonCancellable)` fake) is the only fake that
+   reproduces the hazard. **Modelling only the safe version of a hazard proves nothing**, the same
+   lesson as the Dutch header fixture and the soft-keyboard geometry test.
+3. **A blocking `CountDownLatch` in an instrumented test deadlocks rather than fails.** The
+   ViewModel's searches run on `Dispatchers.Main`, which is the thread Compose's test
+   synchronization drives; the run hung for 10 minutes at 12/18. `CompletableDeferred` suspends
+   instead and the test passes in 35 s.
+
+**Cancellation is not the guarantee.** `request.generation != requestGeneration` at the single point
+where a result becomes state is what stops an old response landing, and it holds whether or not the
+transport honoured the cancellation. Cancellation is the optimisation; the generation check is the
+invariant.
+
+**Deliberate behaviour changes, both about flicker:** editing keeps the previous results on screen
+under a hairline `LinearProgressIndicator` until the newer ones replace them in one state write
+(they are dropped at once when the query is cleared or falls below `MIN_QUERY_LENGTH`, where nothing
+is coming); and `queryTooShort` is now set **only** by an explicit `search()`, never by typing — as
+a live region it had announced on every keystroke. The progress line carries
+`clearAndSetSemantics {}` for the same reason.
+
+**Verified:** JVM **827/827** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit
+XML — up from 791; 45 in `SearchViewModelTest`). `SearchScreenTest` **18/18 on five consecutive
+runs**. `HomeScreenTest` 16/16, `ProductScreenTest` 32/32, `MealScreenTest` 19/19. Lint exit 0,
+41 advisories, 0 errors — unchanged from the pre-pass baseline. Debug APK builds (89.4 MB).
+
+**Negative controls, all three re-run against the final implementation:** removing the debounce
+fails 6 tests (incl. the one-request-per-word count); removing the generation check fails 4 (incl.
+the mandatory A→B→A-completes-late case); removing the explicit/automatic dedupe guard fails 2.
+
+**Not done in this pass, deliberately:** no release or AAB build, no R8 barrier re-check, no OCR
+corpus run (no OCR or scanner file was touched), and no full 218-test instrumented sweep — the four
+UI classes above cover the changed surface, and the whole suite runs at the release gate. Nothing
+here has been seen on physical hardware.
+
+## Search-a-licious is the primary search provider (2026-08-28) — still 1.0.2 / versionCode 3
+
+Text search runs against **`https://search.openfoodfacts.org/search`**, with the legacy
+`cgi/search.pl` retained as a governed fallback. Still `versionCode 3`, **not bumped** — 1.0.2 was
+already open. Nothing about the calculation, the schema, migrations, the §10 lookup priority,
+barcode detection, OCR, or the 30 s product-refresh window changed.
+
+### The feasibility gate was measured before anything was wired, and it is why this happened
+
+| | legacy `cgi/search.pl` | Search-a-licious |
+|---|---|---|
+| 7 representative queries, 7 s spacing | **503 on 5 of 7** | 200 on 7 of 7 |
+| 12 back-to-back requests | not attempted (budget) | 12× 200, 136–202 ms, no throttling |
+| auth | none | none |
+
+Re-verified **end to end on the emulator through the production wiring**: 7/7 queries, 20 hits each,
+78–106 ms after the first (the first carries TLS setup). Bench:
+`SearchALiciousLiveDiagnosticTest` — it prints and asserts almost nothing on purpose, because a
+network test that fails the build on a flaky connection is a test people learn to ignore.
+
+### Three schema facts that had to be measured, not assumed
+
+1. **`product_quantity_unit` is not in the index** — 0 of 140 hits across seven queries, and asking
+   for it by name returns *nothing* rather than an error. It is `PackageBasisResolver`'s primary
+   evidence, so on this path the basis comes from free-text `quantity` alone and resolves less often
+   (`pasta`: 3/20 vs legacy 18/20; overall 51/140).
+   **No resolver rule was weakened to compensate, and none may be.** A hit with no basis shows no
+   number — the existing §13 rule — and still carries name, brand, package text and photo. This is a
+   *display* regression, never a nutrition one: the figure the user doses from comes from the
+   canonical barcode lookup after they tap, which is unchanged.
+2. **`brands` is a JSON array here and a comma-joined string on the legacy path** (137 of 140).
+   `FirstOfStringOrArray` reads either. Scoped to that one field for the same reason
+   `LooseNumericText` is — the carbohydrate values keep strict typing.
+3. **`langs=nl,en` is load-bearing.** Without it `product_name_nl` is absent from *every* hit and
+   Dutch recall collapses: `hagelslag` returns 449 matches with it and 26 without. Input
+   recognition, not localization — the UI stays English (owner decision 10).
+
+### The boundary, and why the migration is reversible
+
+`FallbackProductSearch` is itself a `ProductSearchSource`, so no ViewModel and no screen knows there
+are two providers. Pointing `AppContainer.searchSource` at `legacySearchSource` alone restores the
+previous behaviour exactly, with no other edit.
+
+**Fallback-eligible:** `OFFLINE`, `TIMEOUT`, `SERVER`, `MALFORMED` — the failures where a *different
+host* might plausibly answer. **Not eligible:** `RATE_LIMITED` (answering "you ask too often" by
+asking elsewhere is the behaviour the limit exists to stop) and — the rule the design rests on — a
+legitimate `NoMatches`, which is an **answer**. Falling back on empty results would double the cost
+of every deliberate search for something genuinely absent. When both fail, the **primary's** error
+surfaces: the legacy endpoint's habitual 503 would otherwise mask a real offline state.
+
+### Two findings that only running the tests produced
+
+1. **A cancelled query could still spend a fallback request.** A primary whose transport ignores
+   cancellation returns an ordinary `Failed`, and `fallback.search` may then run to completion
+   without ever suspending — so nothing on that path would have thrown.
+   `currentCoroutineContext().ensureActive()` before the fallback call is what closes it.
+   `CancellationException` is caught nowhere in the chain.
+2. **One integration test was vacuous and was caught by negative control.** The stale-fallback case
+   passed with the ViewModel's generation guard deleted, i.e. it was measuring `flatMapLatest`, not
+   staleness. It now uses a `NonCancellable` fallback — the only fake that reproduces the hazard —
+   and fails without the guard. **Same trap as the Dutch header fixture and the soft-keyboard
+   geometry test: modelling only the safe version of a hazard proves nothing.**
+
+### The governor moved down to the provider it protects
+
+It sat in `SearchViewModel`, *above* the provider boundary, so leaving it there would have made
+every primary query wait out an interval sized for a different service. `GovernedProductSearch`
+now wraps the legacy source only, keeps `MIN_INTERVAL_MS = 7000` and the shared cross-screen budget,
+and **refuses immediately rather than waiting** — a 7 s delay behind an already-failed primary is
+the stacked wait this migration must not create. The primary has its own instance at
+`PRIMARY_MIN_INTERVAL_MS = 300`; `REMOTE_SEARCH_SETTLE_MS` returned 1000 → **500**.
+
+**`RemoteSearchGovernor`'s clock parameter must stay last.** Callers construct it as
+`RemoteSearchGovernor { clock }`, and adding the interval after it silently rebinds the trailing
+lambda to the wrong parameter — caught by the compiler, and a real hazard for the next person.
+
+**A pre-existing ViewModel test was measuring the wrong budget** once the primary changed. It is
+**re-aimed, not relaxed**: the legacy 9/min ceiling is now asserted where it is actually enforced,
+in `GovernedProductSearchTest`.
+
+Debug-only diagnostics: `adb logcat -s JtcSearch` says which provider answered. **No query text is
+ever logged** — stage, provider and result count only.
+
+**Verified:** JVM **939/939** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit
+XML — up from 827). `SearchScreenTest` **29/29 on five consecutive runs**; `HomeScreenTest` **21/21
+on three**. Lint exit 0, 41 advisories, 0 errors — unchanged baseline. Debug APK builds.
+**Seven negative controls**, each restored afterwards: primary success falling back (3 fail),
+no-results falling back (1), cancellation not blocking fallback (1), `RATE_LIMITED` made eligible
+(2), dedupe removed (1), governor bypassed (5), generation guard removed (1).
+
+**Not done, deliberately:** no release or AAB build, no R8 barrier re-check, no OCR corpus run (no
+OCR or scanner file was touched). **Nothing here has been seen on physical hardware** — and that is
+the gate: `docs/manual-qa.md` §19c exists precisely because the fallback is invisible by design, so
+only the debug log can say which provider answered.
+
+## Search hardening: POST, unusable replies, Lucene input (2026-08-28) — still 1.0.2 / versionCode 3
+
+Three fixes on top of the migration above. Still `versionCode 3`, **not bumped** — 1.0.2 was already
+open. Nothing about the calculation, schema, migrations, the §10 lookup priority, barcode detection,
+OCR or the 30 s refresh window changed; the diff is `data/remote/SearchALicious*`, one interface
+method on `SearchProviderLog`, and tests.
+
+### `GET` → `POST`, and one invisible serialization trap
+
+Both verbs exist on `/search` with **identical `q` semantics** (read from the service's own
+OpenAPI document, not assumed), so this is transport only: the user's search text moves out of the
+URL — the part of a request proxies and access logs retain in plain text — and into the body. In
+this app a search term is a food someone is about to eat.
+
+`langs` and `fields` are **arrays** in the POST schema where the query string took comma-joined
+strings.
+
+**The trap, and it would have shipped silently:** kotlinx.serialization omits a property equal to
+its default, and the shared `NetworkModule` `Json` does not set `encodeDefaults`. Every request
+would have gone out as `{"q":"…"}` alone, and the **server's** defaults would have applied —
+`page_size` 10 instead of 20, `langs` `["en"]` instead of `["nl","en"]` (which is the only reason
+`product_name_nl` appears at all, so Dutch recall would have collapsed), and no field filter, so
+~13 KB per hit. Every request still succeeds and still returns products, so nothing surfaces.
+`@EncodeDefault` on the three properties fixes it. **Do not remove those annotations, and do not
+"simplify" by setting `encodeDefaults = true` on the shared `Json`** — that changes how every other
+DTO serialises to fix one body. Caught only because the test asserts the request body rather than
+the outcome.
+
+### "No matches" and "nothing usable" were the same statement, and one of them suppressed the fallback
+
+`toSearchResult` ended `if (hits.isEmpty()) NoMatches else Found(hits)`. Since
+`FallbackProductSearch` deliberately does **not** fall back on `NoMatches` — a zero-result answer is
+an answer — a response carrying matches whose every record failed to map reported "nothing matches",
+**suppressed the legacy fallback, and told the user their product does not exist**. Both render as
+an empty list, so it is invisible from the screen.
+
+The classification now turns on whether the provider *claimed* matches, never on the mapped list
+being empty — that is true in both cases and is exactly what hid the bug:
+
+- `hits` empty **and** no positive `count` → `NoMatches` (an answer; no fallback, unchanged).
+- `hits` non-empty **or** `count > 0`, nothing usable → `MALFORMED`, which **is** fallback-eligible.
+- Any usable hit → `Found`, carrying only the good ones. One malformed record never discards the
+  rest — missing fields are an ordinary state of a crowd-sourced database.
+
+`count` is used only in the direction that is safe: a positive `count` escalates to a failure, but a
+missing or zero `count` never *downgrades* a non-empty-but-unusable `hits` array back to an answer.
+
+### The search box is not a query editor — and the worst case was not an empty list
+
+`q` is parsed as **Lucene**, so ordinary punctuation in an ordinary product name became operators.
+Measured live, six inputs returned **zero results** as typed and the correct products once escaped:
+`Kinder Bueno (White)`, `milk + chocolate`, `product:name`, `"chocolate milk"`, `chocolate^2`,
+`chocolate~2`.
+
+**And one case worse than a zero:** `milk -chocolate` returned a full list either way — but the
+leading `-` is NOT, so unescaped it *excluded* chocolate and led with "Lait De Coco Nature". A
+silently wrong result set is harder to notice than an empty one, because there is nothing to notice.
+
+`SearchALiciousQuery.escape` prefixes Lucene's reserved set. **The wider rule was chosen over a
+narrower one on evidence, not caution:** whether a character acts as an operator depends on
+**position**, not identity — `(` is inert inside `chocolate(milk` and an operator around
+`(White)`; `-` is inert inside `Haagen-Dazs` and an operator in `milk -chocolate`. A rule escaping
+only the characters seen to break in one position is one product name from being wrong. The cost was
+measured: escaping the full set changed **no** query that already worked — `M&M's`, `Ben & Jerry's`,
+`70% chocolate`, `Coca-Cola Zero`, `Haagen-Dazs`, `7-Up`, `Lay's`, `Uncle Ben's`, `Côte d'Or`,
+`Dr. Oetker`, `Milka Oreo`, `hagelslag` all returned identical counts **and identical top hits**.
+
+Apostrophes, `%`, `.`, `,`, spaces and all non-ASCII are untouched — none is a metacharacter and all
+are everywhere in real names. **Scoped to this provider only:** the legacy `cgi/search.pl` takes
+plain text with no query language, so the same escaping there would send literal backslashes into a
+search matching nothing — this bug inverted. Pinned by a test asserting the fallback receives the
+text verbatim.
+
+### Verified
+
+JVM **965/965** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — up from
+939). `SearchScreenTest` **29/29 on five consecutive runs**; `HomeScreenTest` **21/21 on three**,
+counted from instrumentation status codes, 0 ignored. Lint exit 0, 41 advisories, 0 errors —
+unchanged baseline. Debug APK builds (89.6 MB). Live on-device POST bench: 7/7 queries, 20 hits
+each, 80–110 ms after the first.
+
+**Nine negative controls**, each restored byte-for-byte and hash-verified, none vacuous: GET restored
+/ query in URL (3 fail), unusable-hits→`NoMatches` (4), `MALFORMED` made ineligible (2), `NoMatches`
+made eligible (3), `ensureActive` removed (1), escaping removed (15), `@EncodeDefault` removed (1),
+generation guard removed (7).
+
+**A harness trap that wasted a run:** the instrumentation runner is
+`app.justthecarbs.debug.test/androidx.test.runner.AndroidJUnitRunner` — note the **`.test`**. Using
+the app's own package gives `Unable to find instrumentation info`, which the status-code parser reads
+as 0 passed / 1 failed and looks exactly like a real suite failure. Confirm with
+`adb shell pm list instrumentation`.
+
+**Not done, deliberately:** no release or AAB build, no R8 barrier re-check, no OCR corpus run (no
+OCR or scanner file was touched). **Nothing here has been seen on physical hardware** —
+`docs/manual-qa.md` **§19d** is the gate, and its punctuation rows are the specific inputs that were
+measured broken.
+
+## Search accuracy + efficiency (2026-08-28) — still 1.0.2 / versionCode 3
+
+An accuracy-and-efficiency pass over the search stack. Still `versionCode 3`, **not bumped** — 1.0.2
+was already open. Nothing about the calculation, schema, migrations, the §10 lookup priority,
+barcode detection, OCR, the 30 s product-refresh window, the escaping, the POST transport or the
+fallback rules changed. The diff is one new `domain/` class, one field dropped from the request, and
+tests.
+
+### Phrase boosting does not exist on this deployment — do not implement it
+
+The brief asked for a `boost_phrase` A/B. **There is nothing to A/B**, and the measurements are
+worth keeping because the failure mode is the misleading one:
+
+- **`boost_phrase` is not a parameter here.** The service's OpenAPI document contains **zero**
+  occurrences of "boost" or "phrase". Sending it anyway returns **HTTP 200** with byte-identical
+  results — silently ignored. Of the three possible answers (accept / reject / ignore) this is the
+  dangerous one: a naive A/B would have "enabled" it and reported no regression, which is true and
+  means nothing.
+- **Free-text Lucene phrase syntax does not work either.** Measured against the **raw HTTP
+  endpoint with unescaped queries**: `"nutella"` → **0 hits** (a one-word phrase cannot legitimately
+  fail), `(coca cola)` → 0, `coca^2 cola` → 0, `coca OR cola` → **HTTP 500**. Meanwhile
+  `brands:"coca-cola"` → 3283 and the service's **own documented example** → 5 hits. So quoting is
+  honoured **only** as a field-filter value, never as a free-text phrase.
+
+That second result also independently re-confirms `SearchALiciousQuery`: `(`, `^` and `"` genuinely
+destroy free-text queries here. Recorded as a re-runnable diagnostic
+(`SearchALiciousLiveDiagnosticTest.phraseSyntaxSupportOnTheLiveService`) rather than only as prose.
+
+**Do not misread that diagnostic's output.** It runs through the data source, so the escaper applies
+and every phrase form comes back **Found** — the metacharacters arrive as literal text and the query
+degrades to an ordinary word search, which is the escaping working. Only `explicit OR` still fails
+(SERVER), because `OR` is a bare word that nothing escapes. The zeros above required bypassing the
+app entirely. **A `Found` line there is not evidence that phrase syntax works**; it is evidence that
+the app cannot send a phrase query at all, which is the actual conclusion.
+
+**A measurement trap that cost two runs:** the first attempt escaped the query and *then* wrapped it
+in quotes, sending `"\"coca cola\""` — a phrase whose content is a literal quote character. Every
+variant returned 0 or 500 and it looked like a service result. It was measuring my own string
+construction. The corrected run sends structurally-unescaped delimiters around escaped inner text,
+and only *then* is the 0-hit result attributable to the service. **A negative result from a
+hand-built query string is not evidence until the string itself has been printed and read.**
+
+### Baseline relevance, and why no ranker was built
+
+48 queries, live, `page_size=20`, over the categories the brief lists:
+**Top1 34/39 · Top3 34/39 · Top10 36/39 · Top20 37/39** (39 scored; 9 generic queries scored
+separately, all returned usable results).
+
+**Top1 equals Top3, and that is the finding.** When this service finds the expected product it ranks
+it *first* — there is no population of near-misses at rank 2–3 for a re-ranker to lift. The two
+misses are not ranking failures either: `pindak`, `pindaka` and `nutel` all return **zero hits**
+(the index does no prefix matching), and `nutt` returns 7 unrelated hits. **No client-side ranking
+can fix an empty result set**, which is the evidence behind not building one.
+
+`SearchRelevanceBenchmarkTest` (JVM, MockWebServer) pins the pipeline's half of this — that captured
+responses survive deserialization, mapping, validation and barcode dedupe **with the provider's
+order intact**. It deliberately does *not* re-assert the remote ranking: that would be a test whose
+colour depends on someone else's server, i.e. the flaky-live-test shape the brief forbids in the
+standard suite.
+
+### The cache: a decorator on the primary, not on the chain
+
+`CachedProductSearch` is a `ProductSearchSource` wrapping **the primary only**, inside
+`FallbackProductSearch`. That placement is load-bearing twice over: a cache hit is an ordinary
+primary `Found`, so the fallback is **structurally** unreachable on a hit; and a legacy answer is
+never filed under the primary's name, so a cached result's provenance stays answerable. Wrapping the
+whole chain would lose both properties. `AppContainer` holds one instance, shared by Home's inline
+search and the search screen for the same reason they already share one governor.
+
+20 entries, 5-minute TTL, access-ordered `LinkedHashMap` (LRU, so the query being flipped back and
+forth survives). Memory only, process lifetime, no schema change, no new dependency.
+
+**Only `Found` is stored.** Every `Failed` and `NoMatches` passes through untouched — a cached 503
+would outlive the outage it described, and a cached "no matches" would tell someone a product does
+not exist because it did not five minutes ago, in a database strangers edit continuously. A
+cancelled search writes nothing because the delegate never returns.
+
+**A future `storedAtMs` counts as expired, not fresh** — same rule and same reasoning as the 30 s
+product-refresh window; the naive reading (`now - stored` negative, so "younger than the TTL") would
+pin an entry until real time caught up.
+
+Nothing above the decorator knows it exists: `SearchViewModel` is unmodified, so the generation
+guard, the settle wait and local narrowing behave exactly as they do for a fast network answer. That
+matters most for the case where a hit completes **without ever suspending** — cancellation cannot
+help there, and the generation check is what stops it landing on a newer query.
+
+### `lang` was requested and read nowhere
+
+Dropped from `SEARCH_FIELDS` on measurement, not principle: **240 bytes per response** (12 bytes ×
+20 hits, 2.3%) across `chocolate`, `pasta`, `hagelslag`, `milk`, `nutella`, with the **mapped
+products identical** for all five. Do not confuse it with the request's `langs`, which is what makes
+`product_name_nl` arrive and is untouched.
+
+**The test that should have caught it could not**, and that is the transferable part: the field
+assertions were `contains` checks, which are blind to a field being *added*. Proven by negative
+control — restoring `lang` failed **nothing**. Now an exact-list comparison, which catches it.
+**A `contains` assertion over a request's field list pins only half the contract.**
+
+`page_size` stays at **20** on evidence: Top20 (37/39) exceeds Top10 (36/39) by exactly one query,
+so a larger page enlarges every response to buy at most one position.
+
+### Verified
+
+JVM **1004/1004** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — up
+from 965; +24 cache, +7 benchmark/payload, +8 chain integration). Lint exit 0, 0 errors. Debug APK
+builds.
+
+**Thirteen negative controls**, each restored byte-for-byte and hash-verified: cache bypassed (14
+fail) · expired entry reused (4) · bound removed (2) · failures cached (4) · LRU→FIFO (1) ·
+normalization dropped (1) · `lang` restored (2, **after** the assertion was tightened — it caught 0
+before) · `page_size` raised (2) · GET restored (2) · unusable→`NoMatches` (4) · `MALFORMED` made
+ineligible (2) · escaping removed (15) · generation guard removed (7).
+
+**Not done, deliberately:** no release or AAB build, no R8 barrier re-check, no OCR corpus run (no
+OCR or scanner file was touched), and no `versionCode` change. **Nothing here has been seen on
+physical hardware** — `docs/manual-qa.md` **§19e** is the gate, and its 19e.2 row (two `primary
+start` lines, not three) is the only check that can distinguish a cache hit from a fast search.
+
+## Prefix/partial-query recall: MEASURED AND NOT FEASIBLE (2026-08-28) — do not implement it
+
+A feasibility pass on whether provider-generated prefix search could rescue the partial queries that
+return nothing (`nutel`, `pindak`, `stroopw`). **It cannot. No production code was changed** — the
+only edit is one added diagnostic, `SearchALiciousLiveDiagnosticTest.prefixWildcardSupportOnTheLive‑
+Service`. Still 1.0.2 / `versionCode 3`, unbumped, because nothing shipped.
+
+**The trailing `*` is silently discarded** — the same signature as `boost_phrase` before it, and the
+reason both had to be measured rather than reasoned about. Over **28 partial queries**, baseline vs
+final-token wildcard: **0 differed**. Identical counts, identical ranks, identical top hits, every
+one. Multi-word arms (`kinder bu*` vs `kinder* bu*` vs plain) are identical too, so §6's
+"wildcard only the final token" question never arises.
+
+Two rows settle it, and **the first is a trap**:
+
+| sent | count | top hit |
+|---|---|---|
+| `nutel` / `nutel*` | 0 / **0** | – |
+| `nut` / `nut*` | 10000 / **10000** | Mixed Nuts (identical top 3) |
+| `choc*late` | **3118** | **Late** |
+| `nutella` | 631 | Nutella & go! |
+
+- **`nut*` looks like a working wildcard and is not.** It equals bare `nut` exactly, because `nut` is
+  simply a real word. Read alone that row would have "confirmed" wildcard support — the same
+  mistake shape as reading a `Found` line in the phrase diagnostic as evidence phrase syntax works.
+- **`choc*late` returns *Late*.** The `*` is a **token separator**, splitting the query into
+  `choc` + `late` — the opposite of a prefix expansion. A working wildcard could not do that.
+
+**Not just one syntax:** `~`, `~1`, `~2` are 0 on every canary, and `product_name:…` returns
+**HTTP 500** (that field is language-subfielded — `product_name_nl` etc. — so it is not directly
+queryable). The index holds analyzed whole tokens with no edge-ngram expansion: `pindakaa` → 60 hits,
+`pindaka` → 0. That is a token boundary, not a ranking cliff.
+
+**Why nothing was built.** §13's decision rule is never reached — there is no candidate to weigh,
+because the candidate has no measurable effect. Implementing the NoMatches→prefix retry would add a
+second request to every zero-result query, guaranteed to return the same zero. And **no client-side
+ranking can reorder an empty result set**, which is why the same conclusion also blocks a fuzzy
+matcher or a custom ranker here. The `/autocomplete` endpoint does not help either: it requires
+`taxonomy_names` and searches taxonomies (categories/brands), not product names.
+
+Reproduced **on device** through the app's own networking stack, matching the raw-HTTP numbers. The
+diagnostic deliberately bypasses `SearchALiciousDataSource` — the escaper escapes `*`, so a wildcard
+can only be built by appending it *after* escaping, and going through the data source would measure
+the escaper instead of the service.
+
 ## Version and track state (2026-08-28) — THE AUTHORITATIVE ANSWER, READ BEFORE ANY RELEASE CLAIM
 
 Everything else in this file and in `docs/` is subordinate to this section. Where an older passage
@@ -1134,9 +1552,9 @@ disagrees, this one is right — and fix the older passage rather than working a
 | What is the latest release? | `1.0.1` / **`versionCode 2`**, uploaded and **accepted by Play 2026-08-28** |
 | Which track? | **Closed testing.** `versionCode 1` preceded it on internal → closed |
 | Closed-testing period | **Running.** 12+ testers opted in |
-| What is in development? | **Nothing yet.** `versionCode 2` is spent; the next change opens `1.0.2` / `versionCode 3` |
+| What is in development? | **`1.0.2` / `versionCode 3`** — opened 2026-08-28 by the live-search pass, extended the same day by the Search-a-licious provider migration, the search-hardening pass and the accuracy/efficiency pass. Nothing built or uploaded against it |
 | Is 1.0.1 released? | **Yes.** Built from `45f3dd9`, uploaded 2026-08-28, in `docs/version-history.md` |
-| What do I develop against? | **`versionCode 3`** — see the versioning rule below |
+| What do I develop against? | **`versionCode 3`**, already set in `branding.gradle.kts`. Do **not** bump again during 1.0.2 work |
 | Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
 
 **VERSIONING RULE CHANGED 2026-08-28 (owner): a new version number per code change.** The old
@@ -1164,9 +1582,11 @@ pre-review and is not a defect.
 
 ### Working rules after 1.0.1
 
-- **The first code change opens `1.0.2` / `versionCode 3`.** Bump both `brandVersionCode` and
-  `brandVersionName` in `branding.gradle.kts` and rename `CHANGELOG.md`'s **Unreleased** heading in
-  the same change, so the notes and the number never disagree.
+- **`1.0.2` / `versionCode 3` is OPEN and already set** in `branding.gradle.kts` (2026-08-28, the
+  live-search pass). Further 1.0.2 work adds entries to that `CHANGELOG.md` section and **does not
+  bump the version again** — one number per code change means the number is opened once and then
+  identifies the artifact that eventually ships. The next bump is `1.0.3` / `versionCode 4`, after
+  1.0.2 has shipped.
 - **A documentation-only change opens nothing.** No version, no bump, no `CHANGELOG.md` heading.
 - **Do not rebuild or upload `versionCode 1` or `2`.** Both are on an active track and Play refuses
   a duplicate code. Superseded artifacts stay superseded — in particular the earlier bundle

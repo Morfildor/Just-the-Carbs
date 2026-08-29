@@ -188,7 +188,17 @@ fun JustTheCarbsNavHost(
             // ViewModel class, same behaviour — a separate instance because it lives and dies with
             // Home rather than with a route someone navigated to.
             val searchViewModel: SearchViewModel = viewModel(
-                factory = factory { SearchViewModel(container.searchSource) },
+                // Both the provider chain and the pacing come from the container, not from the
+                // ViewModel: Home's inline search and this screen are separate instances, and a
+                // per-instance budget would let them spend the same shared budget twice over.
+                //
+                // `container.searchSource` is the primary/fallback chain, exposed as a plain
+                // ProductSearchSource — this screen does not know there is more than one provider.
+                // The governor here paces the PRIMARY; the legacy fallback carries its own stricter
+                // budget inside GovernedProductSearch.
+                factory = factory {
+                    SearchViewModel(container.searchSource, container.primarySearchGovernor)
+                },
             )
             val searchState by searchViewModel.state.collectAsStateWithLifecycle()
 
@@ -350,7 +360,17 @@ fun JustTheCarbsNavHost(
 
         composable(Routes.SEARCH) {
             val viewModel: SearchViewModel = viewModel(
-                factory = factory { SearchViewModel(container.searchSource) },
+                // Both the provider chain and the pacing come from the container, not from the
+                // ViewModel: Home's inline search and this screen are separate instances, and a
+                // per-instance budget would let them spend the same shared budget twice over.
+                //
+                // `container.searchSource` is the primary/fallback chain, exposed as a plain
+                // ProductSearchSource — this screen does not know there is more than one provider.
+                // The governor here paces the PRIMARY; the legacy fallback carries its own stricter
+                // budget inside GovernedProductSearch.
+                factory = factory {
+                    SearchViewModel(container.searchSource, container.primarySearchGovernor)
+                },
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
 

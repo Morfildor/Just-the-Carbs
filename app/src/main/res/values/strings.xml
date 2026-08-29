@@ -256,6 +256,16 @@
     <string name="search_result" tools:ignore="MissingTranslation">%1$s. %2$s</string>
     <string name="search_clear" tools:ignore="MissingTranslation">Clear search</string>
     <string name="search_submit" tools:ignore="MissingTranslation">Search</string>
+    <!-- A background refresh failed while usable results were still on screen. Deliberately states
+         what did not happen ("couldn't refresh") rather than what went wrong: the results below are
+         still good, and naming the network fault would read as a verdict on them. -->
+    <string name="search_refresh_failed" tools:ignore="MissingTranslation">Couldn\'t refresh results</string>
+    <!-- The app is pacing its own requests, or the server asked it to wait. Deliberately says
+         nothing about quotas, rate limits, requests-per-minute or Open Food Facts: none of that is
+         the user's problem, and the queued search runs by itself. No Retry action goes with this —
+         offering one during an enforced backoff invites exactly the hammering it exists to stop. -->
+    <string name="search_rate_limited" tools:ignore="MissingTranslation">Search is busy. Updating automatically…</string>
+    <string name="search_updating" tools:ignore="MissingTranslation">Updating…</string>
     <!-- Shown when a submitted query is refused for being too short.
          Written as a plural rather than "%1$d characters", which lint correctly flags: at a limit of
          one the sentence would read "at least 1 characters". The count is still passed in so the

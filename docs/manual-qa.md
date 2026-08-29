@@ -414,6 +414,191 @@ The meal is deliberately one unnamed, undated list. If any check below reveals a
 | 19.6 | In airplane mode, search is **not** offered on the failure screen (the same host is unreachable) | ☐ |
 | 19.7 | A search server error offers **Try again** and never reads as "no such product" | ☐ |
 
+## 19a. Live search continuity (2026-08-28) — *not yet verified on hardware*
+
+This pass exists because live search was functionally correct and visibly rough on a physical
+device. Every check below is about **continuity** — what stays on screen — so run them by watching,
+not by reading state. The emulator is not the target: it does not reproduce the network timing that
+made the original build flicker.
+
+Do these on the search screen **and** on Home's inline search; the two render the same three cases
+and must not disagree.
+
+| # | Check | Pass |
+|---|---|---|
+| 19a.1 | Type a product name at a normal pace: the results appear without pressing Search | ☐ |
+| 19a.2 | Add a word to a query that already has results: the old list **stays** and a thin line appears under the field — no full-screen spinner, no blank | ☐ |
+| 19a.3 | The results below do not jump vertically as that line appears and disappears | ☐ |
+| 19a.4 | The old results remain **tappable** during the refresh, and tapping one opens that product | ☐ |
+| 19a.5 | When the newer results arrive they replace the old ones in one step — no empty frame in between | ☐ |
+| 19a.6 | "No products found" never flashes while typing or while a search is running | ☐ |
+| 19a.7 | Turn airplane mode on **while results are showing**, then edit the query: the results stay, with *Couldn't refresh results* and *Try again* above them — **not** the full error screen | ☐ |
+| 19a.8 | Turn airplane mode back on with an **empty** result area and search: the full error screen with *Try again* / *Scan nutrition label* / *Enter manually* is still what appears | ☐ |
+| 19a.9 | *Try again* on that inline notice keeps the results visible while it retries | ☐ |
+| 19a.10 | Backspace below three characters: the results disappear at once rather than lingering | ☐ |
+| 19a.11 | Clear the field: the screen returns to its resting state immediately | ☐ |
+| 19a.12 | Press the keyboard's Search key mid-typing: results arrive without a visible second load | ☐ |
+| 19a.13 | With TalkBack on, typing does not announce anything per keystroke; a failed refresh is announced once | ☐ |
+
+## 19b. Search request pacing (2026-08-28) — *not yet verified on hardware*
+
+The app caps itself at **9 Open Food Facts searches per minute, shared across Home and the search
+screen**. These checks exist because the failure they guard against — the app earning a 503 and
+reporting it as *"The product database is unavailable"* — was only ever visible on a real device
+under real network timing.
+
+**Scope correction (later in 1.0.2):** that 9/min cap now applies to the Open Food Facts **fallback
+only**. The primary provider is the dedicated search service (§19c), which imposes no such budget,
+so ordinary successful searches no longer wait for it. Every check below still stands — the observable
+requirement is unchanged and is the same one throughout: that message must not appear unless the
+database is genuinely unreachable. Checks 19b.6 and 19b.10 now exercise the *fallback* path, so
+expect them to be reachable only while the primary is also failing.
+
+The thing to watch for throughout: **that message must not appear at all** unless the database is
+genuinely unreachable.
+
+| # | Check | Pass |
+|---|---|---|
+| 19b.1 | Type continuously for 20–30 seconds: the visible list keeps up with typing, and no error appears at any point | ☐ |
+| 19b.2 | Pause repeatedly between characters for a minute: still no error, and results still arrive | ☐ |
+| 19b.3 | Change the query completely mid-wait: the result that eventually arrives belongs to the **last** thing typed, never an earlier prefix | ☐ |
+| 19b.4 | Press Enter ten times quickly: no burst of requests, no error, one result | ☐ |
+| 19b.5 | Cause a real failure (airplane mode), then tap *Try again* ten times: no hammering, and recovery works once connectivity returns | ☐ |
+| 19b.6 | Search on Home, then immediately open the search screen and search again: the second one waits its turn rather than both going out | ☐ |
+| 19b.7 | Toggle Wi-Fi/mobile mid-search: no *database unavailable* flash for what is really a pacing wait | ☐ |
+| 19b.8 | Clear the field while *Updating…* is showing: everything resets at once and nothing arrives afterwards | ☐ |
+| 19b.9 | *Updating…* never persists indefinitely — a result, a no-results verdict or an error always follows | ☐ |
+| 19b.10 | If a rate-limit notice appears, it offers **no** *Try again* button and clears by itself | ☐ |
+
+## 19c. Search provider migration (2026-08-28) — *not yet verified on hardware*
+
+Text search now runs against Open Food Facts' dedicated search service, with the previous endpoint
+kept as an automatic fallback. **This migration is not complete until it is driven on the same
+physical phone that exposed the original search problem** — everything below has only been seen on
+the emulator and in tests.
+
+Two things make this section different from §19a/§19b. First, the fallback is **deliberately
+invisible**, so the only way to tell which provider answered is the debug log:
+
+```
+adb logcat -s JtcSearch
+```
+
+A line reading `primary OK hits=20` means the new service answered; `fallback start` means the old
+one was used. Second, **fewer results now show a carbohydrate figure** — that is expected and not a
+defect (the new index does not publish the field the app uses to tell grams from millilitres). What
+must never happen is a figure shown with the *wrong* unit.
+
+| # | Check | Pass |
+|---|---|---|
+| 19c.1 | Type rapidly across several different queries: results keep up, and the log shows one `primary` line per settled query — not one per keystroke | ☐ |
+| 19c.2 | Pause frequently while typing: still one request per pause at most, no error at any point | ☐ |
+| 19c.3 | Replace the query completely: the result that lands belongs to the **last** thing typed | ☐ |
+| 19c.4 | Search from Home, then immediately open the search screen and continue: no duplicated requests, both screens behave identically | ☐ |
+| 19c.5 | Press Enter repeatedly: one request, no burst | ☐ |
+| 19c.6 | Clear the field mid-request: everything resets and nothing arrives afterwards | ☐ |
+| 19c.7 | Turn on airplane mode and search: **one** error, shown once — never a primary error followed by a second failure | ☐ |
+| 19c.8 | Restore connectivity and tap *Try again*: results arrive | ☐ |
+| 19c.9 | Search feels noticeably faster than it did in 1.0.1 — no multi-second wait before results | ☐ |
+| 19c.10 | A result **without** a carbohydrate figure still shows name, brand, size and photo, and is tappable | ☐ |
+| 19c.11 | Tapping any result — with or without a figure — opens the product with its **correct** carbohydrate value and unit | ☐ |
+| 19c.12 | No result card ever shows a figure whose unit looks wrong for the product (a drink asking for grams, etc.) | ☐ |
+| 19c.13 | Scan a barcode and calculate a portion: unchanged by all of the above | ☐ |
+| 19c.14 | In the log, confirm at least one `fallback start` … `fallback OK` sequence (force it by searching while the primary is blocked, if it does not occur naturally) and confirm the screen showed no error during it | ☐ |
+| 19c.15 | Search a Dutch term (`hagelslag`, `kaas`): Dutch products are found and Dutch names are shown | ☐ |
+
+## 19d. Search hardening — POST, unusable replies, punctuation (2026-08-28) — *not yet verified on hardware*
+
+Three changes on top of §19c, all on the search path only. Same debug log as §19c
+(`adb logcat -s JtcSearch`); the primary's start line now reads `primary start (POST /search)`.
+
+**Two of these are invisible by construction**, which is why they need driving rather than reading:
+a damaged reply and a genuine no-match both render as an empty list, and the escaping change alters
+only what leaves the app — the search field still shows exactly what was typed.
+
+The punctuation cases below are not invented. Each returned **zero results** against the live
+service before this change, except `milk -chocolate`, which returned a full list of the *wrong*
+products — it searched for milk **without** chocolate.
+
+| # | Check | Pass |
+|---|---|---|
+| 19d.1 | Search `Kinder Bueno (White)`: finds Kinder Bueno products. Before the fix this returned nothing at all | ☐ |
+| 19d.2 | Search `milk + chocolate`: finds milk chocolate products | ☐ |
+| 19d.3 | Search `milk -chocolate`: results **do** include milk chocolate — the `-` is part of the text, not an instruction to exclude | ☐ |
+| 19d.4 | Search `M&M's`, `Ben & Jerry's`, `Coca-Cola Zero`, `70% chocolate`, `Lay's`: each finds the expected brand, i.e. escaping did not break ordinary names | ☐ |
+| 19d.5 | Search `Côte d'Or` and a non-Latin term if available: accented and non-ASCII text is unchanged and still matches | ☐ |
+| 19d.6 | Search a term with a quote or colon (`chocolate: dark`, `"milk"`): returns products rather than nothing | ☐ |
+| 19d.7 | The search field itself still shows exactly what was typed — no backslashes, no rewriting, no cursor jumps | ☐ |
+| 19d.8 | Dutch recall is unchanged from §19c.15 (`hagelslag` still finds Dutch products with Dutch names) — this confirms the language setting still reaches the server in the new request format | ☐ |
+| 19d.9 | Results still arrive in one to two seconds; the switch to POST added no perceptible delay | ☐ |
+| 19d.10 | Tapping a result still opens the product with the correct carbohydrate value and unit | ☐ |
+| 19d.11 | Scan a barcode and calculate a portion: unchanged | ☐ |
+
+**Optional, needs a proxy or a captured request** — the privacy claim of the POST change. With a
+debugging proxy (or Charles/mitmproxy) on the same network, confirm the request to
+`search.openfoodfacts.org` shows **no search text in the URL**; the term appears only in the request
+body. This is the one check that directly verifies what the change was made for.
+
+## 19e. Repeat-search speed and relevance (2026-08-28) — *not yet verified on hardware*
+
+The efficiency pass. A short-lived memory of recent successful searches means a query you already
+ran comes back without another request. **Nothing about ranking changed** — phrase boosting was
+evaluated and does not exist on this service — so the relevance rows below are a regression check,
+not a check of something new.
+
+The saving is only observable as *speed*, since a cache hit is deliberately indistinguishable from a
+fast search: no badge, no "cached" label, no different spinner. `adb logcat -s JtcSearch` is what
+distinguishes them — a cache hit produces **no** `primary start` line at all.
+
+The memory lasts about five minutes and only while the app is running. Force-stopping the app or
+leaving it long enough clears it, which is what rows 19e.4 and 19e.5 check.
+
+| # | Check | Pass |
+|---|---|---|
+| 19e.1 | Search `chocolate`, then `gouda`, then `chocolate` again. The third search shows results **immediately** — no spinner, no visible delay | ☐ |
+| 19e.2 | In `adb logcat -s JtcSearch` during 19e.1: two `primary start` lines, not three. The repeated query produced no request | ☐ |
+| 19e.3 | The re-shown `chocolate` results are chocolate products, in the same order as the first time — not gouda, not a mixture | ☐ |
+| 19e.4 | Force-stop the app, reopen it and search `chocolate`: it searches normally again (the memory does not survive a restart, and nothing was written to the device) | ☐ |
+| 19e.5 | Leave the app open for over five minutes, then repeat a search done before that: it fetches again rather than showing stale results | ☐ |
+| 19e.6 | Turn off the network, search something new (it fails), turn the network back on and search the same thing: it retries and succeeds — a failure is never remembered | ☐ |
+| 19e.7 | Search a term with no results (e.g. `zzzznotaproduct`), then search it again: it searches again rather than replaying "no results" from memory | ☐ |
+| 19e.8 | Type `chocolate`, then quickly change to `gouda` before results settle. The screen ends on **gouda's** results — an instant cache answer must not land on a newer query | ☐ |
+| 19e.9 | Repeat a search on Home's inline search that was first run on the search screen (or vice versa): it is instant, because both screens share one memory | ☐ |
+| 19e.10 | Exact product searches still rank sensibly: `Nutella`, `Kinder Bueno`, `Coca Cola Zero`, `Oreo`, `Snickers` each put the expected product first | ☐ |
+| 19e.11 | Dutch searches are still strong: `hagelslag`, `pindakaas`, `stroopwafel`, `speculaas`, `karnemelk` each find the expected Dutch products | ☐ |
+| 19e.12 | Multi-word searches are still good: `dark chocolate`, `peanut butter`, `chocolate milk`, `tomato pasta sauce` | ☐ |
+| 19e.13 | Generic searches still return something useful: `pasta`, `milk`, `bread`, `cheese` | ☐ |
+| 19e.14 | The punctuation rows of §19d still pass — the escaping is unchanged and must stay that way | ☐ |
+| 19e.15 | Result cards show the same information as before: name, brand, package size, photo, and a carbohydrate figure where one is known | ☐ |
+| 19e.16 | Tapping any result — cached or freshly searched — opens the product with the correct carbohydrate value and unit. **This is the one that matters**: search data is only for choosing, and the number always comes from the product lookup afterwards | ☐ |
+| 19e.17 | No new flicker, no spinner flash on a repeat search, and no new error messages anywhere in search | ☐ |
+| 19e.18 | With TalkBack on, a repeated search announces exactly as a normal search does — nothing extra about caching | ☐ |
+
+## 19f. Touch-target sizes (2026-08-28) — *not yet verified on hardware*
+
+Seven controls were smaller than the app's own 48dp minimum and are now full size. **No layout
+moved and no styling changed** — only the tappable area grew to match the text already drawn — so
+these rows are as much a check that nothing *shifted* as that the targets improved.
+
+Sizes are asserted automatically by `TouchTargetSizeTest`, which is what makes this section short:
+the measurement is already covered. What a device adds is the thing a test cannot have — a thumb.
+Do these one-handed, standing up, the way the app is actually used.
+
+The grams/slices pair is the row that matters. A mis-tap there does not make the number wrong by a
+little; it changes whether the number means grams or a count.
+
+| # | Check | Pass |
+|---|---|---|
+| 19f.1 | On the calculator with a countable portion available, tap **Grams** then **Slices** repeatedly with a thumb, one-handed. Every tap registers; none is missed or lands on the neighbouring chip | ☐ |
+| 19f.2 | The chips look **unchanged** — same size text, same colours, same spacing between them and the fields above and below | ☐ |
+| 19f.3 | *+ Add portion unit* responds to an ordinary thumb tap anywhere on its text | ☐ |
+| 19f.4 | The search and clear (✕) buttons inside Home's search box both respond first time; neither requires aiming | ☐ |
+| 19f.5 | The same two buttons on the Search screen behave identically | ☐ |
+| 19f.6 | With a meal in progress, Home's meal bar opens the meal on a thumb tap anywhere along it, and looks the same as before | ☐ |
+| 19f.7 | Home's *Enter manually* responds first time, and the gap between it and the card above it is unchanged | ☐ |
+| 19f.8 | Set the system font to its **largest** setting. All of the above still work, nothing is clipped, and no control has grown so tall that it pushes something important off screen | ☐ |
+| 19f.9 | Nothing on Home, Search or the calculator overlaps, jumps, or re-flows compared with the previous build | ☐ |
+
 ## 20. Attribution (2026-08-14)
 
 | # | Check | Pass |

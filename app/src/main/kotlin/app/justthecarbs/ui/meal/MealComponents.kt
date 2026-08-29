@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -116,6 +117,11 @@ fun MealBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // The compact variant's padding left the row 40dp tall, under the app's minimum. It is
+            // full-width, so it was never hard to hit horizontally — but it is the only way back to
+            // a meal in progress, and it costs nothing to make it a full-height target. `heightIn`
+            // rather than `height` so the row still grows with the text at a large font scale.
+            .heightIn(min = Space.minTouchTarget)
             .clip(RoundedCornerShape(Space.cardRadius))
             .then(
                 if (compact) Modifier
