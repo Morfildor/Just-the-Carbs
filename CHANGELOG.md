@@ -67,10 +67,11 @@ and on 2026-08-29 by the light/dark theme and system-UI fixes.
 signer are in [`docs/version-history.md`](docs/version-history.md), which is the authority for what
 a tester is reporting against.
 
-**Device verification: live search is confirmed on hardware (owner, 2026-08-29); the theme and
-system-bar fixes are not.** That is the gap worth closing next — those defects were reported from a
-device, so the fixes address symptoms no emulator run reproduced. See the archive entry for the
-full split.
+**Device verification (owner, 2026-08-29, against the Play-delivered build): live search, Light and
+Dark theme rendering, and barcode scanning all confirmed on hardware.** The reported status-bar and
+dark-mode contrast defects are gone. Still unobserved: the two theme *override* combinations (app
+forced opposite to the phone), an OCR label scan, and a calculation from a search result. See the
+archive entry for the exact split.
 
 ### Fixed — reproduced by a test that failed before the fix
 
@@ -429,9 +430,10 @@ migration, §10 lookup priority, barcode, OCR, search or navigation behaviour ch
   and `ScanTrace` absent entirely; `UnitMarkerFilter`, `CandidateProvenance`, `CarbCandidate` and
   `PackageBasisResolver` retained as real classes. Release manifest: three disclosed permissions,
   one exported component of ours (`MainActivity`), **no `FileProvider`**.
-- **Not verified on physical hardware.** Everything above is JVM and emulator. The artifact hash,
-  size and signer are recorded in [`docs/version-history.md`](docs/version-history.md) only once
-  Play accepts the upload.
+- **Figures above are JVM and emulator.** Physical-device confirmation was taken separately, after
+  upload — live search, Light/Dark theme rendering and barcode scanning all verified on the
+  Play-delivered build (owner, 2026-08-29). The artifact hash, size and signer are in
+  [`docs/version-history.md`](docs/version-history.md).
 
 ### Play Store release notes
 

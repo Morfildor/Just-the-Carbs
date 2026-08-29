@@ -10,7 +10,7 @@
 | Internal testing | **DEPLOYED** — `1.0.0` / `versionCode 1` |
 | Closed testing | **ACTIVE — running, 12+ testers opted in.** Currently `1.0.2` / `versionCode 3`, uploaded 2026-08-29 |
 | Version in development | **None.** `versionCode 3` is spent; the next code change opens `1.0.3` / `versionCode 4` (§2c) |
-| Play-delivered smoke test | **PARTIAL** — live search confirmed on a device (owner, 2026-08-29); the **theme/system-bar fixes are not**, and are the priority (§8a) |
+| Play-delivered smoke test | **SUBSTANTIALLY DONE** (owner, 2026-08-29) — live search, Light/Dark theme rendering and barcode scanning all confirmed on the device. Outstanding: the two theme *override* combinations, an OCR label scan, and a calculation from a search result (§8a) |
 | Production submission | **BLOCKED** — see §1b |
 
 **Closed testing is running, now on `1.0.2`.** `1.0.0` (`versionCode 1`) went to internal testers on

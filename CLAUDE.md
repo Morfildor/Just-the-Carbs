@@ -1608,13 +1608,19 @@ and is the development target". Both are stale: **2 shipped on 2026-08-28**. Wha
 is only the general rule — a version code that has reached a track is never rebuilt or re-uploaded,
 which now covers 1 and 2 alike.
 
-**Next technical action:** install the Play-delivered **1.0.2** build on the Samsung device via the
-**tester link** — not a local APK — and check the **theme and system bars**, which are the one part
-of 1.0.2 still unverified on hardware. Live search *is* confirmed on a device (owner, 2026-08-29);
-the theme fixes are not, and they are the changes whose defects were **reported from a device in the
-first place**, so an emulator run never reproduced the symptom. The two combinations that matter
-most are app-forced-Light on a dark phone and app-forced-Dark on a light phone — the pair the
-previous code got wrong. Also worth one barcode scan and one label scan as a regression pass.
+**1.0.2 is verified on physical hardware for everything it changed** (owner, 2026-08-29, against the
+Play-delivered build): **live search works**, **Light and Dark themes both render correctly** — the
+reported status-bar and dark-mode-contrast defects are gone — and **barcode scanning is
+regression-free**. Do not re-list those as unverified.
+
+**Next technical action:** nothing blocking. Three small hardware checks remain outstanding and are
+worth folding into the next tester session rather than doing on their own: the two theme *override*
+combinations (app forced Light on a dark phone, app forced Dark on a light phone), an OCR label
+scan, and a calculation from a search result. The overrides are the only part of the theme work
+still argued rather than observed — they exercise the system-bars-follow-the-app half, which
+`resolveDarkTheme` and its tests cover in both directions, but a test cannot watch a real status
+bar. Beyond that, the remaining path to production is Play Console forms plus the §44 signature,
+which is owner work, not engineering.
 
 **The 14-day clock is RUNNING.** If this account is subject to Play's **12-testers / 14-days
 closed-testing requirement** (some personal accounts created from Nov 2023 onward are; organization

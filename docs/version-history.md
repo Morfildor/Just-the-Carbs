@@ -104,7 +104,25 @@ Recorded at the time rather than reconstructed later, and split by what was actu
 **Unchanged and still open:** `uses-feature android:hardware.camera` ships as required, as it did in
 1.0.0 and 1.0.1 — an open distribution decision for the owner, not a defect.
 
-### Fixed — reproduced by a test that failed before the fix
+#### Note added 2026-08-29 — theme and barcode confirmed on the device after upload
+
+The section above is left as written at upload time. Since then the owner checked the
+Play-delivered build on the Samsung device:
+
+- **The theme fixes work.** Light and Dark were both exercised and both render correctly — the
+  reported defects are gone: status-bar icons are readable in Light, and the Settings title, back
+  arrow, gear and *Haptic feedback* row are readable in Dark. That is direct confirmation of the
+  `LocalContentColor` half of the fix, which is what the black-on-black symptoms came from.
+- **Barcode scanning works**, so the core path is regression-free on this build.
+
+**Still not observed, and worth being exact about:** the two *override* combinations — app forced
+Light while the phone is Dark, and app forced Dark while the phone is Light — were not tested
+separately. Those are the cases that exercise the **other** root cause, the system bars resolving
+their light/dark from the device configuration instead of the app's selection. `resolveDarkTheme`
+makes the two share one authority and is pinned by tests in both directions, so the behaviour is
+argued rather than unknown — but it is inference, not observation, and this file does not promote
+the second to the first. Also still unexercised on hardware: an OCR label scan, and a full
+calculation from a search result.
 
 - **Live search asked Open Food Facts far more often than it is allowed to, and the refusals looked
   like an outage.** Search-as-you-type sent a request after every half-second pause in typing, with
