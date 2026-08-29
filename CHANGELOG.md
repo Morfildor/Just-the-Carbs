@@ -5,7 +5,7 @@ most recent released one; every uploaded version is copied into
 [`docs/version-history.md`](docs/version-history.md), the append-only archive that records each
 artifact's hash, size and signer.
 
-**Latest release: `1.0.1` / `versionCode 2`**, on closed testing since 2026-08-28.
+**Latest release: `1.0.2` / `versionCode 3`**, on closed testing since 2026-08-29.
 
 ## Versioning rule — a new version number per code change (owner, 2026-08-28)
 
@@ -54,23 +54,23 @@ policy at the time. They are left exactly as recorded; the rule above applies to
 
 ## Unreleased
 
-Nothing yet. `1.0.2` / `versionCode 3` is open below; the next version is `1.0.3` /
-`versionCode 4`, opened by the first code change **after 1.0.2 ships**.
+Nothing yet. `1.0.2` / `versionCode 3` shipped on 2026-08-29, so no version is open — the next code
+change opens `1.0.3` / `versionCode 4` and bumps `branding.gradle.kts` in the same change.
 
-## 1.0.2 (versionCode 3) — 2026-08-29 — release candidate, not yet uploaded
+## 1.0.2 (versionCode 3) — 2026-08-29 — Closed testing
 
 Opened 2026-08-28 by the live-search change below, under the one-version-per-code-change rule, and
 extended the same day by the Search-a-licious migration, the search-hardening and accuracy passes,
 and on 2026-08-29 by the light/dark theme and system-UI fixes.
 
-**Built as a release candidate from the committed tree; not uploaded.** The figures in
-*Verification* below were taken against that tree. This section moves to
-[`docs/version-history.md`](docs/version-history.md) with the artifact's hash, size and signer only
-once Play accepts the upload — a build that has not left the machine is not a release.
+**Uploaded and accepted by Play on 2026-08-29**, built from `29a4f3d`. The artifact's hash, size and
+signer are in [`docs/version-history.md`](docs/version-history.md), which is the authority for what
+a tester is reporting against.
 
-**Not verified on physical hardware.** The targeted smoke test for what this version changes —
-theme in all four device/app combinations, live search, and a barcode and label-scan regression
-pass — is the gate before upload.
+**Device verification: live search is confirmed on hardware (owner, 2026-08-29); the theme and
+system-bar fixes are not.** That is the gap worth closing next — those defects were reported from a
+device, so the fixes address symptoms no emulator run reproduced. See the archive entry for the
+full split.
 
 ### Fixed — reproduced by a test that failed before the fix
 

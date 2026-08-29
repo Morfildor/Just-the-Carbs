@@ -1,6 +1,6 @@
 # Google Play release readiness — Just the Carbs
 
-**Status as of 2026-08-28**
+**Status as of 2026-08-29**
 
 | Area | Status |
 |---|---|
@@ -8,15 +8,17 @@
 | Release artifact | **READY** |
 | Store listing | **READY** |
 | Internal testing | **DEPLOYED** — `1.0.0` / `versionCode 1` |
-| Closed testing | **ACTIVE — running, 12+ testers opted in.** Currently `1.0.1` / `versionCode 2`, uploaded 2026-08-28 |
-| Version in development | **None.** `versionCode 2` is spent; the next code change opens `1.0.2` / `versionCode 3` (§2c) |
-| Play-delivered smoke test | **PENDING** — §8a, and not yet run against any build |
+| Closed testing | **ACTIVE — running, 12+ testers opted in.** Currently `1.0.2` / `versionCode 3`, uploaded 2026-08-29 |
+| Version in development | **None.** `versionCode 3` is spent; the next code change opens `1.0.3` / `versionCode 4` (§2c) |
+| Play-delivered smoke test | **PARTIAL** — live search confirmed on a device (owner, 2026-08-29); the **theme/system-bar fixes are not**, and are the priority (§8a) |
 | Production submission | **BLOCKED** — see §1b |
 
-**Closed testing is running, now on `1.0.1`.** `1.0.0` (`versionCode 1`) went to internal testers on
+**Closed testing is running, now on `1.0.2`.** `1.0.0` (`versionCode 1`) went to internal testers on
 2026-08-26 and **the same artifact was then promoted to the closed track** — one artifact and one
 hash progressing through two tracks, not two releases. `1.0.1` (`versionCode 2`) was then built from
-`45f3dd9`, uploaded and accepted on 2026-08-28 as a genuine second artifact. 12 or more testers are
+`45f3dd9`, uploaded and accepted on 2026-08-28, and `1.0.2` (`versionCode 3`) from `29a4f3d`,
+uploaded and accepted on 2026-08-29 — the first release carrying feature work (the search provider
+migration and the theme/system-bar fixes). 12 or more testers are
 opted in and the testing period is under way. `docs/version-history.md` records each version once,
 by hash.
 

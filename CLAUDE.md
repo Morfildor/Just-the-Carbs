@@ -1549,12 +1549,12 @@ disagrees, this one is right — and fix the older passage rather than working a
 
 | Question | Answer |
 |---|---|
-| What is the latest release? | `1.0.1` / **`versionCode 2`**, uploaded and **accepted by Play 2026-08-28** |
-| Which track? | **Closed testing.** `versionCode 1` preceded it on internal → closed |
+| What is the latest release? | `1.0.2` / **`versionCode 3`**, uploaded and **accepted by Play 2026-08-29**, built from `29a4f3d` |
+| Which track? | **Closed testing.** `versionCode 1` (internal → closed) and `2` preceded it |
 | Closed-testing period | **Running.** 12+ testers opted in |
-| What is in development? | **`1.0.2` / `versionCode 3`** — opened 2026-08-28 by the live-search pass, extended the same day by the Search-a-licious provider migration, the search-hardening pass and the accuracy/efficiency pass. Nothing built or uploaded against it |
-| Is 1.0.1 released? | **Yes.** Built from `45f3dd9`, uploaded 2026-08-28, in `docs/version-history.md` |
-| What do I develop against? | **`versionCode 3`**, already set in `branding.gradle.kts`. Do **not** bump again during 1.0.2 work |
+| What is in development? | **Nothing.** `versionCode 3` is spent. The next code change opens `1.0.3` / **`versionCode 4`** and bumps `branding.gradle.kts` in the same change |
+| Is 1.0.2 released? | **Yes.** Uploaded 2026-08-29, in `docs/version-history.md` with its hash, size and signer |
+| What do I develop against? | **`versionCode 4`** — bump it when the first code change lands. Do not develop against 3 |
 | Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
 
 **VERSIONING RULE CHANGED 2026-08-28 (owner): a new version number per code change.** The old
@@ -1564,15 +1564,16 @@ policy — accumulate safe fixes into one open version until the owner decides t
 section. Documentation-only changes open nothing: a version number identifies an artifact, and prose
 that changes no code produces none. Full rule at the top of `CHANGELOG.md`.
 
-**`versionCode 1` and `2` are both spent.** Neither is to be rebuilt or re-uploaded — Play refuses a
-duplicate code, and both are on an active track. The next number is **3**.
+**`versionCode 1`, `2` and `3` are all spent.** None is to be rebuilt or re-uploaded — Play refuses a
+duplicate code, and all are on an active track. The next number is **4**.
 
-The current artifact is `app-release.aab` from `clean` on **`45f3dd9`** (evidence in `cb2d549`):
-35,626,125 bytes, SHA-256 `8c4e6da7998b81a38fbb23234b008a8088ab57149d0d0f6a8b3e146c4d7bfd30`,
-signed with the real upload key `1E:21:23:F3:…:C4:F5` — **the same key as `versionCode 1`**, which
-is what lets Play accept it as an update. The signer DN was read from the built bundle with
-`keytool -printcert -jarfile` before upload, not inferred from a green build: the Gradle guard
-cannot tell a real upload key from a disposable one.
+The current artifact is `app-release.aab` from `clean` on **`29a4f3d`**: 35,671,928 bytes, SHA-256
+`7c2ae0618fda7fdfcaa8e5be24172ccfe54b1639177efc978a2b88c3c2a42828`, signed with the real upload key
+`1E:21:23:F3:…:C4:F5` — **the same key as `versionCode 1` and `2`**, which is what lets Play accept
+it as an update. The signer DN was read from the built bundle with `keytool -printcert -jarfile`
+before upload, not inferred from a green build: the Gradle guard cannot tell a real upload key from
+a disposable one. `versionCode`/`versionName` were also decoded from the bundle's own protobuf
+manifest rather than trusted from the Gradle configuration.
 
 `versionCode 1` (`1.0.0`, `68c85a3`, SHA-256 `37be0232…c7e604b`) reached the closed track by
 **promotion of the same bundle** — same bytes, same hash, same version code. `docs/version-history.md`
@@ -1580,16 +1581,15 @@ records it **once**, with the track progression noted; a promotion is not a rele
 a second entry. Play still shows the temporary name `app.justthecarbs (unreviewed)`; that is expected
 pre-review and is not a defect.
 
-### Working rules after 1.0.1
+### Working rules after 1.0.2
 
-- **`1.0.2` / `versionCode 3` is OPEN and already set** in `branding.gradle.kts` (2026-08-28, the
-  live-search pass). Further 1.0.2 work adds entries to that `CHANGELOG.md` section and **does not
-  bump the version again** — one number per code change means the number is opened once and then
-  identifies the artifact that eventually ships. The next bump is `1.0.3` / `versionCode 4`, after
-  1.0.2 has shipped.
+- **No version is open.** `1.0.2` / `versionCode 3` shipped on 2026-08-29, so `branding.gradle.kts`
+  currently names a **spent** number. The first code change after this bumps it to `1.0.3` /
+  `versionCode 4` and opens that `CHANGELOG.md` section **in the same change**, so the number and
+  the notes never disagree.
 - **A documentation-only change opens nothing.** No version, no bump, no `CHANGELOG.md` heading.
-- **Do not rebuild or upload `versionCode 1` or `2`.** Both are on an active track and Play refuses
-  a duplicate code. Superseded artifacts stay superseded — in particular the earlier bundle
+- **Do not rebuild or upload `versionCode 1`, `2` or `3`.** All are on an active track and Play
+  refuses a duplicate code. Superseded artifacts stay superseded — in particular the earlier bundle
   `00876FA9…BBB4A2`, built from an uncommitted tree.
 - **Nothing goes into `docs/version-history.md` until Play accepts a build.** That file is the
   append-only record of artifacts that actually shipped. A built-but-unuploaded version is not
@@ -1608,11 +1608,13 @@ and is the development target". Both are stale: **2 shipped on 2026-08-28**. Wha
 is only the general rule — a version code that has reached a track is never rebuilt or re-uploaded,
 which now covers 1 and 2 alike.
 
-**Next technical action:** install the Play-delivered **1.0.1** build on the Samsung device via the
-**tester link** — not a local APK — and run the ten-step smoke test
-(`docs/play-release-readiness.md` §8a). This is now more valuable than it was for 1.0.0: nothing in
-1.0.1 was verified on physical hardware, and the crop-drag fix is the change a tester is most likely
-to notice.
+**Next technical action:** install the Play-delivered **1.0.2** build on the Samsung device via the
+**tester link** — not a local APK — and check the **theme and system bars**, which are the one part
+of 1.0.2 still unverified on hardware. Live search *is* confirmed on a device (owner, 2026-08-29);
+the theme fixes are not, and they are the changes whose defects were **reported from a device in the
+first place**, so an emulator run never reproduced the symptom. The two combinations that matter
+most are app-forced-Light on a dark phone and app-forced-Dark on a light phone — the pair the
+previous code got wrong. Also worth one barcode scan and one label scan as a regression pass.
 
 **The 14-day clock is RUNNING.** If this account is subject to Play's **12-testers / 14-days
 closed-testing requirement** (some personal accounts created from Nov 2023 onward are; organization
