@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
+import java.util.UUID
 
 /** What the calculator screen is showing. Immutable, one object, driven by a StateFlow (§65). */
 data class ProductUiState(
@@ -55,6 +56,24 @@ data class ProductUiState(
     val barcode: String = "",
     /** True for a quick calculation that has not been saved as a product (§28). */
     val unsaved: Boolean = false,
+    /** The *Save product* form is open (1.0.3 P1). Only ever reachable while [unsaved]. */
+    val showSaveQuickCalculationForm: Boolean = false,
+    /**
+     * A save is in flight.
+     *
+     * The write is asynchronous, so without this the button stays enabled across the round trip and a
+     * second tap starts a second write under a second synthetic key — two rows for one product.
+     */
+    val savingQuickCalculation: Boolean = false,
+    /** The user tried to save without a name — the one field saving genuinely requires. */
+    val quickSaveNameError: Boolean = false,
+    /**
+     * The save failed and nothing was written.
+     *
+     * Said out loud rather than swallowed: the calculation is still on screen and still correct, so
+     * silence here reads as success and the user would leave believing the product was kept.
+     */
+    val quickSaveFailed: Boolean = false,
     val showVerifyDialog: Boolean = false,
     /**
      * A newer online value seen during this session (corrections #5, #10).
@@ -229,18 +248,143 @@ class ProductViewModel(
         }
     }
 
-    /** Start a quick calculation that is not stored anywhere yet (§28). */
-    fun startQuickCalculation(name: String, carbsPer100: BigDecimal, basis: NutritionBasis) {
+    /**
+     * Start a calculation from a carbohydrate basis that is not stored anywhere (§28, 1.0.3 P1).
+     *
+     * **There is no name parameter, and that absence is the feature.** A nutrition label states a
+     * carbohydrate figure and its basis; it does not state what the product is called. Requiring a
+     * name here is what previously sent every OCR reading through the *Enter product* form, which
+     * would not proceed without one and wrote a Room row before it would navigate — so reading one
+     * number off one photograph cost a named, saved record nobody asked for. The name is asked for
+     * exactly once, in [saveQuickCalculation], at the only moment it is genuinely required.
+     *
+     * The scratch [Product] is held in state and never handed to the repository, so no row exists
+     * for the portion to be remembered against — which is why [rememberUsage] and [toggleFavorite]
+     * return early on an empty barcode rather than needing a flag to consult.
+     *
+     * [origin] carries where the figure came from. It is not [VerificationStatus.USER_VERIFIED]:
+     * the user confirmed a number the *parser* proposed rather than transcribing the package
+     * themselves, and provenance and verification are separate facts that must stay separate.
+     */
+    fun startQuickCalculation(
+        carbsPer100: BigDecimal,
+        basis: NutritionBasis,
+        origin: ProductDataOrigin = ProductDataOrigin.OCR,
+    ) {
         val scratch = Product(
             barcode = "",
-            name = name,
+            name = "",
             carbsPer100 = carbsPer100,
             basis = basis,
-            dataSource = ProductDataOrigin.MANUAL,
-            verificationStatus = VerificationStatus.USER_VERIFIED,
+            dataSource = origin,
+            verificationStatus = VerificationStatus.UNVERIFIED,
         )
-        _state.update { it.copy(loading = false, product = scratch, unsaved = true, failure = null) }
+        _state.update {
+            it.copy(
+                loading = false,
+                product = scratch,
+                unsaved = true,
+                failure = null,
+                // A second reading replaces the first outright. Leaving a stale verdict or notice
+                // standing would attach it to a figure it was never about.
+                labelVerdict = null,
+                newerRemoteCarbs = null,
+            )
+        }
         recalculate()
+    }
+
+    /**
+     * Open or close the *Save product* form. Closing changes nothing else — the calculation stands.
+     *
+     * Clears [ProductUiState.quickSaveFailed] as well as the name error, because that message
+     * describes the attempt the user just made and not the one they are about to make. Left
+     * standing, a failure from a previous attempt would still be on screen behind a freshly opened
+     * form, and would remain there after a *successful* save right up until the screen changed.
+     */
+    fun showSaveQuickCalculation(show: Boolean) =
+        _state.update {
+            it.copy(showSaveQuickCalculationForm = show, quickSaveNameError = false, quickSaveFailed = false)
+        }
+
+    /**
+     * Persist the calculation currently on screen as a product (1.0.3 P1).
+     *
+     * The only write this path ever makes, and only from a deliberate tap. The calculation is already
+     * complete and visible before this is called, so nothing about the number changes here — the
+     * product simply acquires a name, a key and a row.
+     *
+     * The synthetic key is namespaced exactly as [app.justthecarbs.ui.manual.ManualEntryViewModel]
+     * does, so it can never collide with a real GTIN, and it is what lets the saved product appear in
+     * Recents at all.
+     *
+     * Origin is preserved rather than flattened to MANUAL: the figure was read by the camera and
+     * saving it does not change where it came from.
+     *
+     * `saveUserAuthoredProduct` also stamps [VerificationStatus.USER_VERIFIED], which is deliberate
+     * and is the same treatment a manually-entered product gets. It is a **stronger** claim than the
+     * one [startQuickCalculation] makes, and the difference is the user's own act: confirming a
+     * parser's proposal to get a number is not vouching for it, whereas choosing to keep this
+     * product for future meals is. Note this is the repository's existing rule for user-authored
+     * products rather than something decided here — if it is ever revisited, it must move for manual
+     * entry and this path together, since neither has a better claim than the other.
+     */
+    fun saveQuickCalculation(name: String) {
+        val state = _state.value
+        val product = state.product ?: return
+        // Not a quick calculation, or already saved. A second tap has nothing left to write, and
+        // writing anyway would create a duplicate row under a fresh synthetic key.
+        if (!state.unsaved || state.savingQuickCalculation) return
+
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            _state.update { it.copy(quickSaveNameError = true) }
+            return
+        }
+
+        val key = "local:${UUID.randomUUID()}"
+        val saved = product.copy(barcode = key, name = trimmed)
+        _state.update { it.copy(savingQuickCalculation = true, quickSaveNameError = false) }
+
+        viewModelScope.launch {
+            runCatching {
+                repository.saveUserAuthoredProduct(
+                    saved,
+                    origin = if (product.dataSource.isUserAuthored) product.dataSource else ProductDataOrigin.MANUAL,
+                )
+            }.onSuccess {
+                // The screen keeps every number it was showing; only its identity changes. The
+                // portion is recorded now that there is a row to record it against.
+                _state.update {
+                    it.copy(
+                        product = saved,
+                        barcode = key,
+                        unsaved = false,
+                        savingQuickCalculation = false,
+                        showSaveQuickCalculationForm = false,
+                        quickSaveFailed = false,
+                    )
+                }
+                rememberUsage()
+            }.onFailure {
+                // Reported rather than merely survived: clearing the flag alone would re-enable the
+                // button and change nothing else, making a failed save look like a missed tap.
+                //
+                // The form is closed as part of reporting, and that is not cosmetic. The failure
+                // message renders on the *Save product* action, which sits on the screen behind
+                // this dialog — so leaving the dialog open would put the only account of what went
+                // wrong underneath the scrim, and the user would see a dialog that simply did
+                // nothing when they tapped Save. Closing it reveals the message and leaves the
+                // action right there to retry.
+                _state.update {
+                    it.copy(
+                        savingQuickCalculation = false,
+                        quickSaveFailed = true,
+                        showSaveQuickCalculationForm = false,
+                    )
+                }
+            }
+        }
     }
 
     /**
@@ -514,18 +658,23 @@ class ProductViewModel(
      * is looking at as they tap. Nothing is recomputed here, so the meal cannot disagree with the
      * screen it was added from.
      */
-    fun addCurrentToMeal(portionDescription: String) {
+    fun addCurrentToMeal(portionDescription: String, fallbackName: String = "") {
         val product = _state.value.product ?: return
         val barcode = product.barcode.takeIf { !_state.value.unsaved }
         val directCarbs = _state.value.directCarbResult
         val conversion = _state.value.selectedPortionUnit?.conversion
+        // A quick calculation has no name by design, and `MealScreen` renders this straight into the
+        // line and into the "Remove …" label a screen reader announces — so an empty one is a blank
+        // row in the one list whose whole job is saying what is on the plate. The wording comes from
+        // the screen for the same reason [portionDescription] does: it lives in resources.
+        val displayName = product.name.ifBlank { fallbackName }
 
         viewModelScope.launch {
             if (directCarbs != null && conversion is PortionConversion.DirectCarbs) {
                 val count = PortionParser.parse(_state.value.countText) ?: return@launch
                 repository.addDirectCarbMealItem(
                     productBarcode = barcode,
-                    displayName = product.name,
+                    displayName = displayName,
                     portionDescription = portionDescription,
                     count = count,
                     carbsPerUnit = conversion.carbsPerUnit,
@@ -536,7 +685,7 @@ class ProductViewModel(
                 val resolved = PortionParser.parse(_state.value.portionText) ?: return@launch
                 repository.addMealItem(
                     productBarcode = barcode,
-                    displayName = product.name,
+                    displayName = displayName,
                     portionDescription = portionDescription,
                     resolvedAmount = resolved,
                     basis = product.basis,

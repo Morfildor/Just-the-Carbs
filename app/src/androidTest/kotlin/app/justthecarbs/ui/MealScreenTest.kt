@@ -304,8 +304,11 @@ class MealScreenTest {
                     onScanLabel = {},
                     onEnterManually = {},
                     onRetry = {},
-                    onAddToMeal = { add(it) },
-                    onAddToMealAndScanNext = { add(it); onScanNext() },
+                    // The second argument is the fallback display name, used only by a calculation
+                    // that has no product name of its own — irrelevant to these cases, which all
+                    // render a named product.
+                    onAddToMeal = { description, _ -> add(description) },
+                    onAddToMealAndScanNext = { description, _ -> add(description); onScanNext() },
                 )
             }
         }

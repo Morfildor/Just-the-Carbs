@@ -97,7 +97,24 @@ private object Routes {
     const val MEAL = "meal"
     const val SEARCH = "search"
 
+    /**
+     * A calculation with no product behind it (1.0.3 P1).
+     *
+     * Separate from [PRODUCT] rather than a special barcode value, because the two differ in what
+     * they *do* on arrival: `product/{barcode}` begins with a database and possibly a network
+     * lookup, and this begins with nothing at all. Folding them together would mean teaching the
+     * lookup path to recognise a sentinel barcode and skip itself, which is how a sentinel ends up
+     * being written to disk.
+     *
+     * The figures travel as route arguments so the calculation survives process death — the same
+     * reason a detected value going to manual entry does. There is nowhere else to recover them
+     * from: by design, nothing about this calculation is stored.
+     */
+    const val QUICK = "quick?carbs={carbs}&basis={basis}"
+
     fun product(barcode: String) = "product/$barcode"
+
+    fun quick(carbs: String, basis: String) = "quick?carbs=$carbs&basis=$basis"
 
     fun manual(barcode: String? = null, carbs: String = "", basis: String = "") =
         "manual?barcode=${barcode.orEmpty()}&carbs=$carbs&basis=$basis" +
@@ -328,9 +345,11 @@ fun JustTheCarbsNavHost(
                 onDismissNewerRemotePortionUnit = viewModel::dismissNewerRemotePortionUnit,
                 onCorrectPortionUnit = viewModel::correctSelectedPortionUnit,
                 onCancelPortionUnitCorrection = viewModel::cancelPortionUnitCorrection,
-                onAddToMeal = viewModel::addCurrentToMeal,
-                onAddToMealAndScanNext = { description ->
-                    viewModel.addCurrentToMeal(description)
+                onAddToMeal = { description, fallbackName ->
+                    viewModel.addCurrentToMeal(description, fallbackName)
+                },
+                onAddToMealAndScanNext = { description, fallbackName ->
+                    viewModel.addCurrentToMeal(description, fallbackName)
                     // Straight back to the camera, with this product popped off the stack: after
                     // adding a fourth item the user wants the scanner, not a four-deep back stack
                     // of products they have already finished with (§11).
@@ -355,6 +374,97 @@ fun JustTheCarbsNavHost(
                 },
                 onDismissLabelVerdict = viewModel::dismissLabelVerdict,
                 onSelectUsualPortion = viewModel::applyUsualPortion,
+            )
+        }
+
+        /**
+         * A calculation with no product behind it (1.0.3 P1).
+         *
+         * The same [ProductScreen] and the same [ProductViewModel] as a barcode product — the whole
+         * point is that once a carbohydrate figure and its basis are known, how they were obtained
+         * stops mattering to the calculation. Only the *entry* differs:
+         * [ProductViewModel.startQuickCalculation] puts the figures straight into state instead of
+         * `load` fetching them, so no lookup happens and no row is read or written.
+         *
+         * Actions that need a product row are deliberately not wired: there is nothing to favourite,
+         * verify against, refresh from or attach a portion unit to. `ProductScreen` already hides
+         * each of those on an empty barcode, so they are absent from the screen rather than present
+         * and inert.
+         */
+        composable(
+            route = Routes.QUICK,
+            arguments = listOf(
+                navArgument("carbs") { type = NavType.StringType; defaultValue = "" },
+                navArgument("basis") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            val carbsArg = entry.arguments?.getString("carbs").orEmpty()
+            val basisArg = entry.arguments?.getString("basis").orEmpty()
+            val viewModel: ProductViewModel = viewModel(
+                factory = factory { ProductViewModel(container.productRepository, createSavedStateHandle()) },
+            )
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            // Keyed on the arguments, so a corrected value arriving as a new destination starts a new
+            // calculation while a recomposition does not restart the one in progress.
+            LaunchedEffect(carbsArg, basisArg) {
+                val carbs = PortionParser.parse(carbsArg)
+                val basis = NutritionBasis.entries.firstOrNull { it.name == basisArg }
+                // Both halves are required. A figure whose basis was lost in transit is exactly the
+                // "grams of what?" question this app must never answer on the user's behalf, so the
+                // route refuses rather than defaulting — manual entry is where an open basis belongs.
+                if (carbs != null && basis != null) {
+                    viewModel.startQuickCalculation(carbs, basis)
+                } else {
+                    navController.navigate(Routes.manual(null, carbsArg, basisArg)) {
+                        popUpTo(Routes.QUICK) { inclusive = true }
+                    }
+                }
+            }
+
+            // Saving lands on the ordinary product calculator for the row that now exists, so the
+            // saved product behaves exactly like any other from that point on. The quick screen is
+            // popped: it was a way through, not somewhere to return to with a duplicate of a product
+            // that is now real.
+            LaunchedEffect(state.unsaved, state.barcode) {
+                if (!state.unsaved && state.barcode.isNotEmpty()) {
+                    navController.navigate(Routes.product(state.barcode)) {
+                        popUpTo(Routes.QUICK) { inclusive = true }
+                    }
+                }
+            }
+
+            ProductScreen(
+                state = state,
+                settings = settings,
+                onPortionChanged = viewModel::onPortionChanged,
+                onAdjust = viewModel::adjustPortion,
+                onSetPortion = viewModel::setPortion,
+                onToggleFavorite = {},
+                onBack = { navController.popBackStack() },
+                onVerify = {},
+                onDismissVerify = {},
+                onConfirmVerification = { _, _, _ -> },
+                onResetOnline = {},
+                // Re-scanning replaces this calculation with the next reading, rather than layering a
+                // second quick screen on the stack.
+                onScanLabel = {
+                    navController.navigate(Routes.labelScan()) {
+                        popUpTo(Routes.QUICK) { inclusive = true }
+                    }
+                },
+                onEnterManually = { navController.navigate(Routes.manual()) },
+                onRetry = {},
+                onAddToMeal = { description, fallbackName ->
+                    viewModel.addCurrentToMeal(description, fallbackName)
+                },
+                onAddToMealAndScanNext = { description, fallbackName ->
+                    viewModel.addCurrentToMeal(description, fallbackName)
+                    navController.navigate(Routes.SCAN) { popUpTo(Routes.HOME) }
+                },
+                onOpenMeal = { navController.navigate(Routes.MEAL) },
+                onShowSaveQuickCalculation = viewModel::showSaveQuickCalculation,
+                onSaveQuickCalculation = viewModel::saveQuickCalculation,
             )
         }
 
@@ -539,7 +649,16 @@ fun JustTheCarbsNavHost(
                         }
                         navController.popBackStack()
                     } else {
-                        openManualEntryWith(carbs, basis)
+                        // Straight to the calculator (1.0.3 P1). This used to open manual entry,
+                        // which would not proceed without a product name and wrote a Room row before
+                        // it would navigate — so reading one number off one photograph cost a named,
+                        // saved record the user never asked for. A label states a carbohydrate figure
+                        // and its basis, which is everything the calculation needs; what the product
+                        // is called is a question only *saving* has to ask, and saving is now
+                        // optional and offered from the result.
+                        navController.navigate(Routes.quick(carbs.toPlainString(), basis.name)) {
+                            popUpTo(Routes.LABEL_SCAN) { inclusive = true }
+                        }
                     }
                 },
                 onEditManually = {

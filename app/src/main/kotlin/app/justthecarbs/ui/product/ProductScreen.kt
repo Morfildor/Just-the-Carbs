@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import app.justthecarbs.ui.components.ProductHeroImage
 import app.justthecarbs.ui.components.ProductGalleryDialog
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,6 +76,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -84,6 +88,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.justthecarbs.R
@@ -164,15 +174,22 @@ fun ProductScreen(
     onDismissNewerRemotePortionUnit: () -> Unit = {},
     onCorrectPortionUnit: (PortionConversion) -> Unit = {},
     onCancelPortionUnitCorrection: () -> Unit = {},
-    /** Takes the portion in the user's own words ("2 slices"), which only a composable can build. */
-    onAddToMeal: (String) -> Unit = {},
-    onAddToMealAndScanNext: (String) -> Unit = {},
+    /**
+     * Takes the portion in the user's own words ("2 slices"), which only a composable can build, and
+     * a fallback display name for a calculation that has no product name of its own.
+     */
+    onAddToMeal: (String, String) -> Unit = { _, _ -> },
+    onAddToMealAndScanNext: (String, String) -> Unit = { _, _ -> },
     onOpenMeal: () -> Unit = {},
     onConfirmLabelMatch: () -> Unit = {},
     onUseDetectedLabelValue: (BigDecimal) -> Unit = {},
     onEditDetectedLabelValue: (BigDecimal) -> Unit = {},
     onDismissLabelVerdict: () -> Unit = {},
     onSelectUsualPortion: (PortionUsage) -> Unit = {},
+    /** Open or close the *Save product* form. Only reachable on an unsaved quick calculation. */
+    onShowSaveQuickCalculation: (Boolean) -> Unit = {},
+    /** Persist the calculation on screen under this name (1.0.3 P1). */
+    onSaveQuickCalculation: (String) -> Unit = {},
 ) {
     var galleryOpen by remember(state.product?.barcode) { mutableStateOf(false) }
     val galleryImages = remember(state.product?.images) {
@@ -192,6 +209,18 @@ fun ProductScreen(
             product = state.product,
             onConfirm = onConfirmVerification,
             onDismiss = onDismissVerify,
+        )
+    }
+
+    // Saving a quick calculation asks for the one thing it genuinely needs, at the one moment it
+    // needs it (1.0.3 P1). A dialog rather than a screen, so the result stays visible behind it and
+    // cancelling returns to a calculation that never went anywhere.
+    if (state.showSaveQuickCalculationForm && state.product != null) {
+        SaveQuickCalculationDialog(
+            nameError = state.quickSaveNameError,
+            saving = state.savingQuickCalculation,
+            onSave = onSaveQuickCalculation,
+            onDismiss = { onShowSaveQuickCalculation(false) },
         )
     }
 
@@ -271,6 +300,7 @@ fun ProductScreen(
                     onAddToMealAndScanNext = onAddToMealAndScanNext,
                     onOpenMeal = onOpenMeal,
                     onSelectUsualPortion = onSelectUsualPortion,
+                    onShowSaveQuickCalculation = onShowSaveQuickCalculation,
                     onOpenGallery = { galleryOpen = true }.takeIf { galleryImages.isNotEmpty() },
                 )
             }
@@ -303,7 +333,11 @@ private fun ProductTopBar(
         }
 
         Text(
-            text = product?.name.orEmpty(),
+            // A scanned label states a carbohydrate figure, not a product name — so an unnamed
+            // product is the ordinary state of a quick calculation, not a missing field. The title
+            // says what the screen *is* rather than leaving a blank where a name would go, which
+            // reads as a record that failed to load.
+            text = product?.name?.ifEmpty { stringResource(R.string.quick_title) }.orEmpty(),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,
@@ -491,10 +525,12 @@ private fun CalculatorBody(
     onDismissNewerRemotePortionUnit: () -> Unit = {},
     onCorrectPortionUnit: (PortionConversion) -> Unit = {},
     onCancelPortionUnitCorrection: () -> Unit = {},
-    onAddToMeal: (String) -> Unit = {},
-    onAddToMealAndScanNext: (String) -> Unit = {},
+    onAddToMeal: (String, String) -> Unit = { _, _ -> },
+    onAddToMealAndScanNext: (String, String) -> Unit = { _, _ -> },
     onOpenMeal: () -> Unit = {},
     onSelectUsualPortion: (PortionUsage) -> Unit = {},
+    /** Opens the *Save product* form on an unsaved quick calculation (1.0.3 P1). */
+    onShowSaveQuickCalculation: (Boolean) -> Unit = {},
     /** Null when the product has no safe gallery image, which is what removes the hero's tap. */
     onOpenGallery: (() -> Unit)? = null,
 ) {
@@ -510,12 +546,24 @@ private fun CalculatorBody(
         // stable API giving the same fact. Non-zero means the keyboard is taking screen space.
         val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
-        ProductHeroImage(
-            product = product,
-            compact = imeVisible,
-            onClick = onOpenGallery,
-            modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
-        )
+        // A quick calculation has no photo and no name, so the hero would identify nothing: the
+        // monogram is derived from the name printed above it, and with no name it renders as an
+        // empty coloured plate under an empty title — which reads as a product record that failed to
+        // load rather than as the reading the user just took. A *saved* product with no photo still
+        // gets its monogram, unchanged.
+        //
+        // Suppressed rather than shrunk. The height it frees is taken up by centring the portion
+        // zone below — see the `verticalArrangement` there. Do not instead "fix" the resulting
+        // space by unpinning the result panel (`weight(1f, fill = false)` on that zone): that was
+        // tried and it leaves a strip of page beneath the panel, which is worse than the gap.
+        if (product.name.isNotEmpty()) {
+            ProductHeroImage(
+                product = product,
+                compact = imeVisible,
+                onClick = onOpenGallery,
+                modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
+            )
+        }
 
         // The per-100 figure and its provenance, directly under the image they describe.
         //
@@ -568,8 +616,44 @@ private fun CalculatorBody(
         Column(
             modifier = Modifier
                 .weight(1f)
+                // Fades the last few dp of content into the page when, and only when, there is more
+                // of it below (1.0.3 ease pass).
+                //
+                // **Before `verticalScroll`, and that ordering is the whole thing.** A draw modifier
+                // placed after it is applied to the scrolling *content*, whose height is the full
+                // scrollable extent — so the fade lands at the bottom of everything, far below the
+                // screen, and nothing appears at the visible edge. Placed here it decorates the
+                // viewport, which is the edge the user is actually looking at. Written the wrong way
+                // round first and caught by screenshotting the device, not by reading the code.
+                //
+                // This zone fits without scrolling at the default font scale and overflows from
+                // **1.3x** — an ordinary accessibility setting, not an extreme one. Measured there:
+                // *+ Add portion unit* came to rest sliced horizontally through the middle of its
+                // glyphs at the pinned panel's edge, and at 1.8x the whole quick-adjust row did.
+                // Legible, and cut — which is the exact "reads as a rendering fault rather than as
+                // more content below" failure the trailing spacer below already names. That spacer
+                // fixes the *scrolled-to-the-bottom* case; nothing was addressing the *unscrolled*
+                // one, which is what every large-font user sees first.
+                //
+                // A fade rather than moving anything: the panel stays welded to the bottom edge, no
+                // control changes size or position, and at the default scale — where nothing
+                // overflows — `canScrollForward` is false and this draws nothing at all.
+                .fadeOutWhenMoreBelow(portionScroll)
                 .verticalScroll(portionScroll)
                 .padding(horizontal = Space.screenEdge),
+            // A quick calculation has no hero, no *Usual* row, no portion units and no
+            // *Add portion unit* action, so its contents fill far less of this zone than a saved
+            // product's do — measured at 883 px of empty page between the last control and the
+            // result panel, which is the same "reads unfinished" band the 2026-08-16 Home work
+            // treated as a defect rather than tolerated.
+            //
+            // Centring the short content is the one fix available here that cannot make things
+            // worse: `weight(1f, fill = false)` on this zone removes the gap but unpins the panel
+            // from the bottom edge (tried, rejected, recorded), and a `weight` spacer *inside* a
+            // `verticalScroll` Column is meaningless because the scroll gives it an infinite height
+            // constraint. Arrangement is a property of the parent and does nothing once the content
+            // is taller than the zone, so a saved product's layout is untouched.
+            verticalArrangement = if (state.unsaved) Arrangement.Center else Arrangement.Top,
         ) {
             // Dropped while the keyboard is open, for the same reason `SourceBadge` drops its
             // advisory line: it is a prompt to start, and once the user is typing into a focused
@@ -638,6 +722,22 @@ private fun CalculatorBody(
                     value = state.portionText,
                     unit = product.portionUnit,
                     onValueChange = onPortionChanged,
+                    // Opens the keyboard on arrival for a quick calculation, and only then.
+                    //
+                    // That screen exists to answer one question and has exactly one input: the user
+                    // has just photographed a label, confirmed the figure, and the single remaining
+                    // act is typing how much they are eating. Making them tap a field that is the
+                    // only thing on the screen to tap is a step with no decision in it.
+                    //
+                    // Deliberately **not** applied to a saved product. There the field usually
+                    // arrives pre-filled with the remembered portion, and the *Usual* shortcuts and
+                    // pack buttons are alternatives to typing at all — opening the keyboard would
+                    // cover the very shortcuts that make a repeat visit fast, to offer an edit the
+                    // user may not want. `state.portionText.isEmpty()` guards the case where a quick
+                    // calculation is revisited with a portion already typed (a rotation, or coming
+                    // back from the meal), so focus is claimed once on arrival and never stolen back
+                    // mid-session.
+                    autoFocus = state.unsaved && state.portionText.isEmpty(),
                 )
 
                 Spacer(Modifier.height(Space.m))
@@ -663,6 +763,28 @@ private fun CalculatorBody(
                 )
             }
 
+            // Saving is optional and secondary, and its placement says so (1.0.3 P1).
+            //
+            // In the scrolling zone rather than in the pinned result panel, and that is deliberate
+            // rather than incidental: that panel is welded to the bottom edge, so everything it
+            // renders is height taken from the controls above it. Four separate defects in this
+            // area have come from growing it — the meal bar three times and the provenance line
+            // once, the last of which put the quick-adjust row physically underneath the panel so
+            // "+10" silently did nothing. A save affordance is exactly the kind of thing that
+            // "obviously belongs next to the result", and it does not.
+            //
+            // Hidden while the keyboard is open, for the same reason the provenance line is: the
+            // user is typing a portion to get a number, and an unrelated action competing for that
+            // moment is noise. It reappears the instant they stop.
+            if (state.unsaved && !imeVisible) {
+                Spacer(Modifier.height(Space.s))
+                SaveQuickCalculationAction(
+                    saving = state.savingQuickCalculation,
+                    failed = state.quickSaveFailed,
+                    onClick = { onShowSaveQuickCalculation(true) },
+                )
+            }
+
             // Enough trailing room that the last control can be scrolled clear of the pinned
             // result panel below. At 16 dp the final row came to rest half-underneath it — legible
             // enough to read but cut through mid-glyph, which looks like a rendering fault rather
@@ -682,13 +804,18 @@ private fun CalculatorBody(
             basisUnit = product.portionUnit,
         )
 
+        // The meal line's name, for a calculation that has none. Supplied here rather than in the
+        // ViewModel for the same reason the portion wording is: it lives in resources. A saved
+        // product ignores it — its own name always wins.
+        val mealFallbackName = stringResource(R.string.quick_title)
+
         ResultPanel(
             state = state,
             settings = settings,
             equationUnit = selectedUnit.takeIf { countableActive },
             imeVisible = imeVisible,
-            onAddToMeal = { onAddToMeal(portionDescription) },
-            onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription) },
+            onAddToMeal = { onAddToMeal(portionDescription, mealFallbackName) },
+            onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription, mealFallbackName) },
             onOpenMeal = onOpenMeal,
         )
     }
@@ -758,9 +885,25 @@ private fun ProductSummary(
 }
 
 @Composable
-private fun PortionField(value: String, unit: String, onValueChange: (String) -> Unit) {
+private fun PortionField(
+    value: String,
+    unit: String,
+    onValueChange: (String) -> Unit,
+    /** Claim focus and open the keyboard once, on arrival. See the call site for when and why. */
+    autoFocus: Boolean = false,
+) {
     val focusManager = LocalFocusManager.current
     val portionLabel = stringResource(R.string.product_portion_label, unit)
+    val focusRequester = remember { FocusRequester() }
+
+    // Requested once per screen, not once per recomposition: `Unit` as the key means a later
+    // recomposition — a keystroke, a result arriving, the meal bar appearing — cannot pull focus
+    // back to this field while the user is somewhere else. If `autoFocus` is false there is no
+    // effect at all, so a saved product's focus behaviour is byte-for-byte what it was.
+    if (autoFocus) {
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    }
+
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -799,6 +942,7 @@ private fun PortionField(value: String, unit: String, onValueChange: (String) ->
         shape = RoundedCornerShape(Space.buttonRadius),
         modifier = Modifier
             .fillMaxWidth()
+            .focusRequester(focusRequester)
             // A real label, not an empty one. This field has no visible `label`, so
             // `contentDescription = ""` left TalkBack announcing an unnamed edit box on the screen's
             // primary input — the question above it is a separate node and is not read with it.
@@ -926,6 +1070,43 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
         }
     }
 }
+
+/**
+ * Fades the bottom edge of a scrolling area while there is more content below it.
+ *
+ * The portion zone ends at the pinned result panel, so an element that happens to straddle that
+ * boundary is drawn cut in half — legible and severed, which reads as a rendering fault rather than
+ * as a hint to scroll. At the default font scale nothing overflows and this is inert; from 1.3x it
+ * is what tells the user there is more.
+ *
+ * `DstIn` with an alpha ramp, so the content's own pixels fade to transparent and whatever the
+ * screen's background happens to be shows through — the alternative, painting a solid-to-transparent
+ * gradient over the top, needs to know the background colour and would smear a wrong one across the
+ * content in the other theme.
+ *
+ * [FADE_HEIGHT] is deliberately shorter than a line of text: enough to make the cut read as a fade,
+ * not so much that a control resting at the boundary becomes unreadable.
+ */
+private fun Modifier.fadeOutWhenMoreBelow(scroll: ScrollState): Modifier = this
+    .graphicsLayer { alpha = 0.99f }
+    .drawWithContent {
+        drawContent()
+        if (!scroll.canScrollForward) return@drawWithContent
+        val fade = FADE_HEIGHT.toPx().coerceAtMost(size.height)
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color.Black, Color.Transparent),
+                startY = size.height - fade,
+                endY = size.height,
+            ),
+            topLeft = Offset(0f, size.height - fade),
+            size = Size(size.width, fade),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+
+/** How far the bottom of a scrolling zone fades out. Shorter than a line, so nothing is hidden. */
+private val FADE_HEIGHT = 20.dp
 
 /** Stable handle for the usual-portions row, used by instrumented tests. */
 const val USUAL_PORTION_ROW_TAG = "usual_portion_row"
