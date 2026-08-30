@@ -606,6 +606,197 @@ little; it changes whether the number means grams or a count.
 | 20.1 | Settings → About shows the ODbL/DbCL line for data **and** a separate CC BY-SA 3.0 line for photos | ☐ |
 | 20.2 | Neither line is clipped at the largest system font size | ☐ |
 
+## 21. OCR quick calculation (1.0.3, 2026-08-29) — PHYSICAL DEVICE ONLY
+
+The emulator's virtual camera cannot render a nutrition table, so the *automatic* accept path
+(a confident reading → **Confirm**) has never run on a real label. Everything below was verified on
+the emulator through the assisted-reading path, which shares the same callback — that establishes the
+destination, **not** the recognition. 21.1 is the one row that cannot be replaced by a test.
+
+| # | Check | Pass |
+|---|---|---|
+| 21.1 | Scan a real package's nutrition label from Home. A confident reading's **Confirm** lands on the calculator — **not** on *Enter product* | ☐ |
+| 21.2 | The screen is titled *Quick calculation*, shows the detected value **with its basis** ("48 g carbs / 100 g") and *Read from label by you*. No blank title, no empty image tile | ☐ |
+| 21.3 | Typing a portion produces a total immediately. No name was requested at any point | ☐ |
+| 21.4 | Leave the app (back to Home). **Recents shows no new entry** — the calculation persisted nothing | ☐ |
+| 21.5 | Repeat, then tap **Save product**. It asks for a name and nothing else; the result stays visible behind the dialog | ☐ |
+| 21.6 | Cancelling the save returns to the calculation with the portion and total unchanged | ☐ |
+| 21.7 | Saving keeps the number on screen, and Home then lists the product with its portion ("Name — 35 g → 16.8 g") | ☐ |
+| 21.8 | A millilitre label asks for a portion **in ml**, not grams | ☐ |
+| 21.9 | Scanning a label while a product is already open still opens the **comparison** (both figures side by side), not the quick calculator — this path is unchanged and must stay so | ☐ |
+| 21.10 | A reading the parser cannot place still offers *Correct* / manual entry, and never a basis guess | ☐ |
+| 21.11 | The keyboard is **already open** on arrival and the portion can be typed without tapping the field first | ☐ |
+| 21.12 | Opening a **saved** product from Recents does **not** open the keyboard — the remembered portion and the *Usual* shortcuts are visible and tappable | ☐ |
+| 21.13 | A quick calculation added to the meal appears as *Quick calculation*, never as a blank line | ☐ |
+| 21.14 | If a save fails (hard to force; skip if you cannot), the dialog closes and the failure is visible on the screen behind it | ☐ |
+| 21.15 | Set the phone's text size to **large** (Settings → Display → Font size, ~1.3× or more). On the calculator the last control above the result panel **fades out** rather than being cut through the middle of its letters, and scrolling reveals it | ☐ |
+| 21.16 | Scan a real nutrition table that reads well. **The crop screen does not appear** — capture goes straight to the value proposal | ☐ |
+| 21.17 | Scan a hard/cluttered label. The crop screen **does** appear and says *Couldn't read it automatically*, not *Tighten the box* | ☐ |
+| 21.18 | From that fallback, dragging the corners and tapping **Read table** still works exactly as before | ☐ |
+| 21.19 | **Retake** during the automatic attempt returns to the live camera; the next capture's crop screen does **not** claim a failed attempt | ☐ |
+| 21.20 | Back during the automatic attempt leaves the scanner cleanly, with no stale spinner and no Recent entry | ☐ |
+| 21.21 | Ten consecutive scans show no progressive slowdown and no leaked camera | ☐ |
+| 21.22 | Record for ~10 scans: time from **Capture** to a usable value, and whether the crop screen appeared. This is the P3 measurement that could not be taken without hardware | ☐ |
+
+## 22. Device-recording corrections (1.0.3, 2026-08-30) — PHYSICAL DEVICE ONLY
+
+The four cases from the 2026-08-30 screen recording, retested against the fixes. **Do not tick any
+row that was not actually observed on hardware** — every claim below is emulator/JVM-only today.
+
+### 22a. The red label — the P0 case
+
+Use the same red package that produced `790` / `794`.
+
+| # | Check | Pass |
+|---|---|---|
+| 22.1 | Scan it and reach the assisted path (tap the row, tap the number, or type it in) | ☐ |
+| 22.2 | If a figure like `790` or `794` is produced, **neither** *Use / 100 g* nor *Use / 100 ml* is offered for it | ☐ |
+| 22.3 | The screen says *"That can't be right — check the figure."* rather than showing a dead button | ☐ |
+| 22.4 | **No corrected number is offered anywhere** — `79.0`, `7.90` and `7.9` must not appear as an app suggestion. The app refuses; it never repositions the decimal point | ☐ |
+| 22.5 | Typing the printed `7.9` by hand is accepted normally and both actions appear | ☐ |
+| 22.6 | The resulting calculation is correct for the portion entered | ☐ |
+
+### 22b. Coconut milk — the P1 case, at two framings
+
+| # | Check | Pass |
+|---|---|---|
+| 22.7 | **Close framing** (table fills the frame): still fast-paths, skipping the crop screen | ☐ |
+| 22.8 | The value and `/100 ml` are both correct | ☐ |
+| 22.9 | **Wide framing** (lots of surrounding package): note whether it declines — expected, and the reason for 22.13 | ☐ |
+| 22.10 | If the value needs assistance, the app does **not** ask "per what?" — it says *Read from the label as per 100 ml* and offers that one action | ☐ |
+| 22.11 | The portion field then asks for **ml**, not grams | ☐ |
+| 22.12 | On a label printing **both** per 100 g and per 100 ml, the app still asks — this ambiguity must not be auto-resolved | ☐ |
+
+### 22c. Framing guidance — the P3 wording
+
+| # | Check | Pass |
+|---|---|---|
+| 22.13 | Held far from a label, the guidance reads *"Move closer — fill the frame with the nutrition table"* | ☐ |
+| 22.14 | It never blocks the shutter — **Capture** is always tappable | ☐ |
+| 22.15 | It does not appear when framing is genuinely fine (a false "move closer" is how advice gets ignored) | ☐ |
+
+### 22d. Reflective / curved label — the P2 case
+
+| # | Check | Pass |
+|---|---|---|
+| 22.16 | Automatic attempt declines and the crop screen says *"Couldn't read it automatically"* | ☐ |
+| 22.17 | Tap **Read table** *without moving any corner*: it goes to the assisted path **immediately**, with no second wait | ☐ |
+| 22.18 | It says *"Same box as before, so it would read the same."* — **not** the "your box kept nearly the whole photo" message, which would be a different and wrong claim | ☐ |
+| 22.19 | Now **do** move a corner meaningfully and tap **Read table**: recognition genuinely runs again (a visible *Reading table…* pause) | ☐ |
+| 22.20 | **Retake**, then capture again: the first *Read table* on the new photo runs a real pass — a new capture must never be treated as an unchanged crop | ☐ |
+
+### 22e. Regression sweep while the phone is in hand
+
+| # | Check | Pass |
+|---|---|---|
+| 22.21 | A clean table still fast-paths to a correct value at the same or better speed | ☐ |
+| 22.22 | Barcode scanning is unaffected | ☐ |
+| 22.23 | Quick calculation: no name asked, keyboard already open, no Recents entry on exit | ☐ |
+| 22.24 | Optional **Save product** still works and then appears in Recents | ☐ |
+| 22.25 | A quick calculation added to the meal reads *Quick calculation*, not a blank row | ☐ |
+| 22.26 | **Back** during processing leaves cleanly; no stuck spinner | ☐ |
+
+## 22f. How to run §22 — the execution appendix (2026-08-30)
+
+Everything in §22 is **PHYSICAL DEVICE ONLY** and none of it has been run. This appendix exists so
+the session that finally has a phone in hand does not have to re-derive the build, the log filter or
+the recording format. It adds no checks of its own; it is how to produce evidence for the ones above.
+
+### The build under test
+
+Do not build a fresh APK and assume it matches. Verify the artifact:
+
+```powershell
+$env:JAVA_HOME="C:\atools\jdk-21.0.12+8"; $env:ANDROID_HOME="C:\atools\sdk"
+.\gradlew.bat :app:assembleDebug
+(Get-FileHash app\build\outputs\apk\debug\app-debug.apk -Algorithm SHA256).Hash
+& 'C:\atools\sdk\build-tools\36.0.0\aapt2.exe' dump badging app\build\outputs\apk\debug\app-debug.apk |
+  Select-String '^package:'
+```
+
+Expect `versionCode='4' versionName='1.0.3-debug'` and package `app.justthecarbs.debug` — note the
+**`.debug` suffix**, which is what `adb shell am start` and `pm clear` must name.
+
+**The build must be a debug build**, and not for convenience: `OcrDiagnosticsLogger` is
+`BuildConfig.DEBUG`-gated and R8 strips it entirely from release, so a release APK produces **no
+timing evidence at all**. Latency measured on debug is also *pessimistic* — it includes the evidence
+writer a user never pays for. See `ScanTrace.markOffPath`: read `user-visible` from the summary
+line, not `scan`.
+
+### Confirm it is really hardware
+
+The single check that settles it:
+
+```powershell
+& 'C:\atools\sdk\platform-tools\adb.exe' shell getprop ro.kernel.qemu    # must be EMPTY, not 1
+& 'C:\atools\sdk\platform-tools\adb.exe' shell getprop ro.build.characteristics  # must NOT be 'emulator'
+& 'C:\atools\sdk\platform-tools\adb.exe' shell getprop ro.product.model
+```
+
+An emulator answers `1` / `emulator` / `sdk_gphone64_x86_64`. **No §22 row may be ticked from an
+emulator**, and the emulator's virtual camera cannot render a nutrition table at all, so the
+automatic accept path is unreachable there by construction.
+
+### Watching the scan
+
+Clear the log immediately before each scan so one capture's lines stand alone:
+
+```powershell
+$adb='C:\atools\sdk\platform-tools\adb.exe'
+& $adb logcat -c
+& $adb logcat -s JustTheCarbsOCR
+```
+
+The lines that answer §22, in the order one scan emits them:
+
+| Line | What it tells you |
+|---|---|
+| `ImageCapture requested=… selected=… viewportCrop=… rotation=…` | what CameraX **negotiated on this device** — the open §23 question; `selected` is the fact, `requested` only a hint |
+| `acquisition <n>ms (shutter to file)` | sensor readout + JPEG encode + write, invisible to `ScanTrace` |
+| `pass A (uncropped) recognised=WxH relevance=[…]` | recognition ran on the **whole** capture; the region is relevance, never a crop |
+| `scan <n>ms (user-visible <n>ms) \| stage · stage …` | the per-stage breakdown. **Stages marked `*` are off-path** (debug-only or post-handover) and are excluded from `user-visible` |
+| `selected table: <OUTCOME> elements=A->B reparse=<n>ms outcome=<Reading>` | the resolution. `elements=A->B` identical means the crop removed no interference |
+| `strategy-B <trace>` | the independent ML Kit pass ran (~400 ms). **Its absence is the point of D1** |
+| `fast-path declined (<Outcome>)` | the automatic attempt handed over to the crop screen |
+| `selected-table skipped (crop unchanged since last pass)` | **the D1 evidence** — no duplicate recognition |
+
+**A successful fast-path advance logs no line of its own.** It is identified by
+`selected table: … outcome=Confident` *without* a following `fast-path declined`. Do not hunt for an
+"advanced" message; there isn't one, and reading its absence as a failure would be a misdiagnosis.
+
+### The latency record
+
+Ten scans, and keep the two populations apart — a median mixing them describes nothing:
+
+| # | Label | Framing | Fast path? | Crop shown? | acquisition | mlkit | A | B | reparse | Capture→useful UI |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 |  |  |  |  |  |  |  |  |  |  |
+
+Report separately: **median and range for fast-path scans**, **median and range for fallback scans**,
+and the **advance/decline counts**. The expected trade is one screen and one tap saved on a good
+scan against ~400 ms added before a declining one; both halves must be stated, not just the win.
+
+**State explicitly whether any wrong value advanced automatically.** That is the one result that
+overrides every latency figure in this table — a silence there is not the same as a "none".
+
+### Physical UX observations to make while scanning
+
+Not new features — behaviours only a hand on a phone can check. Record what happened, not a tick.
+
+| # | Check | Pass |
+|---|---|---|
+| 22.27 | **Retake during automatic processing** leaves cleanly; the abandoned pass's result never appears | ☐ |
+| 22.28 | **Back during automatic processing** exits with no stuck spinner | ☐ |
+| 22.29 | The scan after a Retake shows **no stale failure wording** — it must not open saying the automatic attempt failed before one has run | ☐ |
+| 22.30 | Ten scans in a row do not get progressively slower (an ML Kit client or bitmap leak would show here) | ☐ |
+| 22.31 | Fast repeated taps on **Capture** / **Read table** cause no duplicate processing | ☐ |
+| 22.32 | The processing text matches the actual state — *Reading table…* only while a pass is genuinely running | ☐ |
+| 22.33 | The crop screen says **why** it appeared (*Couldn't read it automatically* after a declined attempt, not the generic tighten-the-box wording) | ☐ |
+| 22.34 | Quick calculation is readable in **both** Light and Dark | ☐ |
+| 22.35 | A **saved** product arrives with the keyboard **closed**; a **quick calculation** arrives with it **open** | ☐ |
+| 22.36 | At the largest system font, the portion zone fades/scrolls rather than clipping a control mid-glyph | ☐ |
+| 22.37 | The meal row for a quick calculation reads *Quick calculation*, never blank | ☐ |
+
 ## 15. Safety acceptance (§71) — all must be true
 
 | # | Check | Pass |

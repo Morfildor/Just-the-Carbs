@@ -1124,6 +1124,578 @@ the unstamped product fails `a fresh lookup returns the same product it cached`.
 instrumented suite was not re-run** — the only production change is a repository return value with
 JVM coverage and no UI surface, and the standing figure is the stabilization pass's 218/218.
 
+## Review + dead-code pass (2026-08-30, later same day) — 1.0.3 COMMITTED, READ FIRST
+
+Still `versionCode 4` / `1.0.3`, still open, nothing built as a release and nothing uploaded. Two
+defects found reviewing the uncommitted 1.0.3 tree, then a dead-code sweep. **Nothing about the
+calculation, schema, migrations, the §10 lookup priority, barcode detection or any OCR recognition
+rule changed**, and the nine-photograph corpus is unchanged.
+
+**The 1.0.3 work is now COMMITTED**, on branch `1.0.3-quick-calculation` (three commits off
+`8ce1817`). It had accumulated across five passes entirely in the working tree, which meant no
+restore point and no way to satisfy the "release builds come from a committed tree" rule. `main` is
+untouched.
+
+### Two defects, both in wiring that no test reaches
+
+Both are the pattern this file keeps recording: **the pure unit is pinned, the caller's state
+lifecycle is not.** `CropChange` has 9 JVM cases and is correct; the defect was in `LabelScannerScreen`,
+and there is **no instrumented test that drives that composable's state at all** — only the pipeline
+beneath it. That gap is why a review found these and a green suite did not.
+
+1. **A new capture could be dismissed as an unchanged crop of the previous one.** `captureLabel`
+   cleared `pendingCrop`, `cropSelection`, `readingTable` and `autoAttempted` — but **not**
+   `lastRecognisedRegion`, which only `resumeLive` cleared. `captureLabel` is reachable without
+   `resumeLive` from the ambiguous, not-found and searching cards (all render after `releaseCapture`
+   drops `pendingCrop`). Since both captures propose the same `ScanRegionMapper.expand(scanRegion)`
+   rectangle, the new photograph's first *Read table* compared equal to the old one's and was
+   skipped — telling the user a picture that had **never been read** would "read the same as before".
+   Fixed by clearing it in `captureLabel` too. Note the blast radius was limited because capture #2's
+   own automatic pass overwrites the stale value before any user crop; the defect surfaces when that
+   pass does not reach the assignment.
+2. **`crop_body_after_attempt` was byte-identical to `crop_body`**, so the conditional selecting
+   between them was dead and the P4 wording lived entirely in the title. Rewritten to say the thing
+   the generic copy cannot — that the box on screen *is* the one already tried.
+
+### The pre-recognition crop was dead for 13 days and still compiled
+
+The 2026-08-17 capture-first pass stopped cropping to the scan overlay before OCR (it cut the basis
+header off tall labels and cost **both canaries**), but left the machinery in place with
+`region = null` at every call site. Removed: the `region` parameter and crop branch from
+`StillImageLoader.loadWithRotation`, `StillImageLoader.load` (no production caller at all), and
+`ScanRegionMapper.toPixels` with `PixelRegion`.
+
+**`ScanRegionMapper.expand` is untouched and load-bearing** — it is the rectangle the fast path reads
+and the crop screen opens on. Do not confuse the two when reading that file. Both KDocs still argued
+*for* cropping before recognition, a position this codebase measured and reversed, and now record why.
+
+`ProductionStillPathBaselineTest` deleted: 2 tests, **zero assertions**, written to measure a baseline
+"before production code is touched" for a change that shipped, with a KDoc describing a path that no
+longer exists. Not part of the 37-test corpus.
+
+**21 unused strings deleted**, each verified with zero Kotlin references *independently of lint*.
+Four `crop_handle_*` labels among them looked like a pending a11y fix and were not: the handles are
+drawn on a **Canvas**, so there are no per-handle nodes to label and the selection already carries one
+`contentDescription`.
+
+**`ServingSizeParser.parse` has no production caller and was deliberately KEPT** (reason now in its
+KDoc). Deleting it deletes a *rule*, not an unused function: "a count with no printed weight is not a
+weight mapping" (`1 slice` → null) has no other home, `parseDescriptor` is *required* to accept that
+case, and countable-portions §5/§20 makes a false positive there the failure that matters. Do not
+"use" it by wiring it in, and do not delete it in the next sweep.
+
+### Verified
+
+JVM **1069/1069** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 87 JUnit XML files
+— down from 1075 by exactly the 6 `toPixels` cases removed, so nothing vanished silently). Lint
+**exit 0**, advisories **40 → 19**, unused resources **21 → 0**. OCR corpus **39/39** on the emulator
+(`RealImageOcrTest` 15, `ProductionStillPipelineTest` 8, `SelectedTableProductionTest` 6,
+`EvidencePipelineProductionTest` 10 — that class gained 2 cases this cycle), counted from
+`INSTRUMENTATION_STATUS_CODE`, 0 ignored. Those tests **assert** the canary values, so 39/39 is what
+clears the `StillImageLoader` change.
+
+**Not done:** no release or AAB build, so **the R8 barriers were not re-checked** — nothing removed
+was a barrier-relevant class, but that is an argument, not a measurement. No full instrumented sweep;
+the standing whole-suite figure is still the 259/259 that predates several passes. Nothing here has
+been seen on physical hardware.
+
+### A git trap worth not repeating
+
+A `git rm` staged early, before the commits were split, was swept into the **first** commit rather
+than the dead-code one. Attempting to correct that with `git rebase --onto` **dropped that commit
+entirely** and left a detached HEAD — recovered because the branch ref and a stash still held
+everything. The misplacement is cosmetic and was left alone with a note in the commit message.
+**Stage deletions with the commit they belong to, and do not rewrite history to fix a tidy-ness
+problem.**
+
+## Device-recording corrections (2026-08-30) — still 1.0.3 / versionCode 4, READ FIRST
+
+A physical-device screen recording of the 1.0.3 scanner. The direction held — the fast path skipped
+the crop screen on clean labels and reached `32.7 g/100 g` and `2.5 g/100 ml` in ~3–4 s — and it
+exposed four concrete problems. **No OCR rule was weakened**: no threshold moved, no confidence bar
+lowered, `EvidenceResolver` is untouched, no second engine or parser exists, and the nine-photograph
+corpus is unchanged. Still `versionCode 4`, nothing built as a release, nothing uploaded.
+
+### P0 — an impossible value was offered exactly like a real one
+
+A red label printing about `7,9 g` produced **`790`** and **`794`** through the assisted path, and
+both appeared behind the same two full-emphasis *Use / 100 g* / *Use / 100 ml* buttons an ordinary
+value gets.
+
+**Root cause, and note that no single stage was misbehaving.** `AssistedSelection.numericCandidates`
+is *deliberately* unfiltered — the user is choosing, and hiding a number because the app thinks it
+unlikely reintroduces the judgement that interaction exists to avoid. That is correct and unchanged.
+The defect was that **nothing between the tap and the accept action re-checked plausibility**, while
+`ManualEntryViewModel` validates only at the *destination* — i.e. after the user has already
+committed with a confident-looking tap. `NUMERIC_TOKEN` matches `\d{1,3}`, so `790` is a well-formed
+token all the way through.
+
+`CarbPlausibility` (domain) now gates the accept actions. It holds **no rule of its own** — it asks
+`NutritionValueValidator.validateCarbsPer100`, the same ceilings every remote value passes, and
+reports a boolean. The indirection exists because the *shape* of the question differs (offer an
+action, versus accept a stored value), and a caller forced to write
+`validate(x.toDouble(), b) != null` is one refactor from "simplifying" it into a local `> 100`
+check — which is how a second, drifting copy of a safety rule gets born. Pinned by a test asserting
+the two agree across the range.
+
+**Asked per basis, not once**, and that matters: `150` is impossible per 100 g and legitimate per
+100 ml (the per-ml ceiling is a density bound, not a mass bound), so a single verdict would either
+block a correct reading or admit an impossible one. `790` fails both, so **no accept action is
+rendered at all**.
+
+**Deliberately not a disabled button** — a control that does nothing and says nothing is the dead
+end the assisted screen exists to remove. It shows the number, says *"That can't be right — check
+the figure."*, and leaves the field editable. **And deliberately not a repair**: `790` never becomes
+`79.0` or `7.9`. The decimal point is what OCR is least reliable about, so repositioning it guesses
+at exactly the wrong thing, and unlike a refusal a wrong repair is invisible — the user sees a
+plausible number and has no reason to check it.
+
+### P1 — a basis the label stated was discarded, then asked for again
+
+A coconut-milk table printed `per 100 ml` clearly enough that `ColumnClassifier` resolved the column,
+but because the **value** needed assistance the app asked *"2.5 g carbs — per what?"* with `/100 g`
+beside `/100 ml`.
+
+**Root cause:** `EvidenceResolver.Outcome.Nothing` is a bare `data object` carrying no report, and
+the scanner builds `AssistState(document = …)` — raw elements, no parsed structure. So a fact
+established by a stage that *succeeded* (the column classifier) was thrown away because a *later*
+stage failed. Value confidence and basis confidence are separate facts produced by separate stages;
+flattening them is what produced the question.
+
+`StatedBasis.of(document)` recovers that one fact, from the document the screen already holds — no
+new pipeline state, no recognition, nothing invented. It reports a basis **only when unambiguous**:
+two per-100 columns disagreeing → null, no per-100 column → null, a serving column only → null
+(`NutritionBasis` has no member meaning "per serving", so mapping one onto a per-100 unit would
+attach a serving figure to a per-100 basis). Two columns stating the *same* basis is agreement, not
+conflict — multilingual packaging prints "per 100 g / pro 100 g" routinely. Every null is the
+pre-existing behaviour: the user is asked.
+
+**The two rules compose.** A preserved basis does not exempt a value from the plausibility barrier,
+so an impossible value under a known basis leaves no accept action at all — pinned by its own test.
+
+### P2 — confirming an unchanged crop repeated the identical recognition
+
+**This was structural, not a guess.** The capture handler computes
+`ScanRegionMapper.expand(scanRegion)`, assigns it to `cropSelection`, and *then* calls
+`readSelectedTable(proposed, automatic = true)`. So when the automatic attempt declines, the crop
+screen opens on **the same rectangle** — and *Read table* without moving a corner re-ran Strategy A
+over the same retained elements and Strategy B (measured ~400 ms) over the same pixels of the same
+bitmap. Recognition is deterministic over identical input, so the outcome was necessarily the
+refusal already given.
+
+`CropChange.isMaterial` compares the confirmed region against `lastRecognisedRegion` — keyed on the
+**region**, not on which button was pressed, because the question is a property of the input. A
+tolerance rather than equality, because a corner touched and returned does not produce the
+bit-identical double; `TOLERANCE = 0.002` is a couple of pixels, above float round-trip noise and
+far below any deliberate drag (both bounds pinned). A null previous region is **always** material,
+which is what keeps a fresh capture behaving exactly as before, and `resumeLive` clears it so a new
+capture can never be mistaken for an unchanged crop of the last one.
+
+**It is a shortcut through a known result, never a skipped check** — the rules already ran on that
+exact region and declined. A crop the user genuinely moved is always recognised.
+
+`AssistState.cropUnchanged` is a **separate flag from `ineffectiveSelection`**, not a reuse: that
+one says "your box kept nearly the whole photo", a claim about *size*, and an unchanged box may be
+perfectly tight. Telling a user to tighten an already-tight crop sends them to fix something that is
+not wrong.
+
+### P3 — the ROI is correct; the framing advice was incomplete
+
+Traced the whole chain before touching anything, and **found no mapping defect**. The region is
+measured from the overlay's own laid-out bounds (not recomputed from the constants that position
+it), the camera binds preview, analysis and capture through one `ViewPort`, and normalized fractions
+survive every resolution change. All correct.
+
+**What the measurement did show** (`ScanRegionMapperTest.the expanded scan guide spans the full
+frame width on a typical phone`): the guide is `fillMaxWidth().padding(Space.l).aspectRatio(0.8f)`,
+so on a 1080x2400 phone it lands at roughly `L0.061 T0.253 R0.939 B0.747` — already near full width,
+the only horizontal inset being one padding step. Expanding by `SAFETY_MARGIN = 0.12` then
+**saturates horizontally**: 12% of the guide's own width far exceeds that padding, so both sides
+clamp to the frame edge and the automatic pass reads the **entire width of the photograph**.
+Vertically there is room, so it does not clamp — the asymmetry is the point.
+
+That is the measured explanation for the recording's pattern (wide framing declines, close framing
+succeeds), and it is the margin behaving exactly as documented on a guide that is already nearly
+full-width — **not a bug**. Per the brief, geometry left alone. **Do not "fix" the margin without
+re-running the corpus**: the same class of change has been measured and rejected before.
+
+Guidance improved instead, minimally: `ocr_move_closer` became *"Move closer — fill the frame with
+the nutrition table"*. Surrounding text cannot be excluded by aiming, only by getting closer, and
+the old wording left the user adjusting something that could not help. It reuses the existing
+calibrated `TextResolutionGuidance` signal — no new signal, no threshold change, and the shutter is
+still never gated.
+
+### Verified
+
+JVM **1075/1075** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — up
+from 1043; +12 `CarbPlausibilityTest`, +10 `StatedBasisTest`, +9 `CropChangeTest`, +1
+`ScanRegionMapperTest`). `AssistedReadingScreenTest` **24/24** on device (up from 10).
+
+*(Per-class counts corrected 2026-08-30 from the JUnit XML: an earlier revision said 13 and 8. The
+total was right; only the split between those two classes was wrong.)*
+
+**Three negative controls, each restored and re-verified green:** replacing `CropChange`'s tolerance
+with exact equality fails 2; `StatedBasis` picking the first basis instead of requiring exactly one
+fails the both-bases refusal; removing the plausibility filter fails exactly the 5 P0 cases and
+nothing else.
+
+**A fixture trap worth remembering.** The `StatedBasis` tests carry an explicit precondition
+asserting the **real** `ColumnClassifier` resolves each fixture. Without it a fixture whose header
+the classifier never recognises would make every positive case pass for the wrong reason — the same
+trap as the Dutch header fixture and the soft-keyboard geometry test. Header phrases are laid
+**centred over the column they head**, not left-to-right from the label margin.
+
+**Not verified on physical hardware.** Everything above is emulator and JVM. The four device cases
+that motivated it — the red label, the coconut milk at two framings, a reflective/curved label, and
+a clean table — are the open gates.
+
+### Device-validation attempt (2026-08-30, later same day) — NO HARDWARE WAS AVAILABLE
+
+A pass was started to run the §22 gate on a phone. **It could not be run**, and the reason is
+recorded so the next session does not repeat the setup work or, worse, quote emulator behaviour as
+device evidence.
+
+The only attached target was `emulator-5554`, confirmed synthetic on four independent properties:
+`ro.kernel.qemu=1`, `ro.boot.qemu=1`, `ro.hardware=ranchu`, `ro.build.characteristics=emulator`.
+**No §22 row was ticked and no OCR change was made** — the brief's own instruction for this case,
+and the right one: the emulator's virtual camera cannot render a nutrition table, so the automatic
+accept path is *unreachable* there. An emulator run would not have been weak evidence; it would have
+been evidence about a different thing.
+
+What the pass did instead, all of it re-measured rather than taken from the section above:
+
+- **JVM 1075/1075** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 87 JUnit XML
+  files). Lint **exit 0, 0 errors, 40 warnings**. Debug APK builds.
+- **The artifact to test is pinned**: `app/build/outputs/apk/debug/app-debug.apk`, 89,438,285 bytes,
+  SHA-256 `35F4387F17AEDB2D0B8E78C20BE1E2AA9685521E22EEA8C6BE052B7851322EBB`. `versionCode=4` /
+  `versionName=1.0.3-debug` were read **from the APK** with `aapt2 dump badging`, not from Gradle
+  config — the same discipline the release path uses for the signer DN. Permissions unchanged:
+  CAMERA, INTERNET, ACCESS_NETWORK_STATE (plus AGP's debug-only receiver permission).
+- **`CarbPlausibility` re-checked against the brief's consistency requirement**: it holds no rule of
+  its own, delegates to `NutritionValueValidator.validateCarbsPer100`, exposes no `correct()` or
+  `clamp()`, and `the barrier agrees with the remote value validator across the range` still pins
+  the agreement. **No drift into a second definition.**
+- **`docs/manual-qa.md` §22f** added — the execution appendix: how to prove the device is real, the
+  exact `JustTheCarbsOCR` log lines a scan emits and what each one answers, the ten-scan latency
+  table, and 11 physical UX rows (22.27–22.37). Purely additive, 191 lines, no existing row touched.
+
+**One log-reading trap, found by reading the call sites and worth knowing before the phone session.**
+A *declined* fast path logs `fast-path declined (<Outcome>)`; a **successful** one logs **nothing of
+its own**. Success is `selected table: … outcome=Confident` with no decline line following. Do not
+hunt for an "advanced" message and read its absence as a failure.
+
+Also: measure latency on the **debug** build (release strips `OcrDiagnosticsLogger` entirely, so it
+yields no timing at all), and read **`user-visible`** from the trace summary rather than `scan` —
+the debug build carries the evidence writer a user never pays for, and stages marked `*` are
+off-path.
+
+## OCR quick calculation (2026-08-29) — opens 1.0.3 / versionCode 4, NOT UPLOADED
+
+A scanned nutrition label now reaches a carbohydrate total without creating a product. Nothing about
+the calculation, the schema, migrations, the §10 lookup priority, barcode detection, any OCR
+recognition rule, the search stack or the 30 s refresh window changed. **Built and driven on the
+emulator; no release artifact was made and nothing was uploaded.**
+
+### The feature was already written and had never been wired up
+
+`ProductViewModel.startQuickCalculation` existed with **zero call sites and zero tests**, and the
+§28 strings `quick_title`/`quick_subtitle` were likewise unreferenced. Every downstream guard was
+already in place too — `rememberUsage`, `toggleFavorite` and `addPortionUnit` all return early on an
+empty barcode, `addCurrentToMeal` passes a null barcode when unsaved, and `ProductScreen` already
+hid the favourite, the overflow menu and *Add portion unit* on an empty barcode. So this pass wired
+an existing path rather than building one; the diff is a route, a save action and tests.
+
+**The coupling was one parameter.** `startQuickCalculation(name, …)` required a name, so the OCR
+result had nowhere to go but `ManualEntryScreen`, whose `canSave` requires a non-blank name and
+whose `save()` writes a Room row before `LaunchedEffect(savedBarcode)` will navigate. Reading one
+number off one photograph therefore cost a named, saved record. The name parameter is gone and
+`saveQuickCalculation(name)` asks for it at the only moment it is needed.
+
+### What the route is, and why it is not `product/{barcode}`
+
+`Routes.QUICK = "quick?carbs={carbs}&basis={basis}"` reaching the **same** `ProductScreen` and the
+**same** `ProductViewModel`. Separate from `PRODUCT` because the two differ in what they do on
+arrival: that one begins with a database and possibly a network lookup, this one begins with
+nothing. Folding them together would mean teaching the lookup path to recognise a sentinel barcode
+and skip itself, which is how a sentinel ends up written to disk.
+
+Both arguments are **required** — a figure whose basis was lost in transit is the "grams of what?"
+question the app must never answer for the user, so the route falls back to manual entry rather
+than defaulting the basis.
+
+### Two presentation defects a nameless product creates
+
+Both were invisible to the tests and only showed up on the device:
+
+1. **An empty title over an empty monogram plate** reads as a product record that failed to load.
+   The hero is suppressed when `name.isEmpty()` and the title falls back to *Quick calculation*. A
+   saved product with no photo still gets its monogram, unchanged.
+2. **883 px of dead page** between the last control and the pinned result panel — the quick screen
+   has no hero, no *Usual* row, no portion units and no *Add portion unit*, so it fills far less of
+   the `weight(1f)` zone. Fixed with `verticalArrangement = Center` **only** when `unsaved`.
+   Note two non-fixes: `weight(1f, fill = false)` on the zone removes the gap but unpins the result
+   panel (already tried and rejected in 2026-08-16), and a `weight` spacer *inside* the
+   `verticalScroll` Column is meaningless — the scroll gives it an infinite height constraint. I
+   wrote the second one before catching it.
+
+### Provenance is carried, and the two facts stay separate
+
+A quick calculation is `OCR` / **`UNVERIFIED`** — the user confirmed a number the *parser* proposed,
+which is not the same as transcribing the package. Saving preserves the origin rather than
+flattening it to `MANUAL`, and `saveUserAuthoredProduct` then stamps `USER_VERIFIED`. That is a
+stronger claim than the unsaved state makes, deliberately: keeping a product for future meals is an
+act of vouching in a way that confirming a proposal to get one number is not. It is the repository's
+existing rule for user-authored products, not a decision made here — if revisited, it must move for
+manual entry and this path together.
+
+### Three test-fixture traps caught while writing the tests
+
+1. **A write count is not a row count.** Saving legitimately touches the row twice — once to create
+   it, once for `recordUse` to stamp `lastUsedAt`, which is what puts it in Recents at all. The
+   assertion counts **distinct barcodes**, which is what a duplicate would actually look like.
+2. **A `ForbiddenRemote` that throws on any fetch cannot be used for the barcode control test** — a
+   normal load correctly fetches *and* refreshes. Asserting otherwise would pin the opposite of the
+   intended behaviour.
+3. **Two controls labelled "Save product"** (the screen action and the dialog's confirm button) are
+   unresolvable for a test and ambiguous for a person or a screen reader. The dialog's button is
+   now *Save*.
+
+**Negative control:** removing the `unsaved || barcode.isEmpty()` guard in `rememberUsage` fails
+**11 of 17** cases in `QuickCalculationTest`, so the persistence assertions are not vacuous.
+
+### Automatic fast path: the crop confirmation is now conditional (2026-08-30, P3/P4)
+
+`Capture → crop confirmation → Read table → result` became `Capture → result`, with the crop screen
+retained in full as the fallback. **No recognition rule, threshold, parser stage or resolver rule
+changed**, and the OCR corpus is unchanged at 37/37.
+
+**Why this was cheap and safe, which is not obvious.** The capture handler *already* computed the
+rectangle by itself — `ScanRegionMapper.expand(scanRegion)`, the scan guide the user aimed with — and
+the crop screen's job was to have that same rectangle approved. So the fast path is the user's own
+*Read table* tap on the app's own rectangle, made automatically. It costs nothing extra: Strategy A
+is a re-parse of elements already in memory, and `SelectedTableResolution` already skips Strategy B
+when A is corroborated. **Do not read this as a new automatic table-detector** — that was built,
+measured against the corpus, and rejected (it damaged two of four canaries); the rectangle here is
+still not a guess about where the table is.
+
+**The gate is `AutomaticScanAdvance.mayAdvance`, and it is deliberately stricter than `Resolved`.**
+`EvidenceResolver.Outcome.Resolved` can legitimately carry an **`Ambiguous`** reading — when no pass
+is confident the resolver keeps the richest ambiguous report rather than flattening it to
+`NotFound`. Gating on the outcome type alone would therefore send a multi-candidate reading past the
+crop step. Not unsafe (the scanner shows `AmbiguousCard` and never auto-accepts), but the parser
+could not decide, and a frame containing more than the table is the usual reason — which is exactly
+what the rectangle fixes. **Advancing requires `Resolved` AND `Confident`.** Everything else —
+ambiguous, needs-verification, conflicted, nothing — falls back. `AutomaticScanAdvanceTest` (7 JVM
+cases) drives the **real** resolver rather than hand-built outcomes, so the gate cannot drift from
+the classification it depends on, and each case asserts its precondition.
+
+The mechanism is a **veto, not an acceptance**: `readSelectedTable(region, automatic = true)` runs
+the identical resolution and then declines to present anything `mayAdvance` rejects. A confirmed
+crop still reaches the same four branches with the same rules.
+
+**P4 wording.** The crop screen took an `afterAutomaticAttempt` flag: reached as a fallback it reads
+*Couldn't read it automatically* rather than *Tighten the box around the table*, which otherwise
+appeared identical whether it was the first step after a capture or a hand-off from an attempt the
+user had just waited through. Its title also shows *Reading table…* while a pass is running — the
+ordering in that `when` is load-bearing, because instructing someone to drag corners while the app is
+already reading asks for work about to be thrown away. `autoAttempted` is reset in `resumeLive`,
+without which a Retake would open claiming a failure that had not happened yet.
+
+**Measured on the real nine-photograph corpus**, which is the only place the *advance* half can be
+observed without a phone in hand (`EvidencePipelineProductionTest.theFastPathAdvancesOnlyOn‑
+ConfidentlyResolvedFixtures`, which runs the production resolution at the shipped starting rectangle
+and then asks the gate the same question the scanner asks):
+
+```
+sondey        Resolved  61.9   advance=true      witte kaas   Nothing     advance=false
+kinder        Resolved  53.5   advance=true      grated chz   Conflicted  advance=false
+yoghurt       Resolved  5      advance=true      jar          Nothing     advance=false
+stokbrood     Resolved  46     advance=true      lid          Nothing     advance=false
+                                                 4 of 8 skip the crop step
+```
+
+**All four canaries advance, every one carrying the correct printed value, and nothing wrong
+advances.** Grated cheese — the corpus's live hazard, where three recognitions of one photograph give
+three different numbers — correctly refuses and is pinned by its own named test, because letting that
+one through would put a known-wrong value in front of the user with one tap *fewer* than before.
+
+The test prints its table and asserts the **safety** property per fixture (advancing implies
+`Confident` **and** a non-null basis) rather than a pass rate: how many of eight labels advance is a
+property of eight particular photographs and would make it a brittle scoreboard.
+
+**Emulator walkthrough of the decline half:** capture logged `fast-path declined (Nothing)` and
+landed on the crop screen with the new wording; *Read table* from there still reached the assisted
+path; the full chain still ended in Quick calculation at `48 g carbs / 100 g` with the keyboard open
+and `35` typed without a tap.
+
+**The measured cost of declining is ~400 ms**, and it is worth stating plainly rather than hiding:
+on a scan that will end up at the crop screen anyway, the user now waits for Strategy B's ML Kit pass
+(measured `strategy-B 403ms | mlkit 398 · crop 3` on the emulator) before that screen appears.
+Strategy B is skipped only when *independent* runs already agree, which needs live evidence to have
+corroborated Pass A, so on the common path it runs. The trade is one screen plus one tap saved on a
+good scan against ~0.4 s added to a bad one. **Unmeasured on physical hardware**, where both figures
+will differ.
+
+**A disposal race, checked and already contained — do not "fix" it.** The automatic attempt now runs
+on *every* capture rather than only on a tap, so `onDispose` recycling the bitmap mid-pass is far
+more reachable than before. It is harmless: Strategy A never touches the bitmap at all (it re-parses
+retained elements), and `SelectedRegionRecognizer` wraps its whole body in `catch (Exception)` and
+returns null, which degrades Strategy B to "no second opinion" — its documented contract. The
+`isRecycled` check at its head is a check-then-use race, and the catch is what actually makes it
+safe.
+
+### Ease pass: the quick screen now opens the keyboard, and only that screen
+
+**Measured on the device before changing anything**: landing on the calculator gave
+`dumpsys input_method → mInputShown=false`, so a user who had just scanned a label, cropped it and
+confirmed the figure still had to tap the one field on a screen that exists to take one number.
+There was **no `FocusRequester` anywhere in `ui/`** — verified by search, not assumed.
+
+`PortionField` gained an `autoFocus` parameter, passed as `state.unsaved && state.portionText
+.isEmpty()`. Both halves are load-bearing:
+
+- **`unsaved`** — a saved product must NOT grab the keyboard. It arrives pre-filled with the
+  remembered portion, and its *Usual* shortcuts and pack buttons are alternatives to typing at all,
+  so opening the IME would cover the very controls that make a repeat visit fast in order to offer
+  an edit the user may not want. Confirmed still `mInputShown=false` on device after the change.
+- **`portionText.isEmpty()`** — so returning to a quick calculation that already has a portion (a
+  rotation, coming back from the meal) does not re-claim focus.
+
+The request is keyed on `Unit`, not on the value, so it fires once for the life of the screen; keyed
+on anything recomposition-sensitive it would drag focus back on every keystroke, which is worse than
+the tap it saves because it fights the user. Pinned by three instrumented cases including
+`focusIsNotStolenBackAfterTyping`.
+
+**Verified end to end on the emulator through the real flow** (Home → *Scan nutrition label* →
+capture → crop → *Read table* → *Type it in* → `48` → *Use / 100 g*): `mInputShown=true` on arrival,
+then `input text "35"` **with no tap** produced `16.8 g / ≈ 17 g whole grams`. Negative control:
+`autoFocus = false` fails exactly `thePortionFieldIsReadyToTypeIntoOnArrival` and nothing else.
+
+### The portion zone was cut mid-glyph from 1.3× text, and the fix has one load-bearing detail
+
+**Measured, on the device, at four font scales.** The portion zone fits without scrolling at 1.0×
+(no scrollable node in the hierarchy at all) and overflows from **1.3×** — an ordinary accessibility
+setting, not an extreme. At 1.3× *+ Add portion unit* occupied `[85,1561][489,1608]` against a zone
+ending at exactly `1608`: rendered, readable, and severed through the middle of its letters. At 1.8×
+the whole quick-adjust row went the same way. Screenshots, not inference — the semantics dump alone
+was misleading here (see below).
+
+`Modifier.fadeOutWhenMoreBelow(scroll)` fades the bottom ~20 dp of the viewport, gated on
+`scroll.canScrollForward`, so at the default scale it draws **nothing**. `DstIn` against an alpha
+ramp rather than a solid-to-transparent gradient painted over the top: the latter needs to know the
+background colour and would smear the wrong one in one of the two themes.
+
+**The ordering is the whole thing, and I got it wrong first.** A draw modifier placed *after*
+`verticalScroll` decorates the scrolling **content**, whose height is the full scrollable extent —
+so the fade landed far below the screen and nothing appeared at the visible edge. It must come
+**before** `verticalScroll`, where it decorates the viewport. The first build compiled, ran, and
+changed nothing visible; only a device screenshot showed it, which is the same lesson as the
+keyboard-geometry and Dutch-header fixtures.
+
+**Two things the semantics dump said that were false.** At 1.8× the ± row reported `h=40` and
+*+ Add portion unit* was absent from the dump entirely — both read as "the controls have collapsed
+and one is gone". Neither was true: the **clickable** targets stayed 126×126 px (48 dp) throughout,
+and the missing action was simply below the fold, appearing after one swipe. This is the third
+instance in this file of a below-the-fold node being misread as a layout defect. Check
+`clickable="true"` bounds and scroll before concluding anything.
+
+**Checked and left alone:** the meal screen has the same pinned-panel shape but does not overflow
+(4 items at 1.3× leave the total panel clear at y=1747, no scrollable node), so no fade was added
+there. The monogram plate is already `MONOGRAM_HEIGHT` (84 dp) and is not the 150 dp slab an earlier
+pass removed. Every touch target on Home and the calculator measures ≥48 dp at 1.0× and 1.8×, and
+every clickable node carries a labelled child for TalkBack.
+
+### A third defect: the meal line was blank
+
+`addCurrentToMeal` passed `displayName = product.name`, and a quick calculation's name is empty **by
+design** — so an item added to the meal rendered as an empty row in the one list whose entire job is
+saying what is on the plate, and `meal_remove_item` announced "Remove" with nothing after it.
+
+**The existing test asserted the barcode and both write-stores and never the name**, which is exactly
+how it got through: the fixture proved the item was *unattached to a product* and said nothing about
+whether it was *legible*. The fallback is supplied by the screen (`R.string.quick_title`), not the
+ViewModel, following the rule already established for `portionDescription` — the ViewModel supplies
+the numbers, the screen supplies the wording, because wording lives in resources. `addCurrentToMeal`
+therefore takes a second `fallbackName` parameter that a named product ignores. Negative control:
+restoring `product.name` fails with `expected:<[Quick calculation]> but was:<[]>`.
+
+### Two defects the review found, both on the save-failure path
+
+Neither was reachable in any test in the pass above, and the reason is the transferable part: **every
+fake in that fixture is an in-memory map that cannot fail**, so the whole `onFailure` branch was
+unexecuted code that happened to compile. A `FailingLocal` that throws on demand is what made the
+path measurable, and both defects appeared immediately.
+
+1. **A failed save left the naming dialog open**, and `quickSaveFailed` renders on the *Save
+   product* action — which is on the screen **behind** that dialog. So the only account of what had
+   gone wrong was under the scrim: the user tapped *Save*, the dialog did not move, and nothing said
+   the product had not been kept. Indistinguishable from a missed tap. `onFailure` now closes the
+   form as part of reporting, which is what makes the message visible.
+2. **`quickSaveFailed` was never cleared on reopen**, so a message about a failed attempt stayed on
+   screen through the next one — including through a *successful* save, right up until the screen
+   changed. `showSaveQuickCalculation` clears it alongside the name error.
+
+Both are pinned, and the pair is **verified non-vacuous by negative control**: reverting the two
+one-line state changes fails exactly the two new cases and nothing else.
+
+Also checked and **not** defects, so do not re-investigate: a configuration change re-runs
+`LaunchedEffect(carbsArg, basisArg)` against the surviving ViewModel, but `startQuickCalculation`
+does not touch `portionText` and `recalculate()` re-derives from it, so the typed portion survives
+(measured). The blank-name guard in `saveQuickCalculation` is unreachable from the dialog, whose
+confirm button is disabled while the field is blank — it is kept deliberately as the layer that owns
+the rule, and pinned, because a guard that depends on a button staying disabled is one refactor from
+not existing.
+
+### Verified on the emulator, end to end
+
+Driven by hand through Home → *Scan nutrition label* → capture → crop → *Read table* → assisted
+*Type it in* → `48` → *Use / 100 g*: the screen shows **Quick calculation**, `48 g carbs / 100 g`,
+*Read from label by you*, and typing `35` gives **16.8 g / ≈ 17 g whole grams** — the exact figures
+the JVM tests assert. **Home showed no Recents entry afterwards**, which is the no-persistence claim
+measured rather than argued. Tapping *Save product* → naming it *Hagelslag* → the screen keeps 16.8 g
+and the 35 portion, gains *+ Add portion unit*, drops *Save product*, and Home then lists
+"Hagelslag — 35 g → 16.8 g".
+
+### Verified
+
+JVM **1036/1036** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — up
+from 1015; +21 in `QuickCalculationTest`). Instrumented **259/259** in one complete run, 0 failures,
+0 ignored, 0 assumption failures, 16m19s, counted from instrumentation status codes — and there is
+no `@Ignore` or `assumeTrue` anywhere in `androidTest`, so the zero cannot be a silent skip. The
+nine-photograph OCR corpus is **37/37** (`RealImageOcrTest` 15, `ProductionStillPipelineTest` 8,
+`SelectedTableProductionTest` 6, `EvidencePipelineProductionTest` 8) and the Room migrations
+**10/10**. Lint exit 0, **40** advisories (one *fewer* than the 41 baseline — `quick_title` is now
+referenced; `quick_subtitle` remains unused and is pre-existing).
+
+**The 259/259 whole-suite figure was taken BEFORE the review fixes and the ease pass, and has not
+been repeated.** The JVM figure above *is* current (1036). What has been re-run on the emulator
+afterwards is the changed surface: **`QuickCalculationScreenTest` 14/14, `ProductScreenTest` 32/32,
+`MealScreenTest` 19/19, `CountablePortionScreenTest` 12/12, `LabelVerificationScreenTest` 8/8 — 85
+tests, all green**. Those are the classes that matter here: the meal-line fix changes
+`onAddToMeal`/`onAddToMealAndScanNext` from `(String) -> Unit` to `(String, String) -> Unit`, a
+signature every meal test drives through (`MealScreenTest`'s two call sites became
+`{ description, _ -> }`), and the ease pass touches `PortionField`, which every one of those screens
+renders. The remaining ~174 instrumented tests — OCR corpus, Room, search, settings, theme — touch
+none of the changed files, but that is an argument, not a measurement: **do not quote 259/259 as
+evidence for the current code.**
+
+Minified release **builds** (66.8 MB APK) and its R8 barriers were re-checked on that build:
+`ScanEvidenceRecorder` and `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`,
+`OcrDiagnosticsReport` and `ScanTrace` absent entirely; `UnitMarkerFilter`, `CandidateProvenance`,
+`CarbCandidate` and `PackageBasisResolver` retained as real classes. Release manifest: CAMERA,
+INTERNET, ACCESS_NETWORK_STATE — unchanged — and **zero** providers, so no `FileProvider`.
+
+**That release APK was a minification check from an uncommitted tree. It is not a release candidate,
+it is not signed for upload, and no AAB was built.** Building one is a deliberate instructed act
+(`docs/play-release-readiness.md` §2c/§2d), and 1.0.3 goes into `docs/version-history.md` only once
+Play accepts it.
+
+**Not verified on physical hardware.** Everything above is emulator and JVM. In particular the
+emulator's virtual camera cannot produce a real nutrition table, so the *automatic* OCR accept path
+(`ConfidentCard` → *Confirm*) was exercised only through its assisted-reading sibling, which shares
+the same `onUseValue` callback. A real Dutch or English package scanned end to end into the quick
+calculator is the open gate.
+
 ## Live debounced search (2026-08-28) — opens 1.0.2 / versionCode 3
 
 Search runs as you type. Nothing about the calculation, the schema, migrations, the §10 lookup
@@ -1552,17 +2124,28 @@ disagrees, this one is right — and fix the older passage rather than working a
 | What is the latest release? | `1.0.2` / **`versionCode 3`**, uploaded and **accepted by Play 2026-08-29**, built from `29a4f3d` |
 | Which track? | **Closed testing.** `versionCode 1` (internal → closed) and `2` preceded it |
 | Closed-testing period | **Running.** 12+ testers opted in |
-| What is in development? | **Nothing.** `versionCode 3` is spent. The next code change opens `1.0.3` / **`versionCode 4`** and bumps `branding.gradle.kts` in the same change |
+| What is in development? | **`1.0.3` / `versionCode 4`** — OPEN since 2026-08-29, bumped in `branding.gradle.kts`. **Never built as a release, never uploaded, on no track.** Committed 2026-08-30 on branch `1.0.3-quick-calculation` (3 commits off `8ce1817`); `main` is untouched. See the OCR quick-calculation section above |
 | Is 1.0.2 released? | **Yes.** Uploaded 2026-08-29, in `docs/version-history.md` with its hash, size and signer |
-| What do I develop against? | **`versionCode 4`** — bump it when the first code change lands. Do not develop against 3 |
+| What do I develop against? | **`versionCode 4`**, already open. See the note below before bumping again |
 | Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
 
-**VERSIONING RULE CHANGED 2026-08-28 (owner): a new version number per code change.** The old
-policy — accumulate safe fixes into one open version until the owner decides to push — produced
-1.0.0 and 1.0.1 and **no longer applies**. From now on the first code change after a release bumps
-`brandVersionCode`/`brandVersionName` in `branding.gradle.kts` and opens a new `CHANGELOG.md`
-section. Documentation-only changes open nothing: a version number identifies an artifact, and prose
-that changes no code produces none. Full rule at the top of `CHANGELOG.md`.
+**THE VERSIONING RULE, resolved by the owner 2026-08-30. This wording is authoritative.**
+
+> The **first** development change after an uploaded release opens the next `versionCode`. Multiple
+> coherent changes may accumulate under that development version until it is uploaded. Once
+> uploaded, that version is **frozen**.
+
+So a version number identifies an *artifact*, not a commit. `1.0.3` / `versionCode 4` was opened on
+2026-08-29 by the OCR quick-calculation work and **stays open**: every further change in this cycle
+lands under it until it is built and Play accepts it. This is what 1.0.0, 1.0.1 and 1.0.2 actually
+did — 1.0.2 accumulated five separate passes (live search, the Search-a-licious migration, search
+hardening, search accuracy, the theme fixes) under one number.
+
+An earlier revision of this file said "every code change gets its own version number" and flagged
+the contradiction with its own next sentence as an open question. **That phrasing is withdrawn**; do
+not reintroduce it, and do not bump to `versionCode 5` until `4` has been uploaded.
+
+Documentation-only changes open nothing: prose that changes no code produces no artifact.
 
 **`versionCode 1`, `2` and `3` are all spent.** None is to be rebuilt or re-uploaded — Play refuses a
 duplicate code, and all are on an active track. The next number is **4**.
@@ -1613,8 +2196,11 @@ Play-delivered build): **live search works**, **Light and Dark themes both rende
 reported status-bar and dark-mode-contrast defects are gone — and **barcode scanning is
 regression-free**. Do not re-list those as unverified.
 
-**Next technical action:** nothing blocking. Three small hardware checks remain outstanding and are
-worth folding into the next tester session rather than doing on their own: the two theme *override*
+**Next technical action:** scan a real package into the new quick calculator on physical hardware.
+That is now the largest open item, because the emulator's virtual camera cannot produce a nutrition
+table, so the *automatic* accept path was exercised only through its assisted-reading sibling — see
+the OCR quick-calculation section above for exactly what that does and does not establish. Fold in
+the three checks already outstanding from 1.0.2 while the phone is in hand: the two theme *override*
 combinations (app forced Light on a dark phone, app forced Dark on a light phone), an OCR label
 scan, and a calculation from a search result. The overrides are the only part of the theme work
 still argued rather than observed — they exercise the system-bars-follow-the-app half, which

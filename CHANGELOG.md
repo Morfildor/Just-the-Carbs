@@ -7,14 +7,20 @@ artifact's hash, size and signer.
 
 **Latest release: `1.0.2` / `versionCode 3`**, on closed testing since 2026-08-29.
 
-## Versioning rule — a new version number per code change (owner, 2026-08-28)
+## Versioning rule — one version per uploaded artifact (owner, resolved 2026-08-30)
 
-**Every code change from now on gets its own version number.** This replaces the earlier
-accumulate-into-one-open-version policy that 1.0.0 and 1.0.1 were produced under.
+**The first development change after an uploaded release opens the next `versionCode`. Multiple
+coherent changes may accumulate under that development version until it is uploaded. Once uploaded,
+that version is frozen.**
+
+A version number identifies an **artifact**, not a commit. An earlier revision of this section said
+"every code change gets its own version number", which contradicted its own next bullet and did not
+describe what 1.0.0, 1.0.1 or 1.0.2 actually did; that phrasing is withdrawn.
 
 - The first code change after a release **opens a new version**: bump `brandVersionCode` and
   `brandVersionName` in `branding.gradle.kts`, and rename the **Unreleased** heading to that
-  version.
+  version. Later changes in the same cycle land under that same heading.
+- Do **not** bump again until the open version has been uploaded and accepted.
 - `versionCode` increments by one each time and is **never reused** — Play refuses a duplicate,
   including for a build that was rejected or never uploaded.
 - Documentation-only changes do not open a version. A version number exists to identify an
@@ -24,10 +30,12 @@ accumulate-into-one-open-version policy that 1.0.0 and 1.0.1 were produced under
 - A version moves to [`docs/version-history.md`](docs/version-history.md) only once **Play accepts
   the upload**. A build that never left the machine is not a release.
 
-### How 1.0.0 and 1.0.1 were produced
+### How 1.0.0, 1.0.1 and 1.0.2 were produced
 
-Both accumulated several changes under one version number before being uploaded, which was the
-policy at the time. They are left exactly as recorded; the rule above applies to work after
+All three accumulated several changes under one version number before being uploaded — which is
+exactly what the rule above describes, so they are consistent with it rather than exceptions to it.
+1.0.2 alone carried five separate passes. They are left exactly as recorded; the rule applies to
+work after
 1.0.1.
 
 ## Conventions
@@ -41,8 +49,8 @@ policy at the time. They are left exactly as recorded; the rule above applies to
   defect line says what the user would have seen, not which function moved.
 - `versionCode` is unique per upload and **never reused** — Play rejects a duplicate. It is bumped
   when a version section is opened, then left alone until that build ships.
-- **`versionCode 1` and `2` are spent.** Both are on the closed track and neither is to be rebuilt
-  or re-uploaded; the next number is `3`.
+- **`versionCode 1`, `2` and `3` are spent.** All three are on the closed track and none is to be
+  rebuilt or re-uploaded; the next number is `4`, which `1.0.3` has open below.
 - When a version is uploaded, copy its section verbatim into `docs/version-history.md`. Nothing is
   rewritten on the way across, so the record of what shipped stays what it said at the time.
 - Every version also carries a **Play Store release notes** block — the *What's new* text, written
@@ -54,8 +62,171 @@ policy at the time. They are left exactly as recorded; the rule above applies to
 
 ## Unreleased
 
-Nothing yet. `1.0.2` / `versionCode 3` shipped on 2026-08-29, so no version is open — the next code
-change opens `1.0.3` / `versionCode 4` and bumps `branding.gradle.kts` in the same change.
+Nothing yet. `1.0.3` / `versionCode 4` is open below.
+
+## 1.0.3 (versionCode 4) — IN DEVELOPMENT, NOT UPLOADED
+
+Opened 2026-08-29 under the one-version-per-code-change rule. **Not built, not uploaded, not on any
+track.** Nothing goes into [`docs/version-history.md`](docs/version-history.md) until Play accepts an
+artifact for this code.
+
+### Changed
+
+- **A scanned nutrition label goes straight to the calculator.** Scanning a label with no product
+  open used to hand the reading to the *Enter product* form, which would not let go of it until a
+  product name had been typed and a record saved — so getting one carbohydrate figure out of one
+  photograph meant creating a database entry the user never asked for. The reading now opens the
+  ordinary calculator directly: type the portion, read the total, leave. Nothing is written to the
+  device unless the user taps **Save product**, which is where the name is asked for and the only
+  place it is needed.
+- **The calculator names itself when there is no product to name.** A quick calculation is titled
+  *Quick calculation* and drops the placeholder image, instead of showing an empty title over a
+  blank tile — which read as a product record that had failed to load rather than as the reading
+  just taken. Its controls are centred in the space the image gave back.
+- **A scanned label lands ready to type.** The portion field takes focus and the keyboard opens as
+  soon as the reading reaches the calculator, so the sequence is scan, type, read the total — with
+  no tap in between on the one field the screen exists for. A saved product is deliberately
+  unchanged: it opens with the portion you last used and its one-tap shortcuts visible, which a
+  keyboard would cover.
+- **At larger text sizes the calculator no longer looks broken.** From the 1.3× text setting
+  onwards the portion controls need more room than the screen has, and the last one — usually
+  *+ Add portion unit* — came to rest sliced horizontally through the middle of its letters at the
+  edge of the result panel. It read as a rendering fault rather than as a hint that more was below.
+  That edge now fades, and only when there is genuinely more to scroll to; at the default text size
+  nothing changes at all.
+
+### Added
+
+- **Save product**, on a quick calculation only. Secondary to the result by design; asks for a name
+  and nothing else, keeps the calculation on screen, and puts the product into Recents with the
+  portion already remembered. Cancelling leaves the calculation exactly as it was.
+
+### Changed — scanning
+
+- **A good scan no longer asks you to approve a crop.** Capture already chose a rectangle for
+  itself — the scan guide you were aiming with — and the next screen existed to have that rectangle
+  confirmed before it could be read. When it was already right, which is the ordinary case, that was
+  a tap that changed nothing. The reading now happens straight away, and the crop screen appears
+  only when the result was not safe enough to show. Confirming the *value* is unchanged: the
+  proposal card and its **Use 48 g / 100 g** button are exactly as they were.
+- **The crop screen says when it is a fallback.** Reached after an automatic attempt it now reads
+  *Couldn't read it automatically*, and while a pass is running it says *Reading table…* instead of
+  telling you to drag corners the app is not waiting on. Previously it looked identical whether it
+  was the first step after a capture or the hand-off from an attempt you had just waited through.
+
+### Fixed — found in review of the above, each reproduced by a test that failed before the fix
+
+- **A failed save looked like a tap that missed.** If the write failed, the naming dialog stayed
+  open exactly as it was — and the message explaining what had happened renders on the screen
+  *behind* it, so nothing the user could see said the product had not been kept. The dialog now
+  closes on failure, which is what puts the message in front of them, with the action still there
+  to try again.
+- **A failure message outlived the attempt it described.** Having failed once, the warning stayed
+  on screen through the next attempt and through a *successful* save, so a product that had just
+  been saved still showed a message saying it had not been. Reopening the form now clears it.
+- **A quick calculation added to a meal produced a blank line.** The meal takes its label from the
+  product's name, and a quick calculation has none by design — so the item appeared on the plate as
+  an empty row, with only its portion and carbohydrate figure to identify it, and the *Remove* label
+  a screen reader announces had nothing after the word. It is now listed as *Quick calculation*.
+- **A new capture could be dismissed as an unchanged crop of the previous one.** `captureLabel`
+  cleared every other piece of per-capture state — the frozen photo, the proposed box, the reading
+  flag, the "already tried automatically" flag — but not the region the last recognition ran over.
+  That region is only cleared by *Retake*, and *Capture label* is reachable without it from the
+  ambiguous, not-found and searching cards. Since both captures propose the same rectangle (both
+  derive it from the scan guide), the new photograph's first *Read table* compared equal to the old
+  photograph's and was skipped, telling the user a picture that had never been read would "read the
+  same as before". The skip is now cleared on capture as well as on retake.
+- **The post-attempt crop instructions were the ordinary ones.** `crop_body_after_attempt` was
+  byte-identical to `crop_body`, so the conditional selecting between them did nothing and the new
+  wording lived entirely in the title. The body now says the thing the generic copy cannot — that
+  the box on screen *is* the one the app already tried, so moving it is what changes the answer.
+
+### Fixed — from the physical-device recording of 2026-08-30
+
+- **An impossible carbohydrate figure was offered exactly like a real one.** A red label printing
+  about `7,9 g` produced `790` and `794` through the assisted path, and both were presented with the
+  same two full-emphasis *Use / 100 g* and *Use / 100 ml* buttons an ordinary value gets — one tap
+  from a figure that cannot exist, with nothing on screen saying so. 790 g of carbohydrate cannot be
+  in 100 g of food, nor in 100 ml. Such a figure now gets **no ordinary accept action at all**: the
+  number is still shown, said plainly to be wrong, and the field stays open to correct.
+  **Nothing is repaired and nothing is clamped** — `790` is never quietly offered as `79.0` or
+  `7.9`, because the decimal point is the one thing OCR is least reliable about, and a wrong repair
+  is invisible where a refusal is not.
+- **A basis the label had already stated was thrown away and then asked for again.** A coconut-milk
+  table printed `per 100 ml` clearly enough that the column classifier read it, but because the
+  *value* needed assistance the app asked *"2.5 g carbs — per what?"* and offered `/100 g` beside
+  `/100 ml` — re-asking a question it had answered, with the wrong answer one tap from the right
+  one. Confidence in the value and confidence in the basis are separate facts, and are no longer
+  collapsed into one. A basis the label stated unambiguously is now carried through and named. A
+  label stating nothing, or stating **both**, still asks — that ambiguity is exactly what the user
+  is there to resolve.
+
+### Changed — the fallback does less redundant work
+
+- **Confirming an unchanged crop no longer repeats the same recognition.** When the automatic
+  attempt declines, the crop screen opens on the very rectangle that attempt used, so tapping
+  *Read table* without moving a corner re-ran the identical passes over identical input — a
+  measured ~400 ms wait to reach the refusal already given, recognition being deterministic. It now
+  goes straight to the assisted path, which is where a repeat of that outcome led anyway, and says
+  *"Same box as before, so it would read the same."* A crop the user genuinely moved is always
+  recognised: this is a shortcut through a known result, never a skipped check.
+- **Framing guidance names the goal.** *Move closer to the nutrition table* became *Move closer —
+  fill the frame with the nutrition table*. Measured cause: the region the automatic pass reads
+  spans the **full width of the frame**, because the 12% safety margin around an already
+  near-full-width scan guide clamps to both edges. Surrounding package text therefore cannot be
+  excluded by aiming more carefully — only by getting closer — and the old wording left the user
+  adjusting something that could not help. No new signal, no threshold change, and the shutter is
+  still never blocked.
+
+### Internal
+
+- `ProductViewModel.startQuickCalculation` loses its mandatory `name` parameter — the coupling that
+  forced the OCR path through product creation — and gains `saveQuickCalculation`. The calculation
+  itself is untouched: both acquisition paths reach the same `CarbCalculator` through the same
+  state, so there is no second formula and no second rounding.
+- Provenance is carried, not flattened: a quick calculation is `OCR` / `UNVERIFIED`, and saving
+  preserves the origin rather than relabelling it `MANUAL`.
+- `CarbPlausibility` (domain) is a two-question phrasing of the ceilings `NutritionValueValidator`
+  already owns — **one rule, not a second copy**, pinned by a test asserting the two agree across
+  the range. `StatedBasis` (ocr) asks the existing `ColumnClassifier` what the table is measured
+  per and reports it only when unambiguous. `CropChange` (ocr) decides whether a confirmed
+  rectangle differs enough to be worth recognising, with a tolerance far below any deliberate drag.
+- **No OCR rule was weakened.** No threshold moved, no confidence bar lowered, no second engine or
+  parser added, and `EvidenceResolver` is untouched. The real-image corpus is unchanged.
+
+### Internal — dead code removed
+
+Nothing here changes behaviour; every item was already unreachable in production.
+
+- **The pre-recognition crop is gone from the code, not just from the call sites.** The 2026-08-17
+  capture-first pass stopped cropping the capture to the scan overlay before OCR — cropping cut the
+  basis header off tall labels and cost both canaries — but it left the machinery in place with
+  `region = null` passed at every call site. `StillImageLoader.loadWithRotation` loses the parameter
+  and the crop branch, `StillImageLoader.load` (no production caller at all) is deleted, and
+  `ScanRegionMapper.toPixels` with its `PixelRegion` type goes with them. `ScanRegionMapper.expand`
+  is untouched and still load-bearing — it is the rectangle the fast path reads. Both KDocs, which
+  still argued *for* cropping before recognition, now record why that was measured and reversed.
+- **`ProductionStillPathBaselineTest` deleted.** Two tests, zero assertions, written to measure a
+  baseline "before production code is touched" for a change that shipped; its KDoc described a
+  production path (`StillImageLoader`'s ROI crop) that no longer exists. Not part of the
+  nine-photograph corpus. `ScanRegionMapperTest` loses the 6 cases that tested only `toPixels`,
+  keeping its 3 `expand` cases — which is the whole of the 1075 → 1069 JVM change.
+- **21 unused strings deleted**, each verified to have zero Kotlin references independently of
+  lint. Includes four `crop_handle_*` accessibility labels that described per-handle nodes that do
+  not exist — the crop handles are drawn on a Canvas and the selection carries one
+  `contentDescription`. Unused-resource advisories 21 → 0; total lint advisories 40 → 19.
+- **Kept deliberately, with the reason recorded in its KDoc:** `ServingSizeParser.parse` has no
+  production caller (everything moved to `parseDescriptor`, whose weight is optional), but deleting
+  it would delete a *rule* rather than an unused function — "a count with no printed weight is not a
+  weight mapping" has no other home, and countable-portions §5/§20 makes a false positive there the
+  failure that matters. Also kept: `NutritionTableLocator` (retained-and-unwired by an earlier
+  decision, with its measured failure in its own KDoc) and the two live-service diagnostics.
+
+**Play Store release notes (draft — re-check before building):**
+
+> Scan a nutrition label and get your carbs straight away. No product name, no saving, no setup —
+> just the value, your portion, and the total. If you want to keep a product for next time, saving
+> it is now a single optional step.
 
 ## 1.0.2 (versionCode 3) — 2026-08-29 — Closed testing
 
