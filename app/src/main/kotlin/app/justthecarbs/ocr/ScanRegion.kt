@@ -23,25 +23,30 @@ data class NormalizedRegion(
     val height: Double get() = bottom - top
 }
 
-/** A crop rectangle in a bitmap's own pixels. */
-data class PixelRegion(val left: Int, val top: Int, val width: Int, val height: Int)
-
 /**
- * Turns the on-screen scan region into a crop rectangle on the captured image.
+ * The scan guide as a rectangle later stages can use, grown by a forgiving margin.
  *
- * **Why crop at all.** The label scanner previously ran OCR on the whole frame while drawing a
- * region overlay that did nothing — the overlay's own KDoc said cropping "has no demonstrated
- * recognition benefit". On a real package the frame also contains the ingredient list, marketing
- * copy, a barcode, a best-before date and recycling marks. Every one of those adds rows the table
- * reconstruction has to survive, and words like "suikers" or a stray "100 g" appear in prose as
- * readily as in a table. The user already told the app which part of the package to read by putting
- * it inside the frame; ignoring that discards the single most reliable signal available.
+ * **This no longer maps the region to pixels, and cropping before recognition must not return.** An
+ * earlier version turned the guide into a `PixelRegion` that `StillImageLoader` cut the capture down
+ * to *before* OCR ran, on the argument that surrounding package text — ingredients, marketing copy, a
+ * barcode, a best-before date — adds rows the table reconstruction has to survive.
  *
- * The mapping is trivial *because* the camera is bound through a `ViewPort` matched to the preview:
- * that makes the captured image cover exactly the field of view the preview showed, so a fraction of
- * the preview is the same fraction of the capture. Without the viewport this would need the
- * preview's crop, the two streams' aspect ratios and the rotation, and would be wrong on some device
- * in a way nobody could see. Correctness lives in the binding, not in arithmetic here.
+ * That argument is real and the remedy was wrong, which the 2026-08-17 capture-first pass measured:
+ * the overlay's own height varies against the label's, so on a tall package the crop removed the
+ * basis header band. `ColumnClassifier` then reclassified the per-100 column as `REFERENCE_PERCENT`
+ * and the interpreter correctly refused an unplaceable value — sondey and kinder both went
+ * `Confident` → `NotFound`, on a header the app had itself cropped off. No parser rule was at fault.
+ * A wider margin was rejected for the same reason: the header's offset varies per package, so any
+ * fixed margin is a guess that is wrong on some label with nothing on screen to show it. Its position
+ * is *observable after recognition* and only guessable before it.
+ *
+ * So the rectangle is now **relevance, not a boundary**: recognition sees the whole frame, and the
+ * region narrows the result afterwards (`ScanRegionRelevance`, which may only ever narrow an existing
+ * reading) or is confirmed by the user against a frozen photograph (`SelectedTableReader`). The
+ * `toPixels`/`PixelRegion` pair went unused at that point and was deleted in 1.0.3.
+ *
+ * [expand] survives and is load-bearing: it is the rectangle the automatic fast path reads and the
+ * one the crop screen opens on.
  */
 object ScanRegionMapper {
 
@@ -65,34 +70,4 @@ object ScanRegionMapper {
         )
     }
 
-    /**
-     * [region] as pixels of an [imageWidth] x [imageHeight] bitmap, or null when the result would not
-     * be a usable crop.
-     *
-     * Null rather than a clamped best effort: the caller's fallback is to OCR the whole image, which
-     * is the old behaviour and always safe. A degenerate or near-total crop is not worth the risk of
-     * cutting the table in half.
-     */
-    fun toPixels(region: NormalizedRegion, imageWidth: Int, imageHeight: Int): PixelRegion? {
-        if (imageWidth <= 0 || imageHeight <= 0) return null
-
-        val left = (region.left * imageWidth).toInt().coerceIn(0, imageWidth - 1)
-        val top = (region.top * imageHeight).toInt().coerceIn(0, imageHeight - 1)
-        val right = (region.right * imageWidth).toInt().coerceIn(left + 1, imageWidth)
-        val bottom = (region.bottom * imageHeight).toInt().coerceIn(top + 1, imageHeight)
-
-        val width = right - left
-        val height = bottom - top
-        if (width < MIN_CROP_PIXELS || height < MIN_CROP_PIXELS) return null
-        // Cropping away less than a tenth of the image is not worth a second full-size bitmap.
-        if (width >= imageWidth * NO_OP_THRESHOLD && height >= imageHeight * NO_OP_THRESHOLD) return null
-
-        return PixelRegion(left = left, top = top, width = width, height = height)
-    }
-
-    /** Below this there is not enough text left for recognition to mean anything. */
-    private const val MIN_CROP_PIXELS = 64
-
-    /** A crop this close to the full image saves nothing and costs an allocation. */
-    private const val NO_OP_THRESHOLD = 0.98
 }

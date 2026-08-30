@@ -7,33 +7,33 @@ import androidx.exifinterface.media.ExifInterface
 import java.io.File
 
 /**
- * Decodes a captured still into the upright, region-cropped bitmap OCR should actually read.
+ * Decodes a captured still into the upright bitmap OCR should actually read.
  *
- * Two jobs the previous `InputImage.fromFilePath` call could not do:
+ * The one job `InputImage.fromFilePath` could not do is **orientation**: `fromFilePath` applies EXIF
+ * itself, but a bitmap decoded here does not — `BitmapFactory` ignores the orientation tag entirely
+ * — and a sideways bitmap is not what the parser's geometry stages expect.
  *
- * 1. **Orientation.** `fromFilePath` applies EXIF itself, but a bitmap decoded for cropping does
- *    not — `BitmapFactory` ignores the orientation tag entirely. Cropping a sideways bitmap with an
- *    upright rectangle would take a region of the package nobody framed, so the rotation has to
- *    happen first and cannot be skipped.
- * 2. **Region.** Cropping to a region when one is asked for.
+ * **This no longer crops, and must not start again.** It once took a `NormalizedRegion` and cut the
+ * capture down to the scan overlay *before* recognition. The 2026-08-17 capture-first pass removed
+ * that: cropping to the overlay discarded the basis header band on tall labels, so `ColumnClassifier`
+ * reclassified the per-100 column and the interpreter correctly refused a value the user could
+ * plainly see — it cost both canaries (sondey and kinder went `Confident` → `NotFound`). Recognition
+ * now runs on the whole frame and the rectangle is applied *afterwards*, as relevance rather than as
+ * a boundary (see `ScanRegionRelevance`, and `SelectedTableReader` for the user-confirmed crop).
  *
- * Every failure path returns the widest thing that still works rather than nothing: an unreadable
- * EXIF tag gives the unrotated bitmap, a failed crop gives the whole image. The worst case is the
- * behaviour that shipped before this pass.
+ * The parameter lingered as a dead `region = null` at every call site until it was removed in 1.0.3.
+ *
+ * Failure paths still return the widest thing that works: an unreadable EXIF tag gives the unrotated
+ * bitmap rather than nothing.
  */
 internal object StillImageLoader {
 
     /**
-     * The bitmap to recognise, or null if the file could not be decoded at all.
+     * The bitmap plus the EXIF rotation that was applied to get it upright.
      *
      * Intermediate bitmaps are recycled as soon as they are superseded. A full-resolution capture is
-     * tens of megabytes as ARGB_8888, and holding the source, the rotated copy and the crop at once
-     * is how this would become an OutOfMemoryError on a mid-range phone.
-     */
-    fun load(file: File, region: NormalizedRegion?): Bitmap? = loadWithRotation(file, region).bitmap
-
-    /**
-     * The bitmap plus the EXIF rotation that was applied to get it upright.
+     * tens of megabytes as ARGB_8888, and holding both the source and the rotated copy is how this
+     * would become an OutOfMemoryError on a mid-range phone.
      *
      * The rotation is reported because "rotation or decode damages the image" is a live hypothesis
      * whenever the device and the test harness disagree, and a rotated bitmap is indistinguishable
@@ -41,7 +41,7 @@ internal object StillImageLoader {
      * The debug evidence recorder writes this figure next to both images so the question is settled by
      * looking rather than by reasoning.
      */
-    fun loadWithRotation(file: File, region: NormalizedRegion?, trace: ScanTrace? = null): Result {
+    fun loadWithRotation(file: File, trace: ScanTrace? = null): Result {
         val decoded = runCatching {
             BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
                 inPreferredConfig = Bitmap.Config.ARGB_8888
@@ -50,16 +50,7 @@ internal object StillImageLoader {
 
         val degrees = exifRotationDegrees(file).also { trace?.mark("exif") }
         val upright = applyExifRotation(decoded, degrees).also { trace?.mark("rotate") }
-        val crop = region?.let { ScanRegionMapper.toPixels(it, upright.width, upright.height) }
-            ?: return Result(upright, degrees)
-
-        val cropped = runCatching {
-            Bitmap.createBitmap(upright, crop.left, crop.top, crop.width, crop.height)
-        }.getOrNull()?.also { result ->
-            if (result !== upright) upright.recycle()
-        } ?: upright
-        trace?.mark("crop")
-        return Result(cropped, degrees)
+        return Result(upright, degrees)
     }
 
     /** The decoded bitmap and the EXIF rotation applied to it, in degrees. */

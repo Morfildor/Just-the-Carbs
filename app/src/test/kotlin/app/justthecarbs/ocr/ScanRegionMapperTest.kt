@@ -1,15 +1,14 @@
 package app.justthecarbs.ocr
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// Suite: scan-region cropping
-// Invariant: every refusal falls back to reading the whole image, which is the behaviour that
-// shipped before cropping existed. A wrong crop cuts the nutrition table in half; a missing crop
-// only costs the surrounding clutter. The asymmetry is why null means "don't crop" everywhere here.
+// Suite: the scan guide's safety margin
+// `expand` is all that remains of this object: it produces the rectangle the automatic fast path
+// reads and the crop screen opens on. The `toPixels`/`PixelRegion` pre-recognition cropper it used
+// to carry was removed in 1.0.3 — see ScanRegionMapper's KDoc for why cropping before OCR cost both
+// canaries, and why the region is now applied after recognition instead.
 class ScanRegionMapperTest {
 
     private val overlay = NormalizedRegion(left = 0.08, top = 0.24, right = 0.92, bottom = 0.76)
@@ -33,58 +32,44 @@ class ScanRegionMapperTest {
         assertTrue(expanded.bottom <= 1.0)
     }
 
+    /**
+     * The 1.0.3 P3 measurement: what the automatic pass actually reads, versus the drawn guide.
+     *
+     * The scan guide is `fillMaxWidth().padding(Space.l).aspectRatio(0.8f)`, which on an ordinary
+     * 1080x2400 phone lands at roughly the fractions below — already near full width, because the
+     * only horizontal inset is one padding step.
+     *
+     * Expanding it by [ScanRegionMapper.SAFETY_MARGIN] then **saturates horizontally**: the margin
+     * is 12% of the guide's own width, which is far more than the padding, so both sides clamp to
+     * the frame edge. The region the automatic pass reads therefore spans the **entire width of the
+     * photograph** — every column of package beside the table included.
+     *
+     * That is not a coordinate defect and no mapping is wrong here; it is the documented margin
+     * behaving as specified on a guide that is already nearly full-width. It is recorded as a test
+     * because it is the measured explanation for the device observation that wide framing declines
+     * while close framing succeeds, and because anyone changing the guide's aspect ratio or padding
+     * needs to see this relationship rather than rediscover it.
+     */
     @Test
-    fun `a region maps to the same fractions of any capture size`() {
-        // The point of normalized coordinates: the overlay is measured on a 1080-wide preview and
-        // applied to an 8 MP capture, and neither has to know about the other.
-        val small = ScanRegionMapper.toPixels(overlay, 1080, 1920)!!
-        val large = ScanRegionMapper.toPixels(overlay, 3264, 2448)!!
+    fun `the expanded scan guide spans the full frame width on a typical phone`() {
+        // Guide fractions for a 1080x2400 preview with one padding step each side.
+        val guide = NormalizedRegion(left = 0.061, top = 0.253, right = 0.939, bottom = 0.747)
+        val expanded = ScanRegionMapper.expand(guide)
 
-        assertEquals(0.08, small.left.toDouble() / 1080, 0.005)
-        assertEquals(0.08, large.left.toDouble() / 3264, 0.005)
-        assertEquals(0.84, small.width.toDouble() / 1080, 0.005)
-        assertEquals(0.84, large.width.toDouble() / 3264, 0.005)
-    }
+        assertEquals("the horizontal margin clamps to the frame edge", 0.0, expanded.left, 1e-9)
+        assertEquals("the horizontal margin clamps to the frame edge", 1.0, expanded.right, 1e-9)
 
-    @Test
-    fun `a crop that would keep almost the whole image is refused as pointless`() {
-        val nearlyEverything = NormalizedRegion(left = 0.005, top = 0.005, right = 0.995, bottom = 0.995)
-        assertNull(
-            "a 99% crop costs a second full-size bitmap and saves nothing",
-            ScanRegionMapper.toPixels(nearlyEverything, 3264, 2448),
+        // Vertically there is room, so the margin applies without clamping and the region stays
+        // short of the full frame. The asymmetry is the point: horizontal context cannot be
+        // excluded by aiming, only by moving the phone closer.
+        assertTrue("the vertical margin does not clamp", expanded.top > 0.0)
+        assertTrue("the vertical margin does not clamp", expanded.bottom < 1.0)
+
+        val guideArea = (guide.right - guide.left) * (guide.bottom - guide.top)
+        val readArea = expanded.width * expanded.height
+        assertTrue(
+            "the region read is materially larger than the guide drawn (was ${readArea / guideArea})",
+            readArea > guideArea * 1.3,
         )
-    }
-
-    @Test
-    fun `a crop too small to recognise anything in is refused`() {
-        val sliver = NormalizedRegion(left = 0.50, top = 0.50, right = 0.505, bottom = 0.505)
-        assertNull(ScanRegionMapper.toPixels(sliver, 1080, 1920))
-    }
-
-    @Test
-    fun `a degenerate image size is refused rather than producing a crop`() {
-        assertNull(ScanRegionMapper.toPixels(overlay, 0, 1920))
-        assertNull(ScanRegionMapper.toPixels(overlay, 1080, 0))
-    }
-
-    @Test
-    fun `the crop always lies inside the image`() {
-        val region = ScanRegionMapper.expand(NormalizedRegion(0.0, 0.0, 1.0, 0.5))
-        val pixels = ScanRegionMapper.toPixels(region, 1080, 1920)
-        assertNotNull(pixels)
-        assertTrue(pixels!!.left >= 0)
-        assertTrue(pixels.top >= 0)
-        assertTrue("right edge escaped the bitmap", pixels.left + pixels.width <= 1080)
-        assertTrue("bottom edge escaped the bitmap", pixels.top + pixels.height <= 1920)
-    }
-
-    @Test
-    fun `the default overlay keeps a usable share of an 8 MP capture`() {
-        // Sanity on the real numbers: cropping must leave enough pixels for small print to survive.
-        // 0.84 x 0.52 of 3264x2448 is ~2740x1270 — more resolution than the entire capture had
-        // before this pass, on a fraction of the scene.
-        val pixels = ScanRegionMapper.toPixels(ScanRegionMapper.expand(overlay), 3264, 2448)!!
-        assertTrue("crop width ${pixels.width}", pixels.width > 2000)
-        assertTrue("crop height ${pixels.height}", pixels.height > 1000)
     }
 }

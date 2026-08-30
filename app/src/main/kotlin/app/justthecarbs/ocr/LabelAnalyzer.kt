@@ -233,7 +233,7 @@ class LabelAnalyzer(
         // value on the right row made unplaceable because its header had been cropped away. A wider
         // fixed margin cannot fix that: the header's offset varies per package, so any margin is a
         // guess that is wrong on some label with nothing on screen to show it.
-        val loaded = StillImageLoader.loadWithRotation(request.file, region = null, trace = trace)
+        val loaded = StillImageLoader.loadWithRotation(request.file, trace = trace)
         val upright = loaded.bitmap
         val input = trace.time("mlkit-input") {
             if (upright != null) {

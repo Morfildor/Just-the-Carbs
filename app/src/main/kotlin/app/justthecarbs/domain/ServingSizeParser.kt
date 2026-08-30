@@ -134,6 +134,17 @@ object ServingSizeParser {
      * The weight-backed mapping only. Unchanged contract: a string with no printed weight still
      * returns null here, because this function's whole promise is a weight relationship. Callers
      * that can work without one use [parseDescriptor].
+     *
+     * **No production caller, deliberately kept (reviewed 1.0.3).** The direct-carb work of
+     * 2026-08-15 moved every caller to [parseDescriptor], whose weight is optional. It survives a
+     * dead-code sweep because deleting it would delete the *rule* rather than merely an unused
+     * function: "a count with no printed weight is not a weight mapping" (`1 slice` → null) has no
+     * other home, [parseDescriptor] is required to accept exactly that case, and the countable-portion
+     * brief §5/§20 makes a false positive here the failure that matters — it would attach an invented
+     * gram figure to a portion the user then doses from.
+     *
+     * So this is a pinned specification with a test suite, not forgotten code. If a weight-required
+     * caller ever returns it is already correct and already covered. Do not wire it in to "use" it.
      */
     fun parse(rawServingSize: String?): ParsedServingSize? {
         val descriptor = parseDescriptor(rawServingSize) ?: return null

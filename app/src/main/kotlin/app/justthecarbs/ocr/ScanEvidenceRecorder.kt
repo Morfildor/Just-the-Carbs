@@ -166,7 +166,7 @@ object ScanEvidenceRecorder {
         writer().execute {
             runCatching {
                 if (!capture.isFile) return@runCatching
-                val bitmap = StillImageLoader.loadWithRotation(capture, region = null).bitmap
+                val bitmap = StillImageLoader.loadWithRotation(capture).bitmap
                     ?: return@runCatching
                 try {
                     File(folder, "passA.png").outputStream().use {
