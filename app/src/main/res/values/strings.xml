@@ -34,11 +34,8 @@
     <string name="recent_never_used">Not used yet</string>
     <string name="favorite_add">Add to favourites</string>
     <string name="favorite_remove">Remove from favourites</string>
-    <string name="favorite_marker">Favourite</string>
 
     <!-- Scanner -->
-    <string name="scanner_title">Scan barcode</string>
-    <string name="scanner_hint">Point the camera at the barcode</string>
     <!--
       Two states only (§4). The scanner refuses barcodes that are off to one side, still far away, or
       seen for a single frame, so it needs to say why it has not fired — but a confidence percentage
@@ -49,7 +46,6 @@
     <string name="scanner_finding_product">Barcode found — finding product…</string>
     <string name="scanner_torch_on">Turn on flashlight</string>
     <string name="scanner_torch_off">Turn off flashlight</string>
-    <string name="scanner_torch_unavailable">This device has no flashlight</string>
     <string name="scanner_close">Close scanner</string>
     <string name="scanner_enter_barcode_help">Type the number printed under the barcode.</string>
     <string name="scanner_enter_manually">Enter barcode</string>
@@ -70,7 +66,6 @@
     <string name="permission_body">This app uses the camera only to read barcodes and nutrition labels. Images are processed on your device and are never uploaded or kept.</string>
     <string name="permission_allow">Allow camera</string>
     <string name="permission_manual">Enter manually</string>
-    <string name="permission_settings">Open settings</string>
 
     <!-- Product / calculator (§14) -->
     <string name="product_back">Back</string>
@@ -92,7 +87,6 @@
     <string name="product_source_verified">✓ Verified by you</string>
     <string name="product_source_manual">Entered by you</string>
     <string name="product_source_ocr">Read from label by you</string>
-    <string name="product_verified_when">Verified %1$s</string>
     <string name="remote_changed_title">Online value changed</string>
     <string name="remote_changed_body">The database now reports %1$s g / 100 %2$s. Your current value is unchanged.</string>
     <string name="remote_changed_apply">Use new value</string>
@@ -122,9 +116,7 @@
     <string name="product_copied">%1$s copied</string>
     <string name="product_more_actions">More actions</string>
     <string name="product_verify">Verify label</string>
-    <string name="product_edit">Edit product</string>
     <string name="product_reset_online">Reset to online value</string>
-    <string name="product_remove">Remove from recents</string>
     <string name="product_scan_label">Scan nutrition label</string>
 
     <!-- Quick adjust (§16) -->
@@ -139,7 +131,6 @@
       ServingSizeParser still recognizes Dutch remote text; that is input parsing, not app display.
     -->
     <string name="product_mode_grams" tools:ignore="MissingTranslation">Grams</string>
-    <string name="product_count_label" tools:ignore="MissingTranslation">Count</string>
     <string name="product_count_equation" tools:ignore="MissingTranslation">%1$s %2$s × %3$s %4$s = %5$s %4$s</string>
     <string name="product_add_portion_unit" tools:ignore="MissingTranslation">+ Add portion unit</string>
     <string name="product_add_portion_unit_title" tools:ignore="MissingTranslation">Add portion unit</string>
@@ -185,7 +176,6 @@
     -->
     <string name="meal_add" tools:ignore="MissingTranslation">Add to meal</string>
     <string name="meal_add_and_scan" tools:ignore="MissingTranslation">Add &amp; scan next</string>
-    <string name="meal_added" tools:ignore="MissingTranslation">Added to meal</string>
     <string name="meal_bar_summary" tools:ignore="MissingTranslation">Meal · %1$s · %2$s g carbs</string>
     <string name="meal_title" tools:ignore="MissingTranslation">Meal total</string>
     <string name="meal_total_label" tools:ignore="MissingTranslation">MEAL TOTAL</string>
@@ -253,7 +243,6 @@
     <string name="search_no_matches" tools:ignore="MissingTranslation">No products found for “%1$s”. You can scan the label or enter it yourself.</string>
     <string name="search_carbs" tools:ignore="MissingTranslation">%1$s g carbs / 100 %2$s</string>
     <string name="search_no_carbs" tools:ignore="MissingTranslation">No carbohydrate value — check the package</string>
-    <string name="search_result" tools:ignore="MissingTranslation">%1$s. %2$s</string>
     <string name="search_clear" tools:ignore="MissingTranslation">Clear search</string>
     <string name="search_submit" tools:ignore="MissingTranslation">Search</string>
     <!-- A background refresh failed while usable results were still on screen. Deliberately states
@@ -358,7 +347,19 @@
 
     <!-- Quick calculator (§28) -->
     <string name="quick_title">Quick calculation</string>
-    <string name="quick_subtitle">Calculate without saving a product</string>
+
+    <!-- Optional saving of a quick calculation (1.0.3 P1). The action is worded as what the user
+         gets ("Save product"), not as what the app does ("Store record"), and nothing anywhere
+         suggests saving is required to read the total — it never is. -->
+    <string name="quick_save">Save product</string>
+    <!-- The dialog's confirm button. A different word from the action that opened it, so the two
+         controls are distinguishable to a person, to TalkBack and to a test. -->
+    <string name="quick_save_confirm">Save</string>
+    <string name="quick_save_title">Save this product</string>
+    <!-- Says plainly that only the name is missing, so the dialog does not read as a form the user
+         must have skipped a step to reach. -->
+    <string name="quick_save_body">Give it a name so you can find it again. The carbohydrate value and portion stay as they are.</string>
+    <string name="quick_save_failed">Could not save the product. Your calculation is unchanged.</string>
 
     <!-- Verification (§23) -->
     <string name="verify_title">Verify against the package</string>
@@ -367,12 +368,8 @@
     <string name="verify_cancel">Cancel</string>
 
     <!-- Millilitre / gram (design decision 3.1) -->
-    <string name="basis_mismatch_title">This product is measured in %1$s</string>
-    <string name="basis_mismatch_body">Grams and millilitres are not interchangeable without knowing the product\'s density, so this app won\'t convert between them. To use the other unit, enter the value from the package.</string>
 
     <!-- OCR (§29) -->
-    <string name="ocr_title">Scan nutrition label</string>
-    <string name="ocr_hint">Frame the nutrition table</string>
     <string name="ocr_align_title">Align the nutrition table</string>
     <!--
       Pre-capture guidance. Deliberately describes the FRAMING, not a search for a value: under
@@ -382,7 +379,14 @@
     <string name="ocr_looking">Point at the nutrition table</string>
     <!-- A live frame could read the table. Reports what the camera can see, not that the scan will succeed. -->
     <string name="ocr_ready_to_capture">Table in view — tap to capture</string>
-    <string name="ocr_move_closer">Move closer to the nutrition table</string>
+    <!--
+      Names the goal, not just the direction (1.0.3 P3). Measured: the region the automatic pass
+      reads spans the FULL WIDTH of the frame, because the 12% safety margin around an already
+      near-full-width scan guide clamps to both edges. So surrounding package text cannot be
+      excluded by aiming more carefully — only by moving closer until the table dominates. "Move
+      closer" alone left the user adjusting aim, which cannot help.
+    -->
+    <string name="ocr_move_closer">Move closer — fill the frame with the nutrition table</string>
     <string name="ocr_capture_label">Capture label</string>
     <string name="ocr_capturing">Capturing label…</string>
     <string name="ocr_processing">Reading captured label…</string>
@@ -395,14 +399,22 @@
     -->
     <string name="crop_title">Tighten the box around the table</string>
     <string name="crop_body">Drag the corners so only the nutrition table is inside — leave out ingredients and other text. Keep the “per 100 g” heading and the carbohydrate row.</string>
+    <!-- The same screen, reached after the app already tried this rectangle by itself and could
+         not read it safely (1.0.3 P4). The title says an attempt was made, so the fallback reads as
+         a hand-off rather than as a restart or a failure. Deliberately not an error: nothing has
+         gone wrong, the photo just needs a tighter box.
+
+         The body must EARN its separate existence — an earlier revision duplicated `crop_body`
+         verbatim, which made the conditional that selects it dead code. It says the one thing the
+         generic wording cannot: the box the app already tried is the one on screen, so moving it is
+         what changes the answer. Repeating "drag the corners so only the table is inside" here
+         would describe a box the user is looking at and has not been told is already the failed
+         attempt. -->
+    <string name="crop_title_after_attempt">Couldn\'t read it automatically</string>
+    <string name="crop_body_after_attempt">This is the box it tried. Drag the corners in so only the nutrition table is inside — keep the “per 100 g” heading and the carbohydrate row, and leave out ingredients and other text.</string>
     <string name="crop_read">Read table</string>
     <string name="crop_retake">Retake</string>
     <string name="crop_reading">Reading table…</string>
-    <string name="crop_preparing">Preparing photo…</string>
-    <string name="crop_handle_top_left">Move top-left corner</string>
-    <string name="crop_handle_top_right">Move top-right corner</string>
-    <string name="crop_handle_bottom_left">Move bottom-left corner</string>
-    <string name="crop_handle_bottom_right">Move bottom-right corner</string>
     <string name="crop_selection">Nutrition table selection</string>
 
     <!-- Assisted reading (§17-§19). The frozen table stays on screen; the user points at the answer
@@ -411,6 +423,12 @@
     <string name="assist_title">Couldn\'t read it automatically</string>
     <string name="assist_body">The photo is still here. Point at the carbohydrate figure and it\'s done.</string>
     <string name="assist_body_tighten">Your box kept nearly the whole photo, so this read the same thing as before. Retake and tighten it, or just point at the figure below.</string>
+    <!--
+      The crop was confirmed unchanged from one already read, so reading it again would give the
+      same answer (1.0.3 P2). Says what would have happened rather than blaming the user's box,
+      which may be perfectly tight — it simply has not moved.
+    -->
+    <string name="assist_body_unchanged">Same box as before, so it would read the same. Point at the carbohydrate figure below, or retake to move the box.</string>
     <string name="assist_pick_row">Tap the carbohydrate row</string>
     <string name="assist_pick_value">Tap the number instead</string>
     <string name="assist_type_it">Type it in</string>
@@ -421,6 +439,16 @@
     <string name="assist_basis_title">Check this is right</string>
     <string name="assist_basis_body">Choose what the figure is printed per.</string>
     <string name="assist_confirm_value">%1$s g carbs — per what?</string>
+    <!-- Shown instead of the question above when the label itself stated the basis (1.0.3 P1). -->
+    <string name="assist_confirm_value_known">%1$s g carbs</string>
+    <string name="assist_basis_from_label_g">Read from the label as per 100 g</string>
+    <string name="assist_basis_from_label_ml">Read from the label as per 100 ml</string>
+    <!--
+      A figure that cannot be a carbohydrate value under any unit (1.0.3 P0). Says the figure is
+      wrong, never what to replace it with: the app has no standing to guess where the decimal
+      point belongs, and a wrong repair is invisible where a refusal is not.
+    -->
+    <string name="assist_value_implausible">That can\'t be right — check the figure.</string>
     <string name="assist_type_title">Type the value</string>
     <string name="assist_type_body">Read it off the photo above.</string>
     <string name="assist_type_label">Carbs per 100 g/ml</string>

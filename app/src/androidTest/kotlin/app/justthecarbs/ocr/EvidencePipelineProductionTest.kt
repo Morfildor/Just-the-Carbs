@@ -124,6 +124,72 @@ class EvidencePipelineProductionTest {
         assertNeverOffered(STOKBROOD, result.outcome, "1.0", "4.7")
     }
 
+    // ---- the automatic fast path, measured on the real corpus (1.0.3 P3) ------------------------
+
+    /**
+     * Which real photographs would skip the crop-confirmation step, and — far more importantly —
+     * that none of them skips it wrongly.
+     *
+     * This is the only place the *advance* half of the fast path can be measured without a phone in
+     * hand: it runs the production resolution over the committed photographs at the shipped starting
+     * rectangle, then asks [AutomaticScanAdvance] the same question the scanner asks.
+     *
+     * It prints its table and asserts the **safety** property rather than a pass rate, deliberately.
+     * How many of nine labels advance is a property of nine particular photographs and would make
+     * this a brittle scoreboard; that nothing unsafe advances is the claim the feature rests on.
+     */
+    @Test
+    fun theFastPathAdvancesOnlyOnConfidentlyResolvedFixtures() {
+        val fixtures = listOf(
+            SONDEY, KINDER, YOGHURT, STOKBROOD, WITTE_KAAS, GRATED_CHEESE, JAR, LID,
+        )
+
+        var advanced = 0
+        fixtures.forEach { name ->
+            val result = resolve(name)
+            val mayAdvance = AutomaticScanAdvance.mayAdvance(result.outcome)
+            if (mayAdvance) advanced++
+
+            println(
+                "FAST-PATH $name -> ${result.outcome::class.simpleName} " +
+                    "value=${resolvedValue(result.outcome)?.stripTrailingZeros()?.toPlainString()} " +
+                    "advance=$mayAdvance",
+            )
+
+            // The safety claim, asserted per fixture: advancing implies a confidently resolved
+            // reading carrying a basis. Anything else must have gone to the crop screen.
+            if (mayAdvance) {
+                val resolved = result.outcome as EvidenceResolver.Outcome.Resolved
+                val confident = resolved.reading as? LabelReading.Confident
+                assertTrue("$name advanced without a Confident reading", confident != null)
+                assertTrue(
+                    "$name advanced without stating what its value is per",
+                    confident!!.candidate.basis != null,
+                )
+            }
+        }
+
+        println("FAST-PATH summary: $advanced of ${fixtures.size} fixtures skip the crop step")
+    }
+
+    /**
+     * The fixture that must never advance, named explicitly.
+     *
+     * Grated cheese is the corpus's live hazard: three recognitions of the same photograph produce
+     * three different numbers, so the resolver refuses. If a future change ever lets this one through
+     * the fast path, a known-wrong carbohydrate value would reach the user with one tap fewer than
+     * before — which is the exact failure this whole architecture exists to prevent.
+     */
+    @Test
+    fun theKnownConflictFixtureNeverSkipsTheCropStep() {
+        val result = resolve(GRATED_CHEESE)
+
+        assertTrue(
+            "grated cheese must not skip the crop step (outcome=${result.outcome::class.simpleName})",
+            !AutomaticScanAdvance.mayAdvance(result.outcome),
+        )
+    }
+
     // ---- the safety property that matters most --------------------------------------------------
 
     /**

@@ -45,10 +45,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
+import app.justthecarbs.domain.CarbPlausibility
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.ocr.AssistedSelection
 import app.justthecarbs.ocr.CropSelectionGeometry
 import app.justthecarbs.ocr.OcrDocument
+import app.justthecarbs.ocr.StatedBasis
 import app.justthecarbs.ui.theme.Space
 import java.math.BigDecimal
 
@@ -66,6 +68,16 @@ data class AssistState(
     val document: OcrDocument?,
     /** True when the confirmed rectangle removed essentially nothing (§11), which is worth saying. */
     val ineffectiveSelection: Boolean = false,
+    /**
+     * True when the user confirmed a rectangle that had already been recognised (1.0.3 P2).
+     *
+     * A *separate* flag from [ineffectiveSelection] rather than a reuse of it, because the two say
+     * different things and only one of them is true here. "Your box kept nearly the whole photo" is
+     * a claim about the box's *size*; this is a claim about it not having *moved*, and the box may
+     * be perfectly tight. Telling a user their tight crop was too wide would send them to fix
+     * something that is not wrong.
+     */
+    val cropUnchanged: Boolean = false,
 )
 
 /** Which step of the assisted flow the user is on. */
@@ -84,6 +96,86 @@ private sealed interface AssistStep {
 
     /** Typing the value in, with the table still visible (§19). */
     data object TypingValue : AssistStep
+}
+
+/**
+ * The accept actions for a chosen value — the one place both 1.0.3 safety rules apply.
+ *
+ * ## P0: an impossible figure gets no ordinary accept action
+ *
+ * A physical-device recording showed a label printing about `7,9 g` producing `790` and `794`
+ * through this screen, offered by the same two full-emphasis buttons an ordinary value gets. There
+ * is no unit under which 790 g of carbohydrate per 100 g or 100 ml exists, so there is no action to
+ * offer — the figure is shown, said to be wrong, and the field stays editable.
+ *
+ * Deliberately **not** a disabled button: a control that does nothing and says nothing is the dead
+ * end this whole screen was built to remove. And deliberately **not** a repair — `790` is not
+ * offered as `79.0`, because the decimal point is what OCR is least reliable about and a wrong
+ * repair is invisible where a refusal is not.
+ *
+ * ## P1: a basis the label stated is not asked for again
+ *
+ * When [statedBasis] is non-null the label said what it was measured per and the classifier read
+ * it; only the value needed help. One action is offered, naming that basis. When it is null —
+ * nothing stated, or two bases stated — both actions stand, which is the pre-existing behaviour.
+ *
+ * The two rules compose: a preserved basis does not exempt a value from the plausibility barrier,
+ * so an impossible value under a known basis still leaves no accept action at all.
+ */
+@Composable
+private fun BasisActions(
+    value: BigDecimal,
+    statedBasis: NutritionBasis?,
+    onUseValue: (BigDecimal, NutritionBasis) -> Unit,
+) {
+    // Asked per basis, not once: 150 is impossible per 100 g and legitimate per 100 ml, so a single
+    // verdict would either block a correct reading or admit an impossible one.
+    val offered = (statedBasis?.let(::listOf) ?: NutritionBasis.entries)
+        .filter { CarbPlausibility.isPlausiblePer100(value, it) }
+
+    if (offered.isEmpty()) {
+        Text(
+            text = stringResource(R.string.assist_value_implausible),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        return
+    }
+
+    if (statedBasis != null) {
+        Text(
+            text = stringResource(
+                when (statedBasis) {
+                    NutritionBasis.PER_100_G -> R.string.assist_basis_from_label_g
+                    NutritionBasis.PER_100_ML -> R.string.assist_basis_from_label_ml
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.75f),
+        )
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+    ) {
+        offered.forEach { basis ->
+            Button(
+                onClick = { onUseValue(value, basis) },
+                modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) {
+                Text(
+                    stringResource(
+                        when (basis) {
+                            NutritionBasis.PER_100_G -> R.string.ocr_use_per_100_g
+                            NutritionBasis.PER_100_ML -> R.string.ocr_use_per_100_ml
+                        },
+                    ),
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -124,6 +216,15 @@ fun AssistedReadingScreen(
 
     val allNumbers = remember(state.document) { AssistedSelection.numericCandidates(state.document) }
 
+    /**
+     * The basis the label itself stated, when it stated exactly one (1.0.3 P1).
+     *
+     * Derived from the document already on screen, so it costs no recognition and adds no state to
+     * carry through the pipeline. Null whenever the label was silent or said two different things,
+     * in which case the user is asked exactly as before.
+     */
+    val statedBasis = remember(state.document) { StatedBasis.of(state.document) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -155,9 +256,13 @@ fun AssistedReadingScreen(
                         AssistStep.PickingValue -> R.string.assist_tap_value_body
                         is AssistStep.ConfirmingBasis -> R.string.assist_basis_body
                         AssistStep.TypingValue -> R.string.assist_type_body
-                        AssistStep.Choosing ->
-                            if (state.ineffectiveSelection) R.string.assist_body_tighten
-                            else R.string.assist_body
+                        AssistStep.Choosing -> when {
+                            // Ordered most specific first. An unchanged crop is a precise statement
+                            // about what the user just did and beats the generic advice.
+                            state.cropUnchanged -> R.string.assist_body_unchanged
+                            state.ineffectiveSelection -> R.string.assist_body_tighten
+                            else -> R.string.assist_body
+                        }
                     },
                 ),
                 style = MaterialTheme.typography.bodySmall,
@@ -308,27 +413,21 @@ fun AssistedReadingScreen(
                 is AssistStep.ConfirmingBasis -> {
                     Text(
                         text = stringResource(
-                            R.string.assist_confirm_value,
+                            // "per what?" is the wrong question when the label already said. The
+                            // heading follows the basis, so a preserved one is stated rather than
+                            // re-asked (1.0.3 P1).
+                            if (statedBasis != null) R.string.assist_confirm_value_known
+                            else R.string.assist_confirm_value,
                             current.value.stripTrailingZeros().toPlainString(),
                         ),
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(Space.s),
-                    ) {
-                        Button(
-                            onClick = { onUseValue(current.value, NutritionBasis.PER_100_G) },
-                            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                            shape = RoundedCornerShape(Space.buttonRadius),
-                        ) { Text(stringResource(R.string.ocr_use_per_100_g)) }
-                        Button(
-                            onClick = { onUseValue(current.value, NutritionBasis.PER_100_ML) },
-                            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                            shape = RoundedCornerShape(Space.buttonRadius),
-                        ) { Text(stringResource(R.string.ocr_use_per_100_ml)) }
-                    }
+                    BasisActions(
+                        value = current.value,
+                        statedBasis = statedBasis,
+                        onUseValue = onUseValue,
+                    )
                     TextButton(onClick = { step = AssistStep.Choosing }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.action_back))
                     }
@@ -349,22 +448,12 @@ fun AssistedReadingScreen(
                         modifier = Modifier.fillMaxWidth().testTag(ASSIST_MANUAL_FIELD_TAG),
                     )
                     val parsed = typed.replace(',', '.').toBigDecimalOrNull()
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(Space.s),
-                    ) {
-                        Button(
-                            onClick = { parsed?.let { onUseValue(it, NutritionBasis.PER_100_G) } },
-                            enabled = parsed != null,
-                            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                            shape = RoundedCornerShape(Space.buttonRadius),
-                        ) { Text(stringResource(R.string.ocr_use_per_100_g)) }
-                        Button(
-                            onClick = { parsed?.let { onUseValue(it, NutritionBasis.PER_100_ML) } },
-                            enabled = parsed != null,
-                            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                            shape = RoundedCornerShape(Space.buttonRadius),
-                        ) { Text(stringResource(R.string.ocr_use_per_100_ml)) }
+                    if (parsed != null) {
+                        BasisActions(
+                            value = parsed,
+                            statedBasis = statedBasis,
+                            onUseValue = onUseValue,
+                        )
                     }
                     TextButton(onClick = { step = AssistStep.Choosing }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.action_back))

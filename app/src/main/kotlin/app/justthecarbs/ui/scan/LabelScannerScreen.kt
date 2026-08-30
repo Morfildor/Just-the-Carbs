@@ -77,6 +77,8 @@ import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.ServingDescriptor
 import app.justthecarbs.ocr.CarbCandidate
+import app.justthecarbs.ocr.AutomaticScanAdvance
+import app.justthecarbs.ocr.CropChange
 import app.justthecarbs.ocr.EvidenceResolver
 import app.justthecarbs.ocr.LabelAnalyzer
 import app.justthecarbs.ocr.LabelReading
@@ -259,6 +261,28 @@ private fun LabelCamera(
     /** True while a confirmed crop is being re-parsed; disables the primary action. */
     var readingTable by remember { mutableStateOf(false) }
     /**
+     * The automatic post-capture attempt ran and did not resolve confidently (1.0.3 P3).
+     *
+     * Purely presentational: it changes what the crop screen *says*, never what it does. Without it
+     * the fallback is indistinguishable from a fresh capture, so a user who has just waited through
+     * an automatic attempt is asked to crop with no indication that anything was tried — which reads
+     * as the app having done nothing, or as having restarted.
+     */
+    var autoAttempted by remember { mutableStateOf(false) }
+    /**
+     * The region the last recognition actually ran over, or null when none has run (1.0.3 P2).
+     *
+     * Keyed on the region rather than on which button was pressed, because the question the skip
+     * answers is *"would recognising this tell us anything new?"* — a property of the input, not of
+     * the caller. Recognition is deterministic over identical input, so re-running it on a region
+     * already recognised for this capture is guaranteed to produce the outcome that already
+     * declined.
+     *
+     * Cleared by [resumeLive] along with the rest of the capture's derived state, so a new capture
+     * can never be mistaken for an unchanged crop of the previous one.
+     */
+    var lastRecognisedRegion by remember { mutableStateOf<NormalizedRegion?>(null) }
+    /**
      * A value one pass found that nothing corroborated (§8).
      *
      * Shown on the frozen photograph as "check this against the label", never as a settled answer.
@@ -368,6 +392,13 @@ private fun LabelCamera(
         pendingCrop = null
         cropSelection = null
         readingTable = false
+        // Belongs to the capture being abandoned. Left set, the next capture's crop screen would
+        // open saying an automatic attempt had failed before one had been made.
+        autoAttempted = false
+        // Likewise: a region recognised for the abandoned capture says nothing about the new one,
+        // and leaving it set would let a new capture's first Read table be skipped as an
+        // "unchanged" crop of a photograph that no longer exists (1.0.3 P2).
+        lastRecognisedRegion = null
         reading = null
         liveReadiness = null
         framing = null
@@ -407,11 +438,42 @@ private fun LabelCamera(
      * corpus re-recognition *also* produced values that were confidently wrong.
      *
      * Runs off the main thread: Strategy B is a real ML Kit pass and would jank the frozen photo.
+     *
+     * @param automatic true when this is the post-capture attempt against the app's own rectangle
+     *   rather than a rectangle the user confirmed. It only ever *narrows* what may happen next:
+     *   an automatic attempt that does not resolve confidently hands over to the crop screen
+     *   instead of presenting its outcome, so nothing is auto-accepted that a confirmed crop would
+     *   not also have auto-accepted.
      */
-    fun readSelectedTable(region: NormalizedRegion) {
+    fun readSelectedTable(region: NormalizedRegion, automatic: Boolean = false) {
         val captured = pendingCrop ?: return
+
+        // The confirmed rectangle is the one already recognised for this capture (1.0.3 P2).
+        //
+        // Recognition is deterministic over identical input — same retained elements for Strategy
+        // A, same pixels of the same bitmap for Strategy B — so running it again cannot produce a
+        // different outcome. It would cost the user a second wait, measured at ~400 ms for the ML
+        // Kit pass alone, to arrive at the refusal they have already seen.
+        //
+        // So this hands straight to the assisted path, which is exactly where a repeat of that
+        // outcome would have led. It is a *shortcut through a known result*, never a relaxation:
+        // no rule is skipped, because the rules already ran on this very region and declined. A
+        // crop the user genuinely moved fails `isMaterial` and is recognised normally.
+        if (!automatic && !CropChange.isMaterial(lastRecognisedRegion, region)) {
+            OcrDiagnosticsLogger.timing("selected-table skipped (crop unchanged since last pass)")
+            assisting = AssistState(
+                document = captured.document,
+                // Its own flag, not `ineffectiveSelection`: that one says the box kept nearly the
+                // whole photo, which is a claim about size. This box may be perfectly tight — it
+                // simply has not moved since the pass that already failed.
+                cropUnchanged = true,
+            )
+            return
+        }
+
         val session = captureSession.get()
         readingTable = true
+        lastRecognisedRegion = region
 
         saveScope.launch {
             // Dispatchers.IO, not Default. Strategy B waits on a `CountDownLatch` for ML Kit to call
@@ -440,7 +502,25 @@ private fun LabelCamera(
             )
 
             readingTable = false
-            when (val outcome = result.outcome) {
+
+            // The fast path's only decision, and it is a *veto*, not an acceptance (1.0.3 P3).
+            //
+            // An automatic attempt that did not resolve confidently stops here and hands the frozen
+            // photograph to the crop screen, exactly as if the capture had gone straight there. It
+            // does not present its own outcome, so an ambiguity, an uncorroborated value or a
+            // conflict never reaches the user *without* them having had the chance to tighten the
+            // rectangle first — which is the one lever they have over all three.
+            //
+            // Nothing below this line was reordered or relaxed: a confirmed crop still reaches the
+            // same four branches with the same rules, and `mayAdvance` reads an outcome the
+            // resolver already decided rather than computing a confidence of its own.
+            val declined = automatic && !AutomaticScanAdvance.mayAdvance(result.outcome)
+            if (declined) {
+                autoAttempted = true
+                OcrDiagnosticsLogger.timing("fast-path declined (${result.outcome::class.simpleName})")
+            }
+
+            if (!declined) when (val outcome = result.outcome) {
                 is EvidenceResolver.Outcome.Resolved -> {
                     releaseCapture(captured)
                     reading = outcome.reading
@@ -537,10 +617,26 @@ private fun LabelCamera(
                                 // measured and rejected for. The scan guide is a better starting
                                 // point precisely because it is not a guess about the table — it is
                                 // where the user was already pointing.
-                                cropSelection = ScanRegionMapper.expand(
+                                val proposed = ScanRegionMapper.expand(
                                     scanRegion.get() ?: DEFAULT_CROP,
                                 )
+                                cropSelection = proposed
                                 pendingCrop = result
+                                autoAttempted = false
+
+                                // Read that rectangle immediately instead of asking the user to
+                                // approve it first (1.0.3 P3).
+                                //
+                                // This is the same call the *Read table* button makes, with the same
+                                // region the crop screen would have opened on — so it is the user's
+                                // own tap, made for them, and it costs nothing extra: Strategy A is
+                                // a re-parse of elements already in memory, and Strategy B is
+                                // skipped entirely when A is already corroborated.
+                                //
+                                // The gate on the far side is what makes it safe: only a confidently
+                                // resolved reading proceeds, and everything else lands on the crop
+                                // screen exactly as before.
+                                readSelectedTable(proposed, automatic = true)
                             }
                         }
                     }
@@ -672,6 +768,18 @@ private fun LabelCamera(
         pendingCrop = null
         cropSelection = null
         readingTable = false
+        // Belongs to the capture being replaced. A *Capture label* tap from the crop screen — the
+        // "retake without leaving" path — would otherwise open the next crop screen still saying an
+        // automatic attempt had failed, before the new one had run.
+        autoAttempted = false
+        // Likewise, and for the same reason `resumeLive` clears it: a region recognised for the
+        // previous capture says nothing about this one. This path is reached from *Capture label* on
+        // the ambiguous, not-found and searching cards — all of which render after `releaseCapture`
+        // has dropped `pendingCrop`, so they bypass `resumeLive` entirely. Left set, and with both
+        // captures proposing the same `ScanRegionMapper.expand(scanRegion)` rectangle, the new
+        // photograph's first *Read table* would compare equal to the old one's and be skipped as
+        // "unchanged" — telling the user a brand-new capture would read the same as before (P2).
+        lastRecognisedRegion = null
         analyzer.pause()
         reading = null
         captureState = CaptureState.CAPTURING
@@ -756,7 +864,13 @@ private fun LabelCamera(
                 bitmap = frozenBitmap,
                 initialSelection = cropSelection ?: DEFAULT_CROP,
                 reading = readingTable,
-                onReadTable = ::readSelectedTable,
+                // True only once the automatic attempt has run and declined, which changes the
+                // screen's wording from "crop this" to "I tried, and I need a hand" (1.0.3 P4).
+                // While the automatic attempt is still running, `readingTable` is true and the
+                // screen shows its own reading state, so the crop UI never flashes up as an
+                // instruction the user is meant to act on and then answers itself.
+                afterAutomaticAttempt = autoAttempted,
+                onReadTable = { region -> readSelectedTable(region) },
                 onRetake = ::resumeLive,
             )
         }

@@ -85,6 +85,17 @@ fun CropConfirmationScreen(
     initialSelection: NormalizedRegion,
     /** True while the table is being re-parsed, which disables the primary action. */
     reading: Boolean,
+    /**
+     * True when the app already tried this rectangle automatically and could not read it safely
+     * (1.0.3 P4).
+     *
+     * Changes only the wording. Without it this screen is identical whether it is the first thing
+     * after a capture or the fallback from an automatic attempt the user just waited through — and
+     * in the second case "Tighten the box around the table" reads as though nothing had happened, or
+     * as though the scan had restarted. Saying that an attempt was made, and that this is the way to
+     * help it, is the difference between a failure and a hand-off.
+     */
+    afterAutomaticAttempt: Boolean = false,
     onReadTable: (NormalizedRegion) -> Unit,
     onRetake: () -> Unit,
 ) {
@@ -104,13 +115,29 @@ fun CropConfirmationScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
+            // Three states, and the ordering matters (1.0.3 P4).
+            //
+            // `reading` is checked FIRST because while a pass is running the user is not being asked
+            // for anything — telling them to drag the corners while the app is already reading the
+            // table asks for work that is about to be thrown away, and on the automatic path that
+            // instruction would appear before they had done anything at all. It becomes a statement
+            // of what is happening instead.
+            //
+            // Then the post-attempt wording, then the ordinary first-time wording.
+            val titleRes = when {
+                reading -> R.string.crop_reading
+                afterAutomaticAttempt -> R.string.crop_title_after_attempt
+                else -> R.string.crop_title
+            }
             Text(
-                text = stringResource(R.string.crop_title),
+                text = stringResource(titleRes),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
             )
             Text(
-                text = stringResource(R.string.crop_body),
+                text = stringResource(
+                    if (afterAutomaticAttempt) R.string.crop_body_after_attempt else R.string.crop_body,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.75f),
             )
