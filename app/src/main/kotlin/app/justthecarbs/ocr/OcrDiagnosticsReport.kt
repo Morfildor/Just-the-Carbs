@@ -90,10 +90,20 @@ object OcrDiagnosticsReport {
             }
         }
         report.servingCandidate?.let { serving ->
+            // `descriptor`/`weight` here describe the **column header's** own serving declaration —
+            // "per portie 50 g". They are legitimately absent on a US linear Nutrition Facts panel,
+            // which has no column headers at all and states its serving size in a sentence instead.
+            //
+            // That absence is NOT the same as the app not knowing the serving size: `ServingDeclaration`
+            // reads `Serv. size: 1 Tbsp (18 g)` off the panel and is what the recovery screen shows.
+            // A bundle reading `weight=none` beside a screen reading "From 6 g per 18 g serving" is
+            // two different objects being reported, not a contradiction — the `recovery proposal`
+            // block in `selection.txt` prints the one the user actually saw.
             appendLine(
                 "  serving: ${serving.carbsPerServing.toPlainString()} per '${serving.rawHeaderText}' " +
-                    "descriptor=${serving.descriptor?.kind?.name ?: "none"} " +
-                    "weight=${serving.descriptor?.weightOrVolume?.amount?.toPlainString() ?: "none"}",
+                    "header-descriptor=${serving.descriptor?.kind?.name ?: "none"} " +
+                    "header-weight=${serving.descriptor?.weightOrVolume?.amount?.toPlainString() ?: "none"} " +
+                    "(header only; see 'recovery proposal' for the declared serving size)",
             )
         } ?: appendLine("  serving: none")
         report.provenance?.let { provenance ->

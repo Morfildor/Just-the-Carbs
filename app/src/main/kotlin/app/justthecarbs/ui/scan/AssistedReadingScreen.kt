@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -45,11 +46,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
+import app.justthecarbs.domain.CarbBasis
 import app.justthecarbs.domain.CarbPlausibility
 import app.justthecarbs.domain.NutritionBasis
-import app.justthecarbs.ocr.AssistedSelection
+import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.ocr.CropSelectionGeometry
+import app.justthecarbs.ocr.DisputedCandidates
+import app.justthecarbs.ocr.FocusedAmountEntry
 import app.justthecarbs.ocr.OcrDocument
+import app.justthecarbs.ocr.RecoveryCandidates
 import app.justthecarbs.ocr.StatedBasis
 import app.justthecarbs.ui.theme.Space
 import java.math.BigDecimal
@@ -57,6 +62,7 @@ import java.math.BigDecimal
 /** Test hooks; the tappable overlay and the inline field carry no text of their own. */
 const val ASSIST_OVERLAY_TAG = "assist_overlay"
 const val ASSIST_MANUAL_FIELD_TAG = "assist_manual_field"
+const val ASSIST_FOCUSED_FIELD_TAG = "assist_focused_field"
 
 /**
  * What the assisted fallback is working with.
@@ -78,6 +84,23 @@ data class AssistState(
      * something that is not wrong.
      */
     val cropUnchanged: Boolean = false,
+    /**
+     * Candidates a distinct recognition run contradicted, which recovery must not re-offer.
+     *
+     * Carried from the resolver rather than recomputed here: the disagreement is a fact about the
+     * *evidence set*, and this screen only ever holds one document, so it could not detect one on
+     * its own. That gap is what let `20260902-131511-970` refuse `89` as `Conflicted` and then offer
+     * `89 g / 100 ml` as its first recovery choice.
+     */
+    val disputed: DisputedCandidates = DisputedCandidates.NONE,
+    /**
+     * True when the reading was withheld because its absolute decimal scale is not established.
+     *
+     * Distinct from every other reason this screen appears: the app *did* read a number and *did*
+     * place it under a basis, and is declining to show it because a uniform decimal collapse is
+     * equally consistent with the same pixels. The user is asked for the digits, not for the basis.
+     */
+    val scaleAmbiguous: Boolean = false,
 )
 
 /** Which step of the assisted flow the user is on. */
@@ -85,21 +108,52 @@ private sealed interface AssistStep {
     /** Choosing how to proceed. */
     data object Choosing : AssistStep
 
+    /**
+     * Choosing between the label's own basis-complete readings.
+     *
+     * Replaces the old "pick a number, then pick a basis" pair. Every choice here already knows what
+     * it is measured per, which is what removes the step at which a bare value could acquire a
+     * fabricated basis.
+     */
+    data object PickingLabelled : AssistStep
+
     /** Tapping the carbohydrate row (§18). */
     data object PickingRow : AssistStep
 
-    /** Tapping the printed number directly (§17). */
-    data object PickingValue : AssistStep
-
-    /** A number is chosen; the basis still has to be established. */
-    data class ConfirmingBasis(val value: BigDecimal, val rowText: String?) : AssistStep
-
     /** Typing the value in, with the table still visible (§19). */
     data object TypingValue : AssistStep
+
+    /**
+     * Typing **only the amount**, for a label whose row and basis are already established (P1-1).
+     *
+     * Distinct from [TypingValue] in exactly one way, and it is the whole point: the basis is fixed
+     * and cannot be changed here. This step is reachable only when the label itself stated the
+     * basis and the classifier read it — so offering a `100 g or 100 ml?` picker would invite the
+     * user to overwrite a fact the app got right with a guess, which is the composition that
+     * produced `1.3 g / 100 ml` on a previous device recording.
+     *
+     * Someone who genuinely wants to supply both halves uses [TypingValue], which is still offered.
+     */
+    data object TypingFocusedAmount : AssistStep
 }
 
 /**
- * The accept actions for a chosen value — the one place both 1.0.3 safety rules apply.
+ * The accept actions for a value **the user typed** — the one place both 1.0.3 safety rules apply.
+ *
+ * ## Reachable only from the typing step, deliberately
+ *
+ * This is the last place in the app that asks *"per 100 g or per 100 ml?"*, and it is now reachable
+ * only when the user has typed the figure themselves. That is the distinction the third phone
+ * session made necessary: when the user reads a number off the package and types it, they are the
+ * source of the data and are entitled to state its basis. When the app read the number, the app must
+ * already know the basis — and if it does not, it may not ask, because the answer would attach to
+ * whichever cell the user happened to tap rather than to the column that cell sits in.
+ *
+ * A device recording showed exactly that failure: the user tapped a `1.3` printed under *per 250 ml*
+ * and this screen offered `/100 ml`, because [StatedBasis] had correctly established that the label
+ * states per 100 ml somewhere. The fix is not a better question here; it is that OCR-derived choices
+ * now arrive already carrying their basis. See
+ * [app.justthecarbs.ocr.RecoveryCandidates].
  *
  * ## P0: an impossible figure gets no ordinary accept action
  *
@@ -179,6 +233,88 @@ private fun BasisActions(
 }
 
 /**
+ * The label's own readings, each stating what it is measured per.
+ *
+ * ## Every choice is basis-complete
+ *
+ * A choice reads `0.5 g / 100 ml`, `1.3 g / 250 ml`, `6 g / 18 g serving` — never a bare number.
+ * That is the whole safety property: there is no moment at which a value exists without a basis, so
+ * there is nothing for a later screen to supply one to. See
+ * [app.justthecarbs.ocr.RecoveryCandidates] for how the list is built and what it refuses to
+ * include.
+ *
+ * ## A converted figure says so
+ *
+ * When the label prints against something other than 100 g or 100 ml, the choice shows the printed
+ * reading and, beneath it, what it becomes. `6 g / 18 g serving` becomes `33.3 g / 100 g`, and both
+ * are on screen — the user is never shown a computed number as though the package had printed it.
+ *
+ * ## A figure that cannot be converted is shown, not offered
+ *
+ * A per-serving figure whose serving size the label never stated has no per-100 form, and this app
+ * stores nothing else. Rather than dropping it silently — which would look like the app failing to
+ * see a number that is plainly on the photograph — it is rendered as a disabled row with the reason.
+ * That is the one place a non-action is better than an action, because the alternative is asking the
+ * user to invent a serving size.
+ */
+@Composable
+private fun LabelledChoices(
+    candidates: List<RecoveryCandidates.Candidate>,
+    onAccept: (RecoveryCandidates.Candidate) -> Unit,
+) {
+    candidates.forEach { candidate ->
+        val derived = candidate.reading.normalizedToPerHundred()
+        if (derived == null) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                Text(
+                    text = candidate.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.55f),
+                )
+                Text(
+                    text = stringResource(R.string.assist_unknown_serving),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.55f),
+                )
+            }
+            return@forEach
+        }
+
+        val converted = derived.derivedFrom != null
+        Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+            Button(
+                onClick = { onAccept(candidate) },
+                shape = RoundedCornerShape(Space.buttonRadius),
+                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+            ) {
+                Text(
+                    if (converted) {
+                        // One formatter, not a local setScale. This line and the calculator that
+                        // follows it were rounding the same derived figure two different ways —
+                        // `33.3` here and `33.33333333` there — because each site decided for
+                        // itself. See ResultFormatter.quantity.
+                        "${ResultFormatter.quantity(derived.amount)} g / ${derived.basis.label}"
+                    } else {
+                        candidate.label
+                    },
+                )
+            }
+            if (converted) {
+                Text(
+                    text = stringResource(
+                        R.string.assist_derived_from,
+                        ResultFormatter.quantity(candidate.reading.amount),
+                        candidate.reading.basis.label,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.75f),
+                )
+            }
+        }
+    }
+}
+
+/**
  * The end of the dead end (spec §17, §18, §19).
  *
  * ## Why this exists
@@ -194,10 +330,24 @@ private fun BasisActions(
  * belongs to*. When the user taps the carbohydrate row, that association is supplied by a human
  * reading the printed package — a better source than any geometric rule here. The app does not then
  * re-guess: candidates are restricted to the tapped row, so the sugars figure on the next row is not
- * reachable, and the chosen value is always confirmed explicitly before use.
+ * reachable.
  *
- * The basis is asked for rather than assumed. A value with the wrong basis is a wrong carbohydrate
- * figure, and this screen has no more evidence about per-100-g versus per-100-ml than the parser did.
+ * ## The basis travels with the value, and is never asked for separately (third phone session)
+ *
+ * This screen used to work in two steps: pick a number, then pick a basis. A device recording showed
+ * the cost. On a drink printing `0,5 g / 100 ml` beside `1,3 g / 250 ml`, the user tapped the `1.3`
+ * and was offered `/100 ml` — because the *label* states per 100 ml, which is true and is not a fact
+ * about the cell they tapped. Quick Calculation then showed `1.3 g carbs / 100 ml`, the original
+ * 2.6x error arriving through the manual path after the automatic path had been fixed.
+ *
+ * Now every OCR-derived choice is built by [app.justthecarbs.ocr.RecoveryCandidates] already
+ * carrying the basis of the column it sits in, and reads as `1.3 g / 250 ml`. Choosing it yields
+ * `0.52 g / 100 ml` by conversion, never by relabelling. A cell in a column whose meaning was not
+ * established is not offered at all, because there is no honest label for it.
+ *
+ * The one remaining place that asks about a basis is [BasisActions], reachable only after the user
+ * has **typed** the figure — where they are the source of the data and are entitled to say what it
+ * is measured per.
  */
 @Composable
 fun AssistedReadingScreen(
@@ -211,19 +361,58 @@ fun AssistedReadingScreen(
     var step by remember { mutableStateOf<AssistStep>(AssistStep.Choosing) }
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
     var typed by remember { mutableStateOf("") }
-    var rowCandidates by remember { mutableStateOf<List<AssistedSelection.NumericCandidate>>(emptyList()) }
+    var rowCandidates by remember { mutableStateOf<List<RecoveryCandidates.Candidate>>(emptyList()) }
     var tappedRowText by remember { mutableStateOf<String?>(null) }
+    var tappedChildRow by remember { mutableStateOf(false) }
 
-    val allNumbers = remember(state.document) { AssistedSelection.numericCandidates(state.document) }
+    /**
+     * Set once a tap on a non-child row yielded no usable reading.
+     *
+     * Drives the focused-entry offer below, which is what stops the user repeating a tap that cannot
+     * succeed. One is enough: the second identical tap teaches them nothing the first did not.
+     */
+    var fruitlessTap by remember { mutableStateOf(false) }
+
+    /**
+     * How many taps have landed on a child clause and been refused.
+     *
+     * The first is ordinary — the screen answers it with the "this appears to be sugars" message and
+     * another tap is the right next action. A second one means the interaction is not working for
+     * this label, so focused entry is offered rather than inviting a third identical attempt.
+     */
+    var childRowTaps by remember { mutableIntStateOf(0) }
+
+    /**
+     * What the label established even though its printed value was unreadable — the row and the
+     * basis. Null when neither is safely known, in which case only retake and manual entry are
+     * honest offers.
+     */
+    val focusedTarget = remember(state.document) { FocusedAmountEntry.of(state.document) }
+
+    /**
+     * Every basis-complete reading the label offers, built once from the document already on screen.
+     *
+     * Empty when the label established no basis anywhere — in which case there is nothing honest to
+     * offer as a labelled choice and the screen falls back to tapping a row or typing the figure.
+     */
+    val labelled = remember(state.document, state.disputed) {
+        RecoveryCandidates.of(state.document, state.disputed)
+    }
 
     /**
      * The basis the label itself stated, when it stated exactly one (1.0.3 P1).
      *
-     * Derived from the document already on screen, so it costs no recognition and adds no state to
-     * carry through the pipeline. Null whenever the label was silent or said two different things,
-     * in which case the user is asked exactly as before.
+     * Used **only** by the typing step now. It is a fact about the label, not about any particular
+     * cell, which is precisely why it may no longer be attached to a number the user pointed at.
      */
     val statedBasis = remember(state.document) { StatedBasis.of(state.document) }
+
+    /** Hands a chosen reading on, converting to per-100 when the label printed another quantity. */
+    fun accept(candidate: RecoveryCandidates.Candidate) {
+        val perHundred = candidate.reading.normalizedToPerHundred() ?: return
+        val basis = (perHundred.basis as? CarbBasis.PerHundred)?.basis ?: return
+        onUseValue(perHundred.amount, basis)
+    }
 
     Column(
         modifier = Modifier
@@ -240,9 +429,9 @@ fun AssistedReadingScreen(
                 text = stringResource(
                     when (step) {
                         AssistStep.PickingRow -> R.string.assist_tap_row_title
-                        AssistStep.PickingValue -> R.string.assist_tap_value_title
-                        is AssistStep.ConfirmingBasis -> R.string.assist_basis_title
+                        AssistStep.PickingLabelled -> R.string.assist_choose_title
                         AssistStep.TypingValue -> R.string.assist_type_title
+                        AssistStep.TypingFocusedAmount -> R.string.assist_focused_title
                         AssistStep.Choosing -> R.string.assist_title
                     },
                 ),
@@ -253,9 +442,9 @@ fun AssistedReadingScreen(
                 text = stringResource(
                     when (step) {
                         AssistStep.PickingRow -> R.string.assist_tap_row_body
-                        AssistStep.PickingValue -> R.string.assist_tap_value_body
-                        is AssistStep.ConfirmingBasis -> R.string.assist_basis_body
+                        AssistStep.PickingLabelled -> R.string.assist_choose_body
                         AssistStep.TypingValue -> R.string.assist_type_body
+                        AssistStep.TypingFocusedAmount -> R.string.assist_focused_body
                         AssistStep.Choosing -> when {
                             // Ordered most specific first. An unchanged crop is a precise statement
                             // about what the user just did and beats the generic advice.
@@ -290,9 +479,9 @@ fun AssistedReadingScreen(
                 viewHeight = viewSize.height.toFloat(),
             )
 
-            val tappable = step == AssistStep.PickingRow || step == AssistStep.PickingValue
+            val tappable = step == AssistStep.PickingRow || step == AssistStep.PickingLabelled
             if (displayed.width > 0f && displayed.height > 0f && tappable) {
-                val highlighted = if (step == AssistStep.PickingValue) allNumbers else rowCandidates
+                val highlighted = if (step == AssistStep.PickingLabelled) labelled else rowCandidates
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
@@ -310,22 +499,67 @@ fun AssistedReadingScreen(
 
                                 when (step) {
                                     AssistStep.PickingRow -> {
-                                        rowCandidates = AssistedSelection
-                                            .candidatesOnRowAt(state.document, imageY)
-                                        tappedRowText = AssistedSelection.rowTextAt(state.document, imageY)
-                                        // One number on the tapped row is unambiguous, so skip a step.
-                                        rowCandidates.singleOrNull()?.let {
-                                            step = AssistStep.ConfirmingBasis(it.value, tappedRowText)
+                                        // Reported before the candidates, so a child row can say why
+                                        // it offers nothing rather than looking like a missed tap.
+                                        // Both coordinates: on overlapping rows the horizontal
+                                        // position is what says which word the finger was on, and
+                                        // the label column does not overlap the value columns.
+                                        tappedChildRow =
+                                            RecoveryCandidates.isChildRowAt(state.document, imageY, imageX)
+                                        // The dispute applies to the tap too. A value suppressed from
+                                        // the labelled list must not come back because the user
+                                        // pointed at the row it sits on — the reason it is withheld
+                                        // is that a second recognition read it differently, and
+                                        // where the finger landed says nothing about that.
+                                        rowCandidates = RecoveryCandidates.onRowAt(
+                                            state.document,
+                                            imageY,
+                                            imageX,
+                                            state.disputed,
+                                        )
+                                        tappedRowText =
+                                            RecoveryCandidates.rowTextAt(state.document, imageY, imageX)
+                                        // One reading on the tapped row is unambiguous — it already
+                                        // carries its basis, so there is no second question to ask.
+                                        rowCandidates.singleOrNull()?.let(::accept)
+
+                                        // A tap that produced nothing must change the screen.
+                                        //
+                                        // The recording shows the loop this closes: on the green
+                                        // drink the carbohydrate row is found and its per-100-ml
+                                        // column is established, but the printed value came back as
+                                        // `0.59` (the unit glyph read as a digit) and is correctly
+                                        // refused. The old screen offered no candidates, said
+                                        // nothing new, and asked for the same tap again — which is
+                                        // indistinguishable from a missed tap, so the user repeats
+                                        // it.
+                                        //
+                                        // A child-clause tap is not itself a failure — it *did*
+                                        // change the screen, which now says "this appears to be
+                                        // sugars", and the right next action is another tap.
+                                        //
+                                        // But a second one is. The seventh session's recording shows
+                                        // the user tapping the carbohydrate value, being told it
+                                        // looked like sugars, going back, and finding *Type it in*
+                                        // disabled — because this flag was the only thing that
+                                        // offered focused entry and a child row could never set it.
+                                        // Two unsuccessful taps means the row-tapping interaction is
+                                        // not working for this label, whatever the reason, and the
+                                        // user must be given a way forward rather than a third
+                                        // identical attempt.
+                                        if (rowCandidates.isEmpty()) {
+                                            if (!tappedChildRow || childRowTaps > 0) fruitlessTap = true
+                                            if (tappedChildRow) childRowTaps++
                                         }
                                     }
-                                    AssistStep.PickingValue -> {
-                                        allNumbers
+                                    AssistStep.PickingLabelled -> {
+                                        labelled
                                             .filter { c ->
                                                 imageX >= c.box.left && imageX <= c.box.right &&
                                                     imageY >= c.box.top && imageY <= c.box.bottom
                                             }
                                             .minByOrNull { it.box.width * it.box.height }
-                                            ?.let { step = AssistStep.ConfirmingBasis(it.value, null) }
+                                            ?.let(::accept)
                                     }
                                     else -> Unit
                                 }
@@ -355,18 +589,25 @@ fun AssistedReadingScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            when (val current = step) {
+            when (step) {
                 AssistStep.Choosing -> {
+                    // The labelled choices lead when the label established a basis anywhere. They
+                    // are the only route that reaches Quick Calculation without the user having to
+                    // state a basis themselves, so putting anything above them would send people
+                    // down a longer path for no reason.
+                    if (labelled.isNotEmpty()) {
+                        LabelledChoices(labelled, ::accept)
+                        OutlinedButton(
+                            onClick = { step = AssistStep.PickingLabelled },
+                            shape = RoundedCornerShape(Space.buttonRadius),
+                            modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                        ) { Text(stringResource(R.string.assist_pick_labelled)) }
+                    }
                     Button(
                         onClick = { step = AssistStep.PickingRow },
                         shape = RoundedCornerShape(Space.buttonRadius),
                         modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
                     ) { Text(stringResource(R.string.assist_pick_row)) }
-                    OutlinedButton(
-                        onClick = { step = AssistStep.PickingValue },
-                        shape = RoundedCornerShape(Space.buttonRadius),
-                        modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
-                    ) { Text(stringResource(R.string.assist_pick_value)) }
                     OutlinedButton(
                         onClick = { step = AssistStep.TypingValue },
                         shape = RoundedCornerShape(Space.buttonRadius),
@@ -378,8 +619,18 @@ fun AssistedReadingScreen(
                 }
 
                 AssistStep.PickingRow -> {
-                    // Several numbers on the tapped row: the user disambiguates. Restricted to that
-                    // row, so an adjacent nutrient's figure is not in this list at all.
+                    // A child row supplies nothing, and says so. Without this the empty list below
+                    // would read as a missed tap and the user would keep tapping the same row.
+                    if (tappedChildRow) {
+                        Text(
+                            text = stringResource(R.string.assist_child_row),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    // Several readings on the tapped row: the user disambiguates between them, each
+                    // already carrying its own basis. Restricted to that row, so an adjacent
+                    // nutrient's figure is not in this list at all.
                     if (rowCandidates.size > 1) {
                         tappedRowText?.let {
                             Text(
@@ -388,16 +639,32 @@ fun AssistedReadingScreen(
                                 color = Color.White,
                             )
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                            rowCandidates.take(4).forEach { candidate ->
-                                OutlinedButton(
-                                    onClick = {
-                                        step = AssistStep.ConfirmingBasis(candidate.value, tappedRowText)
-                                    },
-                                    shape = RoundedCornerShape(Space.buttonRadius),
-                                    modifier = Modifier.weight(1f).height(Space.minTouchTarget),
-                                ) { Text(candidate.text) }
-                            }
+                        LabelledChoices(rowCandidates, ::accept)
+                    }
+                    // The escape from the loop (P1-1).
+                    //
+                    // Offered after a tap that found the row and could not read its number — which
+                    // is the drink's exact state: the carbohydrate row is there, the per-100-ml
+                    // column is established, and the printed value came back as `0.59`. Asking for
+                    // that one number is the only thing left that can succeed, and repeating the tap
+                    // is the one thing that cannot.
+                    if (fruitlessTap && focusedTarget != null) {
+                        Text(
+                            text = stringResource(R.string.assist_focused_offer),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White,
+                        )
+                        Button(
+                            onClick = { step = AssistStep.TypingFocusedAmount },
+                            shape = RoundedCornerShape(Space.buttonRadius),
+                            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                        ) {
+                            Text(
+                                stringResource(
+                                    R.string.assist_focused_action,
+                                    focusedTarget.basis.unitLabel,
+                                ),
+                            )
                         }
                     }
                     TextButton(onClick = { step = AssistStep.Choosing }, modifier = Modifier.fillMaxWidth()) {
@@ -405,29 +672,69 @@ fun AssistedReadingScreen(
                     }
                 }
 
-                AssistStep.PickingValue ->
-                    TextButton(onClick = { step = AssistStep.Choosing }, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.action_back))
+                AssistStep.TypingFocusedAmount -> {
+                    // Unreachable without a target — the only path here is the offer above, which is
+                    // rendered only when one exists. Stated as a guard rather than a `!!` because a
+                    // future caller adding another route must not be able to reach a screen that
+                    // claims a basis it does not have.
+                    if (focusedTarget == null) {
+                        step = AssistStep.Choosing
+                    } else {
+                        Text(
+                            text = stringResource(
+                                R.string.assist_focused_prompt,
+                                focusedTarget.basis.unitLabel,
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White,
+                        )
+                        OutlinedTextField(
+                            value = typed,
+                            onValueChange = { input ->
+                                if (input.length <= 6 &&
+                                    input.all { it.isDigit() || it == '.' || it == ',' }
+                                ) {
+                                    typed = input
+                                }
+                            },
+                            label = { Text(stringResource(R.string.assist_type_label)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag(ASSIST_FOCUSED_FIELD_TAG),
+                        )
+                        val parsed = typed.replace(',', '.').toBigDecimalOrNull()
+                        // The plausibility barrier still applies. A basis the label stated does not
+                        // exempt a figure from being impossible under it.
+                        if (parsed != null && CarbPlausibility.isPlausiblePer100(parsed, focusedTarget.basis)) {
+                            Button(
+                                onClick = { onUseValue(parsed, focusedTarget.basis) },
+                                shape = RoundedCornerShape(Space.buttonRadius),
+                                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                            ) {
+                                Text(
+                                    stringResource(
+                                        R.string.assist_focused_confirm,
+                                        ResultFormatter.quantity(parsed),
+                                        focusedTarget.basis.unitLabel,
+                                    ),
+                                )
+                            }
+                        } else if (parsed != null) {
+                            Text(
+                                text = stringResource(R.string.assist_value_implausible),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        TextButton(
+                            onClick = { step = AssistStep.Choosing },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.action_back)) }
                     }
+                }
 
-                is AssistStep.ConfirmingBasis -> {
-                    Text(
-                        text = stringResource(
-                            // "per what?" is the wrong question when the label already said. The
-                            // heading follows the basis, so a preserved one is stated rather than
-                            // re-asked (1.0.3 P1).
-                            if (statedBasis != null) R.string.assist_confirm_value_known
-                            else R.string.assist_confirm_value,
-                            current.value.stripTrailingZeros().toPlainString(),
-                        ),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                    )
-                    BasisActions(
-                        value = current.value,
-                        statedBasis = statedBasis,
-                        onUseValue = onUseValue,
-                    )
+                AssistStep.PickingLabelled -> {
+                    LabelledChoices(labelled, ::accept)
                     TextButton(onClick = { step = AssistStep.Choosing }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.action_back))
                     }

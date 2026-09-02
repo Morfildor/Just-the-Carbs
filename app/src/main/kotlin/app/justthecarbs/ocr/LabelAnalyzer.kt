@@ -43,6 +43,41 @@ class LabelAnalyzer(
     @Volatile
     private var lastResolution: Pair<Int, Int>? = null
 
+    /**
+     * Runs one throwaway recognition so the native detector is loaded before the user's first
+     * capture, not during it.
+     *
+     * ### The measured cost this addresses
+     *
+     * On the third phone session (`docs/Scan evidence 01-09-26 3rd testr/`) the **first** capture of
+     * the session spent **2789 ms** inside ML Kit; the eight that followed spent 447–1838 ms, most
+     * of them under 700. The difference is one-time initialisation — loading the model and building
+     * the native detector — and it is charged to whichever call happens first.
+     *
+     * Live analysis frames use the same client and would warm it eventually, but only once frames
+     * start arriving *and* are not [paused]; a user who frames and taps quickly can reach the
+     * shutter first. This makes the warm-up deliberate rather than a side effect of how long they
+     * took to aim.
+     *
+     * ### Why a 1x1 bitmap
+     *
+     * It carries no text, so nothing can be recognised from it and no callback consumes the result —
+     * the point is only that the detector is constructed. It is the smallest input ML Kit accepts,
+     * so the work is initialisation and nothing else.
+     *
+     * Failure is ignored on purpose. A warm-up that cannot run leaves the app in exactly the state
+     * it was in before this existed: the first real recognition pays the cost. There is nothing to
+     * report and nothing for the user to do.
+     */
+    fun warmUp() {
+        if (closed.get()) return
+        runCatching {
+            val blank = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
+            recognizer.process(InputImage.fromBitmap(blank, 0))
+                .addOnCompleteListener { blank.recycle() }
+        }
+    }
+
     /** Stops emitting once the user is considering a candidate. */
     fun pause() {
         paused = true
@@ -281,16 +316,6 @@ class LabelAnalyzer(
             // delivered, from the moved file rather than from `upright`, whose ownership passes to
             // the crop screen — see ScanEvidenceRecorder.recordPassAImageAsync.
             //
-            // Debug-only either way: in release `consumeCapture` returns false without touching
-            // anything, the delete runs exactly as it always did, and R8 removes the recorder
-            // entirely. Shipped behaviour is unchanged.
-            val captureConsumed = ScanEvidenceRecorder.consumeCapture(evidence, request.file)
-            trace.markOffPath("evidence-capture")
-
-            if (!captureConsumed && !request.file.delete()) {
-                OcrDiagnosticsLogger.failure("Temporary label image was already absent")
-            }
-
             val retaining = request.retaining
             if (retaining != null) {
                 // Ownership of the bitmap transfers to the caller, which displays it on the crop
@@ -317,6 +342,27 @@ class LabelAnalyzer(
             // describes a build nobody ships. See ScanTrace.markOffPath.
             trace.mark("handoff")
 
+            // The capture file is taken over **after** the handover, not before it.
+            //
+            // ### Why this moved (2026-09-01, P0-2)
+            //
+            // `consumeCapture` renames the temporary JPEG into the evidence folder, and falls back to
+            // a byte copy when the rename is refused — which is what happens whenever the two paths
+            // are on different filesystems, i.e. routinely. That copy is ~3 MB of synchronous file
+            // I/O, and it used to run at the top of `finish`, *before* `retaining`/`onComplete`
+            // delivered the result. The device evidence measured it at **9487 ms and 5232 ms** inside
+            // scans of 20195 ms and 11189 ms.
+            //
+            // It was already flagged `markOffPath`, and that is precisely the trap this ordering
+            // fixes: `markOffPath` changes which number gets *printed*, not when the work *runs*. The
+            // stage was excluded from `user-visible` while the user was still sitting behind it. Work
+            // is off the path when it happens after delivery — nothing else makes it so.
+            //
+            // Deferred wholesale to the writer thread rather than merely moved a few lines down: the
+            // copy fallback is unbounded, so leaving it on this thread would only shrink the stall.
+            ScanEvidenceRecorder.consumeCaptureAsync(evidence, request.file)
+            trace.markOffPath("evidence-capture")
+
             // After the handover, on a background thread, from the moved capture file. Nothing the
             // user is waiting for depends on it, and a failure here cannot affect the scan.
             ScanEvidenceRecorder.recordPassAImageAsync(evidence)
@@ -336,7 +382,10 @@ class LabelAnalyzer(
                 decodedViaFallback = upright == null,
                 region = request.region,
                 totalMs = (System.nanoTime() - started) / 1_000_000,
-                outcome = report.reading::class.simpleName ?: "unknown",
+                // Pass A's reading only. Resolution happens later, in the scanner, once a region is
+                // known — so there is no verdict to record here and the field says so rather than
+                // leaving a reader to assume this line is one.
+                passAReading = report.reading::class.simpleName ?: "unknown",
                 recognitionMs = recognitionMs,
                 timingBreakdown = trace.summary(),
             )
@@ -358,20 +407,29 @@ class LabelAnalyzer(
                 val parsed = trace.time("parse") {
                     NutritionTableParser.parseWithDiagnostics(document)
                 }
-                trace.timeOffPath("evidence-text") {
-                    ScanEvidenceRecorder.recordRecognizedText(evidence, text)
-                }
-
                 // Framing narrows an existing reading and can never create or promote one.
                 val report = trace.time("relevance") {
                     ScanRegionRelevance.apply(parsed, request.region, ocrWidth, ocrHeight)
                 }
                 OcrDiagnosticsLogger.report(passAMs, report)
                 OcrDiagnosticsLogger.stillDiagnostics(document, report)
-                trace.timeOffPath("evidence-diagnostics") {
-                    ScanEvidenceRecorder.recordDiagnostics(evidence, document, report)
-                }
+
+                // Both evidence writes are queued, not performed, and both are queued only AFTER the
+                // result has been handed over — the ordering is the fix, and the `Async` suffix alone
+                // would not be enough if these still ran before `finish`.
+                //
+                // Measured on the recorded device session: `evidence-diagnostics` cost 582–1106 ms in
+                // every bundle, and it ran between the parse completing and the result reaching the
+                // screen. `ScanTrace` flagged it off-path so the printed `user-visible` total excluded
+                // it, which made the trace describe the shipped build correctly while the debug build
+                // the measurements came from still made the user wait.
+                //
+                // Neither call can affect the reading: both take an immutable snapshot on this thread
+                // (the report and document are values; the recognizer's `Text` is flattened to a
+                // string before the hand-off) and only the file write is deferred.
                 finish(report, passAMs, document)
+                ScanEvidenceRecorder.recordRecognizedTextAsync(evidence, text)
+                ScanEvidenceRecorder.recordDiagnosticsAsync(evidence, document, report)
             }
             .addOnFailureListener { error ->
                 OcrDiagnosticsLogger.failure("Still OCR failed", error)

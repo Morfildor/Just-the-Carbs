@@ -40,7 +40,10 @@ object NutritionTableInterpreter {
         val rows = LogicalRowBuilder.build(document)
         rows.forEach { diagnostics += OcrDiagnostic("row", "${it.text} @ ${it.box}") }
 
-        val typed = rows.map { it to RowClassifier.classify(it) }
+        // classifyAll, not classify: a row past the package's own declaration boundary is not
+        // nutrition however it reads. The Korean sauce's ingredient list names "brown sugar" and
+        // typed CARBOHYDRATE_CHILD, joining the table's structure. See [DeclarationBoundary].
+        val typed = rows.zip(RowClassifier.classifyAll(rows))
         typed.forEach { (row, kind) -> diagnostics += OcrDiagnostic("row-kind", "${kind.name}: ${row.text}") }
 
         // Classified before the no-total-row exit, not after: the prose fallback's eligibility
@@ -65,7 +68,7 @@ object NutritionTableInterpreter {
             if (ProseNutritionReader.isProseLabel(rows, columns, document.width)) {
                 emptyList()
             } else {
-                typed.filter { it.second == NutritionRowKind.CARBOHYDRATE_CHILD }
+                val merged = typed.filter { it.second == NutritionRowKind.CARBOHYDRATE_CHILD }
                     .mapNotNull { (row, _) ->
                         MergedTotalRowRecovery.recover(row)?.also {
                             diagnostics += OcrDiagnostic(
@@ -74,6 +77,25 @@ object NutritionTableInterpreter {
                             )
                         }
                     }
+                // A total row whose *label* OCR damaged, recovered from the table's structure. Only
+                // reached when neither ordinary classification nor merged-row recovery found a total
+                // row, so a table that reads normally never consults it. See
+                // [DamagedCarbohydrateLabel] for the six conditions and why none of them is a
+                // relaxation of the carbohydrate vocabulary.
+                merged.ifEmpty {
+                    DamagedCarbohydrateLabel
+                        .recoverTotalRowIndex(rows, typed.map { it.second }, columns)
+                        ?.let { index ->
+                            diagnostics += OcrDiagnostic(
+                                "damaged-label",
+                                "row '${rows[index].text}' typed as the total row: it precedes a " +
+                                    "child row, carries a value in a resolved basis column, and " +
+                                    "states a carbohydrate suffix",
+                            )
+                            listOf(rows[index])
+                        }
+                        .let { if (it == null) emptyList() else it }
+                }
             }
         }
         if (totalRows.isEmpty()) {
@@ -94,6 +116,19 @@ object NutritionTableInterpreter {
         // depending on element ordering, and the user was shown the winner as a confident reading.
         // Identical interpretations collapse below; genuinely different ones become an ambiguity the
         // user resolves.
+        // Asked once per document, not once per token: "does this label print units on its values?"
+        // is a property of the label's typesetting, and the carbohydrate row — the row whose unit may
+        // itself be corrupted — must not be the witness to its own convention.
+        val mayDeclineBareValues = UnitAccompanimentPolicy.mayDeclineBareValues(document, rows)
+        diagnostics += OcrDiagnostic(
+            "unit-accompaniment",
+            if (mayDeclineBareValues) {
+                "this label prints units on its value cells; a bare number is anomalous"
+            } else {
+                "this label states units in its headers only; bare values are ordinary here"
+            },
+        )
+
         val perHundred = mutableListOf<Pair<BigDecimal, NutritionBasis>>()
         // The first serving cell found across the total rows, kept with the row it came from so the
         // per-serving figure and its column header stay together.
@@ -143,7 +178,28 @@ object NutritionTableInterpreter {
                 )
             }
 
-            numbersIn(totalRow, document, rows, inlineBases, anchors, diagnostics).forEach { cell ->
+            val declinedForNoUnit = mutableListOf<OcrBox>()
+            val cells = numbersIn(
+                totalRow, document, rows, inlineBases, anchors,
+                mayDeclineBareValues, declinedForNoUnit, diagnostics,
+            )
+
+            // A cell refused for stating no unit, sitting in a real per-100 column, means the table
+            // printed its answer there and it is unusable — exactly the situation
+            // [perHundredCellRejected] exists for. Without this, a corrupted per-100 cell would look
+            // to the fallback stages like a column that printed nothing, and the prose reader would
+            // be free to substitute a neighbouring column's number for the one the label actually
+            // printed. Same reasoning, and the same flag, as a validator rejection.
+            declinedForNoUnit.forEach { box ->
+                val column = columnFor(NumberCell(BigDecimal.ZERO, box), columns, document.width)
+                if (column?.kind == NutritionColumnKind.PER_100_G ||
+                    column?.kind == NutritionColumnKind.PER_100_ML
+                ) {
+                    perHundredCellRejected = true
+                }
+            }
+
+            cells.forEach { cell ->
                 val column = columnFor(cell, columns, document.width)
                 // An inline basis only applies when no classified column claims the cell, so a real
                 // header row always wins and this cannot quietly override a resolved table.
@@ -230,6 +286,49 @@ object NutritionTableInterpreter {
             )
         }
 
+        // Cross-column consistency (§5). The same nutrient printed in a per-100 column and a portion
+        // column states its quantity twice, and the two must agree once the printed portion size is
+        // applied. Disagreement means one of the cells was misread and the app must not advance on
+        // either — it is recorded as a conflict, never resolved by preferring one of them.
+        //
+        // Only ever *reported* here. The portion column is not a source of per-100 readings in the
+        // first place, so nothing downstream consumes the portion figure as a carbohydrate value;
+        // this exists so a diagnostic can say the table contradicted itself, and so a future
+        // recovery UI can ask a specific question rather than a generic one.
+        val servingWeightForCheck = servingColumn?.headerText?.let(::descriptorFromHeader)
+            ?.weightOrVolume?.amount
+        if (serving != null && servingWeightForCheck != null && distinct.size == 1) {
+            val (perHundredValue, _) = distinct.single()
+            when (val verdict = CrossColumnConsistency.check(perHundredValue, servingWeightForCheck, serving)) {
+                is CrossColumnConsistency.Verdict.Consistent -> diagnostics += OcrDiagnostic(
+                    "cross-column",
+                    "per-100 ${perHundredValue.toPlainString()} over " +
+                        "${servingWeightForCheck.toPlainString()} gives " +
+                        "${verdict.derived.toPlainString()}, matching the printed " +
+                        verdict.printed.toPlainString(),
+                )
+                is CrossColumnConsistency.Verdict.Conflicting -> {
+                    val hypothesis = CrossColumnConsistency.decimalShiftHypothesis(
+                        perHundredValue, servingWeightForCheck, serving,
+                    )
+                    diagnostics += OcrDiagnostic(
+                        "cross-column",
+                        "CONFLICT: per-100 ${perHundredValue.toPlainString()} over " +
+                            "${servingWeightForCheck.toPlainString()} gives " +
+                            "${verdict.derived.toPlainString()}, but the portion column prints " +
+                            verdict.printed.toPlainString() +
+                            (
+                                hypothesis?.let {
+                                    " (a lost decimal point would make it ${it.toPlainString()}; " +
+                                        "recorded as a hypothesis, NOT applied)"
+                                } ?: ""
+                                ),
+                    )
+                }
+                CrossColumnConsistency.Verdict.NotComparable -> Unit
+            }
+        }
+
         var provenance: CandidateProvenance? = null
 
         val reading = when {
@@ -241,7 +340,8 @@ object NutritionTableInterpreter {
                 if (perHundredCellRejected) {
                     diagnostics += OcrDiagnostic(
                         "prose",
-                        "per-100 cell was rejected as implausible; no fallback may replace it",
+                        "the per-100 cell this label printed was rejected as implausible or unit-less; " +
+                            "no fallback may replace it",
                     )
                 } else {
                     proseFallback(rows, columns, document.width, diagnostics)?.let { return it }
@@ -543,6 +643,13 @@ object NutritionTableInterpreter {
         allRows: List<LogicalRow>,
         inlineBases: List<InlineBasisSpans.Span>,
         anchors: List<CarbohydrateTermAnchor.Anchor> = emptyList(),
+        mayDeclineBareValues: Boolean,
+        /**
+         * Boxes of cells refused for stating no unit, so the caller can tell whether the table's own
+         * per-100 answer was found-and-unusable rather than absent — the distinction that decides
+         * whether any fallback may run at all.
+         */
+        declined: MutableList<OcrBox>,
         diagnostics: MutableList<OcrDiagnostic>,
     ): List<NumberCell> = buildList {
         val percentIndices = PercentAssociation.percentElementIndices(row, document.width)
@@ -558,6 +665,20 @@ object NutritionTableInterpreter {
             )
         }
 
+        // On a linear Nutrition Facts panel the row states several nutrients in sequence. The
+        // carbohydrate clause is bounded by the next nutrient name, so only numbers inside that
+        // span are eligible — which is what keeps `Fiber 1 g` and the trailing `(2% DV)` of the
+        // *previous* nutrient off the carbohydrate row. Null on every ordinary table row, where the
+        // whole row is the carbohydrate clause and nothing changes.
+        val totalSegment = NutrientRowSegments.totalCarbohydrateSegment(row)
+        if (totalSegment != null) {
+            diagnostics += OcrDiagnostic(
+                "row-segment",
+                "carbohydrate clause '${totalSegment.term}' spans x=${totalSegment.startX}.." +
+                    if (totalSegment.endX == Int.MAX_VALUE) "end" else "${totalSegment.endX}",
+            )
+        }
+
         row.elements.forEachIndexed { index, element ->
             if (index in percentIndices) return@forEachIndexed
             if (index in basisIndices) return@forEachIndexed
@@ -565,17 +686,42 @@ object NutritionTableInterpreter {
             if (index in fragmentPartners.values) return@forEachIndexed
             // A misread unit annotation, not a cell in a value column.
             if (index in markerIndices) return@forEachIndexed
+            // Belongs to a different nutrient's clause on this linear row.
+            if (totalSegment != null && !totalSegment.contains(element.box)) return@forEachIndexed
             // Claimed by a different nutrient named to its left on this same row.
             if (!CarbohydrateTermAnchor.isCarbohydrateValue(anchors, element.box.right)) {
                 return@forEachIndexed
             }
-
             val text = fragmentPartners[index]
                 ?.let { tail -> element.text + row.elements[tail].text }
                 ?: element.text
             val box = fragmentPartners[index]
                 ?.let { tail -> element.box.union(row.elements[tail].box) }
                 ?: element.box
+
+            // The printed unit glyph must be present, either fused to the token or as the very next
+            // element — but only on a label that demonstrably prints units on its values, so a table
+            // stating its unit in the header alone is not refused for typesetting normally. See
+            // [UnitAccompanimentPolicy] for why that gate is not the sibling rule the owner rejected,
+            // and [CarbUnitAccompaniment] for the measured confident-wrong this closes.
+            //
+            // Asked about the REJOINED cell, not about the raw element. A `61,9 g` fragmented into
+            // `61,` + `9` + `g` has its unit adjacent to the *tail*, so asking the head element
+            // would find no unit and decline a correctly printed value — the decimal-comma shape
+            // this parser already goes out of its way to reconstruct.
+            // Only tokens that would otherwise have become a value are worth asking about, so a
+            // nutrient name is not reported as "stating no unit" — it was never a candidate.
+            if (NUMBER.containsMatchIn(text)) {
+                val cell = OcrElement(text, box, element.blockId, element.lineId, element.confidence)
+                if (mayDeclineBareValues && !CarbUnitAccompaniment.isAccompanied(cell, row.elements)) {
+                    diagnostics += OcrDiagnostic(
+                        "unit-accompaniment",
+                        "'$text' states no unit; declining it as a carbohydrate value",
+                    )
+                    declined += box
+                    return@forEachIndexed
+                }
+            }
 
             NUMBER.findAll(text).forEach { match ->
                 if (!isStandaloneNumber(text, match)) return@forEach

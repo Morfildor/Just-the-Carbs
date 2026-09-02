@@ -70,8 +70,186 @@ Opened 2026-08-29 under the one-version-per-code-change rule. **Not built, not u
 track.** Nothing goes into [`docs/version-history.md`](docs/version-history.md) until Play accepts an
 artifact for this code.
 
+### Fixed — the seventh phone session (2026-09-02)
+
+The sixth session's scale safety held on the device: the truffle label never displayed or offered
+`89`. It was, however, **unrecoverable**. Tapping the carbohydrate value answered *"This looks like
+sugars or fibre. Tap the total carbohydrate row instead."*, and returning to recovery left *Type it
+in* disabled — a dead end on a label the app had otherwise read correctly.
+
+- **A tap inside a merged row's total-carbohydrate clause is no longer answered with a fact about
+  its sugars clause.** On this package ML Kit puts the whole declaration on one reconstructed row
+  (`Kohlenhydrate 8,9 a, 1.3q(<19; waarvan suikers/dant sucres/tavon Žucker`), so the row classifies
+  `CARBOHYDRATE_CHILD` — correctly — and every element on it, including the word `Kohlenhydrate` and
+  the value `8,9` half a screen from the sugars word, was refused as sugars. Hit-testing now asks
+  which printed *clause* the finger landed on, using the horizontal position a tap carries and the
+  automatic path does not have. A tap inside the sugars clause is still refused.
+- **Focused entry is reachable after an unsuccessful tap.** It was gated on a tap that produced
+  nothing *and was not a child row*, so a merged row could never reach it; `FocusedAmountEntry`
+  itself also required a `TOTAL_CARBOHYDRATE` row and returned null here. Both are fixed, and a
+  second refused child-clause tap now offers focused entry rather than inviting a third identical
+  attempt. It asks for the amount printed under **100 ml** and shows no basis picker.
+- **Nothing was relaxed to achieve this.** Automatic classification is unchanged — both captures
+  still classify `CARBOHYDRATE_CHILD` and neither produces a confident reading. `89` is still
+  suppressed, `8.9` is never manufactured from the separatorless capture, `ScaleAmbiguity`,
+  cross-run dispute suppression, unit accompaniment and child-nutrient protection are untouched, and
+  no OCR pass was added.
+
+### Performance — a real parser defect the session exposed
+
+`141642-529` took **2142 ms** with **1432 ms in parse**, against 501–864 ms total and 55–199 ms
+parse for every other capture in the same run. Measured in work counts rather than wall clock, that
+289-element document did **51,792** `normalize` calls against 2,295 for its 262-element sibling —
+22.5x the work for a 1.10x larger document.
+
+The cause was the 2026-09-01 quadratic shape surviving in two functions: `ProseNutritionReader`
+walked **every vocabulary term at every token position** and normalized the term inside that loop,
+though the vocabulary is a compile-time constant. Both now use a cached `NutritionTerminology
+.termWords`, mirroring the existing term cache. **51,792 → 2,060**, so the slow capture now does
+slightly *less* work than its sibling, consistent with its size. Pinned by invocation-count
+assertions, not by wall-clock time.
+
+### Fixed — the sixth phone session (2026-09-02)
+
+A truffle sauce printing `8,9 g / 100 ml` and `1,3 g / 15 ml` was recognised as `89` and `13` — the
+decimal separator did not survive — and the app displayed **`89 g / 100 ml`**, a ten-fold error, on
+two consecutive captures that reached the screen by two different routes.
+
+- **A value another recognition run contradicted is no longer offered by recovery.** On
+  `20260902-131511-970` two independent runs read `89` and `8`, the resolver correctly returned
+  `Conflicted` — and the recovery screen then offered `89 g / 100 ml` as its first choice, because it
+  was rebuilt from the winning document alone and had no way to know a dispute had happened. The
+  refusal now travels with the hand-off. **Both** sides of a disagreement are suppressed, not just
+  the loser: nothing available to the app says which reading is the printed one. Undisputed values,
+  row tapping and manual entry are unaffected, so a conflicted capture degrades to *read the
+  package*, never to a dead end.
+- **A single unverified recognition no longer gets an ordinary confirmation when the evidence cannot
+  establish the decimal scale.** On `20260902-131545-452` one run read `89`, the second found
+  nothing, and the app showed a confirmation card. A confirmation is a question — *is this right?* —
+  and it is a fair question only when the user can check the answer; here the separator was missing
+  from *every* value on the label, so nothing on screen distinguished `89` from `8.9`. Such a reading
+  now goes to focused entry with the stated basis preserved.
+- **Why the existing cross-column check could not catch this.** The collapse is uniform: the printed
+  `2,7 g` fat read `27 g`, `1,6 g` salt read `16 g`, `4,6 g` sugars read `46g`. Multiplying both
+  sides of a ratio by ten leaves the ratio unchanged, so the table corroborated `89` exactly as
+  strongly as it would have corroborated `8.9`. **Relational consistency establishes proportion,
+  never absolute scale** — a separate question, so it gets a separate answer rather than a tightened
+  threshold.
+- **Nothing is repaired.** `89` never becomes `8.9`; no value is divided, shifted or inserted
+  anywhere. The decimal point is what OCR is least reliable about, and unlike a refusal a wrong
+  repair is invisible — the user sees a plausible number and has no reason to check it.
+- **The rule keys on punctuation, not magnitude,** and is only ever asked of an *unverified* reading
+  paired with a second value that also lost its separator. That is what keeps `41g` on
+  `20260902-131357-353` — integer-like, no separator, and correct — advancing exactly as before, on
+  the strength of three runs agreeing. There is no "large values are suspicious" threshold, and none
+  may be added: such a rule would refuse flour and sugar while still admitting a collapsed `46`.
+- **Edit no longer discards a basis the label stated.** Rejecting `89 g / 100 ml` and tapping *Edit*
+  opened manual entry blank with **`100 g`** selected, because the action carried no basis at all and
+  the screen's own default stood. The basis decides the unit the portion field asks a human to
+  measure in, so typing the right figure there stored it against the wrong denominator with nothing
+  downstream able to detect it. *Edit* from `/100 ml` now opens on `100 ml`, and from `/100 g` on
+  `100 g`; the amount stays blank deliberately, since the action is reached precisely when the app's
+  number was wrong or withheld.
+- **The evidence bundle can now reconstruct this class without a screen recording.** `selection.txt`
+  gained the cross-run dispute (which run read what), the surviving punctuation evidence behind a
+  scale refusal, and the basis handed to Edit or focused entry with whether the amount was
+  intentionally blank.
+
+### Fixed — the fifth phone session (2026-09-02)
+
+- **A carbohydrate figure can no longer be shown under a basis it never had.** When OCR damaged a
+  `per 100 g` column header, the per-100 value bound to the neighbouring *per portion* column — the
+  only one left within binding distance — and the recovery screen offered `72 g / serving` for a
+  value the packet prints per 100 g. A column may now claim a cell only when no other value on that
+  row sits closer to it, so a number whose own column was destroyed is left unresolved and
+  suppressed instead of relabelled. The genuine per-serving figure is unaffected.
+- **A verified reading now reaches you.** On the same capture the second recognition read the
+  printed `72 g / 100 g` and the label's own other rows corroborated it — and the app showed generic
+  recovery anyway. A reading a single recognition found is still only *proposed* when nothing
+  corroborates it; when the table itself agrees, it is now the result.
+- **A contradicted value is refused everywhere, not only automatically.** A figure the table's own
+  rows refute — the `12` where the packet prints `72` — is no longer offered as a recovery choice
+  either. Typing a value by hand is unchanged.
+- **Verification is now tied to the exact reading being offered**, rather than to whichever
+  recognition happened to be first in the list.
+- **The camera permission notice no longer names only barcodes.** Opening the label scanner on a
+  fresh install explained the camera was needed "to scan a barcode". No permission changed.
+
+### Diagnostics
+
+- Evidence bundles now record the recovery proposal: each offered choice with its displayed value,
+  basis, provenance and derivation, and each *suppressed* number with the rule that removed it.
+- The `serving:` line is relabelled `header-…` and points at that block. It reports the column
+  header's own declaration, which is legitimately absent on a US linear panel; the serving size such
+  a panel states in a sentence is what the screen uses and is now printed where it can be read.
+
+### Fixed — the fourth phone session (2026-09-02)
+
+- **A misread number can no longer become an answer without you confirming it.** The scanner
+  read one cracker packet's `72,0 g` as `12,0 g` and showed 12 g of carbs per 100 g straight
+  away, with nothing to press. It now checks a figure against the rest of the same table — every
+  other row on that label agreed the reading was six times too small — and a figure it cannot
+  check is shown for you to confirm rather than used on its own. Correct scans that the label
+  itself corroborates still go straight through in two taps.
+- **US-style nutrition panels are read properly.** A panel that prints everything in sentences
+  ("Total Carb. 6 g (2% DV), Fiber 1 g") was being read as if the percentages were columns, and
+  the carbohydrate figure was discarded. Both jars of sauce now offer 6 g per 18 g serving.
+- **An ingredient list is no longer treated as nutrition information.** One sauce lists "brown
+  sugar" among its ingredients, and that line was being counted as part of the nutrition table.
+- **Tapping the carbohydrate row now selects that row.** Where two rows sat close together the
+  app could attribute the tap to the sugars row below, refuse it, and leave the screen unchanged
+  — so the tap looked like it had missed and people tapped again.
+- **A row it found but could not read now asks for just that number.** Instead of repeating
+  "tap the carbohydrate row", it says the row was found and asks for the value printed under
+  100 ml. It does not ask which unit — it already knows, from the label.
+- **A converted figure is shown rounded.** Reading 6 g per an 18 g serving showed 33.3 g per
+  100 g on one screen and 33.33333333 on the next.
+
+### Play Store release notes (fifth-session draft, re-check before upload)
+
+```
+Nutrition label scanning is more careful. A figure the app cannot double-check against the rest
+of the label is shown for you to confirm instead of being used straight away, and a value is
+never shown under the wrong "per 100 g" or "per portion" heading. American-style nutrition
+panels read properly, tapping a row picks the row you meant, and a row the app finds but cannot
+read asks for just that number.
+```
+
+### Fixed
+
+- **A figure printed per 250 ml can no longer end up labelled "per 100 ml".** When the scanner
+  could not read a drink's table by itself and asked the user to point at the number, it would then
+  offer to use it "per 100 ml" — because the label says that somewhere, even though the number the
+  user pointed at was printed under a different column. On one drink that turned 1,3 g per 250 ml
+  into 1,3 g per 100 ml: right number, wrong measure, and nothing on screen to say so. Every figure
+  the scanner offers now shows what it is measured per — *0.5 g / 100 ml*, *1.3 g / 250 ml* — and
+  picking the second one converts it rather than relabelling it. A number the app cannot place on
+  the label is not offered at all.
+- **Nutrition panels that give a serving size instead of a per-100 column now work.** A label
+  reading *Serv. size: 1 Tbsp (18 g)* and *Total Carb. 6 g* used to be a dead end: the scanner
+  refused it, then asked whether the 6 g was per 100 g or per 100 ml, and neither answer was right.
+  It now shows *6 g per 18 g serving* and works out the per-100 figure from the serving size the
+  label printed, showing both.
+- **Two-column drink labels are read as two columns.** Several photographs of the same drink had
+  their *per 100 ml* and *per 250 ml* headings merged into one, so a value from either column could
+  be reported under the other. They are now kept apart even where the second heading was damaged in
+  the photo.
+- **A value with a stray mark between the number and its unit is no longer thrown away.** One
+  capture of a cracker packet read *72,0.g* rather than *72,0 g* and was rejected; the next
+  photograph of the same packet was read correctly. That figure is now accepted, while a number
+  whose unit is genuinely missing or wrong is still refused.
+- **Percentages are never offered as carbohydrate figures.** Reference-intake values such as *9%*
+  or *2% DV* could appear among the numbers the scanner suggested.
+- **Tapping the sugars or fibre line says so.** It used to offer that line's numbers; it now
+  explains that this looks like sugars and asks for the total carbohydrate line instead.
+- **Exported scan diagnostics are checked before they are shared.** One export was cut short and
+  produced a file that could not be opened, with nothing to indicate anything had gone wrong. An
+  incomplete archive is now reported as an export failure instead.
+
 ### Changed
 
+- **The first scan after opening the scanner is faster.** Text recognition now loads while the
+  camera is being aimed rather than when the shutter is pressed.
 - **A scanned nutrition label goes straight to the calculator.** Scanning a label with no product
   open used to hand the reading to the *Enter product* form, which would not let go of it until a
   product name had been typed and a record saved — so getting one carbohydrate figure out of one

@@ -78,16 +78,20 @@ import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.ServingDescriptor
 import app.justthecarbs.ocr.CarbCandidate
 import app.justthecarbs.ocr.AutomaticScanAdvance
+import app.justthecarbs.ocr.AutomaticVerification
 import app.justthecarbs.ocr.CropChange
+import app.justthecarbs.ocr.DisputedCandidates
 import app.justthecarbs.ocr.EvidenceResolver
 import app.justthecarbs.ocr.LabelAnalyzer
 import app.justthecarbs.ocr.LabelReading
 import app.justthecarbs.ocr.LiveEvidenceBuffer
 import app.justthecarbs.ocr.NormalizedRegion
 import app.justthecarbs.ocr.PassAResult
+import app.justthecarbs.ocr.ScaleAmbiguity
 import app.justthecarbs.ocr.ScanEvidenceRecorder
 import app.justthecarbs.ocr.ScanRegionMapper
 import app.justthecarbs.ocr.SelectedTableResolution
+import app.justthecarbs.ocr.StatedBasis
 import app.justthecarbs.ocr.ServingCarbCandidate
 import app.justthecarbs.ocr.TextResolutionGuidance
 import app.justthecarbs.ocr.OcrDiagnosticsLogger
@@ -139,7 +143,20 @@ sealed interface PortionSaveState {
 @Composable
 fun LabelScannerScreen(
     onUseValue: (BigDecimal, NutritionBasis) -> Unit,
-    onEditManually: () -> Unit,
+    /**
+     * *Edit* — manual entry with an empty amount, carrying the basis the label stated.
+     *
+     * The parameter is the whole point and is null only when no basis was ever established. A device
+     * recording showed the cost of not having it: a coconut-milk label whose `per 100 ml` column the
+     * classifier had read correctly was rejected by the user, who tapped *Edit* and landed on a
+     * manual screen with **`100 g` selected**. Typing the correct figure there stores it against the
+     * wrong denominator, and nothing downstream can detect that afterwards.
+     *
+     * The value is deliberately *not* carried: this action is reached when the app's number was
+     * wrong or withheld, so pre-filling it would re-propose the figure the user has just declined.
+     * [onCorrectValue] is the action that carries a value, and it is a different question.
+     */
+    onEditManually: (NutritionBasis?) -> Unit,
     onClose: () -> Unit,
     /**
      * *Correct* — manual entry opened with the detected figure already in the field (§3).
@@ -150,7 +167,7 @@ fun LabelScannerScreen(
      * [onEditManually] so a caller that has nowhere to put a pre-filled value degrades to the
      * previous behaviour rather than losing the action.
      */
-    onCorrectValue: (BigDecimal, NutritionBasis) -> Unit = { _, _ -> onEditManually() },
+    onCorrectValue: (BigDecimal, NutritionBasis) -> Unit = { _, basis -> onEditManually(basis) },
     /**
      * Persists the accepted portion, returning true only once it is genuinely on disk.
      *
@@ -195,7 +212,8 @@ fun LabelScannerScreen(
             LabelPermissionRationale(
                 showAllow = !permissionRequested,
                 onAllow = { launcher.launch(Manifest.permission.CAMERA) },
-                onEditManually = onEditManually,
+                // No camera, so nothing has been read and no basis can have been established.
+                onEditManually = { onEditManually(null) },
                 onClose = onClose,
             )
         }
@@ -205,7 +223,7 @@ fun LabelScannerScreen(
 @Composable
 private fun LabelCamera(
     onUseValue: (BigDecimal, NutritionBasis) -> Unit,
-    onEditManually: () -> Unit,
+    onEditManually: (NutritionBasis?) -> Unit,
     onCorrectValue: (BigDecimal, NutritionBasis) -> Unit,
     onClose: () -> Unit,
     onSavePortionUnit: (suspend (PortionUnitKind, PortionConversion) -> Boolean)? = null,
@@ -293,6 +311,16 @@ private fun LabelCamera(
     /** Two passes disagreed. The app must not choose; it says so and offers the assisted path. */
     var conflicted by remember { mutableStateOf<EvidenceResolver.Outcome.Conflicted?>(null) }
     /**
+     * The candidates a distinct recognition run contradicted, held so they survive the hand-off from
+     * the conflict screen into the assisted path.
+     *
+     * Without this the dispute died with the resolver's outcome: the conflict screen built
+     * `AssistState(document = ...)` from the winning document alone, and [RecoveryCandidates]
+     * rebuilt its list with no idea that anything had been refused. Measured on `131511`, whose
+     * first recovery offer was the very `89 g / 100 ml` the resolver had just declined.
+     */
+    var disputedCandidates by remember { mutableStateOf(DisputedCandidates.NONE) }
+    /**
      * The assisted fallback (§17-§19): the frozen table stays up and the user points at the answer.
      *
      * Non-null means automatic recognition is finished and did not produce a usable result. This is
@@ -363,6 +391,13 @@ private fun LabelCamera(
         )
     }
 
+    // Loads ML Kit's native detector while the user is still framing, so the first capture of a
+    // session does not pay for it. Measured at 2789 ms on the first capture of the third phone
+    // session against 447-1838 ms on the eight that followed. Fire-and-forget: it runs off the main
+    // thread inside ML Kit, never blocks the shutter, and a failure simply restores the previous
+    // behaviour of the first real recognition paying the cost.
+    LaunchedEffect(analyzer) { analyzer.warmUp() }
+
     DisposableEffect(Unit) {
         onDispose {
             disposed.set(true)
@@ -410,6 +445,9 @@ private fun LabelCamera(
         verification = null
         conflicted = null
         assisting = null
+        // A dispute belongs to the capture that produced it. Carrying it into the next one would
+        // suppress a value on a new photograph because a previous photograph's runs disagreed.
+        disputedCandidates = DisputedCandidates.NONE
         liveEvidence.clear()
         analyzer.resume()
     }
@@ -514,17 +552,117 @@ private fun LabelCamera(
             // Nothing below this line was reordered or relaxed: a confirmed crop still reaches the
             // same four branches with the same rules, and `mayAdvance` reads an outcome the
             // resolver already decided rather than computing a confidence of its own.
+            // Independent verification, asked once and used for both decisions below.
+            //
+            // This is what separates "the parser found a placeable value" from "the value was
+            // checked against something the same recognition could not have got wrong". See
+            // [AutomaticVerification]; the failure it exists for is `085542-213`, where a misread
+            // `72,0 g` -> `12,0.g` satisfied every structural rule and advanced automatically.
+            val automaticVerification = AutomaticVerification.verify(result.evidence)
+            OcrDiagnosticsLogger.timing(
+                "automatic-verification: ${automaticVerification.route}" +
+                    (automaticVerification.rejectionReason?.let { " ($it)" } ?: ""),
+            )
+
+            // Whether the evidence establishes this reading's absolute decimal scale.
+            //
+            // Asked here, once, so the gate below and the evidence bundle read the same verdict.
+            // See [ScaleAmbiguity]: a uniform decimal collapse preserves every column ratio, so
+            // cross-column agreement cannot see it and this is a separate question.
+            val scaleVerdict = AutomaticScanAdvance.scaleVerdict(result.outcome, captured.document)
+            (scaleVerdict as? ScaleAmbiguity.Verdict.Ambiguous)?.let {
+                OcrDiagnosticsLogger.timing(
+                    "scale-ambiguous: '${it.candidateText}' paired with '${it.pairedText}' — ${it.reason}",
+                )
+            }
+
+            // Which candidates a genuinely distinct recognition run contradicted, carried into
+            // recovery so a refused value cannot be re-offered there. See [DisputedCandidates].
+            val disputed = DisputedCandidates.of(result.evidence)
+            disputedCandidates = disputed
+
             val declined = automatic && !AutomaticScanAdvance.mayAdvance(result.outcome)
             if (declined) {
                 autoAttempted = true
                 OcrDiagnosticsLogger.timing("fast-path declined (${result.outcome::class.simpleName})")
             }
 
+            // What the app actually did, for the evidence bundle. Recorded rather than inferred:
+            // the bundle previously carried the gate's *inputs* and never its outcome, so telling an
+            // automatic advance from a one-tap confirmation meant watching the screen recording
+            // beside the files.
+            var uiAction = if (declined) "RECOVERY" else "CONFIRM"
+
             if (!declined) when (val outcome = result.outcome) {
                 is EvidenceResolver.Outcome.Resolved -> {
                     releaseCapture(captured)
-                    reading = outcome.reading
                     servingCandidate = outcome.report.servingCandidate
+                    val confident = outcome.reading as? LabelReading.Confident
+                    val basis = confident?.candidate?.basis
+                    if (automatic && confident != null && basis != null &&
+                        AutomaticScanAdvance.mayAdvanceVerified(outcome, automaticVerification)
+                    ) {
+                        // **The redundant confirmation, removed for VERIFIED readings only.**
+                        //
+                        // The capture passed `mayAdvanceVerified`, which requires two independent
+                        // things: a `Resolved` outcome carrying a `Confident` reading (the parser
+                        // placed the value in a column whose basis it resolved, and nothing
+                        // contradicted it), **and** an [AutomaticVerification] route — the label's
+                        // own other rows agreeing with it, or a genuinely separate recognition run
+                        // reading the same amount and basis.
+                        //
+                        // The second half is new in this pass and it is the release-blocking fix.
+                        // Structural confidence alone was reaching Quick Calculation unconfirmed,
+                        // and `085542-213` proved what that costs: `12` where the package prints
+                        // `72`, on a correctly classified row under a correctly resolved column.
+                        //
+                        // An unverified reading still reaches the user — through `ProposalCard`,
+                        // one tap, which is what this app did before the fast path existed.
+                        //
+                        // So a strong automatic reading goes straight to the calculator, which shows
+                        // the same figure with its basis and its provenance, and offers *Change*.
+                        // The correction path is preserved in full; only the acknowledgement is gone.
+                        //
+                        // Deliberately gated on `automatic`: a reading reached after the user
+                        // confirmed a crop keeps its proposal card, because there the user has
+                        // already been asked one question and an answer appearing without
+                        // acknowledgement would read as the app having ignored them.
+                        //
+                        // A null basis cannot advance. That is the "grams of what?" question this app
+                        // must never answer on the user's behalf, and it falls through to the card.
+                        OcrDiagnosticsLogger.timing(
+                            "fast-path advanced (Confident ${basis.name}, " +
+                                "verified ${automaticVerification.route})",
+                        )
+                        uiAction = "AUTO_ADVANCE"
+                        onUseValue(confident.candidate.value, basis)
+                    } else if (!AutomaticScanAdvance.mayConfirm(
+                            outcome,
+                            automaticVerification,
+                            captured.document,
+                        )
+                    ) {
+                        // Unverified, and the evidence cannot establish the decimal scale.
+                        //
+                        // A confirmation card asks *is this right?*, which is a fair question only
+                        // when the user can check the answer. Measured on `131545`: the card would
+                        // read `89 g / 100 ml` for a package printing `8,9 g`, and the separator the
+                        // recognizer dropped is absent from every value on that label, so nothing on
+                        // screen distinguishes the two. The tap would mean "yes, there is a number
+                        // there", not "yes, that is the figure".
+                        //
+                        // So the reading is withheld and the user is asked for the digits, with the
+                        // basis the label stated preserved. Nothing is divided, shifted or repaired.
+                        uiAction = "RECOVERY"
+                        OcrDiagnosticsLogger.timing("confirmation withheld (scale ambiguous)")
+                        assisting = AssistState(
+                            document = captured.document,
+                            disputed = disputed,
+                            scaleAmbiguous = true,
+                        )
+                    } else {
+                        reading = outcome.reading
+                    }
                 }
                 is EvidenceResolver.Outcome.NeedsVerification -> {
                     // Held on the frozen photo on purpose: the user is looking at the printed table,
@@ -534,12 +672,22 @@ private fun LabelCamera(
                 is EvidenceResolver.Outcome.Conflicted -> {
                     conflicted = outcome
                 }
+                // The parser offered competing candidates and nothing narrowed them. Presented
+                // exactly as before — `AmbiguousCard`, showing each candidate with its own basis —
+                // but reached through an outcome that says "unresolved" rather than one that says
+                // "resolved", so the diagnostics and any future consumer read the truth.
+                is EvidenceResolver.Outcome.Unresolved -> {
+                    releaseCapture(captured)
+                    reading = outcome.reading
+                    servingCandidate = outcome.report.servingCandidate
+                }
                 EvidenceResolver.Outcome.Nothing -> {
                     // The scan is not over. The frozen capture stays on screen and the user is
                     // offered the assisted path, which is what removes the dead end (§17-§19).
                     assisting = AssistState(
                         document = captured.document,
                         ineffectiveSelection = result.selectionWasIneffective,
+                        disputed = disputed,
                     )
                 }
             }
@@ -558,6 +706,59 @@ private fun LabelCamera(
                 elementsBefore = result.filtered.elementsBefore,
                 elementsAfter = result.filtered.elementsAfter,
                 report = result.filtered.report,
+                // The verdict that actually gated the crop skip, and the second-pass facts that used
+                // to be a hardcoded "no". Without these the bundle cannot answer why a capture did
+                // or did not advance — which is exactly the question a device session asks.
+                resolverVerdict = result.outcome::class.simpleName ?: "unknown",
+                strategyBStatus = result.strategyB.name,
+                // How the digits were checked, and what the app then did. `Resolved` + `Confident`
+                // was true of the capture that reached the user with `12` where the package prints
+                // `72`; only these two lines distinguish that from a correct automatic scan.
+                verification = buildString {
+                    append(automaticVerification.route.name)
+                    if (automaticVerification.supportingRows > 0) {
+                        append(" (support=${automaticVerification.supportingRows}")
+                        automaticVerification.medianRatio?.let { append(", median=%.3f".format(it)) }
+                        automaticVerification.candidateRatio?.let { append(", candidate=%.3f".format(it)) }
+                        append(")")
+                    }
+                    automaticVerification.rejectionReason?.let { append(" — $it") }
+                },
+                uiAction = uiAction,
+                // Each pass with what it actually contributed, and which evidence family it belongs
+                // to. The bare source list said `FULL_FRAME_PASS_A, FILTERED_PASS_A,
+                // SELECTED_REGION_OCR` even when the third produced no reading at all and the first
+                // two are two parses of one recognition — three names reading as three opinions,
+                // beside a verdict, on a scan that went on to be wrong.
+                passesRan = result.evidence.map { evidence ->
+                    val contribution = when (val reading = evidence.reading) {
+                        is LabelReading.Confident ->
+                            "Confident ${reading.candidate.value.toPlainString()}" +
+                                "/${reading.candidate.basis?.name ?: "no-basis"}"
+                        is LabelReading.Ambiguous ->
+                            "Ambiguous(${reading.candidates.size}) — contributes no support"
+                        LabelReading.NotFound -> "NotFound — contributes no support"
+                    }
+                    "${evidence.source.name} [run=${evidence.source.recognitionRun.name}] $contribution"
+                },
+                disputed = disputed,
+                scaleVerdict = scaleVerdict,
+                // Which basis the correction path was handed, and whether an amount went with it.
+                // A bundle previously could not say why a manual screen opened on `100 g`.
+                correctionHandoff = when {
+                    uiAction == "AUTO_ADVANCE" -> "none (advanced without correction)"
+                    else -> {
+                        val basis = StatedBasis.of(captured.document)
+                        "basis=${basis?.name ?: "none established"}, amount=" +
+                            if (scaleVerdict is ScaleAmbiguity.Verdict.Ambiguous) {
+                                "blank (withheld: scale ambiguous)"
+                            } else if (!disputed.isEmpty) {
+                                "blank (withheld: cross-run dispute)"
+                            } else {
+                                "per the offered candidate"
+                            }
+                    }
+                },
             )
         }
     }
@@ -794,7 +995,8 @@ private fun LabelCamera(
             modifier = Modifier.fillMaxSize().padding(top = 120.dp),
         ) {
             Button(
-                onClick = onEditManually,
+                // The camera never started, so nothing was read and no basis exists to carry.
+                onClick = { onEditManually(null) },
                 modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
                 shape = RoundedCornerShape(Space.buttonRadius),
             ) { Text(stringResource(R.string.permission_manual)) }
@@ -845,7 +1047,10 @@ private fun LabelCamera(
                 // so it hands straight to the assisted path rather than dropping them out.
                 onReject = {
                     verification = null
-                    assisting = AssistState(document = frozen.document)
+                    assisting = AssistState(
+                        document = frozen.document,
+                        disputed = disputedCandidates,
+                    )
                 },
                 onRetake = ::resumeLive,
             )
@@ -855,7 +1060,12 @@ private fun LabelCamera(
                 conflict = conflict,
                 onAssist = {
                     conflicted = null
-                    assisting = AssistState(document = frozen.document)
+                    // The dispute travels with the hand-off. Rebuilding the recovery list from the
+                    // document alone is what re-offered the refused value on `131511`.
+                    assisting = AssistState(
+                        document = frozen.document,
+                        disputed = disputedCandidates,
+                    )
                 },
                 onRetake = ::resumeLive,
             )
@@ -1053,13 +1263,19 @@ private fun LabelCamera(
                 .padding(Space.m),
         ) {
             when (val current = reading) {
-                null -> SearchingCard(captureState, liveReadiness, framing, ::captureLabel, onEditManually)
+                // Nothing has been read yet, so there is no candidate basis — but the label may
+                // still have stated one, and that fact is as true here as anywhere.
+                null -> SearchingCard(captureState, liveReadiness, framing, ::captureLabel) {
+                    onEditManually(StatedBasis.of(pendingCrop?.document))
+                }
                 is LabelReading.Confident -> ProposalCard(
                     candidate = current.candidate,
                     onUse = onUseValue,
                     onCorrect = onCorrectValue,
                     onCapture = ::captureLabel,
-                    onEdit = onEditManually,
+                    // The candidate's own basis, which is the one the user is looking at. Editing a
+                    // proposal must not silently move the figure to a different denominator.
+                    onEdit = { onEditManually(current.candidate.basis) },
                     onRetry = ::resumeLive,
                     // Offered whenever the label named a countable unit and there is somewhere for
                     // it to go — an existing product to save against, or product creation to carry
@@ -1109,10 +1325,21 @@ private fun LabelCamera(
                     onUse = onUseValue,
                     onCorrect = onCorrectValue,
                     onCapture = ::captureLabel,
-                    onEdit = onEditManually,
+                    // The candidates disagree about the value; they may still agree about the
+                    // basis, and when they do that is an established fact worth carrying.
+                    onEdit = {
+                        onEditManually(
+                            current.candidates.mapNotNull { it.basis }.distinct().singleOrNull()
+                                ?: StatedBasis.of(pendingCrop?.document),
+                        )
+                    },
                     onRetry = ::resumeLive,
                 )
-                LabelReading.NotFound -> NotFoundCard(::captureLabel, onEditManually, ::resumeLive)
+                LabelReading.NotFound -> NotFoundCard(
+                    ::captureLabel,
+                    { onEditManually(StatedBasis.of(pendingCrop?.document)) },
+                    ::resumeLive,
+                )
             }
         }
     }

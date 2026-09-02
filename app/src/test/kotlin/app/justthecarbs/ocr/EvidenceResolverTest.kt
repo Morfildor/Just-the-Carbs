@@ -324,7 +324,14 @@ class EvidenceResolverTest {
         assertEquals(EvidenceResolver.Outcome.Nothing, outcome)
     }
 
-    /** An ambiguity from Pass A must still reach the user rather than being flattened to NotFound. */
+    /**
+     * An ambiguity from Pass A must still reach the user rather than being flattened to NotFound —
+     * carried by [EvidenceResolver.Outcome.Unresolved], which says what it is.
+     *
+     * The survival requirement is the assertion; the outcome's name changed on 2026-09-01 because
+     * calling an undecided ambiguity "Resolved" is what a device bundle recorded on the scan that
+     * went on to show a 2.6x-wrong value. See that type's KDoc.
+     */
     @Test
     fun `an ambiguous pass A survives when nothing is confident`() {
         val outcome = EvidenceResolver.resolve(
@@ -334,9 +341,9 @@ class EvidenceResolverTest {
             ),
         )
 
-        val resolved = outcome as? EvidenceResolver.Outcome.Resolved
-            ?: throw AssertionError("expected Resolved, got $outcome")
-        assertTrue(resolved.reading is LabelReading.Ambiguous)
+        val unresolved = outcome as? EvidenceResolver.Outcome.Unresolved
+            ?: throw AssertionError("expected Unresolved, got $outcome")
+        assertTrue(unresolved.reading is LabelReading.Ambiguous)
     }
 
     /** Order must not change the outcome; the rules are symmetric. */

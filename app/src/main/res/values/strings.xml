@@ -52,7 +52,13 @@
     <string name="scanner_unavailable">The camera is unavailable. You can still enter a product manually.</string>
 
     <!-- Camera permission (§9) -->
-    <string name="permission_title">Camera access is needed to scan a barcode.</string>
+    <!--
+      Shared by both scanners (ScannerScreen and LabelScannerScreen), so it must not name only one
+      of them. It previously said "to scan a barcode" and was shown verbatim to a user who had
+      tapped "Scan nutrition label" — describing a feature they had not asked for, in the one
+      dialog whose job is to explain why the app wants the camera.
+    -->
+    <string name="permission_title">Camera access is needed to scan barcodes and nutrition labels.</string>
     <!--
       "not kept", not "never saved".
 
@@ -430,17 +436,16 @@
     -->
     <string name="assist_body_unchanged">Same box as before, so it would read the same. Point at the carbohydrate figure below, or retake to move the box.</string>
     <string name="assist_pick_row">Tap the carbohydrate row</string>
-    <string name="assist_pick_value">Tap the number instead</string>
     <string name="assist_type_it">Type it in</string>
     <string name="assist_tap_row_title">Tap the carbohydrate row</string>
     <string name="assist_tap_row_body">Tap the row on the photo that says carbohydrate.</string>
-    <string name="assist_tap_value_title">Tap the number</string>
-    <string name="assist_tap_value_body">Every number found is outlined. Tap the carbohydrate figure.</string>
-    <string name="assist_basis_title">Check this is right</string>
-    <string name="assist_basis_body">Choose what the figure is printed per.</string>
-    <string name="assist_confirm_value">%1$s g carbs — per what?</string>
-    <!-- Shown instead of the question above when the label itself stated the basis (1.0.3 P1). -->
-    <string name="assist_confirm_value_known">%1$s g carbs</string>
+    <!--
+      Removed 2026-09-01 with the two-step "pick a number, then pick a basis" flow that produced
+      "1.3 g / 100 ml" from a figure printed per 250 ml: assist_pick_value, assist_tap_value_title,
+      assist_tap_value_body, assist_basis_title, assist_basis_body, assist_confirm_value and
+      assist_confirm_value_known. Each had zero Kotlin references, verified independently of lint.
+      Their replacements are assist_choose_* below, whose choices carry their own basis.
+    -->
     <string name="assist_basis_from_label_g">Read from the label as per 100 g</string>
     <string name="assist_basis_from_label_ml">Read from the label as per 100 ml</string>
     <!--
@@ -452,6 +457,44 @@
     <string name="assist_type_title">Type the value</string>
     <string name="assist_type_body">Read it off the photo above.</string>
     <string name="assist_type_label">Carbs per 100 g/ml</string>
+    <!--
+      Basis-complete recovery (1.0.3, third phone session). Each choice states what it is measured
+      per, so there is no step at which a bare number exists and a basis is chosen for it — that
+      two-step flow is what produced "1.3 g / 100 ml" from a figure printed per 250 ml.
+    -->
+    <string name="assist_choose_title">Which figure is it?</string>
+    <string name="assist_choose_body">Each one shows what it is measured per, straight from the label.</string>
+    <string name="assist_pick_labelled">Choose the carbohydrate figure</string>
+    <!-- A figure the label prints against something other than 100 g/ml, converted for use. -->
+    <string name="assist_derived_from">From %1$s g per %2$s</string>
+    <!--
+      The tapped row names sugars, fibre or another child nutrient. It offers no values, because a
+      child nutrient can never supply the total — the tap says which row the user meant, not what
+      that row says.
+    -->
+    <string name="assist_child_row">This looks like sugars or fibre. Tap the total carbohydrate row instead.</string>
+    <!--
+      Focused amount entry (1.0.3, fourth phone session, P1-1).
+
+      Reached after a tap that found the carbohydrate row and could not read its printed number —
+      the green drink's `0,5 g` recognised as `0.59`. The row and the basis are established; only
+      the amount is missing, so only the amount is asked for.
+
+      There is deliberately NO basis picker on this step. The label stated what it is measured per
+      and the classifier read it correctly; asking again would let a guess overwrite a fact the app
+      got right, which is how "1.3 g / 100 ml" reached a user on an earlier build.
+    -->
+    <string name="assist_focused_title">Enter the carbohydrate figure</string>
+    <string name="assist_focused_body">The row was found, but the number was not clear enough to read.</string>
+    <string name="assist_focused_offer">Carbohydrate row found, but the number wasn\'t clear.</string>
+    <string name="assist_focused_action">Enter the value printed under 100 %1$s</string>
+    <string name="assist_focused_prompt">Type the carbohydrate figure printed under 100 %1$s.</string>
+    <string name="assist_focused_confirm">Use %1$s g / 100 %2$s</string>
+    <!--
+      A figure whose basis the label never stated and which therefore cannot be converted. Shown as
+      what it is rather than being offered under a guessed per-100 basis.
+    -->
+    <string name="assist_unknown_serving">The label doesn\'t say how much a serving is, so this can\'t be converted.</string>
 
     <!-- Evidence resolution (§8). A value one recognition pass found and nothing corroborated, and
          the case where two passes disagreed and the app must not choose between them. -->

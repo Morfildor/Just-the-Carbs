@@ -118,6 +118,49 @@ object ScanEvidenceRecorder {
         }
 
     /**
+     * Blocks until everything already queued on the writer thread has been written.
+     *
+     * ### The only place in the app that waits for the writer
+     *
+     * Every other caller queues and returns, which is the point: evidence I/O was measured at 5–9
+     * seconds on the scan path and moving it off was a release-blocking fix. Nothing here weakens
+     * that — this is called from [ScanEvidenceExport.share] alone, a deliberate user action with no
+     * latency budget, and it is the one moment where a half-written `passA.png` would be zipped as
+     * though it were complete.
+     *
+     * ### Why a queued marker rather than a shutdown
+     *
+     * The writer is single-threaded and FIFO, so a task submitted now runs after everything already
+     * queued. Waiting on that marker therefore waits for exactly the backlog and no more, and leaves
+     * the executor alive for the next capture. Shutting it down would make the *next* scan
+     * reconstruct it, which is the per-call construction cost this executor exists to avoid.
+     *
+     * A timeout bounds it, because a share sheet that never opens is a worse outcome than an archive
+     * missing its most recent capture — and the integrity check in [ZipIntegrity] still refuses
+     * whatever did get written if it is incomplete.
+     *
+     * Returns immediately when nothing has ever been written (the executor does not exist) or in
+     * release, where [enabled] is false and there is no writer at all.
+     */
+    fun drain() {
+        if (!enabled) return
+        val executor = writerOrNull ?: return
+        val done = java.util.concurrent.CountDownLatch(1)
+        runCatching { executor.execute { done.countDown() } }
+            .onFailure { return }
+        runCatching { done.await(DRAIN_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS) }
+    }
+
+    /**
+     * How long [drain] waits for the writer's backlog.
+     *
+     * Generous: the backlog is at most a few PNG encodes of an 8 MP bitmap, and the alternative to
+     * waiting is exporting an archive that is missing them. Bounded at all so a stuck writer cannot
+     * hang the share action indefinitely.
+     */
+    private const val DRAIN_TIMEOUT_SECONDS = 30L
+
+    /**
      * Takes ownership of the capture JPEG, returning true when the caller must no longer delete it.
      *
      * A **move**, not a copy. The still path deletes this file immediately after reading it, so
@@ -139,6 +182,52 @@ object ScanEvidenceRecorder {
         runCatching { source.copyTo(target, overwrite = true) }
             .onFailure { OcrDiagnosticsLogger.failure("Could not record capture", it) }
         return false
+    }
+
+    /**
+     * Takes ownership of the capture JPEG on the writer thread, and deletes the temporary file if
+     * ownership could not be taken.
+     *
+     * ### Why the asynchronous form exists (2026-09-01, P0-2)
+     *
+     * [consumeCapture] is a rename *when the rename succeeds*. When it does not — different
+     * filesystem, or a raced target — it falls back to `copyTo`, and that copy is unbounded
+     * synchronous file I/O proportional to the capture size. The device evidence measured this at
+     * **9487 ms** and **5232 ms**, on the scan's critical path, because the call sat at the top of
+     * `LabelAnalyzer`'s `finish` before the result was delivered.
+     *
+     * Marking the stage off-path in [ScanTrace] did not help and could not: that changes which
+     * total is printed, not when the work runs.
+     *
+     * ### Why the delete moved here too
+     *
+     * The delete is the other half of the same decision — the caller must delete the temporary file
+     * exactly when this did *not* take it over. Splitting them left the caller holding a boolean it
+     * could only get by waiting. Both halves now happen together, off the path, so the caller has no
+     * result to wait for.
+     *
+     * ### Ordering
+     *
+     * The writer is single-threaded and FIFO, so a subsequent [recordPassAImageAsync] is guaranteed
+     * to see `capture.jpg` already in place. That ordering is why this must be queued on the same
+     * executor rather than on an arbitrary background thread.
+     *
+     * In release [enabled] is false, so this deletes the temporary file directly on the calling
+     * thread — exactly the behaviour the shipped build has always had, with no executor constructed
+     * and no thread started.
+     */
+    fun consumeCaptureAsync(folder: File?, source: File) {
+        if (!enabled || folder == null) {
+            if (!source.delete()) {
+                OcrDiagnosticsLogger.failure("Temporary label image was already absent")
+            }
+            return
+        }
+        writer().execute {
+            if (!consumeCapture(folder, source) && !source.delete()) {
+                OcrDiagnosticsLogger.failure("Temporary label image was already absent")
+            }
+        }
     }
 
     /**
@@ -183,27 +272,34 @@ object ScanEvidenceRecorder {
     fun recordRecognizedText(folder: File?, text: Text) {
         if (!enabled || folder == null) return
         runCatching {
-            File(folder, "recognized.txt").writeText(
-                buildString {
-                    appendLine("=== ML Kit recognized text (verbatim) ===")
-                    appendLine(text.text)
-                    appendLine()
-                    appendLine("=== elements with geometry ===")
-                    text.textBlocks.forEachIndexed { b, block ->
-                        block.lines.forEachIndexed { l, line ->
-                            appendLine("block $b line $l  angle=${line.angle}  '${line.text}'")
-                            line.elements.forEach { element ->
-                                val box = element.boundingBox
-                                appendLine(
-                                    "    '${element.text}' [${box?.left},${box?.top}," +
-                                        "${box?.right},${box?.bottom}]",
-                                )
-                            }
-                        }
-                    }
-                },
-            )
+            File(folder, "recognized.txt").writeText(renderRecognizedText(text))
         }.onFailure { OcrDiagnosticsLogger.failure("Could not record recognized text", it) }
+    }
+
+    /**
+     * The verbatim recognizer dump, as a string.
+     *
+     * Split out so the synchronous and deferred writers cannot produce different files — the async
+     * path must render on the calling thread (the [Text] belongs to the recognition) and write
+     * later, and duplicating this formatting is how the two would drift.
+     */
+    private fun renderRecognizedText(text: Text): String = buildString {
+        appendLine("=== ML Kit recognized text (verbatim) ===")
+        appendLine(text.text)
+        appendLine()
+        appendLine("=== elements with geometry ===")
+        text.textBlocks.forEachIndexed { b, block ->
+            block.lines.forEachIndexed { l, line ->
+                appendLine("block $b line $l  angle=${line.angle}  '${line.text}'")
+                line.elements.forEach { element ->
+                    val box = element.boundingBox
+                    appendLine(
+                        "    '${element.text}' [${box?.left},${box?.top}," +
+                            "${box?.right},${box?.bottom}]",
+                    )
+                }
+            }
+        }
     }
 
     /** The stage trace, including the refusal reason when the parser declined to answer. */
@@ -212,6 +308,57 @@ object ScanEvidenceRecorder {
         runCatching {
             File(folder, "diagnostics.txt").writeText(OcrDiagnosticsReport.render(document, report))
         }.onFailure { OcrDiagnosticsLogger.failure("Could not record diagnostics", it) }
+    }
+
+    /**
+     * Renders the diagnostics now and writes them **after** the caller has handed its result to the
+     * UI (§ latency).
+     *
+     * ### The measurement this exists for
+     *
+     * Every bundle in `docs/Scan Evidence 01-09-26/` records `evidence-diagnostics` between 582 ms
+     * and 1106 ms, and it ran *synchronously between the parse finishing and the result reaching the
+     * screen*. `ScanTrace` marked it off-path, so the printed `user-visible` figure subtracted it —
+     * which made the trace honest about what the shipped build costs while the debug build the
+     * measurements were taken on still made the user wait for it.
+     *
+     * ### Why the render is synchronous and only the write is deferred
+     *
+     * [OcrDiagnosticsReport.render] reads the document and the report, both of which are immutable
+     * and outlive this call. The *file write* is what costs; rendering is cheap. Taking an immutable
+     * snapshot on the calling thread and handing a plain string to the writer is what makes deferral
+     * safe — the same discipline `recordPassAImageAsync` uses when it re-decodes from the moved
+     * capture rather than touching a bitmap whose ownership has transferred.
+     *
+     * A caller that needs the file to exist before it returns keeps using [recordDiagnostics].
+     */
+    fun recordDiagnosticsAsync(folder: File?, document: OcrDocument, report: NutritionParseReport) {
+        if (!enabled || folder == null) return
+        val rendered = runCatching { OcrDiagnosticsReport.render(document, report) }
+            .onFailure { OcrDiagnosticsLogger.failure("Could not render diagnostics", it) }
+            .getOrNull() ?: return
+        writer().execute {
+            runCatching { File(folder, "diagnostics.txt").writeText(rendered) }
+                .onFailure { OcrDiagnosticsLogger.failure("Could not record diagnostics", it) }
+        }
+    }
+
+    /**
+     * Serialises the recognizer's output now and writes it after the result handover.
+     *
+     * The [Text] object belongs to the recognition that produced it, so it is flattened to a string
+     * on the calling thread rather than captured — deferring a read of recognizer-owned state is the
+     * race this repo already hit once by encoding a bitmap whose owner recycled it.
+     */
+    fun recordRecognizedTextAsync(folder: File?, text: Text) {
+        if (!enabled || folder == null) return
+        val rendered = runCatching { renderRecognizedText(text) }
+            .onFailure { OcrDiagnosticsLogger.failure("Could not render recognized text", it) }
+            .getOrNull() ?: return
+        writer().execute {
+            runCatching { File(folder, "recognized.txt").writeText(rendered) }
+                .onFailure { OcrDiagnosticsLogger.failure("Could not record recognized text", it) }
+        }
     }
 
     /**
@@ -232,7 +379,24 @@ object ScanEvidenceRecorder {
         decodedViaFallback: Boolean,
         region: NormalizedRegion?,
         totalMs: Long,
-        outcome: String,
+        /**
+         * Pass A's own [LabelReading] class name — **not** the resolver's verdict.
+         *
+         * Named for what it is, because the previous name (`outcome`) produced a wrong diagnosis
+         * from correct data: a device bundle reporting `Confident` was read as "the fast path
+         * should have advanced", when the gate is
+         * `AutomaticScanAdvance.mayAdvance(EvidenceResolver.Outcome)` over *every* pass and this
+         * value is only one input to it. A reading is not an outcome. See [resolverVerdict].
+         */
+        passAReading: String,
+        /**
+         * What [EvidenceResolver] concluded once every pass reported, or null when this capture
+         * never reached resolution (pass A is recorded before any crop is confirmed).
+         *
+         * Separate from [passAReading] because the two answer different questions and were
+         * conflated: only this one decides whether the crop step is skipped.
+         */
+        resolverVerdict: String? = null,
         /** ML Kit recognition time alone, separated from [totalMs] so decode and parse are visible. */
         recognitionMs: Long,
         /** Per-stage breakdown from [ScanTrace], so a slow scan names its own bottleneck. */
@@ -240,9 +404,14 @@ object ScanEvidenceRecorder {
     ) {
         val captureConfiguration = lastCaptureConfiguration
         if (!enabled || folder == null) return
-        runCatching {
-            File(folder, "meta.txt").writeText(
-                buildString {
+        // Rendered here, written on the writer thread.
+        //
+        // This runs after the result handover, so it never delayed the user's answer — but it did
+        // delay `startPendingStillIfPossible()`, the call that begins the *next* capture, by a file
+        // write. Deferring it costs nothing and keeps every file write in this class on one thread,
+        // which is also what guarantees `meta.txt` is written after `capture.jpg` is in place.
+        val rendered = runCatching {
+            buildString {
                     appendLine("captured JPEG   : ${jpegWidth}x$jpegHeight  ($captureBytes bytes)")
                     appendLine("pass A bitmap   : ${passAWidth}x$passAHeight")
                     appendLine("EXIF rotation   : $exifRotationDegrees deg")
@@ -260,7 +429,29 @@ object ScanEvidenceRecorder {
                     if (timingBreakdown.isNotEmpty()) {
                         appendLine("stage breakdown : $timingBreakdown")
                     }
-                    appendLine("outcome         : $outcome")
+                    // Two lines, deliberately, because one field answering to both names produced a
+                    // wrong diagnosis from correct data. `passA.reading` is one pass's reading;
+                    // `resolver.verdict` is what actually gates the crop-skip. See recordMeta's KDoc.
+                    appendLine("passA.reading   : $passAReading (one pass's reading, NOT the gate)")
+                    // When the verdict is not yet known, say only that — and do NOT append the
+                    // "this is what AutomaticScanAdvance reads" pointer, which then labels a
+                    // placeholder as the gate's input.
+                    //
+                    // `meta.txt` is written at capture time, before any crop resolution exists, so
+                    // this branch is the ordinary case rather than an error. The final verdict is
+                    // recorded in `selection.txt`, and the reader is sent there instead of being
+                    // told that "not reached" is what the gate saw.
+                    if (resolverVerdict != null) {
+                        appendLine(
+                            "resolver.verdict: $resolverVerdict  <- this is what AutomaticScanAdvance reads",
+                        )
+                    } else {
+                        appendLine(
+                            "resolver.verdict: not reached at this point (meta.txt is written at " +
+                                "capture time, before crop resolution) — see selection.txt for the " +
+                                "final verdict the gate actually read",
+                        )
+                    }
                     appendLine()
                     // §23: what the camera was ASKED for versus what it negotiated. Recorded from
                     // the bind site because `ImageCapture.resolutionInfo` only exists after binding.
@@ -270,9 +461,14 @@ object ScanEvidenceRecorder {
                     appendLine("device          : ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
                     appendLine("android         : API ${android.os.Build.VERSION.SDK_INT}")
                     appendLine("app             : ${BuildConfig.VERSION_NAME}")
-                },
-            )
-        }.onFailure { OcrDiagnosticsLogger.failure("Could not record meta", it) }
+            }
+        }.onFailure { OcrDiagnosticsLogger.failure("Could not render meta", it) }
+            .getOrNull() ?: return
+
+        writer().execute {
+            runCatching { File(folder, "meta.txt").writeText(rendered) }
+                .onFailure { OcrDiagnosticsLogger.failure("Could not record meta", it) }
+        }
     }
 
     /**
@@ -296,6 +492,61 @@ object ScanEvidenceRecorder {
         elementsBefore: Int,
         elementsAfter: Int,
         report: NutritionParseReport,
+        /**
+         * [EvidenceResolver]'s verdict over every pass — the thing the fast-path gate reads.
+         *
+         * Null only when a caller has not been updated to supply it. It is the single most valuable
+         * line in the bundle when asking why a capture did or did not skip the crop step.
+         */
+        resolverVerdict: String? = null,
+        /**
+         * One line per pass that actually contributed evidence, and whether Strategy B ran.
+         *
+         * This replaced a **hardcoded** `second OCR pass : no (Pass A elements reused)` that was
+         * printed unconditionally and measured nothing. Strategy B *is* invoked on the automatic
+         * attempt whenever independent runs do not already agree, and its result is dropped silently
+         * when it returns null (recycled bitmap, degenerate crop, caught exception) — so the old line
+         * asserted the opposite of what the code does and made a duplicate-recognition claim
+         * unfalsifiable.
+         */
+        passesRan: List<String> = emptyList(),
+        /** Whether Strategy B was attempted, and what it returned. Null when the caller cannot say. */
+        strategyBStatus: String? = null,
+        /**
+         * How the reading was **independently verified**, and the figures behind that judgement.
+         *
+         * Distinct from [resolverVerdict], and reading a bundle without both is how the
+         * `085542-213` confident-wrong went unexplained for a session: that capture's verdict was
+         * `Resolved` and its reading was `Confident`, and both were true — it advanced anyway
+         * because nothing had checked the *digits* against anything. This line is what says whether
+         * that check happened and what it found.
+         */
+        verification: String? = null,
+        /**
+         * What the final UI decision actually was.
+         *
+         * The bundle previously recorded what the gate *read* but never what the app *did*, so a
+         * recording and a bundle had to be watched side by side to tell an automatic advance from a
+         * one-tap confirmation.
+         */
+        uiAction: String? = null,
+        /**
+         * Which candidates a distinct recognition run contradicted, and which run read what.
+         *
+         * Without this a bundle could show `resolver.verdict: Conflicted` beside a recovery list
+         * containing the very value that was refused, with nothing to connect the two — which is
+         * exactly how `131511` had to be diagnosed from a screen recording.
+         */
+        disputed: DisputedCandidates = DisputedCandidates.NONE,
+        /**
+         * The surviving punctuation evidence behind a scale-ambiguity refusal.
+         *
+         * Names the candidate token, the paired column token and the declared serving quantity the
+         * check used, so the decision can be reconstructed from the files alone.
+         */
+        scaleVerdict: ScaleAmbiguity.Verdict? = null,
+        /** The basis handed to Edit or focused entry, and whether the amount was prefilled. */
+        correctionHandoff: String? = null,
     ) {
         if (!enabled || folder == null) return
         runCatching {
@@ -311,9 +562,41 @@ object ScanEvidenceRecorder {
                     appendLine("capture size    : ${document?.width}x${document?.height}")
                     appendLine("outcome         : $outcome")
                     appendLine("elements        : $elementsBefore -> $elementsAfter")
-                    appendLine("reading         : ${report.reading::class.simpleName}")
+                    appendLine("reading         : ${report.reading::class.simpleName} (Strategy A re-parse)")
                     appendLine("provenance      : ${report.provenance}")
-                    appendLine("second OCR pass : no (Pass A elements reused)")
+                    appendLine(
+                        "resolver.verdict: " + (resolverVerdict ?: "not supplied by caller") +
+                            "  <- what AutomaticScanAdvance reads",
+                    )
+                    appendLine(
+                        "strategy B      : " + (strategyBStatus ?: "not recorded by caller"),
+                    )
+                    appendLine(
+                        "automatic-verification: " + (verification ?: "not recorded by caller") +
+                            "  <- CROSS_COLUMN | DISTINCT_OCR_AGREEMENT | NONE",
+                    )
+                    appendLine(
+                        "final UI action : " + (uiAction ?: "not recorded by caller") +
+                            "  <- AUTO_ADVANCE | CONFIRM | RECOVERY",
+                    )
+                    appendLine(
+                        "passes contributing evidence: " + (
+                            if (passesRan.isEmpty()) "not recorded by caller" else passesRan.joinToString(", ")
+                            ),
+                    )
+                    appendLine("cross-run dispute: ${disputed.describe()}")
+                    appendLine(
+                        "scale evidence  : " + when (scaleVerdict) {
+                            is ScaleAmbiguity.Verdict.Ambiguous ->
+                                "AMBIGUOUS — candidate '${scaleVerdict.candidateText}' paired with " +
+                                    "'${scaleVerdict.pairedText}'; ${scaleVerdict.reason}"
+                            is ScaleAmbiguity.Verdict.Established -> "established (${scaleVerdict.reason})"
+                            null -> "not evaluated (no confident reading, or no document)"
+                        },
+                    )
+                    appendLine(
+                        "correction hand-off: " + (correctionHandoff ?: "not recorded by caller"),
+                    )
                     appendLine()
                     appendLine("=== retained (${retained.size}) ===")
                     retained.forEach {
@@ -331,6 +614,25 @@ object ScanEvidenceRecorder {
                     appendLine()
                     appendLine("=== parser diagnostics after filtering ===")
                     report.diagnostics.forEach { appendLine("  ${it.stage}: ${it.message}") }
+                    appendLine()
+                    // What the recovery screen would offer and, for every value-shaped number it
+                    // would not, the rule that removed it.
+                    //
+                    // Added because a bundle could say `serving: … weight=none` beside a screen
+                    // reading "From 6 g per 18 g serving" and give a reader no way to reconcile
+                    // them. They are two different objects: that line reports the *parser's*
+                    // ServingCarbCandidate.descriptor, which really is absent on a US linear panel
+                    // because there is no column header to carry it, while the `18 g` the user sees
+                    // comes from ServingDeclaration reading `Serv. size: 1 Tbsp (18 g)` off the
+                    // panel itself. Both were true; only one was printed.
+                    //
+                    // A suppressed number previously left no trace at all, which is what made the
+                    // fabricated `72 g / serving` hard to attribute — the bundle showed the value
+                    // and the columns but never which rule had bound them together.
+                    appendLine("=== recovery proposal ===")
+                    val explained = RecoveryCandidates.explain(document, disputed)
+                    if (explained.isEmpty()) appendLine("  (no rows contribute candidates)")
+                    explained.forEach { appendLine("  $it") }
                 },
             )
         }.onFailure { OcrDiagnosticsLogger.failure("Could not record selection", it) }

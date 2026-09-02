@@ -136,10 +136,92 @@ class AssistedReadingScreenTest {
             }
         }
 
-        // All three routes to completion are present without navigating away.
+        // Every route to completion is present without navigating away.
+        //
+        // "Tap the number instead" was removed in the third phone session: it was the entry point
+        // to a bare-number selection that a later screen supplied a basis for, and that composition
+        // is what produced `1.3 g / 100 ml` from a figure printed per 250 ml. Its replacement is
+        // "Choose the carbohydrate figure", whose choices already carry their basis — asserted in
+        // its own tests below.
         rule.onNodeWithText("Tap the carbohydrate row").assertIsDisplayed()
-        rule.onNodeWithText("Tap the number instead").assertIsDisplayed()
         rule.onNodeWithText("Type it in").assertIsDisplayed()
+        rule.onNodeWithText("Tap the number instead").assertDoesNotExist()
+    }
+
+    // ---- basis-complete choices ------------------------------------------------------------------
+
+    /**
+     * THE property of the third phone session: a choice states what it is measured per.
+     *
+     * The recording showed a user tap a `1.3` printed under *per 250 ml* and be offered `/100 ml`,
+     * because the label states per 100 ml somewhere and that was treated as the tapped cell's basis.
+     * A labelled choice removes the step where that substitution could happen.
+     */
+    @Test
+    fun everyOfferedChoiceStatesWhatItIsMeasuredPer() {
+        rule.setContent {
+            JustTheCarbsTheme {
+                AssistedReadingScreen(
+                    bitmap = bitmap(),
+                    state = AssistState(document = gramDocument()),
+                    onUseValue = { _, _ -> },
+                    onRetake = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("53.5 g / 100 g").assertIsDisplayed()
+        // The bare number the old flow would have shown before asking for a basis.
+        rule.onNodeWithText("53,5").assertDoesNotExist()
+    }
+
+    /** Choosing a labelled figure completes the scan without a second question. */
+    @Test
+    fun choosingALabelledFigureCompletesTheScanWithoutAskingForABasis() {
+        var used: Pair<BigDecimal, NutritionBasis>? = null
+        rule.setContent {
+            JustTheCarbsTheme {
+                AssistedReadingScreen(
+                    bitmap = bitmap(),
+                    state = AssistState(document = gramDocument()),
+                    onUseValue = { value, basis -> used = value to basis },
+                    onRetake = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("53.5 g / 100 g").performClick()
+
+        assertEquals(0, used!!.first.compareTo(BigDecimal("53.5")))
+        assertEquals(NutritionBasis.PER_100_G, used!!.second)
+    }
+
+    /**
+     * The OCR routes never ask "per 100 g or per 100 ml?".
+     *
+     * That question is now reachable only from the typing step, where the user is the source of the
+     * figure and is entitled to state its basis. Reaching it from a number the *app* read is what
+     * let a fabricated basis attach to a cell the app had already placed in a different column.
+     */
+    @Test
+    fun theLabelledRouteNeverOffersAGenericBasisPicker() {
+        rule.setContent {
+            JustTheCarbsTheme {
+                AssistedReadingScreen(
+                    bitmap = bitmap(),
+                    state = AssistState(document = gramDocument()),
+                    onUseValue = { _, _ -> },
+                    onRetake = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("Use / 100 g").assertDoesNotExist()
+        rule.onNodeWithText("Use / 100 ml").assertDoesNotExist()
+        rule.onNodeWithText("53.5 g carbs — per what?").assertDoesNotExist()
     }
 
     /** §19: the value can be typed with the table still on screen, and it carries a basis. */

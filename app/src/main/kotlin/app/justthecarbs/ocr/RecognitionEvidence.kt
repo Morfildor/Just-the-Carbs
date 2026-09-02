@@ -130,4 +130,15 @@ data class RecognitionEvidence(
     /** Same value AND same basis. Basis disagreement is a real conflict, not a rounding artefact. */
     fun fullyAgreesWith(other: RecognitionEvidence): Boolean =
         agreesOnValueWith(other) && basis != null && basis == other.basis
+
+    /**
+     * Whether this pass placed its value on the label — i.e. established what it is measured per.
+     *
+     * A confident reading with a null basis is a value the parser found and could not place, which
+     * this app never advances on. Stated as its own property rather than left implicit inside
+     * [fullyAgreesWith] because the strong-path skip in [SelectedTableResolution] asks it directly,
+     * and a condition that reads "and it states a basis" should not have to be inferred from an
+     * agreement helper.
+     */
+    val statesABasis: Boolean get() = basis != null
 }

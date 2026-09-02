@@ -87,28 +87,31 @@ class AutomaticScanAdvanceTest {
     // ---- 2. the cases that must NOT advance ----------------------------------------------------
 
     /**
-     * The subtle one, and the reason this gate is stricter than "is it Resolved".
+     * An ambiguous reading never advances past the crop step.
      *
      * With no confident pass the resolver deliberately keeps the richest **ambiguous** report rather
-     * than flattening it to `NotFound` — so the outcome really is `Resolved`, and gating on the
-     * outcome type alone would send a multi-candidate reading straight past the crop step. It is not
-     * unsafe (the scanner shows `AmbiguousCard` and never auto-accepts), but the parser could not
-     * decide between candidates, and a frame containing more than the table is the usual reason.
-     * Tightening the rectangle is the user's most direct lever on exactly that.
+     * than flattening it to `NotFound`, so the user still sees the candidates. That state is now
+     * named [EvidenceResolver.Outcome.Unresolved] rather than `Resolved` — see that type's KDoc for
+     * the device bundle that recorded an ambiguity as "Resolved" beside a second pass that had found
+     * nothing.
+     *
+     * The safety assertion is unchanged and is the point of the test: the parser could not decide
+     * between candidates, a frame containing more than the table is the usual reason, and tightening
+     * the rectangle is the user's most direct lever on exactly that.
      */
     @Test
-    fun `a Resolved outcome carrying an ambiguous reading does NOT advance`() {
+    fun `an ambiguous reading does NOT advance`() {
         val outcome = EvidenceResolver.resolve(
             listOf(evidence(EvidenceSource.FULL_FRAME_PASS_A, ambiguous = listOf("53.5", "6.7"))),
         )
 
         assertTrue(
-            "precondition: the resolver reports this as Resolved, which is what makes it a trap",
-            outcome is EvidenceResolver.Outcome.Resolved,
+            "precondition: an ambiguity with nothing to corroborate it is Unresolved",
+            outcome is EvidenceResolver.Outcome.Unresolved,
         )
         assertTrue(
             "precondition: carrying an Ambiguous reading",
-            (outcome as EvidenceResolver.Outcome.Resolved).reading is LabelReading.Ambiguous,
+            (outcome as EvidenceResolver.Outcome.Unresolved).reading is LabelReading.Ambiguous,
         )
         assertFalse(AutomaticScanAdvance.mayAdvance(outcome))
     }

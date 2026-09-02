@@ -25,12 +25,39 @@ object ScanEvidenceExport {
      */
     fun share(context: Context): Intent? {
         if (!ScanEvidenceRecorder.enabled) return null
+
+        // Wait for the background writer to finish before listing anything.
+        //
+        // Evidence files are written off the scan path on purpose — that is the whole point of
+        // `consumeCaptureAsync` and `recordPassAImageAsync`, and it must not change. But *export* is
+        // a deliberate user action with no latency budget, and it is the one moment where a
+        // half-written `passA.png` would be zipped as though it were complete. This is the only
+        // place in the app that waits for the writer.
+        ScanEvidenceRecorder.drain()
+
         val captures = ScanEvidenceRecorder.captures(context)
         if (captures.isEmpty()) return null
 
-        val archive = File(ScanEvidenceRecorder.directory(context), ARCHIVE_NAME)
+        // Written under a temporary name and renamed only after the archive is closed and verified.
+        //
+        // ### The measured failure
+        //
+        // The first evidence bundle uploaded from the third phone session was 58 MB, truncated
+        // mid-entry, and had no central directory — an unreadable zip that nonetheless sat at the
+        // shareable filename and was successfully shared. Writing in place means every intermediate
+        // state of the file is visible under the name the share sheet hands out, so an interrupted
+        // write is indistinguishable from a finished one.
+        //
+        // A temporary name plus an atomic rename makes the shareable name only ever refer to an
+        // archive that was closed and read back successfully. A failure leaves the previous
+        // archive — or nothing — rather than a partial one.
+        val directory = ScanEvidenceRecorder.directory(context)
+        val staging = File(directory, "$ARCHIVE_NAME.part")
+        val archive = File(directory, ARCHIVE_NAME)
+        staging.delete()
+
         val written = runCatching {
-            ZipOutputStream(archive.outputStream().buffered()).use { zip ->
+            ZipOutputStream(staging.outputStream().buffered()).use { zip ->
                 captures.forEach { folder ->
                     folder.walkTopDown().filter { it.isFile }.forEach { file ->
                         // The capture folder's own name (a timestamp) is kept as the zip path so
@@ -43,8 +70,16 @@ object ScanEvidenceExport {
             }
         }.isSuccess
 
-        if (!written || !archive.exists()) {
-            OcrDiagnosticsLogger.failure("Could not build scan evidence archive")
+        if (!written || !staging.exists() || !ZipIntegrity.isComplete(staging)) {
+            OcrDiagnosticsLogger.failure("Could not build a complete scan evidence archive")
+            staging.delete()
+            return null
+        }
+
+        archive.delete()
+        if (!staging.renameTo(archive)) {
+            OcrDiagnosticsLogger.failure("Could not finalise the scan evidence archive")
+            staging.delete()
             return null
         }
 

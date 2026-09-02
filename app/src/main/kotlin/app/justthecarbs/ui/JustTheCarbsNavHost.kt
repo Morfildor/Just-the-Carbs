@@ -84,6 +84,26 @@ private fun pendingPortionUnitFrom(
     return PendingPortionUnit(kind, PortionConversion.DirectCarbs(carbs))
 }
 
+/**
+ * The manual-entry route for the scanner's *Edit* action.
+ *
+ * Extracted from the navigation lambda so it can be asserted without an emulator, because the
+ * defect it fixes is invisible to every screen test: *Edit* used to navigate to
+ * `Routes.manual(barcode)` and drop the basis entirely, so a label whose `per 100 ml` column had
+ * been read correctly opened manual entry with **`100 g`** selected — `ManualEntryUiState`'s
+ * default, with nothing having overridden it. A user typing the correct figure there stores it
+ * against the wrong denominator, and no later stage can detect that.
+ *
+ * [basis] is null only when nothing established one, in which case the manual screen keeps its own
+ * default — the pre-existing behaviour for an entry reached from Home.
+ *
+ * The amount is deliberately absent. *Edit* is reached when the app's number was wrong or was
+ * withheld, so pre-filling it would re-propose the very figure the user has just rejected; carrying
+ * a value is *Correct*'s job, which is a different question and keeps its own route.
+ */
+internal fun editManuallyRoute(barcode: String, basis: NutritionBasis?): String =
+    Routes.manual(barcode, "", basis?.name.orEmpty())
+
 private object Routes {
     const val ONBOARDING = "onboarding"
     const val HOME = "home"
@@ -661,8 +681,17 @@ fun JustTheCarbsNavHost(
                         }
                     }
                 },
-                onEditManually = {
-                    navController.navigate(Routes.manual(barcode)) {
+                // *Edit* keeps the basis the label stated and leaves the amount blank.
+                //
+                // The basis used to be dropped here, and a device recording showed what that costs:
+                // a coconut-milk label whose `per 100 ml` column the classifier had read correctly
+                // opened manual entry with **`100 g`** selected, because that is
+                // `ManualEntryUiState`'s default and nothing had overridden it. A user typing the
+                // right figure there stores it against the wrong denominator, and no later stage can
+                // detect that. The amount stays empty deliberately — this action is reached when the
+                // app's number was wrong or withheld, so re-proposing it would undo the rejection.
+                onEditManually = { basis ->
+                    navController.navigate(editManuallyRoute(barcode, basis)) {
                         popUpTo(Routes.LABEL_SCAN) { inclusive = true }
                     }
                 },

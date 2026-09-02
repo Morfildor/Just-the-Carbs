@@ -186,8 +186,12 @@ object ProseNutritionReader {
         if (RowClassifier.classify(row) in NUTRIENT_ROW_KINDS) return true
         if (row.elements.size > MAX_WORDS_IN_A_ROW) return false
         val normalized = NutritionTerminology.normalize(row.text)
+        // The raw term is passed, not a pre-normalized one: [NutritionTerminology.containsTerm]
+        // normalizes its argument itself, so normalizing here was redundant work whose only effect
+        // was to miss the term cache — normalizing a term twice is idempotent, so this changes the
+        // cost and not the answer.
         return CarbohydrateTermAnchor.OTHER_NUTRIENT_TERMS.any {
-            NutritionTerminology.containsTerm(normalized, NutritionTerminology.normalize(it))
+            NutritionTerminology.containsTerm(normalized, it)
         }
     }
 
@@ -328,7 +332,9 @@ object ProseNutritionReader {
      */
     private fun termLengthAt(words: List<String>, index: Int, terms: Collection<String>): Int? =
         terms.asSequence()
-            .map { NutritionTerminology.normalize(it).split(' ').filter(String::isNotBlank) }
+            // Cached for the same reason as [longestTermAt] — this walks every term at every word
+            // position too. See [NutritionTerminology.termWords].
+            .map { NutritionTerminology.termWords(it) }
             .filter { it.isNotEmpty() && index + it.size <= words.size }
             .filter { term -> term.indices.all { words[index + it] == term[it] } }
             .maxOfOrNull { it.size }
@@ -453,10 +459,62 @@ object ProseNutritionReader {
     }
 
     /**
+     * The most recent token stream, keyed on the row list it was built from.
+     *
+     * ## Why this is here
+     *
+     * [flatten] normalizes **every word of every element in the document**, which is inherent to
+     * building the stream and is fine once. It was running five times per interpretation:
+     * [isProseLabel] is called twice by [NutritionTableInterpreter] (the eligibility gate and again
+     * on the prose path), [read] calls it, and two diagnostics helpers call it. Each call rebuilt
+     * the whole stream from scratch.
+     *
+     * Measured on the seventh session's two truffle captures, which differ by 10% in element count
+     * and by **22x** in parser work:
+     *
+     * ```
+     * 141642-529   289 elements   51,792 normalize calls   device parse 1432 ms
+     * 141703-456   262 elements    2,295 normalize calls   device parse  199 ms
+     * ```
+     *
+     * The gap is the prose path: `141642` reaches it (its reading is a prose declaration) and
+     * `141703` does not. A label whose ingredient panel is printed in four languages has hundreds of
+     * words that are not nutrition text at all, and every one of them was normalized five times.
+     *
+     * ## Why identity, and why one entry
+     *
+     * Keyed on **reference identity** of the row list, not on its contents: the point is to catch
+     * the repeated calls within one interpretation, which all pass the very same list instance. A
+     * content-based key would mean hashing every row's text to avoid normalizing it, which is the
+     * same work in a different place.
+     *
+     * One entry is enough *here*, unlike the classification cache — the calls that repeat are
+     * consecutive within a single interpretation and all share one list. A document-interleaved
+     * access pattern would evict on every lookup, which is the trap recorded for the term cache;
+     * this call site does not have one.
+     *
+     * Not thread-safe, for the same reason [ParserWorkCounters] is not: one interpretation runs on
+     * one thread. A stale entry cannot produce a wrong answer either — it is keyed on the exact
+     * instance whose tokens it holds.
+     */
+    private var cachedRows: List<LogicalRow>? = null
+    private var cachedTokens: List<Token>? = null
+
+    /**
      * The whole document as one reading-order token stream: rows top to bottom, elements left to
      * right within each row, each element split into sub-word tokens.
+     *
+     * Memoized per row-list instance — see [cachedRows].
      */
-    private fun flatten(rows: List<LogicalRow>): List<Token> = buildList {
+    private fun flatten(rows: List<LogicalRow>): List<Token> {
+        if (cachedRows === rows) cachedTokens?.let { return it }
+        val tokens = flattenUncached(rows)
+        cachedRows = rows
+        cachedTokens = tokens
+        return tokens
+    }
+
+    private fun flattenUncached(rows: List<LogicalRow>): List<Token> = buildList {
         rows.forEach { row ->
             row.elements.forEachIndexed { elementIndex, element ->
                 splitIntoWords(element.text).forEach { word ->
@@ -613,7 +671,11 @@ object ProseNutritionReader {
         index: Int,
         terms: Collection<String>,
     ): Pair<String, Int>? = terms.asSequence()
-        .map { it to NutritionTerminology.normalize(it).split(' ').filter(String::isNotBlank) }
+        // The vocabulary is a compile-time constant and this runs at every token position against
+        // every term, so normalizing here is the quadratic shape the 2026-09-01 regression was made
+        // of — measured at ~49,000 of one capture's 51,792 normalize calls. See
+        // [NutritionTerminology.termWords].
+        .map { it to NutritionTerminology.termWords(it) }
         .filter { (_, parts) -> parts.isNotEmpty() && index + parts.size <= words.size }
         .filter { (_, parts) -> parts.indices.all { words[index + it] == parts[it] } }
         .maxByOrNull { (_, parts) -> parts.size }

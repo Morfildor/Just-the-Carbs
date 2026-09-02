@@ -872,7 +872,10 @@ private fun ProductSummary(
         Text(
             text = stringResource(
                 R.string.product_per_100,
-                product.carbsPer100.stripTrailingZeros().toPlainString(),
+                // ResultFormatter.quantity, not toPlainString: a per-100 figure derived from a
+                // serving declaration (6 g per 18 g -> 33.33333333) would otherwise print every
+                // digit of the division. See that function.
+                ResultFormatter.quantity(product.carbsPer100),
                 product.portionUnit,
             ),
             style = MaterialTheme.typography.titleLarge,
@@ -1832,7 +1835,8 @@ private fun ResultPanel(
                         Text(
                             text = stringResource(
                                 R.string.product_result_basis_preview,
-                                product.carbsPer100.stripTrailingZeros().toPlainString(),
+                                // See the note on the same call above.
+                                ResultFormatter.quantity(product.carbsPer100),
                                 product.portionUnit,
                             ),
                             style = NumberType.supporting,

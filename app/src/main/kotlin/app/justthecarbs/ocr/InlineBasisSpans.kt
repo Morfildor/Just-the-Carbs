@@ -46,6 +46,7 @@ object InlineBasisSpans {
      * guessing there would be exactly the confident wrong answer the column stage already refuses.
      */
     fun find(row: LogicalRow): List<Span> {
+        if (ParserWorkCounters.enabled) ParserWorkCounters.inlineBasisCalls++
         val spans = mutableListOf<Span>()
         var index = 0
 

@@ -717,6 +717,21 @@ $env:JAVA_HOME="C:\atools\jdk-21.0.12+8"; $env:ANDROID_HOME="C:\atools\sdk"
 Expect `versionCode='4' versionName='1.0.3-debug'` and package `app.justthecarbs.debug` — note the
 **`.debug` suffix**, which is what `adb shell am start` and `pm clear` must name.
 
+The build prepared for the §22 run, from a clean tree at commit `73df0e1`, is also copied to
+`C:\Users\tuncb\Desktop\JustTheCarbs-debug.apk`:
+
+| | |
+|---|---|
+| Size | 89,436,837 bytes |
+| SHA-256 | `8F1BCB6D759560598E0D66195C09AF4B77A45E9A779E10CA58E744BD4792B873` |
+| Read from the APK | `versionCode='4'`, `versionName='1.0.3-debug'`, `app.justthecarbs.debug` |
+| Permissions | CAMERA, INTERNET, ACCESS_NETWORK_STATE (+ AGP's debug-only receiver permission) |
+
+**A debug APK is not reproducible byte-for-byte** — rebuilding the same commit yields a different
+hash, because build IDs and timestamps vary. A hash mismatch against the table above is therefore
+*not* evidence of a different tree; check `git rev-parse HEAD` and a clean `git status` for that.
+Record whichever hash you actually installed.
+
 **The build must be a debug build**, and not for convenience: `OcrDiagnosticsLogger` is
 `BuildConfig.DEBUG`-gated and R8 strips it entirely from release, so a release APK produces **no
 timing evidence at all**. Latency measured on debug is also *pessimistic* — it includes the evidence
@@ -756,9 +771,9 @@ The lines that answer §22, in the order one scan emits them:
 | `pass A (uncropped) recognised=WxH relevance=[…]` | recognition ran on the **whole** capture; the region is relevance, never a crop |
 | `scan <n>ms (user-visible <n>ms) \| stage · stage …` | the per-stage breakdown. **Stages marked `*` are off-path** (debug-only or post-handover) and are excluded from `user-visible` |
 | `selected table: <OUTCOME> elements=A->B reparse=<n>ms outcome=<Reading>` | the resolution. `elements=A->B` identical means the crop removed no interference |
-| `strategy-B <trace>` | the independent ML Kit pass ran (~400 ms). **Its absence is the point of D1** |
+| `strategy-B <trace>` | the independent ML Kit pass ran (~400 ms). **Absence is NOT proof it did not run** — it can return null without logging; read `strategy B` in `selection.txt` instead |
 | `fast-path declined (<Outcome>)` | the automatic attempt handed over to the crop screen |
-| `selected-table skipped (crop unchanged since last pass)` | **the D1 evidence** — no duplicate recognition |
+| `selected-table skipped (crop unchanged since last pass)` | the shortcut through an already-refused region. **Not D1 evidence on its own** — see the 2026-08-31 findings below |
 
 **A successful fast-path advance logs no line of its own.** It is identified by
 `selected table: … outcome=Confident` *without* a following `fast-path declined`. Do not hunt for an
@@ -778,6 +793,56 @@ scan against ~400 ms added before a declining one; both halves must be stated, n
 
 **State explicitly whether any wrong value advanced automatically.** That is the one result that
 overrides every latency figure in this table — a silence there is not the same as a "none".
+
+### Findings from the 2026-08-31 device session (five captures, SM-S928B)
+
+Corrections to the rows above, made from the evidence bundle in `docs/Scan evidence 31-08-26/`.
+Read these before recording anything in this appendix.
+
+**A wrong value DID reach `Confident` on hardware.** The Fanta Zero capture
+(`20260831-140132-710`) printed `0,5 g` per 100 ml and pass A reported
+`CONFIDENT 0.59 PER_100_ML` from a correct `TOTAL_CARBOHYDRATE` row with a correctly resolved
+column. It did not reach the user, but §22f's "did any wrong value advance" question must not be
+answered "none observed" for this session.
+
+**Two bundle fields were misread, and both are now fixed in the recorder.** They are recorded here
+because a bundle taken before the fix still carries the old shape:
+
+- `meta.txt` `outcome` was **pass A's reading**, not the resolver's verdict — the fast-path gate
+  reads `AutomaticScanAdvance.mayAdvance(EvidenceResolver.Outcome)` over *every* pass. It is now
+  written as two separate lines, `passA.reading` and `resolver.verdict`.
+- `selection.txt`'s `second OCR pass : no (Pass A elements reused)` was a **hardcoded string
+  literal** that measured nothing. Strategy B *is* invoked on the automatic attempt whenever
+  independent runs do not already agree, and its result was dropped silently when it returned null.
+
+**D1 is therefore UNEVIDENCED in that bundle, and the row above overstates what the log proves.**
+A `strategy-B` line's absence is not evidence that no second recognition ran — in a debug build
+`SelectedRegionRecognizer` can return null (recycled bitmap, degenerate crop, caught exception)
+without logging. `selection.txt` now records `strategy B`, `resolver.verdict` and the passes that
+contributed evidence, so the next bundle can answer this; until then, do not tick D1.
+
+Consequence for latency: `recognition: <n>ms (ML Kit alone)` covers **pass A only**, so any
+Strategy B cost is unaccounted for in the five folders recorded on 2026-08-31.
+
+**§22.13 and §22.15 are unverified, not passed.** No framing guidance appeared in 5:45 of testing,
+including a 20-second stretch of visible framing difficulty, so the true positive never fired and
+§22.15 could not be reached.
+
+**§21.1 and §21.16 remain unticked.** The crop screen appeared on all five captures.
+
+### P2-1, noted and NOT implemented
+
+The parser distinguishes failures the user never sees. Three distinct causes currently share one
+sentence, and the third was missed by the original brief:
+
+| Diagnostic | Seen in | What it actually means |
+|---|---|---|
+| `No total-carbohydrate row` | 140208-173 | the carbohydrate row was not found |
+| `Total-carbohydrate row found but no usable per-100 cell` | 135943-434, 140033-054, 140056-376 | the row was found; the "per 100 g" heading was not |
+| **two readings disagreed** (`EvidenceResolver.Outcome.Conflicted`) | — | passes contradicted each other; at least one is wrong and nothing can say which |
+
+The third is a different statement from either of the others and must not be folded into "couldn't
+read it". Keep the existing title — §22.33 depends on it — and change the subtitle only.
 
 ### Physical UX observations to make while scanning
 
@@ -812,6 +877,619 @@ Not new features — behaviours only a hand on a phone can check. Record what ha
 
 ---
 
+## 23. Parser correctness patch (1.0.3, 2026-09-01) — PHYSICAL DEVICE ONLY, RELEASE GATE
+
+The four labels from the 2026-09-01 device session, after the accompaniment, segmentation, column
+anchoring, cross-column and resolver changes. Evidence: `docs/Scan Evidence 01-09-26/`.
+
+**The patch is not release-ready until every row here is ticked on hardware.** These four products
+are the ones whose failures motivated the work, so a green JVM suite says nothing about them: three
+of the four failures were geometric, and the fourth was a vocabulary gap.
+
+Build under test: `app-debug.apk`, 89,469,605 bytes,
+SHA-256 `E2490516D2AFF47CF1C822EDD01560F6ACE7CB9175F90C0D05798FB12B0498E4`,
+`versionCode=4` / `versionName=1.0.3-debug` (read from the APK with `aapt2 dump badging`).
+
+### 23a. The green drink — the P0 case
+
+Prints `0,5 g / 100 ml` and `1,3 g / 250 ml`. Before this patch the device produced
+**`1.3 g / 100 ml`** — the 250 ml figure wearing the 100 ml basis, wrong by a factor of 2.6.
+
+| # | Check | Pass |
+|---|---|---|
+| 23.1 | **`1.3 g/100 ml` never appears**, at any framing, however many times it is scanned | ☐ |
+| 23.2 | Either `0.5 g/100 ml` is read, or the app refuses and offers a labelled recovery | ☐ |
+| 23.3 | No bare number is ever offered without its basis (`0.59`, `13g` alone) | ☐ |
+| 23.4 | If candidates are shown, each carries its own basis in the label | ☐ |
+| 23.5 | `adb logcat -s JustTheCarbsOCR` shows the 250 ml column as a separate, non-per-100 column | ☐ |
+
+### 23b. The cracker bag — the clean-path canary
+
+Prints `72,0 g / 100 g` and `22,5 g` per portion. This already worked and must be untouched.
+
+| # | Check | Pass |
+|---|---|---|
+| 23.6 | Reads **`72 g / 100 g`** | ☐ |
+| 23.7 | Reaches Quick Calculation **automatically** — no crop screen, no *Confirm* tap | ☐ |
+| 23.8 | Exactly **two taps** from Home: *Scan nutrition label*, then *Capture* | ☐ |
+| 23.9 | Quick Calculation shows the figure, its basis, and *Read from label by you* | ☐ |
+| 23.10 | Capture-to-result median over 10 scans: ______ ms (target ≤1200) | ☐ |
+
+### 23c. The Korean sauce — the fabricated-basis case
+
+A linear US panel: `Serv. size: 1 Tbsp (18 g)`, `Total Carb. 6g`, `Fiber 1 g`. Before this patch the
+row typed as a carbohydrate *child* (because of `Fiber`) and the `6 g` was unreachable; manual
+selection then offered only "/100 g" and "/100 ml" for a per-serving figure.
+
+| # | Check | Pass |
+|---|---|---|
+| 23.11 | `6 g` is **never** presented as per 100 g or per 100 ml | ☐ |
+| 23.12 | The fibre figure `1 g` is never offered as total carbohydrate | ☐ |
+| 23.13 | No `%DV` number (`2`, `4`, `22`) is ever offered as carbohydrate grams | ☐ |
+| 23.14 | The outcome is a refusal or an explicit basis question — never a silent per-100 label | ☐ |
+
+### 23d. The multilingual table — the anchoring case
+
+Prints `59,2 g / 100 g` and `5,4 g` per 9 g portion, with an RI column. Before this patch the
+per-100 column anchored at x=1439.5, over the *portion* values, and nothing read.
+
+| # | Check | Pass |
+|---|---|---|
+| 23.15 | Reads **`59.2 g / 100 g`**, preferably automatically | ☐ |
+| 23.16 | `54 g` never appears as a value (it is `5,4 g` with the decimal point lost) | ☐ |
+| 23.17 | The RI percentages are never offered as carbohydrate | ☐ |
+| 23.18 | Fibre (`20,0 g`) and sugars (`1,5 g`) are never offered as the total | ☐ |
+
+### 23e. Latency and diagnostics
+
+Measure on the **debug** build — release strips the diagnostics logger entirely. Read
+**`user-visible`** from the trace summary, not `scan`.
+
+| # | Check | Pass |
+|---|---|---|
+| 23.19 | Strong clean scan: capture → Quick Calculation median ≤1.2 s over 10 scans | ☐ |
+| 23.20 | Recovery screen visible ≤1.5 s when the scan cannot be read | ☐ |
+| 23.21 | The UI never waits for evidence writing — `evidence-diagnostics` no longer precedes the result | ☐ |
+| 23.22 | `selection.txt` lists each pass with what it contributed, not just its name | ☐ |
+| 23.23 | An ambiguous reading with no corroboration records `Unresolved`, never `Resolved` | ☐ |
+| 23.24 | `meta.txt` no longer claims "not reached" is what the advance gate read | ☐ |
+
+### 23f. Regression sweep while the phone is in hand
+
+| # | Check | Pass |
+|---|---|---|
+| 23.25 | Barcode scanning is unchanged (§3, §15f) | ☐ |
+| 23.26 | A label printing units only in its header still reads — the accompaniment rule did not over-reach | ☐ |
+| 23.27 | A Dutch label still reads (`Koolhydraten`, `per 100 g`) | ☐ |
+| 23.28 | The nine committed corpus photographs still read as before, via the instrumented suite | ☐ |
+
+---
+
 **Blocking issues found:**
 
 **Sign-off:** ____________________ **Date:** ____________
+
+---
+
+## §24 — P0 regression retest: the green drink only (2026-09-01, second phone session)
+
+**Do this before §23 and before any other product.** It is deliberately short: the P0 repair is
+about latency and about one label, and a long sheet would delay the one measurement that matters.
+
+Build under test: `app-debug.apk`, 89,734,290 bytes,
+SHA-256 `58516719 84141396 EE086509 4B470743 5C07A912 E0BC9A5A 35A4E774 D00D7FED`,
+`versionCode=4` / `versionName=1.0.3-debug` (read from the APK, not from Gradle).
+
+The product is the **green Fanta-style drink** whose label prints `0,5 g/100 ml` in the left column
+and `1,3 g/250 ml` in the right. It is the label behind bundles `20260901-222212-563` and
+`20260901-222300-297`.
+
+### 24a — Latency, which is the point of this pass
+
+Scan it **five times**, reframing between attempts. Record the wall clock from tapping *Capture* to
+either a result or a recovery screen — a stopwatch is fine; this is a seconds-scale question.
+
+| # | Framing | Seconds to result **or** recovery | Outcome shown |
+|---|---|---|---|
+| 24.1 | Close, table fills the frame | ______ | ______ |
+| 24.2 | Close, slight tilt | ______ | ______ |
+| 24.3 | Normal arm's length | ______ | ______ |
+| 24.4 | Wide, surrounding package visible | ______ | ______ |
+| 24.5 | Dim room light | ______ | ______ |
+
+**Pass condition: every row is ≤ 2 seconds.** The before figures were 20.2 s and 11.2 s. A row above
+2 s is a failure of this pass regardless of what it eventually displayed.
+
+**Never acceptable at any framing:** the spinner persisting with no result and no recovery screen.
+That is the exact behaviour that made the user abandon both recorded scans.
+
+### 24b — Correctness on this label
+
+| # | Check | Pass |
+|---|---|---|
+| 24.6 | The reading is **`0.5 g/100 ml`**, or a recovery screen — never a silent failure | ☐ |
+| 24.7 | **`1.3 g/100 ml` never appears.** This is the forbidden outcome; it is the 250 ml figure | ☐ |
+| 24.8 | `13 g/100 ml` likewise never appears | ☐ |
+| 24.9 | If recovery appears, it offers the carbohydrate row for tapping and reaches `0.5` | ☐ |
+| 24.10 | No unlabelled value (`0.59`, bare `13g`) is offered as a choice | ☐ |
+
+### 24c — Read the log while the phone is in hand
+
+`adb logcat -s JustTheCarbsOCR`. The line to find is the trace summary:
+
+```
+scan <total>ms (user-visible <n>ms) | parse <n> · mlkit <n> · evidence-capture <n>* · …
+```
+
+| # | Check | Value | Pass |
+|---|---|---|---|
+| 24.11 | `parse` is **under 700 ms** (was 9278 and 5331) | ______ | ☐ |
+| 24.12 | `user-visible` is under 2000 ms | ______ | ☐ |
+| 24.13 | `evidence-capture` still carries `*` **and** `scan` minus `user-visible` accounts for it | ______ | ☐ |
+| 24.14 | The result appears on screen **before** the bundle finishes writing | | ☐ |
+
+24.14 is the P0-2 check and the one a number cannot answer: watch the screen, not the log. The
+result must not wait for the evidence bundle. Reading `scan` instead of `user-visible` is how the
+previous session's figures were misread — **the `*` marks arithmetic, not scheduling**, which is
+precisely the defect this pass fixed.
+
+### 24d — Only if 24a–24c pass
+
+Then, and only then, continue to §23 for the other three products. If any row above fails, stop and
+export the bundle (`scan-evidence`), because a second regression measured on the same label is worth
+more than partial coverage of four.
+
+**Result:** ____________________ **Date:** ____________
+
+---
+
+## §25 — Basis-complete recovery retest (2026-09-02, debug APK `7F7EF256…03CF4`)
+
+**Do not tick §22, §23 or §24 from this section.** Those gates cover earlier builds and earlier
+questions; this one covers the third phone session's findings and is additive.
+
+**Artifact:** `app/build/outputs/apk/debug/app-debug.apk`, 89,970,536 bytes, SHA-256
+`7f7ef25611a96e2bcdc3de436ac9325c742fd5aa944ed1eb5d9849c1c6903cf4`, `versionCode=4` /
+`versionName=1.0.3-debug` read from the APK with `aapt2 dump badging`. Desktop copy
+`JustTheCarbs-debug.apk` verified byte-identical.
+
+**Why this exists.** The 2026-09-01 third phone session proved the performance repair worked
+(parser 66–579 ms, most captures 0.89–1.92 s) **and** that automatic refusal alone is not enough:
+the user selected the printed 250 ml value through the recovery screen and Quick Calculation showed
+**`1.3 g carbs / 100 ml`** — the original 2.6x error, arriving through the manual path after the
+automatic path had been fixed.
+
+### 25a — The green drink, four framings (the P0)
+
+Scan the same drink four times, deliberately varying framing (wide, close, angled, straight on).
+For **each** scan, whatever the app does automatically, then open the recovery screen and read the
+choices it offers.
+
+| # | Check | Pass |
+|---|---|---|
+| 25.1 | No screen at any point shows `1.3 g / 100 ml` | ☐ |
+| 25.2 | No screen at any point shows `13 g / 100 ml` | ☐ |
+| 25.3 | **Every** choice reads `<number> g / <something>` — never a bare number | ☐ |
+| 25.4 | Any right-column value that is offered displays `/ 250 ml`, not `/ 100 ml` | ☐ |
+| 25.5 | Choosing a `/ 250 ml` figure produces roughly `0.5 g / 100 ml`, never `1.3` | ☐ |
+| 25.6 | At least one of the four framings reaches `0.5 g / 100 ml` automatically | ☐ |
+| 25.7 | Tapping the **Waarvan suikers** row says it looks like sugars and offers nothing | ☐ |
+
+25.4 is the row that decides this pass. A `/250 ml` label is the app telling the truth about a
+column it cannot store; a `/100 ml` label on that same figure is the release-blocking defect.
+
+### 25b — The cracker, both captures
+
+| # | Check | Pass |
+|---|---|---|
+| 25.8 | Both captures reach `72 g / 100 g` **automatically**, with no crop screen | ☐ |
+| 25.9 | No candidate list anywhere contains `9%`, or `9` offered as a value | ☐ |
+| 25.10 | The corrupted portion value `22,59` is not offered | ☐ |
+
+### 25c — The Korean sauce
+
+| # | Check | Pass |
+|---|---|---|
+| 25.11 | The app shows `6 g / 18 g serving`, or its derived `33.3 g / 100 g` | ☐ |
+| 25.12 | It **never** asks "per 100 g or per 100 ml?" for this label | ☐ |
+| 25.13 | The fibre `1 g` on the same printed row is not offered | ☐ |
+| 25.14 | No `%DV` figure (`2`, `4`, `22`) is offered | ☐ |
+| 25.15 | When the derived figure is shown, the printed `6 g per 18 g serving` is shown too | ☐ |
+
+25.12 is the sauce's equivalent of 25.4. The label states its basis; being asked to choose between
+two bases it does not print means the reading arrived without one.
+
+### 25d — The multilingual (Baltic) table
+
+Read `adb logcat -s JustTheCarbsOCR` while scanning.
+
+| # | Check | Value | Pass |
+|---|---|---|---|
+| 25.16 | Returns `59.2 g / 100 g` | ______ | ☐ |
+| 25.17 | The log lists **three** separate anchors near x≈1330, x≈1505 and x≈1589 | ______ | ☐ |
+| 25.18 | `5,4` is never reported as a per-100 figure | | ☐ |
+
+25.17 is the one that distinguishes a correct answer from a lucky one. Before this pass the table
+emitted a single column spanning both positions and `59,2` won only because it happened to sit
+nearer the midpoint than `5,4`.
+
+### 25e — Two taps, and timing reported cold and warm separately
+
+| # | Check | Value | Pass |
+|---|---|---|---|
+| 25.19 | A strong scan is **two taps** from Home to Quick Calculation | ______ | ☐ |
+| 25.20 | **First** scan after opening the app — record it separately | ______ ms | ☐ |
+| 25.21 | Warm scans (2nd onward), median | ______ ms | ☐ |
+| 25.22 | Warm median ≤ **1.2 s** | | ☐ |
+| 25.23 | Recovery screen visible within **1.5 s** on a scan that declines | ______ ms | ☐ |
+| 25.24 | Every warm scan ≤ **2 s** where ML Kit permits | | ☐ |
+
+**Report 25.20 and 25.21 separately and do not average them.** The cold figure was 3401 ms with
+2789 ms of it inside ML Kit; a warm-up now runs when the scanner opens, so the cold number should
+fall — but if it does not, that is a finding to record, not a threshold to move.
+
+### 25f — Evidence export integrity
+
+| # | Check | Pass |
+|---|---|---|
+| 25.25 | The result appears on screen **before** the bundle finishes writing | ☐ |
+| 25.26 | Exported ZIP opens and every entry extracts without error | ☐ |
+| 25.27 | The exported size is plausible for the number of captures (~8–10 MB each) | ☐ |
+
+25.26 is the check the first upload of the third session failed: 58 MB, truncated mid-entry, no
+central directory, shared without complaint. The archive is now written under a temporary name,
+read back in full, and renamed only if every entry decompresses — so a failure should now present
+as an export error rather than as a corrupt file.
+
+**Result:** ____________________ **Date:** ____________
+
+---
+
+## §26 — Verified automatic advancement (2026-09-02, fourth phone session, debug APK `83226166…D3FC9`)
+
+Appended, not a rewrite: §§22–25 stand as the record of what earlier builds were asked to prove.
+This section covers only what changed after the fourth phone session, whose nine captures are in
+`docs/Scan Evidence 02-09/` and are committed as `FourthSessionFixtures`.
+
+**What that session found.** Automatic accuracy was 4 of 5, and the one miss is the reason this
+section exists: `085542-213` displayed **`12 g/100 g`** where the cracker prints `72,0 g`, with no
+confirmation step at all. ML Kit read `12,0.g`. Nothing about the token can detect that, and nothing
+should try — but the table's own other rows disagree with it by a factor of six, and now that
+disagreement blocks the automatic path.
+
+The rule this section tests: **a value one OCR run parsed cleanly is not thereby verified.** It
+reaches the user either way; what it no longer does is reach them unconfirmed.
+
+### 26a — The cracker, ten captures
+
+The release blocker. Ten separate captures, re-framing between each, at least three of them
+deliberately awkward (angled, close, partly shadowed).
+
+| # | Check | Pass |
+|---|---|---|
+| 26.1 | No capture ever displays `12 g / 100 g`, at any step, automatic or after a tap | ☐ |
+| 26.2 | No capture displays any per-100 figure other than `72` (or refuses) | ☐ |
+| 26.3 | A correct capture reaches Quick Calculation in **two taps** — capture, then use | ☐ |
+| 26.4 | A capture the app cannot verify shows the value with **one** confirmation tap, never a dead end | ☐ |
+| 26.5 | `adb logcat -s JustTheCarbsOCR` shows `automatic-verification: CROSS_COLUMN` on advancing captures | ☐ |
+| 26.6 | Count of ten: ___ advanced automatically, ___ asked for confirmation, ___ went to recovery | ☐ |
+
+**If any capture displays a per-100 figure other than 72, stop and record the bundle.** That is the
+defect this whole pass exists to close and no other row matters until it is understood.
+
+### 26b — The green drink, five framings
+
+| # | Check | Pass |
+|---|---|---|
+| 26.7 | No framing ever displays `1.3` or `13` as a per-100-ml figure | ☐ |
+| 26.8 | A clean framing reaches `0.5 g / 100 ml` | ☐ |
+| 26.9 | On a refused capture, tapping the carbohydrate row selects **that** row, not sugars | ☐ |
+| 26.10 | A tap that yields nothing offers *"Enter the value printed under 100 ml"* — it does not simply repeat | ☐ |
+| 26.11 | That focused screen offers **no** "100 g or 100 ml?" choice — the basis is already fixed | ☐ |
+| 26.12 | Typing `0.5` there gives `0.5 g / 100 ml` | ☐ |
+| 26.13 | Tapping the sugars row is still refused, with the message naming sugars | ☐ |
+| 26.14 | No repeated-tap loop: every tap changes something on screen | ☐ |
+
+### 26c — The Korean sauce, five captures
+
+| # | Check | Pass |
+|---|---|---|
+| 26.15 | Recovery offers **`6 g / 18 g serving`** | ☐ |
+| 26.16 | Choosing it shows **`33.3`**, never `33.33333333` or any longer decimal | ☐ |
+| 26.17 | The provenance line reads *From 6 g per 18 g serving* | ☐ |
+| 26.18 | `/100 g` and `/100 ml` are never offered as guesses on this label | ☐ |
+| 26.19 | `2`, `4` and `22` (the `% DV` figures) are never offered | ☐ |
+| 26.20 | `1` (the `Fiber 1 g` on the same recognised row) is never offered | ☐ |
+| 26.21 | Nothing from the ingredient list — which names "brown sugar" — is ever offered | ☐ |
+
+### 26d — Timing, reported cold and warm separately
+
+The eight-of-nine ≤579 ms baseline was measured **before** this pass. Verification adds a cross-column
+re-parse (free — rows already built) and, on a label that cannot corroborate itself, a Strategy B
+recognition that previously did not run. Both numbers are wanted; do not average them together.
+
+| # | Measurement | Value |
+|---|---|---|
+| 26.22 | First capture after opening the scanner (cold), `user-visible` from the trace | ______ ms |
+| 26.23 | Median of the next nine (warm) | ______ ms |
+| 26.24 | p95 of the warm population — target ≤2 s | ______ ms |
+| 26.25 | Slowest single warm capture, and which route it took | ______ ms, route ______ |
+| 26.26 | A cross-column-verified capture — Strategy B is skipped, so this should stay near baseline | ______ ms |
+
+Read `user-visible`, not `scan`: the debug build carries the evidence writer a user never pays for.
+
+### 26e — The evidence bundle says what happened
+
+Each bundle's `selection.txt` now carries two lines that did not exist before. They are what makes a
+wrong reading explainable without a screen recording beside the files.
+
+| # | Check | Pass |
+|---|---|---|
+| 26.27 | `automatic-verification:` names `CROSS_COLUMN`, `DISTINCT_OCR_AGREEMENT` or `NONE` | ☐ |
+| 26.28 | When it is `NONE`, the line says why — a contradiction, or too few coherent rows | ☐ |
+| 26.29 | `final UI action :` names `AUTO_ADVANCE`, `CONFIRM` or `RECOVERY` and matches what you saw | ☐ |
+| 26.30 | On the misread cracker, the verification line shows the two ratios (~1.875 against ~0.31) | ☐ |
+| 26.31 | Every exported archive opens, and every attempt inside it is complete | ☐ |
+
+**Result:** ____________________ **Date:** ____________
+
+---
+
+## §27 — Recovery basis integrity (2026-09-02, fifth phone session, debug APK `4F7C6B67…7ED5E`)
+
+Additive. **§§22–26 are unchanged and still stand**; this section covers only what the fifth session
+changed. The gate for the previous pass is §26 and it remains open.
+
+### What this pass fixed, so you know what you are looking for
+
+`20260902-103936-423`. The packet prints `72,0 g / 100 g` and `22,5 g / portion`. ML Kit read the
+`per 100 g` header as **`1009`**, so no per-100 column resolved. Two things then went wrong:
+
+1. Recovery offered **`72 g / serving`** — the printed per-100 figure wearing the serving column's
+   basis, because that column was the only one left within binding distance (329 px, inside a 370 px
+   tolerance). A fabricated basis, one tap from the calculator.
+2. The bundle recorded `SELECTED_REGION_OCR → Confident 72.0/PER_100_G` and
+   `automatic-verification: CROSS_COLUMN (support=5)` — a verified, correct reading — and then
+   `final UI action : RECOVERY`. The app held the right answer and showed a wrong one.
+
+Both are fixed. On the JVM fixtures that capture now resolves to `72.0/PER_100_G` and advances
+automatically, and its recovery list contains only the genuine `22.5 g / serving`.
+
+### 27a — The damaged-header cracker (the release blocker)
+
+Photograph the same cracker packet, deliberately including framings that damage the `per 100 g`
+header — slight angle, glare across the header band, or the header near the frame edge. **At least
+10 captures.**
+
+| # | Check | ✓ |
+|---|---|---|
+| 27.1 | **No capture ever displays `72 g / serving`, or any per-100 figure labelled `/serving`** | ☐ |
+| 27.2 | No capture displays `12 g / 100 g` anywhere — automatic, confirmation or recovery | ☐ |
+| 27.3 | A capture whose header reads cleanly reaches `72 g / 100 g` | ☐ |
+| 27.4 | A capture whose header is damaged either reaches `72 g / 100 g` or refuses; never a wrong basis | ☐ |
+| 27.5 | Where recovery appears, `22.5 g / serving` is offered and is the *only* serving-labelled choice | ☐ |
+| 27.6 | Tapping `22.5 g / serving` through to the calculator shows a serving figure, not a per-100 one | ☐ |
+| 27.7 | At least one capture reproduces the `1009` header (check `diagnostics.txt`) | ☐ |
+| 27.8 | On that capture, `final UI action` is **not** `RECOVERY` when the bundle also says `CROSS_COLUMN` | ☐ |
+
+### 27b — The green drink
+
+**At least 5 captures.**
+
+| # | Check | ✓ |
+|---|---|---|
+| 27.9 | Every reading is `0.5 g / 100 ml`; never `1.3`, never `13` | ☐ |
+| 27.10 | The app never asks "per 100 g or per 100 ml?" for this label | ☐ |
+| 27.11 | Every recovery choice offered states `/100 ml` | ☐ |
+| 27.12 | A clean capture needs at most one confirmation tap | ☐ |
+
+### 27c — The Korean sauce
+
+**At least 5 captures.** This is a regression check — it worked before this pass and must still.
+
+| # | Check | ✓ |
+|---|---|---|
+| 27.13 | Recovery offers `6 g / 18 g serving` | ☐ |
+| 27.14 | Tapping it through shows **`33.3 g / 100 g`** — not `33.33333333` | ☐ |
+| 27.15 | The screen says where it came from (`From 6 g per 18 g serving`) | ☐ |
+| 27.16 | No generic "per 100 g or per 100 ml?" picker ever appears for this label | ☐ |
+| 27.17 | `1`, `2`, `4` and `22` are never offered as carbohydrate values | ☐ |
+
+### 27d — Interaction
+
+| # | Check | ✓ |
+|---|---|---|
+| 27.18 | A verified automatic result reaches the calculator in **two taps** total | ☐ |
+| 27.19 | An unverified but plausible result costs **at most one** confirmation tap | ☐ |
+| 27.20 | Tapping the carbohydrate row once and being refused offers focused entry — no repeat loop | ☐ |
+| 27.21 | Focused entry names the basis the label stated and shows **no** basis picker | ☐ |
+| 27.22 | Tapping a sugars row is still refused, with a message saying why | ☐ |
+
+### 27e — The permission rationale
+
+| # | Check | ✓ |
+|---|---|---|
+| 27.23 | From Home → **Scan nutrition label** on a fresh install, the rationale reads "Camera access is needed to scan barcodes and nutrition labels." — it must **not** say "to scan a barcode" | ☐ |
+| 27.24 | The same wording appears from the barcode scanner, and is correct there too | ☐ |
+
+### 27f — Timing, reported cold and warm separately
+
+Measure on the **debug** build and read `user-visible` from the trace summary, not `scan`. A stage
+marked `*` is off the delivered-result path.
+
+| | cold (first capture after opening the scanner) | warm (subsequent) |
+|---|---|---|
+| median | __________ ms | __________ ms |
+| p95 | __________ ms | __________ ms |
+| worst | __________ ms | __________ ms |
+
+| # | Check | ✓ |
+|---|---|---|
+| 27.25 | Warm user-visible p95 ≤ **2 s** | ☐ |
+| 27.26 | A cross-column-verified capture logs `SKIPPED_CROSS_COLUMN_VERIFIED` and runs **no** second ML Kit pass | ☐ |
+
+### 27g — What the bundle must now say
+
+The `selection.txt` of every capture gained a `recovery proposal` block.
+
+| # | Check | ✓ |
+|---|---|---|
+| 27.27 | `=== recovery proposal ===` is present and lists the serving declaration | ☐ |
+| 27.28 | Each offered choice shows its displayed value, basis, provenance and (where derived) what it came from | ☐ |
+| 27.29 | Each **suppressed** number names the rule that removed it — e.g. "no column claims it, so it states no basis" | ☐ |
+| 27.30 | On the damaged-header cracker, `72,0` appears as **suppressed**, not as an offer | ☐ |
+| 27.31 | `serving:` in `diagnostics.txt` now says `header-weight=` and points at the recovery block — the sauce's `18 g` is reported there, not as `weight=none` | ☐ |
+| 27.32 | Every exported archive opens, and every attempt inside it is complete | ☐ |
+
+**Result:** ____________________ **Date:** ____________
+
+## §28 — The truffle sauce, the decimal collapse, and Edit (sixth phone session, 1.0.3)
+
+**This is the gate for the sixth-session patch. Nothing in it has been seen on a phone.**
+
+The package prints `8,9 g / 100 ml` and `1,3 g / 15 ml portion`. Two captures on 2026-09-02 both
+recognised those as `89` and `13` — the decimal separator did not survive on *any* value on the
+label — and the app displayed **`89 g / 100 ml`**, ten times the printed figure. The two reached the
+screen by different routes and each needs its own row below.
+
+Every fix here is a refusal or a preserved fact. **No value is divided, shifted or repaired**, so a
+capture that used to show `89` must now show *nothing* rather than `8.9`. A row showing `8.9` is a
+**failure**, not a pass — it would mean something invented a value.
+
+### 28a — The two failing captures (P0)
+
+| # | Check | ✓ |
+|---|---|---|
+| 28.1 | Scan the truffle sauce repeatedly. **No capture, at any framing, ever displays `89 g / 100 ml`** — not automatically, not on a confirmation card, not as a recovery choice | ☐ |
+| 28.2 | **No capture ever displays `8.9` that the app produced itself.** The figure may only appear because the user typed it | ☐ |
+| 28.3 | A capture whose runs disagree shows the conflict screen, and continuing from it offers **neither** disputed value | ☐ |
+| 28.4 | A capture where only one run reads anything does **not** offer a one-tap confirmation of it | ☐ |
+| 28.5 | The screen reached instead is focused entry or row tapping — not a dead end, and not the camera | ☐ |
+| 28.6 | Focused entry asks only for the number and states **`100 ml`**; it offers no `100 g`/`100 ml` picker | ☐ |
+| 28.7 | Typing `8.9` there gives `8.9 g carbs / 100 ml`, and a portion calculates from it correctly | ☐ |
+
+### 28b — Edit preserves the basis (P0)
+
+| # | Check | ✓ |
+|---|---|---|
+| 28.8 | From a `/100 ml` reading, tap **Edit** → manual entry opens with **`100 ml`** selected | ☐ |
+| 28.9 | From a `/100 g` reading, tap **Edit** → manual entry opens with **`100 g`** selected | ☐ |
+| 28.10 | Edit opens with the amount **blank** — the rejected figure is not pre-filled | ☐ |
+| 28.11 | Rotating the phone on that screen keeps the basis; it does not revert to `100 g` | ☐ |
+| 28.12 | *Correct* (not *Edit*) still pre-fills the detected value, unchanged from before | ☐ |
+| 28.13 | Manual entry reached from Home still opens on `100 g` — the default is unchanged where no label is involved | ☐ |
+
+### 28c — Must not regress (rerun the fifth- and fourth-session captures)
+
+| # | Check | ✓ |
+|---|---|---|
+| 28.14 | The green drink still reaches `0.5 / 100 ml` by distinct-run agreement | ☐ |
+| 28.15 | The clean cracker still auto-advances `72 / 100 g` with cross-column support | ☐ |
+| 28.16 | The damaged-header cracker still **never** displays `72 g / serving` | ☐ |
+| 28.17 | The previously contradicted `12 / 100 g` is still absent everywhere | ☐ |
+| 28.18 | The US linear panel still offers `6 g per 18 g serving` → `33.3 / 100 g` | ☐ |
+| 28.19 | A legitimate high-carbohydrate label (flour, pasta, sugar — genuinely ~70–90 g/100 g) still reads and advances normally. **This is the row that proves the fix is not a magnitude threshold** | ☐ |
+| 28.20 | A label printing clean decimals (`13,2 g`, `6,6 g`) still auto-advances as before | ☐ |
+| 28.21 | Barcode scanning is unaffected | ☐ |
+
+### 28d — Timing, reported cold and warm separately
+
+No new OCR pass was added, so the expectation is *no change*. Record it rather than assuming it.
+
+| # | Check | ✓ |
+|---|---|---|
+| 28.22 | Cold first scan after launch: ______ ms | ☐ |
+| 28.23 | Warm subsequent scans, five samples: ______ ms | ☐ |
+| 28.24 | The truffle sauce's refusal appears in the same time a reading used to — the refusal costs no extra recognition | ☐ |
+
+### 28e — What the bundle must now say
+
+| # | Check | ✓ |
+|---|---|---|
+| 28.25 | `selection.txt` carries a `cross-run dispute:` line naming the value **and** the run that read it differently | ☐ |
+| 28.26 | It carries a `scale evidence :` line naming the candidate token, the paired token and the reason | ☐ |
+| 28.27 | It carries a `correction hand-off:` line stating the basis and whether the amount was blank **on purpose** | ☐ |
+| 28.28 | The `=== recovery proposal ===` block lists `89` as **suppressed**, with the rule that removed it — never as an offer | ☐ |
+| 28.29 | Every exported archive opens and every attempt inside it is complete | ☐ |
+
+**Result:** ____________________ **Date:** ____________
+
+---
+
+## §29 — The merged carbohydrate clause and focused entry (seventh phone session, 1.0.3)
+
+Gate for the tap-path fix made after `Screen_Recording_20260902_141716` and `scan-evidence (8).zip`
+(ten captures `141440`–`141703`; `140819` is an older retained capture and is **not** part of that
+session). Debug APK `73CD91F0…93D5C`, `versionCode 4` / `1.0.3-debug`.
+
+**What the seventh session established, and what it did not.** The sixth session's scale-safety work
+**held on the device**: neither truffle capture displayed or offered `89`, the genuine
+high-carbohydrate label still auto-advanced at `41 g / 100 ml`, and the cracker, drink and linear
+sauce were all unchanged. The truffle label was nonetheless **unrecoverable** — the user tapped the
+carbohydrate value, was told *"This looks like sugars or fibre"*, and returning left *Type it in*
+disabled. §29 is the gate for that repair; §§26–28 remain open alongside it.
+
+**Nothing in this section may be ticked from an emulator.** The changed surface is a tap on a frozen
+photograph and the screen that follows it.
+
+### 29a — The two truffle captures (the ones that failed)
+
+Photograph the truffle-sauce label twice, framing as in the recording.
+
+| # | Check | ✓ |
+|---|---|---|
+| 29.1 | **No capture displays or offers `89`, in any screen, at any point** | ☐ |
+| 29.2 | No capture displays `8.9` either — the app must never manufacture the printed answer | ☐ |
+| 29.3 | Tapping the carbohydrate **value** is **not** answered with "This looks like sugars or fibre" | ☐ |
+| 29.4 | Tapping the damaged unit glyph immediately right of the value behaves the same way | ☐ |
+| 29.5 | Tapping the word `Koolhydraten` / `Kohlenhydrate` behaves the same way | ☐ |
+| 29.6 | Tapping inside `waarvan suikers` / `dont sucres` / `davon Zucker` **is** still refused as a child clause | ☐ |
+| 29.7 | After an unsuccessful total-clause tap, **focused entry is offered** — *Type it in* is reachable, not disabled | ☐ |
+| 29.8 | Focused entry asks for the value printed under **100 ml**, and shows **no basis picker** | ☐ |
+| 29.9 | Going back to recovery and returning still leaves focused entry reachable (never permanently disabled) | ☐ |
+| 29.10 | Typing `8.9` there reaches Quick Calculation as **`8.9 g carbs / 100 ml`** | ☐ |
+| 29.11 | The `/100 ml` basis survives into the calculator and into Edit | ☐ |
+
+### 29b — Nothing device-proven regressed
+
+| # | Check | ✓ |
+|---|---|---|
+| 29.12 | The genuine high-carbohydrate drink still auto-advances as **`41 g / 100 ml`** | ☐ |
+| 29.13 | Its bundle still records `automatic-verification: DISTINCT_OCR_AGREEMENT` | ☐ |
+| 29.14 | The cracker still advances as **`72 g / 100 g`**, and never as `72 g / serving` | ☐ |
+| 29.15 | A cracker capture whose header reads `1009` still refuses rather than fabricating a serving basis | ☐ |
+| 29.16 | The US linear sauce still offers **`6 g / 18 g serving`** → `33.3 g / 100 g`, shown as *From 6 g per 18 g serving* | ☐ |
+| 29.17 | The sauce never offers a fibre figure or a `% DV` number as a carbohydrate candidate | ☐ |
+| 29.18 | The previously contradicted **`12 g / 100 g`** capture still never appears — automatically, as a proposal, or in recovery | ☐ |
+| 29.19 | The drink still preserves `/100 ml` through manual correction | ☐ |
+| 29.20 | A cross-column-verified capture still logs `strategy B : SKIPPED_CROSS_COLUMN_VERIFIED` — **no extra OCR pass** | ☐ |
+
+### 29c — Timing, recorded cold and warm **separately**
+
+The recording does not label cold and warm runs, so the sixth/seventh-session device figures cannot
+settle this. `141642-529` measured **2142 ms** total with **1432 ms in parse**, against 501–864 ms
+total and 55–199 ms parse for every other capture in the same session. The JVM work counters showed
+that gap was a real defect — the prose reader normalized the whole vocabulary at every token
+position — now fixed and measured at **51,792 → 2,060** normalize calls on that document.
+
+**That is a JVM measurement. It is not a device measurement.** Record both below.
+
+| # | Check | ✓ |
+|---|---|---|
+| 29.21 | Force-stop the app, scan the truffle label: record **cold** `scan` and `parse` from `meta.txt` | ☐ |
+| 29.22 | Scan it again without leaving: record **warm** `scan` and `parse` | ☐ |
+| 29.23 | The truffle capture's `parse` is now in the same range as its siblings (tens to low hundreds of ms), not ~1400 ms | ☐ |
+| 29.24 | No capture in the run exceeds ~2 s user-visible on the second and later scans | ☐ |
+
+Cold: `scan ______ms / parse ______ms`  ·  Warm: `scan ______ms / parse ______ms`
+
+### 29d — Evidence
+
+| # | Check | ✓ |
+|---|---|---|
+| 29.25 | Every exported archive opens and every attempt inside it is complete | ☐ |
+| 29.26 | The truffle bundles carry a `correction hand-off:` line stating `basis=PER_100_ML` | ☐ |
+| 29.27 | Their `=== recovery proposal ===` block lists every suppressed number with the rule that removed it | ☐ |
+| 29.28 | No bundle from this run shows a `72 g / serving` or `89 g / 100 ml` proposal | ☐ |
+
+**Result:** ____________________ **Date:** ____________

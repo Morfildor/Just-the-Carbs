@@ -46,4 +46,14 @@ Test labels/
 # Scan evidence bundles pulled off a device for debugging. Debug builds only ever write these to
 # app-private cache; a copy landing in the working tree is a local investigation artifact, and the
 # repository is public. Diagnostics dumps quote recognized label text and can carry a capture.
-docs/scan evidence/
+#
+# Matched case-insensitively and with any dated/numbered suffix, because each phone session arrives
+# under its own name ("Scan Evidence 02-09 4th test", "Scan evidence 31-08-26", ...). The original
+# rule named one exact path and matched none of them, which left ~700 MB of full-resolution
+# photographs untracked-but-visible and one `git add -A` away from being public forever.
+#
+# What IS committed instead: the generated `*SessionFixtures.kt` files, which carry the recognized
+# element text and geometry these bundles produced. That is the evidence the tests need; the
+# photographs are not.
+[Ss]can [Ee]vidence*/
+docs/[Ss]can [Ee]vidence*/

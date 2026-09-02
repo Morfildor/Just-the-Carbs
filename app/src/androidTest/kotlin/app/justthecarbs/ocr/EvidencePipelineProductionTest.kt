@@ -81,6 +81,11 @@ class EvidencePipelineProductionTest {
         is EvidenceResolver.Outcome.NeedsVerification -> listOf(outcome.reading.candidate.value)
         // A conflict deliberately offers NOTHING; that is the whole point of the state.
         is EvidenceResolver.Outcome.Conflicted -> emptyList()
+        // An ambiguity with nothing to corroborate it. Like a conflict, it offers nothing to
+        // advance on — the automatic gate requires `Resolved` *and* `Confident`, and this is
+        // neither. Enumerated rather than folded into an `else` so a future outcome type has to be
+        // considered here rather than silently defaulting to "offers nothing".
+        is EvidenceResolver.Outcome.Unresolved -> emptyList()
         EvidenceResolver.Outcome.Nothing -> emptyList()
     }
 

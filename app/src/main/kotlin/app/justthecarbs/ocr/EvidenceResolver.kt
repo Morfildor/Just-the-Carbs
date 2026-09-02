@@ -89,6 +89,41 @@ object EvidenceResolver {
             val sources: List<EvidenceSource>,
         ) : Outcome
 
+        /**
+         * Several passes, or one pass, produced competing readings that nothing resolves.
+         *
+         * Distinct from [Conflicted], which means two *confident* passes disagreed. This is the
+         * weaker and commoner case: no pass reached a confident value at all, and the richest thing
+         * available is an ambiguity — typically one recognition offering two candidates.
+         *
+         * ### Why this is not `Resolved`
+         *
+         * It used to be. `resolve` wrapped an ambiguous reading in [Resolved] "so an Ambiguous set
+         * from Pass A still reaches the user rather than being flattened to NotFound", which is a
+         * real requirement — but naming that state *resolved* is a lie the diagnostics then repeat.
+         * Measured on `docs/Scan Evidence 01-09-26/20260901-211417-935`, the evidence bundle records
+         *
+         * ```
+         * reading         : Ambiguous (Strategy A re-parse)
+         * strategy B      : RAN_NO_READING
+         * resolver.verdict: Resolved   <- what AutomaticScanAdvance reads
+         * ```
+         *
+         * on the scan that went on to put a 2.6x-wrong value in front of the user. Nothing was
+         * resolved: one pass could not decide and the other returned nothing.
+         *
+         * [app.justthecarbs.ocr.AutomaticScanAdvance] already refused to advance on it, because it
+         * additionally requires a `Confident` reading — so this renaming fixes an honesty defect
+         * rather than a live auto-advance hole. It matters because a future caller reading
+         * `Resolved` and trusting the name would reopen exactly that hole, and because the bundles
+         * a person reads while debugging a bad scan said the opposite of what happened.
+         */
+        data class Unresolved(
+            val reading: LabelReading,
+            val report: NutritionParseReport,
+            val source: EvidenceSource,
+        ) : Outcome
+
         /** Nothing usable from any pass. */
         data object Nothing : Outcome
     }
@@ -104,13 +139,19 @@ object EvidenceResolver {
         if (confident.isEmpty()) {
             // No pass produced an accepted value. Keep the richest non-confident report so an
             // Ambiguous set from Pass A still reaches the user rather than being flattened to
-            // NotFound — the pre-existing behaviour, preserved.
+            // NotFound — the pre-existing behaviour, preserved — but report it as UNRESOLVED.
+            //
+            // Repeating the same ambiguity across several passes does not resolve it: two passes
+            // that both say "it is either 0.5 or 1.3" have not narrowed anything, and counting them
+            // as agreement would be the count-one-opinion-twice error [EvidenceSource.recognitionRun]
+            // exists to prevent, in its most dangerous form — the app would present one of two
+            // competing numbers as settled.
             val ambiguous = evidence.firstOrNull { it.reading is LabelReading.Ambiguous }
                 ?: return Outcome.Nothing
-            return Outcome.Resolved(
+            return Outcome.Unresolved(
                 reading = ambiguous.reading,
                 report = ambiguous.report,
-                agreeingSources = listOf(ambiguous.source),
+                source = ambiguous.source,
             )
         }
 
@@ -176,6 +217,48 @@ object EvidenceResolver {
         // RULE 4. Only a re-recognition or a live frame found this. Propose, never decide.
         val confidence = lone.valueConfidence
         if (confidence != null && confidence < MIN_PROPOSAL_CONFIDENCE) return Outcome.Nothing
+
+        // RULE 5. Unless the label itself corroborates it.
+        //
+        // ## The contradiction this removes
+        //
+        // Rule 4 exists because a re-recognition "may propose but not decide" — it demonstrably
+        // recovers correct values and demonstrably invents wrong ones, and *nothing else had seen
+        // it*. That reasoning is about the absence of corroboration, not about which pass produced
+        // the reading. When corroboration exists, the premise is gone.
+        //
+        // Measured on `docs/Scan Evidence 02-09 2nd test/20260902-103936-423`. ML Kit read the
+        // printed `per 100 g` header as `1009`, so Pass A resolved no per-100 column and returned
+        // NotFound. `SELECTED_REGION_OCR` read `Confident 72.0/PER_100_G` — the printed value — and
+        // [CrossColumnRatioCheck] supported it with **five** coherent rows (median 0.309, candidate
+        // 0.313). The bundle records all of that and then `final UI action : RECOVERY`, whose first
+        // offer was `72 g / serving`. The app held a verified correct reading and showed the user a
+        // fabricated one.
+        //
+        // ## Why this does not weaken rule 4
+        //
+        // The corroboration required here is [CrossColumnRatioCheck]: the *other nutrient rows of
+        // the same table*, whose serving-to-per-100 ratio is a property of the serving size and is
+        // therefore the same on every row. A re-recognition that misread a digit cannot also have
+        // misread four other rows consistently in the same direction — that is exactly what the
+        // check measures, and it is what refuses the misread `12` (ratio 1.875 against a table
+        // median of 0.309) while accepting `72` (0.3125).
+        //
+        // So the rule is: **a lone re-recognition still may not decide on its own authority; it may
+        // decide when the label agrees with it.** A reading the table cannot speak to
+        // (`NotEnoughEvidence` — any single-value-column label) keeps rule 4 unchanged and is still
+        // proposed for the user to confirm, and a reading the table *contradicts* is not rescued by
+        // this at all.
+        val document = lone.document
+        if (document != null &&
+            AutomaticVerification.verify(document, lone.report).route == AutomaticVerification.Route.CROSS_COLUMN
+        ) {
+            return Outcome.Resolved(
+                reading = lone.reading,
+                report = lone.report,
+                agreeingSources = agreed.map { it.source },
+            )
+        }
 
         return Outcome.NeedsVerification(
             reading = lone.reading as LabelReading.Confident,

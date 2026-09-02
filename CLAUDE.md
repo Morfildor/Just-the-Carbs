@@ -1208,6 +1208,936 @@ everything. The misplacement is cosmetic and was left alone with a note in the c
 **Stage deletions with the commit they belong to, and do not rewrite history to fix a tidy-ness
 problem.**
 
+## The merged carbohydrate clause (2026-09-02, seventh phone session) — still 1.0.3 / versionCode 4, READ FIRST
+
+The seventh phone session (`docs/Scan Evidence 02-09 4th test/`, ten captures `141440`–`141703`
+plus the older retained `140819`, with `Screen_Recording_20260902_141716`) proved the sixth
+session's scale-safety work holds on the device — **the truffle label never displayed or offered
+`89`** — and exposed the opposite failure: the label was safe and **unrecoverable**.
+
+Nothing about the calculation, the schema, migrations, the §10 lookup priority, barcode detection,
+`ScaleAmbiguity`, cross-run dispute suppression, unit accompaniment or child-nutrient protection
+changed. No OCR pass was added. Still `versionCode 4`, nothing built as a release, nothing uploaded.
+
+### One mistake, in four places: classifying a merged row when the user tapped inside a clause
+
+On this package ML Kit puts the whole declaration on **one** reconstructed row:
+
+```
+Zig lkg2%; Nolhydraten/Glucides Kohlenhydrate 8,9 a, 1.3q(<19; waarvan suikers/dant sucres/tavon Žucker
+                                ^^^ total clause ^^^^^^^^^^^^^  ^^^^^^^^^^ child clause ^^^^^^^^^^^^
+```
+
+The row therefore classifies `CARBOHYDRATE_CHILD` — **correctly, and that is unchanged**. Four
+separate places then read the whole row as one unit, each measured rather than argued:
+
+| layer | behaviour | consequence |
+|---|---|---|
+| `NutrientRowSegments:116` | the merged-row guard discards the row because a **trailing** language-variant clause (`sucres/tavon Žucker`, no number) carries no value | a valid total clause is thrown away |
+| `RecoveryCandidates.isChildRowAt` / `candidatesOn` | classify the whole row | every tap answered "This looks like sugars or fibre" — including on `Kohlenhydrate` itself |
+| `AssistedReadingScreen:530` | `fruitlessTap` set only when the tap was **not** a child row | the flag could never become true |
+| `FocusedAmountEntry:93` | requires a `TOTAL_CARBOHYDRATE` row | returned null, so *Type it in* was disabled |
+
+Measured before the fix on both captures: **every** element on the row returned `isChildRow=true`,
+`recovery of()` empty, `focused entry NULL`. That is the whole dead end, reproduced in the JVM.
+
+### The fix is confined to the tap path, and that boundary is the safety argument
+
+A tap carries a **horizontal position**. The automatic path has no such thing, and the two printed
+clauses are separated by exactly that. `NutrientRowSegments.totalCarbohydrateClause` answers a
+strictly weaker question than `totalCarbohydrateSegment` — *which printed clause is the finger on?*
+rather than *may this row be read as a total row?* — establishes no reading, promotes no row and
+produces no value. Being wrong about it costs a tap; being wrong about the other costs a
+carbohydrate figure.
+
+**Automatic classification is untouched**: both captures still classify `CARBOHYDRATE_CHILD`,
+neither produces a confident reading, `89` stays suppressed and `8.9` is never manufactured from the
+separatorless capture. Every suppression rule still runs on whatever the tap reaches — which is why
+both captures still offer **nothing** and route to focused entry instead.
+
+**Two subtleties that cost a wrong first attempt each, both worth not rediscovering:**
+
+1. **The clause boundary must be the printed nutrient word, not the matched span's start.** The
+   greedy span walk matched the child term over a span beginning at the damaged unit glyph `a,`
+   (x=900) — which is the printed `g` belonging to the total's own value `8,9` at x=851. Using the
+   span's start put the value's own unit outside its own clause. The naming element (`suikers/dant`,
+   x=1251) is the boundary a person can actually see.
+2. **The greedy walk cannot answer this question at all.** On
+   `Koolhydraten 12 g waarvan suikers 3 g` it matches the four-element span
+   `koolhydraten 12 g waarvan suikers` as one **child** term, consuming the carbohydrate word — right
+   for its own question, useless for this one. The clause locator asks which **element** names which
+   nutrient, independently of how spans group. It takes the **first** total-naming element, not
+   `singleOrNull`, because `141703` names the nutrient twice in two languages
+   (`Nolhydraten/Glucides` and `Kohlenhydrate`) — one declaration, not two clauses — and refuses
+   outright when a child is named *before* the total (the merged Croatian/German shape).
+
+### The 1432 ms parse was a real defect, and the counters found it
+
+`141642-529` took **2142 ms** with **1432 ms in parse**, against 501–864 ms total and 55–199 ms
+parse for every other capture. Measured as work rather than wall clock, that 289-element document
+did **51,792** `normalize` calls against **2,295** for its 262-element sibling — **22.5x the work
+for a 1.10x larger document**.
+
+The 2026-09-01 quadratic shape had survived in two functions: `ProseNutritionReader.longestTermAt`
+and `termLengthAt` walk **every vocabulary term at every token position** and normalized the term
+inside that loop, though the vocabulary is a compile-time constant. Both now use a cached
+`NutritionTerminology.termWords`, the sibling of the existing term cache.
+
+**51,792 → 2,060**, so the slow capture now does slightly *less* work than its sibling, consistent
+with document size. The prose path is the only one affected, which is why `141703` (no prose
+fallback) was always fast. Pinned by **invocation-count** assertions — a wall-clock assertion in the
+standard suite is either too loose to catch anything or flaky.
+
+**A memoization of `flatten` was tried first and is NOT the fix** — it moved 51,792 to 51,160. It is
+kept because it is correct and cheap, but do not mistake it for the cause.
+
+### An honest negative-control result
+
+The clause bound in `candidatesOn` — which stops a merged-row tap offering the *sugars* value —
+**fails no test when removed**, and that is recorded rather than dressed up. On every merged row
+reachable in practice something else refuses the value first: with clean units and a header the
+prose reader reads the row correctly and recovery is never reached; without units accompaniment
+declines it; with units and no separator `ScaleAmbiguity` withholds it. The bound stays as defence
+in depth because the rules in front of it are not there to enforce clause separation.
+`MergedRowTapBoundTest` pins the boundary itself — where it falls, which elements are inside it, and
+that a child-clause tap is still refused.
+
+**`ScaleAmbiguity` pairs across the clause boundary on a merged row** (it uses
+`totalCarbohydrateSegment`, null there, so it falls back to the whole row and pairs the carbohydrate
+value with the sugars value). Left alone deliberately: it errs towards **withholding**, which is the
+safe direction, and it is on the automatic path this pass must not touch.
+
+### Measured outcomes
+
+| capture | before | after |
+|---|---|---|
+| 141528-720 / 141558-254 / 141626-947 | cracker `72/100 g`, drink `41/100 ml` auto | unchanged |
+| **141642-529** | RECOVERY, no proposal, **every tap refused as sugars**, *Type it in* disabled | taps on `8`, `13g` honoured; **focused entry under `PER_100_ML`**; still no `89`, still no `8.9` |
+| **141703-456** | as above, including a tap on `Kohlenhydrate` itself | taps on `8,9`, its damaged unit and `Kohlenhydrate` honoured; **focused entry under `PER_100_ML`** |
+
+### Verified
+
+JVM **1363/1363** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 122 JUnit XML
+files — up from 1352). Lint **exit 0, 0 errors, 22 warnings**, unused resources **0**. Debug APK
+**89,519,401 bytes**, SHA-256 `73cd91f095312827239a499bc9df463ab34b75f6e45a7efa9ef078dad0193d5c`,
+`versionCode=4` / `1.0.3-debug` read from the APK with `aapt2 dump badging`; permissions unchanged.
+Instrumented sources **compile**. Minified release **builds** and its R8 barriers re-checked on that
+build — `ScanEvidenceRecorder`/`OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`,
+`ScanEvidenceExport`/`OcrDiagnosticsReport`/`ScanTrace`/`ZipIntegrity` absent, and
+`ScaleAmbiguity`, `DisputedCandidates`, `NutrientRowSegments`, `RecoveryCandidates`,
+`CrossColumnRatioCheck`, `CarbCandidate` all retained as real classes. `FocusedAmountEntry` again
+reads as `R8$$REMOVED$$CLASS$$` and is again the **inlined-not-dropped** case — checked
+behaviourally: `FocusedAmountEntry$Target` survives as a real class and the focused-entry strings
+are present in the shipped APK.
+
+**Eight negative controls**, seven failing for their intended reason and each restored green
+afterwards; the eighth is the defence-in-depth bound described above.
+
+### NOT verified, and this is the gate
+
+**No instrumented run** — `adb devices` was empty, so the nine-photograph OCR corpus has not been run
+against these changes. The sources compile; that is not the same thing.
+
+**No device timing was measured this pass.** The 51,792 → 2,060 figure is a JVM work count, which is
+the right instrument for the defect but is not a phone measurement. **The recording does not label
+cold and warm runs separately**, so nothing here settles that question either.
+
+`docs/manual-qa.md` **§29** is the gate. Rows **29.3–29.9** decide whether the dead end is actually
+closed, **29.1/29.2** whether `89` and an invented `8.9` stay out, and **29.21–29.24** are the
+cold/warm timings that must be recorded separately. §§26–28 remain open alongside it.
+
+## Recovery basis integrity (2026-09-02, fifth phone session) — still 1.0.3 / versionCode 4
+
+The fifth phone session (`docs/Scan Evidence 02-09 2nd test/`, six complete bundles) proved the
+fourth session's automatic-verification work holds — the misread never reappeared — and exposed the
+**opposite** failure: a reading that *was* independently verified and still did not reach the user,
+while a fabricated one did.
+
+Nothing about the calculation, the schema, migrations, the §10 lookup priority, barcode detection or
+any confidence threshold changed. No parser rule was relaxed; both fixes add a refusal or route an
+existing verdict correctly. Still `versionCode 4`, nothing built as a release candidate, nothing
+uploaded.
+
+### The defect: a damaged header let one cell wear another column's basis
+
+`20260902-103936-423`. The packet prints `72,0 g / 100 g` and `22,5 g / portion`. ML Kit read the
+per-100 header as **`1009`**, so `ColumnClassifier` resolved no per-100 column — only the serving
+column at x=1411 and a reference-percent column at x=1584.
+
+`RecoveryCandidates` binds a cell to its nearest column within `LOOSE_COLUMN_FRACTION` (0.22) of the
+document width — **370 px** on this 1684-wide capture. `72,0` sits at x≈1082, so the serving column
+was 329 px away and *inside* the tolerance. The printed per-100 figure bound to it and recovery
+offered **`72 g / serving`**, one tap from the calculator.
+
+**No stage was individually wrong.** The tolerance is generous on purpose so photographic skew does
+not detach a cell from its own column, and the serving column genuinely was the nearest one. The
+defect is that *nearest surviving column* was treated as *this cell's column* — the same thing only
+while every column is intact.
+
+The rule added is structural and names nothing product-specific:
+
+> A column may claim a cell only if no **other value cell on the same row** sits closer to that
+> column's centre.
+
+A table column is the set of cells printed under it; when two cells on one row both reach the same
+column, at most one is in it. On a healthy table each cell's own column is nearest and nothing
+changes. Here `22,5` is 20 px from the serving column and `72,0` is 329 px, so `22,5` claims it and
+`72,0` — whose column OCR destroyed — is left honestly unresolved and suppressed rather than
+relabelled. Recovery was more permissive than the parser it is the fallback for; it no longer is.
+
+**A wrong first fix, worth recording.** I initially blamed the document-level serving-declaration
+fallback in `basisFor` and narrowed it to "no value columns at all". That broke both sauce captures,
+and measuring showed why it was wrong twice over: the damaged cracker prints no `Serv. size`
+sentence, so `ServingDeclaration.of` returns **null** there and that branch never ran. It was never
+the cause. **The synthetic fixture that convinced me otherwise was my own construction** — I wrote
+`per portion` as its header, which `ServingDeclaration` reads as a declaration, so the fixture
+modelled a different failure from the measured one. The fixture now uses the device's own
+`Nutritional value portion` and carries a precondition asserting `ServingDeclaration.of` is null,
+without which it would pass for the wrong reason.
+
+### The contradiction: a verified reading that reached nobody
+
+The same bundle records `SELECTED_REGION_OCR → Confident 72.0/PER_100_G`,
+`automatic-verification: CROSS_COLUMN (support=5, median=0.309, candidate=0.313)` — and
+`final UI action : RECOVERY`.
+
+`EvidenceResolver` rule 4 says a value only the re-recognition found "may propose but not decide",
+which produces `NeedsVerification`; `AutomaticScanAdvance.mayAdvance` refuses that, so `declined`
+was set *before* the `when` and the outcome fell to recovery without its own branch ever running.
+
+Rule 4's reasoning is about **the absence of corroboration**, not about which pass produced the
+reading. When corroboration exists the premise is gone. New **rule 5**: a lone re-recognition
+resolves when `CrossColumnRatioCheck` supports it — the *other nutrient rows of the same table*,
+whose serving-to-per-100 ratio is a property of the serving size and therefore identical on every
+row. A misread digit cannot also have misread four other rows consistently in the same direction.
+
+`NotEnoughEvidence` (any single-value-column label) keeps rule 4 unchanged and is still proposed for
+confirmation; a **contradiction** is not rescued by this at all.
+
+### Verification now belongs to the candidate being promoted
+
+`verify(evidence)` judged `confident.first()` — an artefact of list-construction order — while the
+scanner promotes whatever the resolver resolved. Those coincide today only because a disagreement
+makes the resolver return `Conflicted`, a guarantee held in a different file. It now refuses
+outright when confident passes disagree, and asks the structural route against each confident pass's
+own document richest-first, so the pass that *can* answer is consulted rather than the first one.
+
+### Two diagnostics corrections
+
+- **`weight=none` was true and misleading.** It reports the *column header's* serving descriptor,
+  legitimately absent on a US linear panel, while the `18 g` the user sees comes from
+  `ServingDeclaration` reading `Serv. size: 1 Tbsp (18 g)` off the panel. Two different objects, one
+  printed. Now `header-weight=` and it points at the new block.
+- **`selection.txt` gained `=== recovery proposal ===`** — every offered choice with its displayed
+  value, basis, provenance and derivation, and every *suppressed* number with the rule that removed
+  it. A suppressed number previously left no trace, which is what made the fabricated
+  `72 g / serving` hard to attribute.
+
+### The inline-DV `HEADER` rows are terminology, not a defect — do not rewrite the parser for them
+
+Several US-panel nutrient sentences log as `HEADER` because `RowClassifier` types a row `HEADER`
+when it names reference-intake vocabulary, and a US panel prints `% DV` *inside* each clause. The
+name follows the vocabulary and is imprecise.
+
+**The production consequence is nil, and that is pinned rather than argued.** What a `HEADER` row is
+used for is `ColumnClassifier`, and `InlinePercentAnnotation` already stops a clause becoming a
+column — measured at **1** legitimate reference-percent column on both sauce captures, against the
+eight phantoms that defect once produced. Renaming the classification would change a value read by
+`CrossColumnRatioCheck`, `DeclarationBoundary`, `UnitAccompanimentPolicy` and `ColumnClassifier`,
+all of which behave correctly here. `InlineDvHeaderTerminologyTest` pins the behaviour.
+
+### The permission rationale named one scanner
+
+`permission_title` is shared by `ScannerScreen` and `LabelScannerScreen` and said "Camera access is
+needed to scan a barcode" — shown verbatim to someone who had tapped *Scan nutrition label*. Now
+"Camera access is needed to scan barcodes and nutrition labels." No permission changed.
+
+### Measured outcomes across the six captures
+
+| capture | before | after |
+|---|---|---|
+| 103854-549 | drink `0.5/100 ml`, one tap | unchanged |
+| 103906-452 | drink `0.5/100 ml`, one tap | unchanged |
+| 103926-226 | cracker `72/100 g`, `SKIPPED_CROSS_COLUMN_VERIFIED`, auto | unchanged — 0 extra OCR passes |
+| **103936-423** | **RECOVERY offering `72 g / serving`** | **AUTO_ADVANCE `72 g / 100 g`**; recovery offers only `22.5 g / serving` |
+| 103949-880 | sauce → `6 g / 18 g serving` | unchanged |
+| 104006-838 | sauce → `6 g / 18 g serving` | unchanged |
+
+### Verified
+
+JVM **1303/1303** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 114 JUnit XML
+files — up from 1277). Lint **exit 0, 0 errors, 22 warnings**, unused resources **0**. Instrumented
+sources **compile**. Debug APK **89,798,001 bytes**, SHA-256
+`4f7c6b679d247e12d97d44b0d803ba74720da1dd9b35a194fa6d0aea64e7ed5e`, `versionCode=4` /
+`1.0.3-debug` read from the APK with `aapt2 dump badging`. Permissions unchanged.
+
+Minified release **builds** (66,868,638 bytes) and its R8 barriers were re-checked on that build:
+`ScanEvidenceRecorder` and `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`,
+`OcrDiagnosticsReport`, `ScanTrace` and `ZipIntegrity` absent entirely; `UnitMarkerFilter`,
+`CandidateProvenance`, `CarbCandidate`, `RecoveryCandidates`, `ServingDeclaration`,
+`CrossColumnRatioCheck`, `InlinePercentAnnotation`, `DeclarationBoundary` and `CarbReading` retained
+as real classes. `AutomaticVerification` and `FocusedAmountEntry` again read as absent /
+`R8$$REMOVED$$CLASS$$` and are again the **inlined-not-dropped** case — checked behaviourally, not
+assumed: `AutomaticVerification$Route` and `$Verdict` survive as real classes, `CROSS_COLUMN` and
+`DISTINCT_OCR_AGREEMENT` are present as string constants in the shipped DEX, and the focused-entry
+and new permission strings are both in the release APK.
+
+**Three negative controls**, each restored and the suite re-verified green afterwards:
+
+| control disabled | failures |
+|---|---|
+| verified selected-region promotion | 2 (`FifthSessionRegressionTest`, both P0 guards) |
+| candidate-specific basis provenance | 1 (`the per-hundred value is never offered as a serving figure`) |
+| contradiction finality | 1 (`the contradicted misread is never offered by recovery`) |
+
+*(One control's restore reported a hash mismatch. It is line endings only — Python's read/write
+cycle wrote LF where the untracked file had none tracked; content was verified identical by grep and
+the file matches its siblings. `core.autocrlf=true` normalizes on commit.)*
+
+### NOT verified, and this is the gate
+
+**No instrumented run** — no device or emulator was attached (`adb devices` empty), so the
+nine-photograph OCR corpus has not been run against these changes. The instrumented sources compile;
+that is not the same thing.
+
+**Nothing here has been seen on physical hardware, and no timing was measured this pass.**
+`docs/manual-qa.md` **§27** is the gate. Row **27.1** (no capture may ever display `72 g / serving`)
+is what decides whether the fabrication is actually closed, and **27.8** decides the contradiction.
+§26 remains open alongside it.
+
+## Verified automatic advancement (2026-09-02, fourth phone session) — still 1.0.3 / versionCode 4
+
+The fourth phone session (`docs/Scan Evidence 02-09/`, nine complete bundles) produced the first
+**confident-wrong that reached the user with no confirmation step at all**. The cracker prints
+`72,0 g`; ML Kit read `12,0.g`; Quick Calculation displayed `12 g carbs / 100 g`.
+
+Automatic accuracy was 4 of 5. Performance was already good and is preserved — median 516 ms, eight
+of nine ≤579 ms, parser 46–90 ms.
+
+Nothing about the calculation, the schema, migrations, the §10 lookup priority or barcode detection
+changed. Still `versionCode 4`, nothing built as a release candidate, nothing uploaded.
+
+### The defect was not the misread. It was that one clean parse counted as verification
+
+`12,0.g` is a well-formed number on the correctly classified total-carbohydrate row under a correctly
+resolved `PER_100_G` column. **Every content-based guard in the app passes it**, and every one of
+them is right to: a parser that refused `12` would refuse every legitimate 12 g label too.
+
+The mistake was upstream of all of them. `SKIPPED_PASS_A_STRONG` skipped the second recognition when
+both views of Pass A read confidently and agreed — and both views of Pass A are two *parses* of one
+*recognition* over the same characters. That condition describes a **clean parse**, and a clean parse
+of a misread character is exactly as clean as a clean parse of a correct one. It removed the last
+opportunity to disagree, and the app then advanced with no confirmation.
+
+This is the same error `EvidenceSource.recognitionRun` was introduced to prevent (grated cheese,
+`2.09`) arriving through a different door: that one *claimed* corroboration and was caught; this one
+claimed only that a second look was not worth the wait, which sounds weaker and had the same effect.
+
+**Three questions are now three separate things**, and conflating any two is what produced this:
+
+| question | answered by | vocabulary |
+|---|---|---|
+| is it structurally plausible? | the parser | `Confident` / `Ambiguous` / `NotFound` |
+| is it independently verified? | `AutomaticVerification` | `CROSS_COLUMN` / `DISTINCT_OCR_AGREEMENT` / `NONE` |
+| what does the UI do? | the scanner | `AUTO_ADVANCE` / `CONFIRM` / `RECOVERY` |
+
+**An unverified reading is not an error and is not discarded.** It reaches the user through the
+proposal card — one tap, which is what the app did before the fast path existed. Only a verified
+reading skips that tap. Refusing unverified readings outright would trade a rare wrong answer for a
+constant one.
+
+### The table contradicts the misread, and that is free evidence
+
+A nutrition table states every nutrient twice, so the serving-to-per-100 ratio is a property of the
+serving size and is **the same on every row**. On `085542-213`:
+
+```
+Energie    135 / 432 = 0.313
+Fat        3.4 / 11  = 0.309
+Saturates  0.3 / 1.1 = 0.273
+Sugars     0.7 / 2.3 = 0.304
+Fibre      0.9 / 2.8 = 0.321     median 0.309, four independent rows
+Carb      22.5 / 12  = 1.875     <- the misread, six times out
+Carb      22.5 / 72  = 0.3125    <- what the label prints
+```
+
+`CrossColumnRatioCheck` needs no idea what a carbohydrate value should look like. It asks only
+whether this row behaves like every other row on the same label. Thresholds are named and tested at
+their boundaries: `MIN_SUPPORTING_ROWS = 3`, `SUPPORT_TOLERANCE = 0.20`, `CANDIDATE_TOLERANCE = 0.25`.
+The median is taken in **log space**, because a ratio is multiplicative and `0.5x` and `2x` must be
+equally far out.
+
+**It validates or vetoes. It never calculates, replaces, corrects or ranks.** Given the 1.875 row it
+reports a conflict; it does not divide 22.5 by 0.31 to "recover" 72. Deriving the value from the
+ratio would manufacture a figure no OCR pass ever read — worse than the bug, because it would be
+invisible.
+
+**Three measurement traps found while building it**, each of which produced zero coherent pairs and
+looked like the check simply not working:
+
+1. **Two `PER_SERVING` columns.** A multilingual header prints `portion` and `portie/` on two
+   recognised rows, so the same printed column is emitted twice a few pixels apart. `singleOrNull`
+   refused the check on exactly the labels needing it. They are collapsed when they agree on
+   position; a genuine disagreement still yields no verification.
+2. **Punctuation between number and unit.** `72,0.g` and `2,8` + separate `g` are both ordinary
+   printed forms. The ratio check needs the *magnitude*, not a verdict on how cleanly the unit
+   printed — that verdict is `CarbUnitAccompaniment`'s job on the answer path, and duplicating it
+   here would let a damaged glyph silently remove a supporting row.
+3. **`0,38g67`** — the salt cell fused with the next column's percentage. It matches nothing and
+   contributes no pair, which is correct; a permissive pattern would read `0.38` and move the median
+   every other judgement rests on.
+
+`SKIPPED_PASS_A_STRONG` is renamed **`SKIPPED_CROSS_COLUMN_VERIFIED`** and now requires the check to
+pass. The rename records a real change: a bundle printing the old name is a build that could skip
+unverified. A label that cannot corroborate itself now runs Strategy B — the honest cost of not
+having a second opinion for free, and pinned by its own test.
+
+### The US linear panel: nine phantom columns from inline `% DV`
+
+Both sauce captures bound `Total Carb. 6g` to a `REFERENCE_PERCENT` column and refused it. The panel
+has no columns at all.
+
+A European table prints its reference-intake column as a header standing over a stack of cells. A US
+panel prints the same information as an annotation *inside* each nutrient clause — `Total Fat 0.5 g
+(1 % DV), Sat. Fat 0 g (0 % D)`. Both contain the vocabulary, so a rule keyed on vocabulary alone
+read every recognised row as a column header: **eight** of them, at x=351, 524, 738, 744, 817, 1078,
+1232 and 1452.
+
+`InlinePercentAnnotation` separates them structurally: *does this span share its row with a nutrient
+name and that nutrient's own printed amount?* If so it is a clause, whatever its x position. Two
+findings, both measured rather than predicted:
+
+- **The span usually swallows the nutrient name** (`Iron (2 % DV),` *is* the clause), so asking about
+  the elements *outside* the span finds nothing and concludes it is a header — the opposite of the
+  truth. The whole row is examined.
+- **`Iron (2 % DV), Potas. (0 % DV)` prints no mass at all.** Micronutrients legitimately do. Two or
+  more nutrient-and-percentage pairs on one recognised row is a sentence, not a heading; one is not
+  enough, or a genuine `%RI` header would suppress itself.
+
+Eight phantom columns became one (a legitimate cell-shape recovery), and both captures now offer
+`6 g / 18 g serving`.
+
+### `Ingredients` ends the declaration
+
+The sauce's ingredient list names **brown sugar**, so the row classified as `CARBOHYDRATE_CHILD` and
+joined the table's structure. That is not a vocabulary problem and must not be fixed as one: brown
+sugar genuinely is sugar, and the ingredient list genuinely is not a nutrition table. They are
+separated by *where the text is*.
+
+`RowClassifier.classifyAll(rows)` is the new document-aware entry point; `classify(row)` stays pure
+and is what it delegates to. The interpreter, the column classifier and `RecoveryCandidates` all use
+it.
+
+**Neither "first boundary" nor "last boundary" works, and both were tried on the device's own
+recognition.** First cuts the declaration off on a package printing ingredients above the table.
+Last is what I shipped in the first attempt and it silently failed: the sauce prints `ingredients:`
+at row 8 and `BEST BEFORE` at row 17, so the boundary landed at 17 and the brown-sugar row at 9
+stayed inside. The rule is the **earliest boundary that still leaves a nutrient row above it**.
+
+### The recovery dead end, and the loop it caused
+
+`085453-023`: ML Kit returned `Kolhydraten:` (one letter lost) and `0.59` (the unit glyph read as a
+digit). The row typed `OTHER`, so there was no total row, so recovery offered nothing — and the
+screen asked for the same tap again. **A rejected tap that leaves the screen unchanged is
+indistinguishable from a missed tap**, and the recording shows the user repeating it.
+
+Two fixes:
+
+1. **Element-first hit-testing.** The reconstructed rows overlap by 83 px (`1772..1948` against
+   `1865..1980`), and taking the first union-box match makes the answer depend on reconstruction
+   order. Elements are tighter than unions, so the tap is attributed to the element it landed on.
+   **A nearest-centre tiebreak was tried and gets the real case wrong**: at y=1881 both
+   `Kolhydraten:` and `Waarvan` are under the finger, and the sugars word is *nearer*. Distance
+   measures which box is closer; it says nothing about which word the finger is on. The
+   nutrient-naming element wins — including a head-damaged one, via
+   `DamagedCarbohydrateLabel.statesADamagedCarbohydrateWord`, reused rather than restated so a row
+   the app recovers cannot be a row the user is unable to select.
+2. **`FocusedAmountEntry`.** The row and the basis *were* established; only the number was
+   unreadable. So the app asks for the number: *"Carbohydrate row found, but the number wasn't
+   clear. Enter the value printed under 100 ml."*
+
+**That screen offers no basis picker, and that is the whole safety argument.** It is reachable only
+when the label stated the basis and the classifier read it, so a picker would invite a guess to
+overwrite a fact the app got right — the composition that produced `1.3 g / 100 ml` on an earlier
+build. Full manual entry, where the user supplies both halves knowingly, is still offered and is a
+different screen. `0.59` remains unusable throughout; the plausibility barrier still applies.
+
+### One formatter for derived quantities
+
+The recovery screen showed `33.3 g / 100 g` and the calculator that followed showed
+**`33.33333333`** — the same value, formatted by two sites that each decided for themselves.
+`stripTrailingZeros().toPlainString()` is right for a figure a human typed and wrong for one the app
+*derived*, because a derived figure carries the full precision of its division.
+
+`ResultFormatter.quantity` is the one place a stored or derived quantity becomes text: one decimal
+place, HALF_UP, trailing zeros trimmed, locale-aware. **The stored value is untouched** — the exact
+figure stays in `BigDecimal` all the way to the calculation.
+
+### Measured outcomes across the nine captures
+
+| capture | before | after |
+|---|---|---|
+| 085442-819 | auto `0.5/100 ml` | `0.5/100 ml`, verified by distinct-run agreement |
+| 085453-023 | refusal, recovery dead end | refusal + focused entry under `100 ml` |
+| 085513-478 | refusal, recovery dead end | as above |
+| 085534-551 | auto `72/100 g` | auto `72/100 g`, `CROSS_COLUMN` (4 rows) |
+| **085542-213** | **auto `12/100 g` — wrong, unconfirmed** | **`12` vetoed; one confirmation tap** |
+| 085554-517 | auto `72/100 g` | auto `72/100 g`, `CROSS_COLUMN` (5 rows) |
+| 085602-075 | auto `72/100 g` | auto `72/100 g`, `CROSS_COLUMN` (4 rows) |
+| 085611-201 | parser fails; 8 phantom % columns | 1 column; recovery offers `6 g / 18 g serving` |
+| 085631-444 | as above | as above |
+
+### Verified
+
+JVM **1277/1277** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 110 JUnit XML
+files — up from 1250). Lint **exit 0, 0 errors, 22 warnings**, unused resources **0**. Instrumented
+sources **compile**. Debug APK **89,502,997 bytes**, SHA-256
+`83226166d50c6eb37f600f88e3fa032ec244e6ef5d546bf36e7ced458d6d3fc9`, `versionCode=4` /
+`1.0.3-debug` read from the APK with `aapt2 dump badging`. Permissions unchanged.
+
+Minified release **builds** and its R8 barriers were re-checked on that build: `ScanEvidenceRecorder`
+and `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`, `OcrDiagnosticsReport`,
+`ScanTrace` and `ZipIntegrity` absent entirely; `UnitMarkerFilter`, `CandidateProvenance`,
+`CarbCandidate`, `RecoveryCandidates`, `ServingDeclaration`, `CrossColumnRatioCheck`,
+`InlinePercentAnnotation`, `DeclarationBoundary` and `CarbReading` retained as real classes.
+
+**`AutomaticVerification` and `FocusedAmountEntry` read as absent / `R8$$REMOVED$$CLASS$$`, and both
+are the inlined-not-dropped case** this file already warns about — checked behaviourally rather than
+assumed: `AutomaticVerification$Route` survives as a real enum with all three constants and
+`getRoute()` inlined into the scanner, `CrossColumnRatioCheck` (the actual veto logic) is retained,
+and the focused-entry strings are present in the release APK. Do not read those markers as a feature
+shipping disabled without checking behaviour.
+
+**Seven negative controls**, each restored and the suite re-verified green afterwards:
+
+| control disabled | failures |
+|---|---|
+| recognition-run uniqueness | 2 (`AutomaticVerificationTest`) |
+| cross-column veto | 4 across 2 classes, incl. both P0 guards |
+| linear-panel serving declaration | 6 across 3 classes |
+| inline-DV suppression | 1 (the eight phantom columns return) |
+| ingredients boundary | 1 (brown sugar becomes a nutrient row) |
+| element-first hit-testing | 1 (`RecoveryTapTest`) |
+| central numeric formatting | 4 (`QuantityFormattingTest`) |
+
+### NOT verified, and this is the gate
+
+**No instrumented run** — no device or emulator was attached, so the nine-photograph OCR corpus has
+not been run against these changes. The instrumented sources compile; that is not the same thing.
+
+**Nothing here has been seen on physical hardware, and the timing claim is the weakest part.** The
+516 ms median was measured before this pass. Cross-column verification is free (a re-parse of rows
+already built), but a label that cannot corroborate itself now runs a Strategy B recognition that
+previously did not run — measured at ~400 ms on other hardware. `docs/manual-qa.md` **§26** is the
+gate; §26d requires cold and warm reported separately, and **26.1** (no capture may ever display
+`12 g / 100 g`) is the row that decides whether the release blocker is actually closed.
+
+## Basis-complete readings (2026-09-02, third phone session) — still 1.0.3 / versionCode 4
+
+The third phone session (`docs/Scan evidence 01-09-26 3rd testr/`, nine complete bundles) proved two
+things at once. **The performance repair worked** — device parser 66–579 ms, most captures 0.89–1.92 s,
+evidence persistence no longer a synchronous stage. **And automatic refusal alone is not enough**: the
+user selected the printed 250 ml value through the *recovery* screen and Quick Calculation showed
+
+```
+1.3 g carbs / 100 ml
+```
+
+the original 2.6x error, arriving through the manual path after the automatic path had been fixed.
+
+Nothing about the calculation, the schema, migrations, the §10 lookup priority or barcode detection
+changed. Still `versionCode 4`, nothing built as a release candidate, nothing uploaded.
+
+### The nine captures are committed as geometry-preserving fixtures
+
+`ThirdSessionFixtures` is **generated** from each bundle's own `diagnostics.txt`, not transcribed:
+973 elements across nine documents, counts matching each bundle's `elements=` line exactly (97, 82,
+92, 76, 92, 48, 157, 150, 179). Ingredient prose and address blocks are **kept**, unlike
+`HardwareLabelFixtures`, and that turned out to matter — they are what make
+`UnitAccompanimentPolicy`'s document-level question answerable, they supply the percent clusters the
+column fallback recovers from, and on the Korean sauce an ingredients row classifies as
+`CARBOHYDRATE_CHILD` (it names "brown sugar") and takes part in the document's structure.
+
+`ThirdSessionDiagnosticTest` prints and asserts almost nothing; `ThirdSessionRegressionTest` asserts.
+The JVM baseline reproduced all nine device outcomes exactly before anything was changed.
+
+### The defect was a composition, and no stage was individually wrong
+
+Recovery worked in two steps: pick a number, then pick a basis. `StatedBasis.of(document)` correctly
+reported *the label states per 100 ml*; the tap correctly reported *the user means this cell*. Both
+true. But **the label's basis is not the tapped cell's basis**, and a two-step flow has nowhere to
+notice that.
+
+`RecoveryCandidates` replaces it. A number becomes selectable **only together with the basis of the
+column it sits in**, so the choices read `0.5 g / 100 ml`, `1.3 g / 250 ml`, `6 g / 18 g serving`.
+Picking the second yields `0.52 g / 100 ml` by conversion, never by relabelling. A cell in an
+`UNKNOWN` column is **not offered at all** — there is no honest label for it.
+
+`CarbReading` (domain) is the type that makes this structural: amount plus `CarbBasis`
+(`PerHundred` / `PerQuantity(quantity, unit)` / `PerUnknownServing`) plus provenance. Identity
+includes the basis, so `1.3 g/250 ml` and `1.3 g/100 ml` are different readings and any stage looking
+for agreement gets that for free. `normalizedToPerHundred()` returns a **new** reading carrying
+`derivedFrom`, so the printed figure and the derived one both survive onto the screen.
+
+**`BasisActions` — the last "per 100 g or per 100 ml?" question — is now reachable only after the
+user has TYPED the figure**, where they are the source of the data. That distinction is the whole
+fix and must not erode: when the app read the number, the app must already know the basis.
+
+### Four parser fixes, each measured on a device recognition
+
+1. **A truncated unit terminates the per-100 span.** `225654-501` prints `PER: 100 ml 250 m` — the
+   `l` simply gone, with no second recognition to recover it, so the 2026-09-01 fix (which required
+   a *repeated* full unit) never fired and one column at x=1254 covered both printed columns.
+   `isUnitFragment` asks a narrower question than the shared spelling list — *is this a proper prefix
+   of a unit?* — in the one place whose answer only ever produces a refusal. **`m` is still not a
+   unit spelling and must never become one**: a bare `m` is metres and that list is shared with
+   `ServingSizeParser`.
+2. **A duplicated quantity is skipped.** `225530-249` reconstructs as `100 ml 250 250 m ml9` — ML Kit
+   read `250` twice, overlapping. Without skipping the repeat the element after the quantity is
+   another quantity, every check fails, and both `250`s are swallowed.
+3. **A basis phrase may not span a column gap.** `225617-066`'s header is `PER: 100 ml 250 ml` with
+   `PER:` at x=263 and `100` at x=984 — a 619 px gap. `per` is a connective, so the anchor walk took
+   it and landed at **x=707**, midway between the label column and the values; the printed `0.5g` at
+   x=1076.5 was then 369 px from its own column and only 222 px from the 250 ml one, so the
+   interpreter bound the right value to the **wrong** column. The reading survived only because the
+   prose fallback happened to catch it.
+4. **A basis span may not end on non-basis debris.** The Baltic `of9g` (a `/` read as `f`) split into
+   `of` + `9g`, and the greedy walk matched `o/100g| of` — the trailing `of` dragging the anchor
+   48 px toward the 9 g portion column. Applied **after** `kindOf`, and only to per-100 and serving
+   spans: a `REFERENCE_PERCENT` span legitimately ends on `%Rí`, and checking before the kind was
+   known deleted every percent column on the label.
+
+**Punctuation between a number and its unit is accompaniment.** `72,0 g` came back as `72,0.g` on
+`225720-700` and was declined for stating no unit; the next capture of the same package returned a
+clean `72,0g` and read confidently, so the decline was punctuation noise. This does **not** reopen
+the `g`→`9` defect: the token must still end in a unit spelling, and `0.59`, `22,59`, `72,0mg` and
+`3q.` are all still refused.
+
+### The linear panel finally has a basis
+
+`ServingDeclaration` reads `Serv. size: 1 Tbsp (18 g)` from a US Nutrition Facts panel, which has no
+columns at all. Consulted **only** when the document resolved no per-100 column anywhere, so a real
+table's own headers always win. It stops at the first nutrient name — without that bound the forward
+search adopts the `Fat 0.5 g` printed two rows later as the serving mass, and every figure on the
+panel becomes twelve times too large (measured; that was the first implementation).
+
+The sauce now offers `6 g / 18 g serving`, normalizing to `33.33333333 g / 100 g` with the printed
+reading preserved in `derivedFrom`. It never offers `/100 g` as a guess, never offers the `Fiber 1 g`
+on the same recognised row, and never offers a `%DV` figure.
+
+### Percentages are excluded at one boundary
+
+Every recovery route passes through `RecoveryCandidates`, so the exclusion lives there rather than at
+each call site: a `%` in the token, a leading `<` (the Baltic `<1%`), a `ri`/`dv`/`gda` word, a
+`REFERENCE_PERCENT` column, or `PercentAssociation`'s split-token verdict. Pinned by tests asserting
+the cracker can never display `9%` and the sauce can never display `2`, `4` or `22`.
+
+**Only the total-carbohydrate row contributes candidates.** A probe over the nine captures found
+`400 g` from a kilojoule footnote, `8 g` from a batch code and `13 g` from an energy row all being
+offered. That is not merely untidy: the list is a claim that each entry is a plausible reading of the
+carbohydrate figure.
+
+### Strategy B, warm-up and export integrity
+
+`SKIPPED_PASS_A_STRONG` skips the ~400 ms second recognition when **both** views of Pass A read
+confidently, agree completely, state a basis, and nothing else on the table contradicts them. It is a
+different question from `SKIPPED_RUNS_ALREADY_AGREE` — that one claims corroboration, this one claims
+a second look is not worth the wait — and the two are logged separately so a bundle says which claim
+was made. Grated cheese does not reach it.
+
+`LabelAnalyzer.warmUp()` runs one 1x1 recognition when the scanner opens. The first capture of the
+third session spent **2789 ms** in ML Kit against 447–1838 ms for the eight that followed.
+
+**Evidence export is written under a temporary name, read back in full, and renamed only if every
+entry decompresses.** The first bundle uploaded from the third session was 58 MB, truncated
+mid-entry, with no central directory — and was shared without complaint. `ZipIntegrity` reads every
+entry to its end (which is what verifies the CRC) and compares against the declared size.
+`ScanEvidenceRecorder.drain()` is the **only** place in the app that waits for the writer; scanning
+is unchanged.
+
+### Measured outcomes across the nine captures
+
+| capture | before | after |
+|---|---|---|
+| 225530-249 | NotFound, one fused column | NotFound (correct — `oolhvdraten` unrecoverable, row chained), two columns |
+| 225617-066 | Confident 0.5 (via prose fallback) | Confident 0.5 PER_100_ML, correct anchor |
+| 225632-622 | NotFound | NotFound (correct — both cells lost their unit); `0.59` not offered |
+| 225654-501 | **Ambiguous [0.5, 13.0]** | **Confident 0.5 PER_100_ML**; `13g` in an UNKNOWN column |
+| 225720-700 | NotFound | **Confident 72.0 PER_100_G** |
+| 225738-513 | Confident 72.0 | unchanged; `22,59` still refused |
+| 225752-375 | NotFound, no basis offered | recovery offers `6 g / 18 g serving` → `33.3 g/100 g` |
+| 225813-635 | as above | as above |
+| 225829-154 | Confident 59.2 **by luck** (one column) | Confident 59.2 with three separate anchors |
+
+### Verified
+
+JVM **1236/1236** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 104 JUnit XML
+files — up from 1175). Lint **exit 0, 0 errors, 21 warnings**, unused resources **0** (seven strings
+orphaned by the removed two-step flow were deleted, each verified with zero Kotlin references
+independently of lint). Debug APK **89,970,536 bytes**, SHA-256
+`7f7ef25611a96e2bcdc3de436ac9325c742fd5aa944ed1eb5d9849c1c6903cf4`, `versionCode=4` / `1.0.3-debug`
+read from the APK.
+
+Minified release **builds** and its R8 barriers were re-checked on that build: `ScanEvidenceRecorder`
+and `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`, `OcrDiagnosticsReport`,
+`ScanTrace` and the new `ZipIntegrity` absent entirely; `UnitMarkerFilter`, `CandidateProvenance`,
+`CarbCandidate` and the new `RecoveryCandidates`, `ServingDeclaration` and `CarbReading` retained as
+real classes. Release manifest: CAMERA, INTERNET, ACCESS_NETWORK_STATE, **zero** FileProvider matches.
+**That release APK is a minification check from an uncommitted tree. It is not a release candidate.**
+
+**Eight negative controls**, each restored and re-verified green: truncated-unit split disabled fails
+6 across 3 classes · basis-phrase gap check disabled fails 2 · punctuation accompaniment reverted
+fails 1 · serving declaration disabled fails 4 · an UNKNOWN column given a basis fails **5**
+(including the P0 guard) · row restriction removed fails 4 across 3 classes · ZIP size check disabled
+fails 1 · strong-path gate weakened fails 1.
+
+### A latent break this pass found
+
+`EvidencePipelineProductionTest` did not compile: `EvidenceResolver.Outcome.Unresolved` was added in
+the 2026-09-01 correctness patch and that `when` was never made exhaustive, so **the whole
+instrumented suite could not build**. Fixed by enumerating the branch rather than adding an `else`,
+so a future outcome type has to be considered rather than silently defaulting to "offers nothing".
+
+### NOT verified, and this is the gate
+
+**No instrumented run at all** — no device or emulator was attached, so the nine-photograph OCR
+corpus has not been run against these changes. That is the largest gap.
+
+**Nothing here has been seen on physical hardware.** `docs/manual-qa.md` **§25** is the gate. Its
+25.4 row (a right-column value must display `/250 ml`) and 25.12 (the sauce must never be asked "per
+100 g or per 100 ml?") are the two rows that decide whether the P0 is actually closed on a phone.
+
+## P0 regression repair (2026-09-01, second phone session) — still 1.0.3 / versionCode 4, READ FIRST
+
+The correctness patch below shipped a **parse regression of 10–27x** that only a phone could show.
+Two captures of the same drink (`docs/Scan Evidence 01-09-26 2nd test/`) spent **20195 ms** and
+**11189 ms** on the spinner and returned `NotFound`. Nothing about the calculation, the schema,
+migrations, the §10 lookup priority, barcode detection or any confidence threshold changed here —
+every fix is either a cache or a refusal.
+
+### The regression was 98.5% vocabulary re-normalization, and it was measured, not guessed
+
+`NutritionTerminology.containsTerm(text, term)` called `normalize(term)` on **every call**, and
+`term` is always a compile-time constant. `normalize` runs an NFD decomposition plus five regex
+replacements and allocates six intermediate strings. Profiling the 79-element capture:
+
+| | before | after | factor |
+|---|---|---|---|
+| `normalize()` calls | **225,360** | **682** | **330x** |
+| of which vocabulary terms | 222,076 (98.5%) | **0** | — |
+| `RowClassifier.classify` (19 rows) | **95** | **19** | 5x |
+| JVM parse wall clock | 105.5 ms | **6.9 ms** | 15x |
+
+Three multipliers compounded: the term normalization above; `classify` being consulted from five
+independent stages, each re-running a full `NutrientRowSegments` pass; and
+`UnitAccompanimentPolicy` recomputing `InlineBasisSpans.find(row)` **inside its per-element loop**.
+
+**Why the JVM never showed it and the phone did.** 105 ms on a warm desktop JIT is invisible in a
+test suite. The same allocation-heavy regex work on mobile ART, cold, was 9278 ms. **A parser change
+that looks free in the JVM suite is not evidence about the device** — that is the transferable
+lesson, and it is why `ParserStageProfileTest` now asserts **invocation counts** rather than
+wall-clock time. Counts are deterministic across machines; a timing assertion is either too loose to
+catch anything or flaky.
+
+Two initialization traps found while fixing it, both worth knowing: a `val` in a Kotlin `object`
+that calls `normalize` runs **before** the regexes declared below it, giving
+`ExceptionInInitializerError` which surfaces at every call site as an unrelated-looking
+`NoClassDefFoundError`; and a **one-entry** cache does nothing here, because the stages interleave
+(one filters every row, then the next maps every row) so consecutive lookups always evict each other.
+
+### The evidence work was never off the path — `markOffPath` only changes a printed number
+
+`meta.txt` reported `evidence-capture 9487*`, with `*` meaning off-path, inside a `scan 20195ms`.
+Both were true. `ScanEvidenceRecorder.consumeCapture` was still being called **synchronously at the
+top of `LabelAnalyzer.finish`, before the result was delivered** — and its `renameTo` falls back to
+`source.copyTo` whenever the rename is refused, which is routine across filesystems. That fallback is
+~3 MB of unbounded synchronous I/O.
+
+**`markOffPath` excludes a stage from the `user-visible` arithmetic. It does not move the work.**
+Work is off the path when it happens *after delivery*; nothing else makes it so. `consumeCaptureAsync`
+now defers the move, the copy fallback and the temporary-file delete to the writer thread, queued
+after the handover; `recordMeta` renders on the calling thread and writes on the writer. The writer is
+single-threaded and FIFO, which is what guarantees `capture.jpg` is in place before `passA.png` and
+`meta.txt` are written.
+
+### The fused header was still fused, in a shape the first fix could not see
+
+`222300-297`'s header row is `100 ml 250 m ml (79`. ML Kit recognised the printed `ml` **twice**,
+once truncated — `m` at `[1023,1418]` and `ml` at `[1023,1426]`, the same left edge. `m` is not a
+unit spelling and **must never become one** (a bare `m` is metres, and the spelling list is shared
+with every other stage), so `offBasisQuantitySpan` returned null, the guard never fired, and the
+per-100 span swallowed `250 m`:
+
+```
+before:  PER_100_ML '100 ml 250 m' @ x=836.0                    (one column, both cells bound to it)
+after :  PER_100_ML '100 ml' @ x=709.0  +  UNKNOWN '250 m ml' @ x=994.5
+```
+
+The fix keys on **horizontal overlap**: two columns are horizontally separated — that is what makes
+them columns — so an element overlapping its predecessor is the same glyphs read again, not a new
+column. The fragment must also be a prefix of the unit that follows, so `250 x ml` stays unmatched.
+
+### `DamagedCarbohydrateLabel` — structural recovery, not a looser vocabulary
+
+`222212-563` is a clean capture whose table ML Kit read correctly except for one word:
+`Koolhydraten:` → `laolhydraten:`. The row keeps both its values and precedes the sugars row, and the
+table returned `NotFound`.
+
+Recovery requires **all six** conditions, each a fact about the table rather than about the string:
+a resolved per-100 column exists (so prose and ingredient lists are unreachable); the row is
+immediately followed by a `CARBOHYDRATE_CHILD` row (positional, and the strongest single signal); the
+word ends in a carbohydrate suffix (`hydraten`, `hidrati`, …) on a word of ≥8 characters; the row
+carries a value under an established column; the row names no child term itself; and no undamaged
+total row exists. Fuzzy matching is **not** used — a fuzzy match on `koolhydraten` reaches `koolzaad`.
+
+`bydraten.` in `222300-297` correctly does **not** recover: `koolhy` is gone, no suffix survives, and
+that capture stays `NotFound` by design.
+
+### Measured outcomes
+
+| capture | before | after |
+|---|---|---|
+| 222212-563 | `NotFound` after 20195 ms | **`Confident 0.5 PER_100_ML`** — the printed value |
+| 222300-297 | `NotFound` after 11189 ms | `NotFound` (correct; label unrecoverable) |
+| A/B/C/D (correctness patch) | — | unchanged: NotFound / 72.0 / NotFound / 59.2 |
+
+**Four negative controls, each restored and re-verified green:** disabling the split-unit recovery
+fails exactly 1; disabling the damaged-label recovery fails exactly 2; bypassing the term cache fails
+exactly 1; bypassing the classification cache fails exactly 1.
+
+**Verified:** JVM **1175/1175** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 99
+JUnit XML files — up from 1159). Lint **exit 0, 0 errors, 20 warnings**. Debug APK 89,734,290 bytes,
+SHA-256 `58516719…D00D7FED`, `versionCode=4` / `1.0.3-debug` read from the APK.
+
+**NOT verified on hardware, and this is the whole point of the pass.** The JVM figures above are a
+proxy: the regression they measure was invisible on the JVM in the first place. **No instrumented run
+at all** — no device or emulator was attached, so the nine-photograph corpus has not been run against
+these changes. The next checkpoint is a phone recording showing one capture reaching a value or a
+recovery in ~1–2 s.
+
+## Parser correctness patch (2026-09-01) — still 1.0.3 / versionCode 4, READ FIRST
+
+Four labels photographed on a Samsung SM-S928B (`docs/Scan Evidence 01-09-26/`), one of which
+produced a **2.6x-wrong carbohydrate value in Quick Calculation**. Five parser/resolver defects
+fixed, plus the contained UX and latency wins. Still `versionCode 4`, nothing built as a release,
+nothing uploaded. **No threshold was lowered and no confidence bar was relaxed** — every change either
+adds a refusal or separates two things that were being conflated.
+
+### The 2.6x error: three defects stacked, and the row layer was innocent
+
+The drink prints `0,5 g/100 ml` and `1,3 g/250 ml`. It produced `1.3 g/100 ml`.
+
+Row reconstruction and classification were **correct throughout** — `Koolhydraten: 0.59 13g` typed
+`TOTAL_CARBOHYDRATE`, sugars typed `CARBOHYDRATE_CHILD`. Do not go looking for a row bug here.
+
+1. **`ColumnClassifier` emitted ONE column for two printed columns.** ML Kit fused the header into
+   `100` `ml250` `ml`, and there is no `per 250 ml` vocabulary — `PER_100` only matches the literal
+   quantity `100` — so the span walk matched `100 ml`, found exactly one kind, and **silently absorbed
+   the 250 ml header into it**. One column at x=1199.5, over the 250 ml values. Both cells bound to it.
+2. **`CarbUnitAccompaniment` had no production call site.** `0.59` is the printed `0,5 g` with the `g`
+   read as a `9`. The module was written, tested and never wired in.
+3. **`EvidenceResolver` wrapped an ambiguity in `Outcome.Resolved`.** The bundle records
+   `Ambiguous` + `RAN_NO_READING` → `resolver.verdict: Resolved`.
+
+**The fix for (1) is the load-bearing one and is not an anchoring tweak.** A `<quantity><unit>` header
+whose quantity is not 100 is now emitted as **`UNKNOWN`** — a position whose meaning is not
+established, so its cells are refused. `NutritionBasis` has two members and neither means "per
+250 ml"; claiming the position without claiming a meaning is what keeps the two cells apart.
+Negative control: disabling it fails 6 cases, including "never reports 1.3 g/100 ml".
+
+### `CarbUnitAccompaniment` is wired in behind a document-level policy
+
+Applied to every candidate, the rule declines a whole legitimate layout — units in the header, bare
+values down the column — which broke **30 existing tests**. Its own tests deliberately assert that a
+bare `72,0` is *not* accompanied, so the rule itself must not change.
+
+`UnitAccompanimentPolicy.mayDeclineBareValues` asks a different, weaker question, once per document:
+*does this label demonstrate that it prints units on its value cells?* Two or more unit-bearing value
+cells is the threshold. **This is not the sibling rule the owner rejected** — that objection is about
+a token whose unit became another letter (`3q.`, `2.5c`), which `isAccompanied` refuses on its own
+text before neighbours are consulted. The policy gates only the *bare-number* branch.
+
+Header rows and inline basis phrases are excluded from the count, and the check runs on the
+**rejoined** cell, not the raw element — a `61,9 g` fragmented into `61,` + `9` + `g` has its unit
+adjacent to the tail. Both were real regressions caught by existing tests.
+
+An accompaniment-declined cell in a per-100 column now sets `perHundredCellRejected`, so the "the
+table's own answer was found and is unusable" rule still blocks the prose fallback.
+
+### Nutrient-boundary segmentation, and the guard that makes it safe
+
+`NutrientRowSegments` splits a row at the nutrient names printed on it, so
+`DV), Total Carb. 6g (2% DV), Fiber 1 g (4% DV),` yields a total segment bounded at `Fiber`.
+
+**The merged-row guard is the whole safety argument.** Requiring **every** segment to carry its own
+numeric value distinguishes a linear US panel from a merged multilingual table row. Without it,
+ML Kit's merge of Croatian `od kojih šećeri` with German `Kohlenhydrate` typed as
+`TOTAL_CARBOHYDRATE` — the sugars-as-total failure, reintroduced through a side door. It was caught
+by `RealMlKitFindingsTest`, not by review.
+
+`Total Carb.` needed adding to the vocabulary; it is matched as the two-word `total carb`, anchored
+by a word that only introduces a nutrient total.
+
+### The multilingual table needed vocabulary, not geometry
+
+`o/100 g| o/9g RE` splits correctly once a damaged `per` (reduced to `o/`) is recognised, and the
+9 g column becomes `UNKNOWN`. But the reading still failed, and the cause was **Estonian, Latvian and
+Lithuanian missing from `NutritionTerminology`**: the declaration wraps across two rows, and the row
+carrying the *numbers* named carbohydrate only in Latvian and Lithuanian. Same shape as the
+documented Dutch gap — a lost reading, not a wrong one.
+
+### `Outcome.Unresolved`, and why the gate did not actually change
+
+An ambiguity with nothing to corroborate it is now `Unresolved`, not `Resolved`.
+`AutomaticScanAdvance` already required `Resolved` **and** `Confident`, so **this closed an honesty
+defect, not a live auto-advance hole** — say so rather than claiming a crash was averted. It matters
+because the bundles a person reads while debugging said the opposite of what happened, and because a
+future caller trusting the name would open the hole for real. The `Confident` half of the gate is
+kept rather than made redundant.
+
+`selection.txt` now lists each pass with what it contributed and its recognition run, so
+`SELECTED_REGION_OCR` returning nothing no longer reads as a third opinion. `meta.txt` no longer
+appends "this is what AutomaticScanAdvance reads" to a placeholder.
+
+### Cross-column consistency reports; it never repairs
+
+`CrossColumnConsistency` compares a per-100 figure against the portion column using the printed
+portion size. Tolerance is derived from the **printed value's own precision**, not a percentage:
+`59,2 × 9/100 = 5,328` vs printed `5,4` is consistent; `54` is not. `decimalShiftHypothesis` reports
+a lost decimal point **only when exactly one placement works**, and is recorded as a hypothesis in
+diagnostics — never applied, never substituted for the recognised token.
+
+### UX and latency
+
+- **The confirmation card is gone for strong readings only.** A capture that passed `mayAdvance` with
+  a non-null basis goes straight to Quick Calculation. Gated on `automatic`: a reading reached after
+  the user confirmed a crop keeps its card, because there they have already been asked a question.
+  A null basis never advances.
+- **Evidence writing moved off the UI-decision path.** `evidence-diagnostics` cost **582–1106 ms in
+  every recorded bundle**, running between the parse and the result reaching the screen. `ScanTrace`
+  marked it off-path, so the printed `user-visible` figure *excluded* work the user was still waiting
+  for. Both writes now render an immutable snapshot on the calling thread and write after `finish()`.
+
+### Verified
+
+JVM **1159/1159** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — up from
+1112). Lint **exit 0, 0 errors, 20 warnings**. Debug APK builds (89,469,605 bytes, SHA-256
+`E2490516…2B0498E4`, `versionCode=4` / `1.0.3-debug` read from the APK).
+
+**Three negative controls, each restored and re-verified green:** disabling the accompaniment call
+fails exactly the 2 `0.59` cases; disabling segmentation fails exactly the sauce case; disabling the
+off-basis column fails 6 across both the drink and the multilingual table.
+
+**Not done:** no release or AAB build, **so the R8 barriers were not re-checked** — `CrossColumnConsistency`,
+`NutrientRowSegments` and `UnitAccompanimentPolicy` are new answer-path classes and should be
+*retained*, but that is an argument, not a measurement. **No instrumented run at all** — no device or
+emulator was attached, so the nine-photograph corpus has not been run against these changes. That is
+the largest gap in this pass.
+
+**Nothing here has been seen on physical hardware.** `docs/manual-qa.md` **§23** is the gate, and its
+four products are the exact ones whose failures motivated the work. `docs/manual-qa-checklist.md` is
+a single-sheet consolidation of the whole QA document, added this pass.
+
 ## Device-recording corrections (2026-08-30) — still 1.0.3 / versionCode 4, READ FIRST
 
 A physical-device screen recording of the 1.0.3 scanner. The direction held — the fast path skipped

@@ -47,6 +47,47 @@ object ResultFormatter {
             .apply { roundingMode = RoundingMode.HALF_UP }
             .format(value)
 
+    /**
+     * A stored or derived quantity, as it should appear anywhere in the interface.
+     *
+     * ## Why this exists rather than `stripTrailingZeros().toPlainString()`
+     *
+     * That idiom is scattered across the UI and is correct for every value a *human typed* — `65`
+     * stays `65`, `4.5` stays `4.5`. It is wrong for a value the app **derived**, because a derived
+     * value carries the full precision of the division that produced it.
+     *
+     * Measured: the Korean sauce prints `6 g` per an `18 g` serving, so the per-100 figure is
+     * `6 x 100 / 18` = a non-terminating decimal, held at 10 significant digits by
+     * [app.justthecarbs.domain.CarbReading.normalizedToPerHundred]. The recovery screen showed the
+     * intended `33.3 g / 100 g`; the calculator that followed showed **`33.33333333`**, because it
+     * printed the same value through `toPlainString()`. One screen was formatting and the other was
+     * dumping.
+     *
+     * ## What it does
+     *
+     * At most one decimal place, [RoundingMode.HALF_UP], trailing zeros trimmed — so `72.0` prints
+     * `72`, `33.33333333` prints `33.3`, and `0.5` prints `0.5`. Locale-aware, like every other
+     * function here.
+     *
+     * **The stored value is not touched.** This is a presentation function: the exact figure stays
+     * in [BigDecimal] all the way to the calculation, and only the string the user reads is rounded.
+     * That is the same separation [decimal] already keeps for the result itself.
+     */
+    fun quantity(value: BigDecimal, locale: Locale = Locale.getDefault()): String {
+        val rounded = value.setScale(MAX_DISPLAY_DECIMALS, RoundingMode.HALF_UP).stripTrailingZeros()
+        return DecimalFormat("0.#", DecimalFormatSymbols(locale))
+            .apply { roundingMode = RoundingMode.HALF_UP }
+            .format(rounded)
+    }
+
+    /**
+     * One decimal place for a displayed quantity.
+     *
+     * Matches [decimal], which is what the result itself uses, so a per-100 figure and the result
+     * derived from it never disagree about how much precision the app claims to have.
+     */
+    private const val MAX_DISPLAY_DECIMALS = 1
+
     /** e.g. `31`. */
     fun whole(value: Int, locale: Locale = Locale.getDefault()): String =
         DecimalFormat("0", DecimalFormatSymbols(locale))

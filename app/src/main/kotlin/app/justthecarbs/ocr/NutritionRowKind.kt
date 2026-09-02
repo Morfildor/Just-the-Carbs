@@ -27,8 +27,97 @@ enum class NutritionRowKind {
  */
 object RowClassifier {
 
+    /**
+     * Memoized classifications, keyed by row **identity**.
+     *
+     * ### Why a cache at all
+     *
+     * Classification is consulted from five independent places — the interpreter, both column
+     * stages, [UnitAccompanimentPolicy] and [ProseNutritionReader] — none of which can pass its
+     * answer to the others without threading a classification map through every signature in the
+     * parser. Profiling the 2026-09-01 device captures counted **95 classifications for 19 rows**,
+     * each one running a full [NutrientRowSegments] pass over every element position at four span
+     * lengths, plus a whole-vocabulary sweep.
+     *
+     * A single-entry cache was tried first and does not work: the callers interleave (one stage
+     * filters every row, then the next maps every row), so consecutive lookups are for different
+     * rows and each evicts the last. The access pattern needs a map, not a most-recent slot.
+     *
+     * ### Why identity, and why this cannot go stale
+     *
+     * [classify] is a pure function of the row's text and element geometry, and [LogicalRow] is an
+     * immutable data class — so a given instance's answer is fixed for its lifetime. Keying on
+     * identity rather than equality is deliberate: two equal-but-distinct rows are simply
+     * re-classified, which is correct, whereas an equality-keyed map would quietly depend on
+     * [LogicalRow.equals] covering everything [classify] reads.
+     *
+     * ### Why the bound, and why eviction is safe
+     *
+     * A parse builds its rows once and discards them, so entries are garbage after it returns. The
+     * bound exists so a long-lived process cannot accumulate them without limit; clearing wholesale
+     * on overflow costs at most one re-classification per row and needs no LRU bookkeeping. Sized
+     * well above any real label's row count (the largest in this repo's corpus is 24).
+     *
+     * Not thread-safe, deliberately: one interpretation runs on one thread, and a lock on the
+     * parser's hottest lookup would cost more than the work it protects. A racing writer can only
+     * cause a redundant re-classification, never a wrong answer, because the value depends solely on
+     * the key.
+     */
+    private val classifications = java.util.IdentityHashMap<LogicalRow, NutritionRowKind>()
+
+    /** See [classifications]. Far above the largest real label's row count. */
+    private const val MAX_CACHED_ROWS = 512
+
+    /**
+     * Classifies every row of a document, stopping nutrient classification at the package's own
+     * structural boundary (§P0-2).
+     *
+     * ## Why this overload exists
+     *
+     * [classify] answers about one row from that row alone, which is what makes it pure and
+     * cacheable — and which is exactly why it cannot see that a row sits inside an ingredient list.
+     * On the Korean sauce the ingredients row names "brown sugar" and therefore classified as
+     * `CARBOHYDRATE_CHILD`: correct about the words, wrong about the document.
+     *
+     * The boundary is a property of the *document*, so it is applied here, over the whole list, and
+     * never inside the single-row function. A row past the boundary is `OTHER` — not reclassified by
+     * some other rule, simply not nutrition.
+     *
+     * Callers holding a whole document should prefer this. [classify] remains correct for the
+     * single-row question and is still what this delegates to.
+     */
+    fun classifyAll(rows: List<LogicalRow>): List<NutritionRowKind> {
+        val boundary = DeclarationBoundary.indexOf(rows)
+        return rows.mapIndexed { index, row ->
+            if (boundary != null && index >= boundary) NutritionRowKind.OTHER else classify(row)
+        }
+    }
+
     fun classify(row: LogicalRow): NutritionRowKind {
+        classifications[row]?.let { return it }
+        val kind = classifyUncached(row)
+        if (classifications.size >= MAX_CACHED_ROWS) classifications.clear()
+        classifications[row] = kind
+        return kind
+    }
+
+    private fun classifyUncached(row: LogicalRow): NutritionRowKind {
+        if (ParserWorkCounters.enabled) ParserWorkCounters.rowClassifyCalls++
         val normalized = NutritionTerminology.normalize(row.text)
+
+        // A linear Nutrition Facts panel prints several nutrients in sequence on one row, each
+        // introduced by its own name. Such a row genuinely *contains* a total-carbohydrate
+        // declaration bounded by the next nutrient name, so it is a total row — the child term
+        // further along belongs to a different clause and is excluded by position, not by luck.
+        //
+        // Checked before the unconditional child rule below because that rule reads the row as one
+        // unit, which is right for a merged table row and wrong for a linear panel. The distinction
+        // is made by [NutrientRowSegments], which returns nothing at all unless the row states a
+        // total term *and* a second, different nutrient term — a shape a merged table row does not
+        // have. See that object for why this does not weaken the sugars-as-total guarantee.
+        if (NutrientRowSegments.totalCarbohydrateSegment(row) != null) {
+            return NutritionRowKind.TOTAL_CARBOHYDRATE
+        }
 
         // First and unconditional. Order matters: "Carbohydrate of which sugars" hits this before
         // the carbohydrate check below, which is the entire correctness claim of this class.

@@ -32,9 +32,54 @@ internal object SelectedTableResolution {
         /** Strategy A's own result, retained for the ineffective-selection hint (§11). */
         val filtered: SelectedTableReader.Result,
         val elapsedMs: Long,
+        /**
+         * What happened to Strategy B, for the evidence bundle.
+         *
+         * Recorded because the outcome was previously unrecoverable: `recogniseRegion(...)?.let`
+         * discards a null silently, and `SelectedRegionRecognizer.recognise` returns null for a
+         * recycled bitmap, a degenerate or whole-frame crop, or any caught exception. A device
+         * bundle therefore could not answer "did a second recognition run", while separately
+         * printing a hardcoded line claiming it had not — so a wrong answer looked like a measured
+         * one.
+         */
+        val strategyB: StrategyBStatus,
     ) {
         /** True when the rectangle removed essentially nothing (§11). */
         val selectionWasIneffective: Boolean get() = filtered.isIneffective
+    }
+
+    /** Whether the independent second recognition ran, and what it produced. */
+    enum class StrategyBStatus {
+        /** Skipped: two independent runs already agreed, so a second opinion adds nothing (§28). */
+        SKIPPED_RUNS_ALREADY_AGREE,
+
+        /**
+         * Skipped: the label's own other rows corroborate the reading — see [CrossColumnRatioCheck].
+         *
+         * Distinct from [SKIPPED_RUNS_ALREADY_AGREE], and the distinction matters when reading an
+         * evidence bundle: that one means *two separate recognitions corroborated each other*, this
+         * one means *the table's other nutrient rows agree with this one*. Both are corroboration by
+         * something the run being checked could not control; they differ in what supplied it, and
+         * the log says which.
+         *
+         * **Renamed from `SKIPPED_PASS_A_STRONG`, and the rename records a real change.** That value
+         * meant "one recognition parsed cleanly", which is not corroboration at all — it was true of
+         * the misread `12` on `085542-213`, and skipping on it removed the last chance to catch a
+         * confident-wrong. A bundle printing the old name means a build that could skip unverified.
+         */
+        SKIPPED_CROSS_COLUMN_VERIFIED,
+
+        /**
+         * Attempted and returned nothing — a recycled bitmap, a degenerate or whole-frame crop, or a
+         * caught exception. Distinct from [RAN_NO_READING]: nothing was recognised at all.
+         */
+        ATTEMPTED_RETURNED_NULL,
+
+        /** Ran a real recognition, which produced no confident reading. */
+        RAN_NO_READING,
+
+        /** Ran a real recognition and produced a confident reading, for the resolver to weigh. */
+        RAN_CONFIDENT,
     }
 
     /**
@@ -91,8 +136,49 @@ internal object SelectedTableResolution {
                     confident.all { it.fullyAgreesWith(confident.first()) }
             }
 
-        if (!independentRunsAgree) {
-            recogniseRegion(bitmap, region)?.let { evidence += it }
+        // Strategy B is also skipped when the label has **structurally verified itself** — its own
+        // other rows corroborate the reading, so a second look at the same pixels adds nothing that
+        // is not already known (§7 strong-path latency).
+        //
+        // ### This replaces `SKIPPED_PASS_A_STRONG`, which was an unverified bypass
+        //
+        // The previous condition asked whether the two views of Pass A were confident, agreed, and
+        // stated a basis. Every part of that was true of `085542-213` — and its reading was `12`
+        // where the package prints `72`. The condition described a *clean parse*, and a clean parse
+        // of a misread character is exactly as clean as a clean parse of a correct one. It skipped
+        // the only remaining opportunity to disagree with the misread, and the app then advanced.
+        //
+        // So the skip is now conditional on evidence from outside the run being skipped for.
+        // [CrossColumnRatioCheck] is such evidence: it compares the reading against the *other rows
+        // of the same table*, which the same OCR error cannot have produced consistently. On the
+        // misread cracker it reports 1.875 against a table ratio of 0.309 and the skip does not
+        // happen; on all three correct captures it reports 0.3125 against 0.309 and it does.
+        //
+        // A label that cannot verify itself — a single-value-column drink, say — now runs Strategy
+        // B, which is the honest cost of not having a second opinion for free.
+        val passAViews = evidence.filter { it.source.recognitionRun == wholeFrame.source.recognitionRun }
+        val passAIsStrong = passAViews.size >= 2 &&
+            passAViews.all { it.isConfident } &&
+            passAViews.all { it.fullyAgreesWith(passAViews.first()) } &&
+            passAViews.first().statesABasis &&
+            evidence.filter { it.isConfident }.all { it.fullyAgreesWith(passAViews.first()) } &&
+            AutomaticVerification.verify(evidence).route == AutomaticVerification.Route.CROSS_COLUMN
+
+        // The status is captured rather than inferred. A null here is a real, distinct event — see
+        // StrategyBStatus.ATTEMPTED_RETURNED_NULL — and losing it is what made a device bundle
+        // unable to say whether a second recognition had run at all.
+        val strategyB = if (independentRunsAgree) {
+            StrategyBStatus.SKIPPED_RUNS_ALREADY_AGREE
+        } else if (passAIsStrong) {
+            StrategyBStatus.SKIPPED_CROSS_COLUMN_VERIFIED
+        } else {
+            val second = recogniseRegion(bitmap, region)
+            if (second == null) {
+                StrategyBStatus.ATTEMPTED_RETURNED_NULL
+            } else {
+                evidence += second
+                if (second.isConfident) StrategyBStatus.RAN_CONFIDENT else StrategyBStatus.RAN_NO_READING
+            }
         }
 
         return Result(
@@ -100,6 +186,7 @@ internal object SelectedTableResolution {
             evidence = evidence,
             filtered = filtered,
             elapsedMs = (System.nanoTime() - started) / 1_000_000,
+            strategyB = strategyB,
         )
     }
 }
