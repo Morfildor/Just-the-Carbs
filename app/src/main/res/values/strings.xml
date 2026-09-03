@@ -402,6 +402,12 @@
     <string name="ocr_capture_label">Capture label</string>
     <string name="ocr_capturing">Capturing label…</string>
     <string name="ocr_processing">Reading captured label…</string>
+    <!--
+      The frozen capture shown while recognition runs. It replaces a live camera preview the user
+      would otherwise be watching for up to two seconds while the app reads a different image, so
+      the description has to say the photo is the thing being read, not merely that a photo exists.
+    -->
+    <string name="ocr_captured_description">The captured label, being read</string>
 
     <!--
       Crop confirmation. The instruction names the two parts of the table that must be enclosed,

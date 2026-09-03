@@ -147,7 +147,10 @@ configuration with the label scanner, so it *should* be untouched — verify, do
 **Use this whenever a scan fails on the phone but the same package works in the test suite.** That
 combination means the device and the harness disagree, and only the phone's own bytes can settle it.
 
-The debug build records the last 12 captures. For each one it keeps:
+The debug build records the last 35 captures (raised from 12 on 2026-09-04: a §32-style session
+runs three captures across several packages, and at 12 the earliest bundles were pruned before the
+session ended, so the export arrived missing the very captures that motivated it). For each one it
+keeps:
 
 | File | What it answers |
 |---|---|

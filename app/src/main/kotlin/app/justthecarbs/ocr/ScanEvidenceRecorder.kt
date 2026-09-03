@@ -47,7 +47,28 @@ object ScanEvidenceRecorder {
     /** Debug builds only. Keeps release behaviour — capture, read, delete — completely unchanged. */
     val enabled: Boolean get() = BuildConfig.DEBUG
 
-    private const val MAX_RETAINED = 12
+    /**
+     * How many captures the recorder keeps before pruning the oldest.
+     *
+     * Raised from 12 to 35 (2026-09-04, owner request). A physical QA session runs three captures
+     * each across several packages — the §32 gate alone asks for nine — and at 12 the earliest
+     * bundles were being pruned before the session ended, so the export arrived missing exactly the
+     * captures that had motivated it. That is not hypothetical: the ninth session's first archive
+     * was exported before the new captures existed, and a short retention window makes the same
+     * class of mistake easy to repeat.
+     *
+     * **The cost is disk.** Each capture keeps `capture.jpg` (an untouched 8 MP JPEG, ~3.5 MB) plus
+     * `passA.png` (the decoded bitmap, larger still), so 35 captures is on the order of 350 MB in
+     * `cacheDir`. That is acceptable only because this is debug-only: `enabled` is
+     * `BuildConfig.DEBUG`, R8 strips the whole object from release, and the directory is the app's
+     * own cache, which the system may reclaim under pressure. **Do not raise this without
+     * re-reading that paragraph** — the same number in a shipped build would be a privacy defect,
+     * not a disk one.
+     *
+     * [prune] keeps `MAX_RETAINED - 1` existing folders and then adds the new one, so the steady
+     * state is exactly this many.
+     */
+    private const val MAX_RETAINED = 35
 
     /**
      * What CameraX negotiated at the last bind (§23), for `meta.txt`.
@@ -547,9 +568,60 @@ object ScanEvidenceRecorder {
         scaleVerdict: ScaleAmbiguity.Verdict? = null,
         /** The basis handed to Edit or focused entry, and whether the amount was prefilled. */
         correctionHandoff: String? = null,
+        /**
+         * The document Strategy B recognised, when it ran and returned one.
+         *
+         * ## Why this was missing and why it mattered
+         *
+         * The bundle recorded Strategy B's **verdict** (`Confident 2.8/PER_100_G`) and never the
+         * document behind it, while `diagnostics.txt` records Pass A's document alone. So a session
+         * where the two passes *disagreed* — which is the interesting case, and exactly the ninth
+         * session's — could not be replayed: the evidence proved a correct reading had existed and
+         * gave nothing to reproduce it from.
+         *
+         * Diagnosing 2026-09-03 therefore required deriving Strategy B's document from Pass A's plus
+         * the one difference the verdict implied. That derivation is sound and is asserted against
+         * the real interpreter, but it is reconstruction rather than replay, and it should not be
+         * needed twice.
+         *
+         * Written to its own file rather than into `selection.txt`, because a full element dump is
+         * long and `selection.txt` is the file a human reads first.
+         */
+        strategyBDocument: OcrDocument? = null,
+        /**
+         * Where [strategyBDocument] sits inside the capture, when Strategy B ran.
+         *
+         * Without it the dump is a set of coordinates in an unstated space. Strategy B recognises a
+         * *crop*, so its boxes are measured from the crop's own origin and its width and height are
+         * the crop's — and a reader comparing them against `diagnostics.txt`'s full-frame boxes will
+         * silently conclude the two passes disagree about where the row is. That confusion is the
+         * same one that let crop-local geometry be drawn as if it were full-frame.
+         */
+        strategyBCrop: SelectedRegionCrop.PixelRect? = null,
     ) {
         if (!enabled || folder == null) return
         runCatching {
+            // Rendered in the same format as `diagnostics.txt`, so a Strategy B document replays
+            // through exactly the tooling that already reads a Pass A one — no new parser, and the
+            // element count is self-checking against the header it prints.
+            strategyBDocument?.let {
+                File(folder, "strategyB.txt").writeText(
+                    buildString {
+                        appendLine("=== strategy B coordinate space ===")
+                        appendLine("native size     : ${it.width}x${it.height} (the crop, not the capture)")
+                        appendLine(
+                            "crop origin     : " + (
+                                strategyBCrop?.let { crop ->
+                                    "(${crop.left}, ${crop.top}) ${crop.width}x${crop.height} " +
+                                        "— add this to every box below to reach capture coordinates"
+                                } ?: "unrecorded"
+                                ),
+                        )
+                        appendLine()
+                        append(OcrDiagnosticsReport.render(it, NutritionTableInterpreter.interpret(it)))
+                    },
+                )
+            }
             val retained = document?.let { ElementRegionFilter.filter(it, region)?.elements }.orEmpty()
             val rejected = document?.let { ElementRegionFilter.rejected(it, region) }.orEmpty()
             File(folder, "selection.txt").writeText(
@@ -576,8 +648,11 @@ object ScanEvidenceRecorder {
                             "  <- CROSS_COLUMN | DISTINCT_OCR_AGREEMENT | NONE",
                     )
                     appendLine(
+                        // CONFIRM_ON_CAPTURE is the eighth session's addition: an unverified reading
+                        // held on the frozen photograph. Distinct from CONFIRM, which was the
+                        // live-preview card that made `12 g / 100 g` unanswerable on `213005-691`.
                         "final UI action : " + (uiAction ?: "not recorded by caller") +
-                            "  <- AUTO_ADVANCE | CONFIRM | RECOVERY",
+                            "  <- AUTO_ADVANCE | CONFIRM_ON_CAPTURE | CONFIRM | RECOVERY",
                     )
                     appendLine(
                         "passes contributing evidence: " + (
@@ -591,6 +666,14 @@ object ScanEvidenceRecorder {
                                 "AMBIGUOUS — candidate '${scaleVerdict.candidateText}' paired with " +
                                     "'${scaleVerdict.pairedText}'; ${scaleVerdict.reason}"
                             is ScaleAmbiguity.Verdict.Established -> "established (${scaleVerdict.reason})"
+                            // Distinct from "established" on purpose: this line previously read
+                            // `established (no paired value ...)`, a sentence that described an
+                            // absence of evidence while claiming its presence. That wording is what
+                            // made `20260902-213005-691` hard to attribute.
+                            is ScaleAmbiguity.Verdict.Unsupported ->
+                                "UNSUPPORTED — candidate '${scaleVerdict.candidateText}'; " +
+                                    "${scaleVerdict.reason}. Not evidence of a sound scale; an " +
+                                    "unverified reading is not offered for confirmation on this"
                             null -> "not evaluated (no confident reading, or no document)"
                         },
                     )
