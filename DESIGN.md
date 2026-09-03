@@ -6,23 +6,75 @@
 
 ## Colour strategy
 
-**Restrained**, deliberately. The palette is close to monochrome over a warm cream base with a
-single blue accent, because the calculator's result must be the loudest thing on screen and a
-colourful interface competes with it.
+**Colourful chrome, protected result** (2026-09-04). Colour is spent freely on navigation,
+actions, sections and empty states. The carbohydrate result keeps its exclusive red and its
+prominence on the calculator.
 
-Roles are separated so nothing competes with the result:
+This section previously said the palette was near-monochrome **because** "a colourful interface
+competes with [the result]". That rationale is withdrawn: the app is now colourful and the result
+is still the loudest thing on the calculator, because the guarantee moved from *the absence of
+colour elsewhere* to **arithmetic**.
+
+### The luminance rule — what protects the result now
+
+Result red `#D42F2F` has WCAG relative luminance **0.162**. Every destination accent is *darker*,
+so it recedes behind the carbohydrate figure rather than competing with it:
+
+```
+teal 0.142 · green 0.159 · magenta 0.124 · violet 0.098 · amber 0.098 · indigo 0.083
+```
+
+`AccentRecessionTest` asserts this over the whole palette in both schemes, so a new accent that
+breaks it **fails the build**. `ContrastTest` separately pins every accent at ≥4.5:1 on every
+surface it is drawn on. Neither is a style preference; both are computed from the live tokens.
+
+**A worked example of why the rule is a test and not a paragraph.** The dark accents were first
+drafted as ordinary bright tints (`#5EEAD4`, `#C4B5FD`, `#86EFAC` …) — the values any dark theme
+reaches for. Computed, **all six failed**: `#5EEAD4` measures 0.660 against the dark result red's
+0.366, nearly twice as bright as the number it must not out-shout. Nothing about those swatches
+looked wrong.
+
+### Core roles
 
 | Role | Light | Dark | Spent on |
 |---|---|---|---|
-| Blue (primary) | `#2F8FE0` | `#5CA6E8` | Every interactive control, active state, favourite |
+| Blue (primary) | `#1B6FBF` | `#5CA6E8` | Every interactive control, active state, favourite |
 | Blue soft | `#E4F1FC` | `#16324A` | Accent tint, selected chips, verified badge |
-| **Red (result)** | `#FF5C5C` | `#FF7A7A` | **Exactly one thing per screen: the carb number** |
+| **Red (result)** | `#D42F2F` | `#FF7A7A` | **Exactly one thing per screen: the carb number** |
 | Orange (tertiary) | `#FFA94D` | `#FFB868` | Soft informational surfaces, label-scan accent |
 | Orange soft | `#FFEEDC` | `#4A3418` | Safety card, unverified-source badge |
 | Cream (background) | `#FFF6EE` | `#15140F` | Page ground |
 | Ink | `#181A1E` | `#F2EFE8` | Primary text |
 | Ink muted | `#6B6A72` | `#AFAEA8` | Secondary text |
 | Line | `#E4DFD3` | `#39372F` | Borders, dividers |
+
+Blue and red are the *measured* values `Theme.kt` ships, not the original handoff tokens
+(`#2F8FE0` / `#FF5C5C`), which scored 3.43:1 and 2.84:1 on the surfaces they are actually drawn on
+— the result failing even the 3:1 large-text floor. This table listed the handoff values until
+2026-09-04; it was stale, and `ContrastTest`'s `light tokens match the values Theme kt actually
+ships` exists to stop the *code* drifting the same way.
+
+### Destination accents (`AccentPalette.kt`)
+
+| Accent | Light | Dark | Spent on |
+|---|---|---|---|
+| Teal | `#0F766E` | `#43B1A6` | Label scanner, manual entry |
+| Violet | `#6D28D9` | `#A997D3` | Favourites |
+| Green | `#15803D` | `#45B56E` | Label-scan gradient tail |
+| Magenta | `#BE185D` | `#E481B3` | Reserved for list variety |
+| Indigo | `#4338CA` | `#9496FF` | Search, barcode-scan gradient tail |
+| Amber | `#92400E` | `#D49425` | Meal |
+
+Settings deliberately takes a **neutral**, not an accent: it is pure configuration and giving it a
+hue would imply it belongs to the scan → portion → carbs workflow the other colours mark out.
+
+### Where colour is never spent
+
+- **On or behind the result number.** The result panel stays `surfaceContainerLowest`.
+- **On card grounds.** Colour goes on the 4dp accent spine and the icon roundel, so product names
+  keep full contrast against white.
+- **As the sole carrier of meaning.** The `CARBS` label is text, the favourite marker is a star,
+  provenance stays worded. Unchanged rule, and it binds the new palette identically.
 
 `error` is a genuine fault state and is **not** the result red — the result is not an error.
 

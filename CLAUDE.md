@@ -1208,6 +1208,660 @@ everything. The misplacement is cosmetic and was left alone with a note in the c
 **Stage deletions with the commit they belong to, and do not rewrite history to fix a tidy-ness
 problem.**
 
+## UI refresh: colourful chrome, opaque bars (2026-09-04) — still 1.0.3 / versionCode 4, READ FIRST
+
+A UI/UX pass, plus a window-configuration fix the owner asked for. **Nothing about the
+calculation, the schema, migrations, the §10 lookup priority, barcode detection or any OCR
+recognition rule changed** — no threshold moved and no parser rule was relaxed. Still
+`versionCode 4`, nothing built as a release, nothing uploaded.
+
+Spec: `docs/superpowers/specs/2026-09-03-ui-refresh-design.md`.
+Plan: `docs/superpowers/plans/2026-09-03-ui-refresh.md`.
+Branch: **`ui-refresh-2026-09-03`**, off `main` — `main` is untouched.
+
+### The system bars: why the obvious fix would have shipped broken
+
+The app drew edge-to-edge, so the cream background showed behind both system bars. The
+instinctive fix — set `android:statusBarColor`/`navigationBarColor` to black and drop
+`enableEdgeToEdge()` — **would have looked correct on the emulator and failed on a current
+phone.** `targetSdk` is 36, and from Android 15 (API 35) the platform enforces edge-to-edge and
+treats both attributes as **deprecated no-ops**.
+
+`SystemBarScrim` therefore paints opaque black bands in Compose, drawn once at the root of
+`JustTheCarbsTheme` *after* `content()` — before it, every screen's own background would cover it
+and the fix would silently do nothing. Bar icons are now pinned **light unconditionally**: the
+ground behind them is a known constant, so the old theme-tracking inversion would render them
+black-on-black in Light mode. That is a real behaviour change — in Light mode the bars were
+previously cream with dark icons.
+
+**`OnboardingScreen` was the one screen in the app with no inset padding at all**, so its Skip
+button clipped under the now-opaque bar. My own spec asserted "every screen already applies its
+own inset padding"; that was wrong, and this is the correction. Padding goes on the content
+`Column`, not the root `Box`, so the coloured background still bleeds to the edges. All 12
+`*Screen.kt` files were then audited programmatically — onboarding was the only gap.
+
+### The luminance rule is what lets the app be colourful
+
+Six accents were added (teal, violet, green, magenta, indigo, amber). The safety argument is not
+"we were careful", it is arithmetic:
+
+> Result red `#D42F2F` has relative luminance **0.162**. Every accent is *darker* — teal 0.142,
+> green 0.159, magenta 0.124, violet 0.098, amber 0.098, indigo 0.083 — so it **recedes behind**
+> the carbohydrate figure instead of competing with it.
+
+`AccentRecessionTest` pins that over the whole palette in both schemes; `ContrastTest` pins every
+accent at ≥4.5:1 on every surface it is drawn on, computed from the live tokens.
+
+**The rule earned its place before it shipped.** The dark accents were first drafted as ordinary
+bright tints (`#5EEAD4`, `#C4B5FD`, `#86EFAC` …) — the values any dark theme reaches for.
+Computed, **all six failed**: `#5EEAD4` measures 0.660 against the dark result red's 0.366,
+nearly twice as bright as the number it must not out-shout. Nothing about those swatches looked
+wrong. The shipped dark values are the brightest of each hue that still recedes, found by search.
+
+**`DESIGN.md`'s colour rationale was rewritten**, not patched. It said the palette was
+near-monochrome *because* colour competes with the result; that is no longer what the app does,
+and leaving it would have the next reader treat a measured guarantee as a style preference. Its
+core-role table was also **already stale independently of this pass** — it listed the original
+handoff `#2F8FE0`/`#FF5C5C` rather than the measured `#1B6FBF`/`#D42F2F` that ship.
+
+### Eleven hand-rolled top bars became one
+
+Measured before the change: **zero** uses of `TopAppBar`. Eleven screens each built their own
+title `Row`, and they had drifted — `titleLarge` on Manual Entry and Settings, `titleMedium` on
+Meal and Search, `headlineMedium` on Home. `JtcTopBar` replaces four of them (Home keeps its own:
+its title is a brand wordmark and it has no back affordance, so folding it in would need a
+`destination == HOME` special case inside a component whose purpose is having none).
+
+### Home already knew the answer and was whispering it
+
+`rememberedCarbs()` already resolved the exact carbohydrate figure for every recent product. It
+was rendered as `bodyMedium` in `onSurfaceVariant` inside a single grey line — supporting text at
+the same weight as the portion label. For a returning user the number they came for was on
+screen, correct, and styled as metadata. It now has its own right-aligned column in the result
+red under a `CARBS` label, still following `settings.resultStyle` so Recents and the calculator
+cannot disagree.
+
+### The scan wait: the staged progress list was measured and NOT built
+
+The plan asked for staged progress during recognition. **Step 1 was a discovery step and it came
+back negative**, which is a successful outcome of that step rather than a shortfall:
+`LabelAnalyzer.analyzeStillRetaining` takes a **single `onComplete` callback**, and the scanner
+has exactly three `captureState` transitions. Between shutter and result there is **one**
+observable transition and no honest way to report thirds of it. Inventing stages on a timer would
+claim knowledge the app does not have, on the screen whose output someone doses insulin from.
+
+What *was* built is free: the **frozen capture now replaces the live preview** while recognition
+runs. Previously the user watched a live feed of wherever the phone had drifted for the
+323–1974 ms ML Kit takes, while the app read a photo already taken. Loaded through Coil so the
+8 MP JPEG decodes off-thread and does not compete for CPU with the pass being waited on.
+
+**That change is NOT committed.** `LabelScannerScreen.kt` carries ~325 lines of a prior session's
+uncommitted OCR work, against ~45 of mine; committing it would bury substantial safety-critical
+code under a UI commit and misattribute it. It builds, it is verified on the device, and it
+travels with whoever commits that session. Do not `git checkout` that file without reading this.
+
+### Evidence retention 12 to 35 (owner request)
+
+`ScanEvidenceRecorder.MAX_RETAINED`. A §32-style session runs three captures across several
+packages — nine for that gate alone — and at 12 the earliest bundles were pruned before the
+session ended. The cost is disk: each capture keeps an untouched 8 MP `capture.jpg` plus a decoded
+`passA.png`, so 35 is ~350 MB in `cacheDir`. Acceptable **only** because this is debug-only.
+
+### Verified
+
+JVM **1525/1525** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from JUnit XML — up
+from 1519 by the six new palette tests). Lint **exit 0**, 0 errors, 23 findings, **0 unused
+resources**; every finding is in a file this pass never touched.
+
+Instrumented, counted from Gradle's progress lines: `HomeScreenTest` **23/23** (up from 21),
+`MealScreenTest` 19/19, `SearchScreenTest` 29/29, `SettingsScreenTest` 4/4, `JtcTopBarTest` 3/3 —
+**75/75 in one combined run**, 0 skipped, 0 failed. `MealScreenTest` and `SearchScreenTest` were
+each run three times, per this file's standing warning about the soft-keyboard artefact.
+
+Release **builds**, and its R8 barriers were re-checked on that build: `ScanEvidenceRecorder` and
+`OcrDiagnosticsLogger` map to `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`, `OcrDiagnosticsReport`
+and `ScanTrace` are absent entirely; `ScaleAmbiguity`, `RecoveryCandidates`, `CarbCandidate` and
+`UnitMarkerFilter` are retained as real classes. **The retention bump cannot reach a shipped
+build.**
+
+**Negative control:** setting both `AccentPalette.kt`'s `LightTeal` and its test mirror to a
+plausible bright teal (`#5EEAD4`) fails `AccentRecessionTest` with *"teal luminance 0.660 is not
+below the result red's 0.162"*. Restored byte-identically.
+
+### Six defects that only a device screenshot found
+
+Every one passed the whole suite. Nothing in it looks at where a control sits relative to a
+screen edge, a corner radius, or a system bar.
+
+| Defect | Where |
+|---|---|
+| Skip clipped under the status bar | `OnboardingScreen` — the only screen with no insets |
+| Accent spine 8dp from the screen edge, read as a clipped artefact | `JtcTopBar` |
+| Spine filled the row height, ends landing arbitrarily | `JtcTopBar` |
+| Back arrow tinted with the destination accent — on Settings a muted neutral, making the only way off the screen its faintest element | `JtcTopBar` |
+| No space beneath the bar; "Appearance" touched it | `JtcTopBar` |
+| Card spine flush against the 18dp corner radius | `RecentCard` |
+
+Plus a real ordering bug: `SettingsScreen` applied `navigationBarsPadding()` **after**
+`verticalScroll`, so it padded the scrolling *content* rather than the viewport and the last row
+came to rest under the navigation bar. Same trap this file already records for the portion zone's
+fade modifier. Audited every screen — Settings was the only instance.
+
+**Four of those six are defects in the spec I wrote**, not in the implementation. The
+implementers built what was specified.
+
+### NOT verified
+
+**Nothing in this pass has been seen on physical hardware.** Everything above is JVM plus the
+`carbscan` emulator (API 36), including all the screenshots.
+
+**The nine-photograph OCR corpus was not re-run.** No OCR rule changed, and the corpus fails
+17/39 on this emulator at clean HEAD anyway — an emulator run would measure the emulator. That
+leaves it unverified against this diff, and saying so is an argument rather than a measurement.
+
+**Colour appearance is verified by eye; only contrast and recession are verified by test.** The
+opaque bars were checked in Light and Dark, gesture and three-button navigation, on **one**
+device at **one** API level. Behaviour on API 29–34 — where the XML attributes still apply and
+the scrim is belt-and-braces — has not been compared on real hardware.
+
+## Surgical OCR correction pass (2026-09-03, eleventh pass) — still 1.0.3 / versionCode 4, READ FIRST
+
+Three defects found by auditing the tenth pass's own work, each reproduced by a test that **fails on
+the pre-fix tree** before the fix. Nothing about the calculation, the schema, migrations, the §10
+lookup priority, barcode detection or any OCR *recognition* rule changed — no threshold moved and no
+parser rule was relaxed. Every fix adds a refusal, moves a translation to a boundary, or deletes a
+duplicated policy. Still `versionCode 4`, nothing built as a release, nothing uploaded, **no commit**.
+
+HEAD is `c57aee0`, `main`, unchanged: no commits, no resets, no history rewrites. The pass was made
+on the inherited dirty worktree and **five files carrying pre-existing changes were deliberately not
+touched** — `RecoveryCandidates.kt`, `ScaleAmbiguity.kt`, `strings.xml`, `docs/manual-qa.md` and
+`CLAUDE.md`. (That property was verified by mtime at the time. It no longer holds for the two doc
+files: a later session edited them, and this section is that transcription.)
+
+### P1a — the scale rule could be bypassed by corroboration
+
+`ReadingEligibility` tested corroboration **first** and returned eligible on it outright, on the
+stated ground that agreement between two distinct recognition runs settles scale "by a route that is
+not scale-invariant". **That ground is false for both routes this app has, and the falsity is
+arithmetic, not a judgement call.** `CrossColumnRatioCheck` compares a *ratio*, which is unchanged
+when both of its terms are scaled together; `DISTINCT_OCR_AGREEMENT` compares two recognitions of the
+same pixels, which can lose the same separator twice. Neither observes absolute scale, so neither can
+vouch for it.
+
+A demonstrated `ScaleAmbiguity.Verdict.Ambiguous` is therefore checked **before** corroboration. That
+is a refusal added, never one removed. Second half of the same defect: `mayAdvanceVerified` never
+consulted eligibility at all, so the gate that decides *terminal* advancement was not asking the
+question — and its `document` is now a required parameter rather than a defaulted one, so a caller
+cannot silently omit the evidence the rule needs.
+
+### The `41` conflict resolves on evidence already in the codebase — nothing is superseded
+
+The obvious worry about the reordering is that it breaks the proven `41 g / 100 ml` integer case,
+which is admitted precisely *because* two distinct runs agreed. It does not, and the reason is a
+distinction `ScaleAmbiguity` already draws:
+
+```
+FORTYONE scale=Unsupported(41g, "no paired value…")
+FORTYONE verification=DISTINCT_OCR_AGREEMENT
+FORTYONE action=AUTO_ADVANCE
+```
+
+A **lone** separatorless integer is `Unsupported`; only a separatorless **pair** is `Ambiguous`. The
+new ordering refuses *demonstrated* ambiguity, so corroboration still admits 41. What no longer
+passes is a separatorless pair that two runs happen to agree on — which is the truffle label, and is
+the point. **QA rows 29.12 and 30.18 stand unchanged**; no superseding note was written and **no
+heuristic was invented** to separate the two cases.
+
+### P1b — Strategy B's geometry travelled into a full-frame world unchanged
+
+`SELECTED_REGION_OCR` recognises a **crop** of the source bitmap, so its element boxes and its
+`width`/`height` are crop-local. Every consumer treated them as full-frame. The measured signature is
+unambiguous: the highlighted box was short by **exactly the crop origin**.
+
+`SelectedRegionCrop.toSourceSpace` had existed with tests since the crop pass was written — the
+translation was never missing, it simply was not called. `RecognitionEvidence` now carries `crop`
+alongside a `sourceSpaceGeometry` accessor, and that is **the single translation boundary**: the
+`document` stays crop-local, every consumer states which space it wants, and `VerificationScreen`
+translates once, at presentation. For every pass but Strategy B `crop` is null and the geometry
+returns unchanged, so nothing else moves.
+
+### P2 — the evidence document was the unfiltered one
+
+The filtered report was paired with the **whole-frame** document, so a neighbouring panel's `62 g`
+was visible to stages reasoning about "this table". `SelectedTableReader.Result` now exposes the
+filtered `document` and `SelectedTableResolution` pairs the two — one functional line each.
+
+### One `when`, replacing a policy that was written twice
+
+`LabelScannerScreen` restated the presentation policy imperatively alongside `ScanPresentationDecision`.
+It is now a single `when (decision)`, with `CROP_FALLBACK` added as an explicit `Action` and
+`releasesCapture` made exhaustive. This is the same structural argument the eighth and ninth sessions
+made twice over: **a rule no test can reach is a rule that can be silently reverted**, and a policy
+duplicated between a pure object and a composable that binds a camera is reachable in only one of the
+two places.
+
+### The null-basis `PER_100_G` was recommended for removal and is KEPT — measured unreachable
+
+An audit recommended deleting the guard. Measured instead: `LabelReading.Confident` carries
+`require(candidate.basis != null)`, so the state is **unconstructible** and the guard is already
+unreachable. No production change was made, and the invariant is pinned by `NullBasisProposalTest`
+(4 cases) rather than the guard being deleted. **Deleting a guard on the strength of an invariant
+held in another file is how that invariant's absence becomes invisible** — the same reasoning that
+keeps `ServingSizeParser.parse` alive with no production caller.
+
+### Verified
+
+JVM **1481/1481** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 137 JUnit XML files
+— up from 1441). Lint **exit 0, 0 errors, 22 warnings**, unused resources **0** — baseline unchanged.
+`assembleDebug` successful; `androidTest` Kotlin compiles. `git diff --check` clean (LF/CRLF notices
+only).
+
+Instrumented on the `carbscan` AVD: **134 green** — `UnverifiedProposalLifecycleTest` 11,
+`AssistedReadingScreenTest` 27, `ProductScreenTest` 32, `QuickCalculationScreenTest` 14,
+`HomeScreenTest` 21, `MealScreenTest` 19, migrations 10.
+
+Debug APK **89,848,583 bytes**, SHA-256
+`f39656454686aed3c35c2f34d2348847d2decde9c0444304aac3520d4a45d72a`, `versionCode=4` / `1.0.3-debug`;
+permissions unchanged (CAMERA, INTERNET, ACCESS_NETWORK_STATE). No AAB, no release build, no upload.
+
+**Pre-fix failures, which is what makes the coverage non-vacuous:** P1a `ScaleInvarianceTest` 3/8
+failed (now 9/9) plus 2 further failures once the advance gate was reached; P1b
+`StrategyBProvenanceTest` 2/8 failed with the box short by exactly the crop origin (now 8/8); P2
+`FilteredEvidenceDocumentTest` 2/4 failed with the other panel's `62 g` visible (now 4/4).
+`ScanTransitionTest` (6) and `ScanEvidenceDiagnosticsTest` (7) are new and green.
+
+**Three negative controls**, each restored byte-identically and re-verified green: corroboration-first
+ordering restored fails **4**; the advance gate left unguarded fails **3**; the filtered document
+mis-paired fails **2**.
+
+### NOT verified, and this is the gate
+
+**Everything above is JVM plus the `carbscan` emulator** (`ro.kernel.qemu=1`, `ro.hardware=ranchu`),
+whose virtual camera cannot produce a nutrition table — so the *automatic* accept path was not
+exercised end to end and **no physical-QA checkbox was ticked**.
+
+**The nine-photograph OCR corpus was NOT re-run against this diff**, deliberately: it fails 17/39 on
+this emulator at clean `c57aee0` too (CLAUDE.md records **39/39 on real hardware**), so an emulator
+run would measure the emulator rather than these changes. That leaves the corpus unverified against
+this diff, and saying so is an argument rather than a measurement until a device is attached.
+
+`docs/manual-qa.md` **§32** is the gate — three green-drink, three white-table and three red-label
+captures on hardware, cold and warm timings reported separately, automatic-correct /
+confirmed-correct / focused-entry / wrong-value counted separately, and **zero** wrong values through
+any route. **Pin the APK hash above to that device run.** §§26–31 remain open alongside it.
+
+## One eligibility decision (2026-09-03, tenth pass) — still 1.0.3 / versionCode 4, READ FIRST
+
+Analysis pass over the **correct** ninth-session archive (`scan-evidence (10).zip`, SHA-256
+`3391e49c…f382c43`, verified). The nine bundles already committed under `docs/Scan Evidence 03-09/`
+were checked file-by-file against it and are **byte-identical**, so no fixture rested on the stale
+archive. Retention and export were not investigated or changed.
+
+Nothing about the calculation, the schema, migrations, the §10 lookup priority, barcode detection or
+any OCR *recognition* rule changed. No threshold moved and no parser rule was relaxed. Still
+`versionCode 4`, nothing built as a release, nothing uploaded.
+
+### The green drink's `0.5`: it was the HEADER, not the value or the confidence
+
+`084951-833` records `resolver.verdict: Nothing` where the white table records `NeedsVerification`,
+with both showing `RECOVERY`. The bundles predate `strategyB.txt`, so this was traced through the
+real resolver rather than read off the status text — and the cause is not the one the text suggests.
+
+| capture | header as recognised | columns | statedBasis | Pass A resolver |
+|---|---|---|---|---|
+| green `084951-833` | `PER: 100 m \| 25d6` — the `l` lost | **0** | null | `Nothing` |
+| white `085019-213` | `… per 100g` | 1 (`PER_100_G`) | `PER_100_G` | `NeedsVerification` |
+
+**The green drink's value cell was never the problem.** Pass A reads `0.5g` — unit and separator
+intact — so `UnitAccompanimentPolicy` never declined it. What Pass A could not do is *place* it: ML
+Kit read `100 ml` as `100` + `m`, and `m` is not a unit spelling (**and must never become one — a
+bare `m` is metres, and that list is shared with `ServingSizeParser`**). So `ColumnClassifier`
+resolved zero columns, `0.5` was rejected with `no column`, no pass was confident, and
+`EvidenceResolver` returned `Nothing` from its `confident.isEmpty()` branch.
+
+Measured on the real classifier: with `m`, `columns=0`; with `ml`, `columns=1`
+(`PER_100_ML @ x=1163.5`) and the interpreter reads `Confident 0.5/PER_100_ML` — the device's
+Strategy B verdict exactly. So Strategy B genuinely established the value, its unit, the
+carbohydrate row and the `/100 ml` basis, and the outcome is **deterministic**:
+`NeedsVerification` / `CONFIRM_ON_CAPTURE`, pinned by an exact assertion. "Proposal or honest
+refusal" is not an acceptable expected result and is not what the test allows.
+
+### A tap says which row, never which decimal scale
+
+Recovery offered `12 g / 100 g` for a package printing `7,2 g`. The old rule was an explicit
+asymmetry — the automatic path refused `ScaleAmbiguity.Verdict.Unsupported`, recovery refused only
+`Ambiguous` — justified by "a human is pointing at a number they can see". That is half right, and
+the wrong half is the release blocker: **a tap establishes which row the user meant and nothing
+about whether the recognizer read the digits correctly.** A recovery choice is still a value
+proposed by the app.
+
+**The naive symmetry was measured and is wrong.** Refusing `Unsupported` in recovery deletes the
+Korean sauce's legitimate `6 g / 18 g serving` — the two are indistinguishable to `ScaleAmbiguity`,
+both bare separatorless integers with nothing to pair against.
+
+What separates them is already a type in this codebase, `CarbBasis`:
+
+| | value | basis | how established |
+|---|---|---|---|
+| Korean sauce | `6` | `PerQuantity(18 g serving)` | the label **printed** `Serv. size: 1 Tbsp (18 g)` |
+| red Lidl | `12` | `PerHundred` | **inferred** from a column the app resolved |
+
+New `ReadingEligibility` (pure) is the single decision both surfaces consult, in evidence-strength
+order: **corroboration → the token's own separator → a declared serving basis**, else refuse.
+
+**The corroboration-first ordering is load-bearing and cost one wrong attempt.** Putting `Ambiguous`
+first broke `a verified reading is never made ambiguous` — `20260902-131357-353` reads `41g`,
+integer-like, and is **correct**, agreed by distinct runs. A reading corroborated by a route that is
+not scale-invariant has its scale settled before this rule is asked.
+
+Measured blast radius across **all 45 committed fixtures**: exactly **one** candidate is now
+refused — the eighth session's `redLabelTwelve`, `'12g' -> 12 g / 100 g`. Every Korean-sauce offer
+and every `Established` offer is untouched.
+
+### The scanner veto is now JVM-testable — the blind spot is closed
+
+Reverting the ninth session's veto previously failed **zero** JVM tests, and the reason was
+structural: it was a local `val` inside a composable that binds a camera, unreachable from the JVM —
+the same shape as the eighth session's P0 (an anonymous `else` in the same file). **A rule no test
+can reach is a rule that can be silently reverted.**
+
+`ScanPresentationDecision` (pure) is that rule as a value, and the scanner asks it rather than
+restating it. Its `Action` is recorded in the bundle beside the branch that ran, so a divergence
+between the pure decision and the imperative UI prints in evidence instead of being argued about.
+
+### Three negative controls, each restored byte-identically and re-verified green
+
+| control disabled | failures | what it proves |
+|---|---|---|
+| recovery reverted to `Ambiguous`-only | **2** — incl. `the opening recovery list must be empty, was [12 g / 100 g]` | the leak is real and the fix closes it |
+| veto reverted to `mayAdvance` | **1** — `expected:<CONFIRM_ON_CAPTURE> but was:<RECOVERY>` | the blind spot is genuinely closed |
+| declared-serving admission removed | **10** across 6 classes, 4 sessions | the Korean sauce rests on exactly that distinction |
+
+### Verified
+
+JVM **1441/1441** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 131 JUnit XML
+files — up from 1417). Lint **exit 0, 0 errors, 22 warnings**, unused resources **0** — unchanged
+from the ninth-session baseline. Instrumented sources compile; **136 green** on the `carbscan` AVD:
+`UnverifiedProposalLifecycleTest` 11, `AssistedReadingScreenTest` 27, `ProductScreenTest` 32,
+`QuickCalculationScreenTest` 14, `HomeScreenTest` 21, `MealScreenTest` 19, `ScanPolishScreenTest` 2,
+migrations 10.
+
+Debug APK **89,846,131 bytes**, SHA-256
+`48adb3a71614a10dd7d477e7ebdc167ec74aca2482c7bd3f794aad6be237224f`, `versionCode=4` /
+`1.0.3-debug` read from the APK with `aapt2 dump badging`; permissions unchanged.
+
+Minified release **builds** (66,885,330 bytes) and its R8 barriers were re-checked on that build:
+`ScanEvidenceRecorder`/`OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`;
+`ScanEvidenceExport`/`OcrDiagnosticsReport`/`ScanTrace`/`ZipIntegrity` absent entirely;
+`ScaleAmbiguity`, `RecoveryCandidates`, `DisputedCandidates`, `CrossColumnRatioCheck`,
+`NutrientRowSegments`, `CarbCandidate`, `UnitMarkerFilter`, `CandidateProvenance` retained as real
+classes. Release manifest: CAMERA, INTERNET, ACCESS_NETWORK_STATE, **no FileProvider**.
+
+**`ReadingEligibility` and `ScanPresentationDecision` read as removed/absent, and both are the
+inlined-not-dropped case — checked behaviourally, not assumed.** `ReadingEligibility$Verdict`,
+`$Verdict$Eligible`, `$Verdict$Refused` and `ScanPresentationDecision$Action` all survive as real
+classes, and **both eligibility reason strings are present in the shipped release DEX**. Do not read
+those markers as a safety rule shipping disabled.
+
+### NOT verified, and this is the gate
+
+**No physical device was attached** (`ro.kernel.qemu=1`, `ro.hardware=ranchu`,
+`ro.build.characteristics=emulator`) — everything above is JVM plus the `carbscan` emulator, whose
+virtual camera cannot produce a nutrition table, so the *automatic* accept path was not exercised
+end to end. **No device timing was measured**, and the ninth session's unexplained 323–1974 ms ML Kit
+spread is still unexplained.
+
+**The verdict is NOT release-ready.** The supplied bundles were produced by the previous APK, so they
+establish what was wrong and never that it is fixed. `docs/manual-qa.md` **§32** is the gate: three
+green-drink, three white-table and three red-label captures, cold and warm timings reported
+separately, with automatic-correct / confirmed-correct / focused-entry / wrong-value counted
+**separately** — and **zero** wrong values shown or offered through any route. §§26–31 remain open
+alongside it.
+
+## Discarded correct readings (2026-09-03, ninth phone session) — still 1.0.3 / versionCode 4, READ FIRST
+
+The ninth session (`docs/Scan Evidence 03-09/`, nine bundles `084935`–`085128`, with
+`Screen_Recording_20260903_085136`) produced **no wrong value at all** — the eighth session's `12`
+proposal did not recur, which is the P0 fix holding on the device. It exposed the opposite failure:
+on three captures the app **held a correct reading and showed the user nothing**.
+
+Nothing about the calculation, the schema, migrations, the §10 lookup priority, barcode detection or
+any OCR *recognition* rule changed. No threshold moved and no parser rule was relaxed. Still
+`versionCode 4`, nothing built as a release, nothing uploaded.
+
+### A correct reading was discarded by the automatic veto — and it is NOT a regression
+
+| bundle | prints | Strategy B read | app showed |
+|---|---|---|---|
+| `084951-833` | `0,5 g / 100 ml` | `Confident 0.5/PER_100_ML` | recovery, `0.5g` suppressed |
+| `085019-213` | `2,8 g / 100 g` | `Confident 2.8/PER_100_G` | recovery, `2.8` suppressed |
+| `085032-269` | `2,8 g / 100 g` | `Confident 2.8/PER_100_G` | recovery, `2.8` suppressed |
+
+**No stage was individually wrong.** Pass A reconstructed the white table's row correctly
+(`[TOTAL_CARBOHYDRATE] 'Koolhydraten, waarvan 2.8 9'`) and resolved its `per 100g` column — the
+printed `g` came back as a `9`, so `UnitAccompanimentPolicy` declined a unit-less value. **That
+refusal is correct and is unchanged**: the identical misread hit the *fat* row of the same capture
+(`Vetten, waarvan 4,8 9`), so it is a property of the recognition, not something a
+carbohydrate-specific rule could or should repair. Strategy B then read the row cleanly and the
+resolver correctly returned `NeedsVerification` — *one pass read this, please check it*.
+
+The scanner's automatic veto read `automatic && !AutomaticScanAdvance.mayAdvance(outcome)`, and
+everything it declined **skipped the entire outcome `when`** (`if (!declined) when …`). `mayAdvance`
+answers `false` for `NeedsVerification` — the right answer to "may this skip the confirmation", the
+wrong answer to "may this be shown at all". So the correct reading was thrown away before any branch
+could render it, and recovery then re-derived candidates from *Pass A*, where the value had lost its
+unit, and suppressed it.
+
+**Proven pre-existing**: `git show c57aee0` has the identical `val declined` line, the identical
+`if (!declined)` veto and a byte-identical `mayAdvance`. Do not record this as caused by the
+eighth-session patch.
+
+### The fix: widen what may be *proposed*, never what may be *accepted*
+
+`AutomaticScanAdvance.confidentReading(outcome)` returns the confident reading from **either**
+outcome type that can carry one, so one scale rule governs both. `mayPresentAutomatically` replaces
+the veto's `mayAdvance` call and asks *"is there anything here worth showing on the photograph?"*.
+
+**The safety invariant holds by construction**: `mayAdvanceVerified` still delegates to `mayAdvance`,
+which refuses `NeedsVerification`, so that outcome can never reach `Presentation.Advance`. Pinned by
+`an uncorroborated reading may be proposed but never advanced`.
+
+**The `NeedsVerification` branch now applies the scale rule too.** It became reachable from the
+*automatic* path in this pass, and without that check the red label's `Confident 12.0` — unverified,
+no decimal separator, nothing on its row to pair with — would be proposed automatically. It is not:
+the verdict is `Unsupported`, so it routes to focused entry with the digits withheld.
+
+Ambiguity, conflict and a failed read **still decline to the crop screen**, because for those the
+rectangle genuinely is the user's lever. A confident reading is not improved by cropping.
+
+### The evidence bundle could not answer the question it was collected for
+
+`diagnostics.txt` records **Pass A's** document. Strategy B's verdict was recorded and **its document
+never was** — so a session where the two passes disagreed could not be replayed, which is exactly
+this session's shape. Diagnosis required reconstructing Strategy B's document from Pass A's plus the
+one difference the verdict implied (`NinthSessionStrategyBDocuments`, asserted against the real
+interpreter so it cannot pass for the wrong reason). `strategyB.txt` is now written in the same
+format as `diagnostics.txt`, so the next session replays with the existing tooling.
+
+### The stale ZIP was a supply mistake, not a defect — do not "fix" the recorder for it
+
+`scan-evidence (9)(2).zip` was byte-identical to `(9)(1)` (SHA-256 `5d352537…33a4f7`), holding the
+**eighth** session's bundles. `prune()` keeps `MAX_RETAINED - 1` = 11 captures, and the fresh export
+contained exactly the nine new bundles and none of the eight old ones — so retention and export both
+worked. The first archive was simply exported before the new captures existed.
+
+### Verified
+
+JVM **1417/1417** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 129 JUnit XML files
+— up from 1395). Lint **exit 0, 0 errors, 22 warnings**, unused resources **0**. Instrumented on the
+`carbscan` AVD: **136 green** — `UnverifiedProposalLifecycleTest` 11 (3 new),
+`AssistedReadingScreenTest` 27, `ProductScreenTest` 32, `HomeScreenTest` 21, `MealScreenTest` 19,
+`QuickCalculationScreenTest` 14, migrations 10, `ScanPolishScreenTest` 2.
+
+**Two negative controls**, both restored byte-identically and re-verified green: making
+`confidentReading` return null for `NeedsVerification` fails exactly the 2 tests that assert the fix
+and nothing else; reverting the scanner veto to `mayAdvance` fails **nothing in the entire JVM
+suite**, which is the same blind spot that let the eighth session's P0 ship and is why the
+instrumented lifecycle test exists.
+
+### The OCR corpus fails 17/39 on this emulator — measured, not assumed
+
+A clean-`c57aee0` control build (APK SHA-256 `73cd91f0…d5c`, forced with `--rerun-tasks` because
+Gradle reported `compileDebugKotlin UP-TO-DATE` after the revert) fails the **identical 17 by name**,
+compared programmatically with zero differences. The emulator's ML Kit reads the committed
+photographs far worse than a device does. CLAUDE.md records this corpus as **39/39 on real
+hardware**. Not a regression, and not device evidence either.
+
+### NOT verified, and this is the gate
+
+**No physical device was attached** (`ro.kernel.qemu=1`, `ro.hardware=ranchu`), so the §31c
+reliability gate — three captures per clear label — has **not been run**, and nothing in this pass
+has been seen on hardware.
+
+**Device timing is unexplained and was not re-measured.** This session's bundles record ML Kit at
+**323–1974 ms** and `scan` at **487–2458 ms**, against the eighth session's 379–638 ms on the same
+device and app version. Two captures exceeded 2 s. Recorded rather than assumed away; §31e is where
+it is measured.
+
+`docs/manual-qa.md` **§31** is the gate. Rows **31.1–31.6** decide whether the discarded readings
+actually reach the user, **31.9/31.10** whether the red label's `12` stays out, and **31c** is the
+reliability table that decides release status. §§26–30 remain open alongside it.
+
+## The blind confirmation (2026-09-02, eighth phone session) — still 1.0.3 / versionCode 4, READ FIRST
+
+The eighth session (`docs/Scan Evidence 5th test/`, eight captures `212902`–`213026`, with
+`Screen_Recording_20260902_213037`) produced the first **wrong value offered for one-tap
+confirmation with nothing on screen to check it against**. Two captures correct, five
+recovery/conflict/NotFound, one wrong proposal.
+
+Nothing about the calculation, the schema, migrations, the §10 lookup priority, barcode detection or
+any OCR *recognition* rule changed. No threshold moved and no parser rule was relaxed — both fixes
+add a refusal or move a screen. Still `versionCode 4`, nothing built as a release, nothing uploaded.
+
+### `7,2` read as `12`, and two independent defects let it reach the user
+
+A red Lidl label prints `7,2 g / 100 g`. `20260902-213005-691` records the whole failure in the
+app's own words:
+
+```
+automatic-verification: NONE — only one recognition run (PASS_A)
+strategy B      : RAN_NO_READING
+scale evidence  : established (no paired value in this clause to share a scale with)
+final UI action : CONFIRM
+```
+
+**Defect 1 — absence of evidence recorded as establishment.** `ScaleAmbiguity.check` could only
+*demonstrate* ambiguity from a **pair** of separatorless values, and returned
+`Established("no paired value…")` for a lone one — a sentence that says *no evidence* while the type
+says *evidence*. `AutomaticScanAdvance.mayConfirm` then read `!is Ambiguous` as permission. The
+recognizer had fused the `7,` into the Spanish nutrient word (`carbono2g` on two other captures of
+the same package), leaving one bare number on the row, **so the worse the recognition, the more
+confident the gate became.**
+
+The verdict is now three-valued — `Established` / `Ambiguous` / **`Unsupported`** — and `mayConfirm`
+requires *positive* evidence (`is Established`) rather than absence of ambiguity. `Unsupported` is
+**not a refusal on its own**: a second recognition run agreeing still confirms, which is what keeps
+the proven `41 g / 100 ml` integer case working.
+
+**The asymmetry with `RecoveryCandidates` is deliberate and measured.** Recovery still suppresses
+only `Ambiguous`, because there a human is pointing at a number they can see. Extending it to
+`Unsupported` was measured across every committed session fixture and **deletes the Korean sauce's
+`6 g / 18 g serving`** (third, fourth *and* fifth sessions) — a control that must keep working. Do
+not "make the two consistent" without re-running that measurement.
+
+**Defect 2 — the proposal was drawn over the live camera.** `readSelectedTable`'s `Resolved` branch
+called `releaseCapture(captured)` as its **first statement**, before choosing between advancing,
+confirming and recovering. So the confirmation branch inherited a recycled bitmap and fell back to
+the ordinary `ProposalCard` over the live preview. The recording (≈00:01:12) shows `12 g / 100 g`
+with a blue *Confirm* button over an **empty wooden table** — the package already moved away. "The
+user still had to confirm" is no defence when there is nothing to confirm against.
+
+The capture is now released **only on terminal transitions** (automatic advance, explicit
+acceptance, retake, close). An unverified `Resolved` reading routes to the existing
+`VerificationScreen` — the same question `NeedsVerification` already asked — which gained an
+**enlarged close-up of the candidate's own row**, a highlight on the full photograph, and the row's
+recognised text (`From: Hidratos de carbono 12g`). A 1684x3648 capture fitted to a phone viewport
+renders an 80 px row at a few pixels; without the close-up the photograph is present but not useful.
+
+`AutomaticScanAdvance.Presentation` (`Advance` / `ConfirmOnCapture` / `Recover` / `NotApplicable`)
+makes the branch a value, so the invariant **only `Advance` is terminal** is unit-testable. The P0
+was an anonymous `else` inside a composable that binds a real camera, which is exactly why nothing
+reached it.
+
+### P1: preprocessing was measured and is NOT shipped — do not retry it from the source
+
+`7.2` survives in **none** of the four red-label recognitions (`12g`, `724`, twice `carbono2g`); the
+only `7` tokens anywhere are the postcode `DE-74167` and a batch code. So no parser rule can derive
+it honestly, and the only legitimate route was a better image.
+
+Seven variants x four captures = **28 measurements** on device through the production
+`StillImageLoader` and real ML Kit (`RedLabelAcquisitionExperimentTest`). **`7.2` was recovered zero
+times, and every variant that changed an outcome made it worse:**
+
+| variant | capture | outcome |
+|---|---|---|
+| baseline | all four | `NotFound` (correct — the value is not there) |
+| upscale-1.5x | 213014-298 | **`Confident 72.0`** — 10x the printed figure |
+| upscale-2x | 213026-546 | **`Confident 72.0`** — 10x |
+| grayscale | 213014-298 | **`Confident 12.0`** |
+| grayscale-upscale-2x | 213014-298 / 213026-546 | **`Confident 29.0`** / **`Confident 72.0`** |
+| grayscale-contrast, contrast-1.4x | all four | `NotFound` |
+
+Upscaling resamples the decimal separator away — the same `(g)` -> `(9)` mechanism
+`SelectedRegionRecognizer` already refuses to rely on. Three of seven variants turn an honest
+`NotFound` into a confident tenfold error, which is the worst outcome this app can produce. **The
+shipped answer for this label is the P0 safety fix plus focused entry.** Re-run that class before
+proposing preprocessing again.
+
+### Verified
+
+JVM **1395/1395** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 126 JUnit XML
+files — up from 1363). Lint **exit 0, 0 errors, 22 warnings**, unused resources **0**. Debug APK
+**89,826,028 bytes**, SHA-256 `C8FC97D953A58375B58802A35ECF77519D0F79A2BBA291656A510A42A51808B1`,
+`versionCode=4` / `1.0.3-debug` read from the APK with `aapt2 dump badging`; permissions unchanged.
+
+Instrumented on the `carbscan` AVD: **133 green** — `AssistedReadingScreenTest`,
+`UnverifiedProposalLifecycleTest` (8, new), `ScanPolishScreenTest`, `QuickCalculationScreenTest`,
+`ProductScreenTest` (83 together), plus migrations, `MealScreenTest` and `HomeScreenTest` (50).
+
+Minified release **builds** (66,885,330 bytes) and its R8 barriers were re-checked on that build:
+`ScanEvidenceRecorder`/`OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`;
+`ScanEvidenceExport`/`OcrDiagnosticsReport`/`ScanTrace`/`ZipIntegrity` absent entirely;
+`ScaleAmbiguity`, `DisputedCandidates`, `RecoveryCandidates`, `CrossColumnRatioCheck`,
+`NutrientRowSegments`, `CarbCandidate`, `UnitMarkerFilter`, `CandidateProvenance` retained as real
+classes. `AutomaticScanAdvance` reads as absent and is again the **inlined-not-dropped** case —
+checked behaviourally, not assumed: `AutomaticScanAdvance$Presentation` survives as a real class and
+the four new verification strings are present in the shipped release APK.
+
+**Two negative controls**, both restored green afterwards: reverting `mayConfirm`'s polarity fails
+exactly the P0 test; making the unpaired case report `Established` again fails 3.
+
+### The OCR corpus fails 17/39 on this emulator, and that is NOT this pass
+
+Run on the `carbscan` AVD, `RealImageOcrTest` + `ProductionStillPipelineTest` +
+`SelectedTableProductionTest` + `EvidencePipelineProductionTest` give **39 tests, 17 failures**.
+
+**A `git worktree` control at clean `c57aee0` fails the identical 17 by name** — compared
+programmatically, the sets are identical with zero differences. The emulator's ML Kit reads the
+committed photographs far worse than a device does (`Koolhydraten` → `nlhioonorate`, `Glucides` →
+`Gucides`), so the corpus measures the emulator here, not the parser. CLAUDE.md records this corpus
+as **39/39 on real hardware**. Do not read these failures as a regression, and do not "fix" the
+fixtures against emulator output.
+
+### NOT verified, and this is the gate
+
+**Nothing in this pass has been seen on physical hardware.** No device was attached; everything above
+is JVM plus the `carbscan` emulator, and the emulator's virtual camera cannot produce a nutrition
+table, so the *automatic* accept path was not exercised end to end.
+
+**No device timing was measured.** The 379–638 ms figures quoted from the eighth session's bundles
+are capture-time only and predate this pass.
+
+`docs/manual-qa.md` **§30** is the gate. Row **30.1** (no capture may ever display `12 g / 100 g`),
+**30.4** (every proposal on the frozen photograph) and **30.6** (8 of 10 captures reaching a correct
+`7.2` within one confirmation, *or* an honest statement that reliability remains inadequate) are the
+rows that decide whether this is closed. §§26–29 remain open alongside it.
+
 ## The merged carbohydrate clause (2026-09-02, seventh phone session) — still 1.0.3 / versionCode 4, READ FIRST
 
 The seventh phone session (`docs/Scan Evidence 02-09 4th test/`, ten captures `141440`–`141703`
