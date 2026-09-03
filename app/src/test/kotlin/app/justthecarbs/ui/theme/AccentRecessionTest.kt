@@ -93,19 +93,25 @@ class AccentRecessionTest {
             "src/main/kotlin/app/justthecarbs/ui/theme/AccentPalette.kt",
         ).readText()
 
-        lightAccents.forEach { (name, expected) ->
-            val token = "Light" + name.replaceFirstChar { it.uppercase() }
-            val declared = Regex("""private val $token = Color\(0xFF([0-9A-Fa-f]{6})\)""")
-                .find(source)?.groupValues?.get(1)?.toInt(16)
-            assertTrue(
-                "could not find `$token` in AccentPalette.kt — rename the mirror in this test too",
-                declared != null,
-            )
-            assertTrue(
-                "$token is ${declared?.toString(16)} in AccentPalette.kt but " +
-                    "${expected.toString(16)} here",
-                declared == expected,
-            )
-        }
+        // BOTH schemes. Guarding only the light six was the original defect here: the dark
+        // accents were asserted for recession against literals that nothing tied back to
+        // `AccentPalette.kt`, so editing `DarkTeal` alone would regress the shipped app while this
+        // whole class stayed green — precisely the failure the guard exists to prevent, reproduced
+        // in the guard itself. Found by the whole-branch review.
+        (lightAccents.mapKeys { "Light" + it.key.replaceFirstChar(Char::uppercase) } +
+            darkAccents.mapKeys { "Dark" + it.key.replaceFirstChar(Char::uppercase) })
+            .forEach { (token, expected) ->
+                val declared = Regex("""private val $token = Color\(0xFF([0-9A-Fa-f]{6})\)""")
+                    .find(source)?.groupValues?.get(1)?.toInt(16)
+                assertTrue(
+                    "could not find `$token` in AccentPalette.kt — rename the mirror in this test too",
+                    declared != null,
+                )
+                assertTrue(
+                    "$token is ${declared?.toString(16)} in AccentPalette.kt but " +
+                        "${expected.toString(16)} here",
+                    declared == expected,
+                )
+            }
     }
 }
