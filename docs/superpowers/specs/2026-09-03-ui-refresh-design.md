@@ -69,6 +69,26 @@ extended palette has luminance strictly below the result red, in both light and
 dark schemes. Without it, the guarantee is a paragraph someone can contradict
 with one plausible-looking hex edit.
 
+**It earned its place before it was written.** The dark-scheme accents were
+first drafted as ordinary bright tints — `#5EEAD4`, `#C4B5FD`, `#86EFAC` and so
+on, the values any dark theme would reach for. Computed against the rule, **all
+six failed**: `#5EEAD4` measures luminance 0.660 against the dark result red's
+0.366, nearly twice as bright as the number it must not out-shout. Nothing about
+those swatches looked wrong. The shipped dark accents are instead the brightest
+colour of each hue that still recedes, found by search:
+
+| | Light | Dark |
+|---|---|---|
+| Teal | `#0F766E` | `#43B1A6` |
+| Violet | `#6D28D9` | `#A997D3` |
+| Green | `#15803D` | `#45B56E` |
+| Magenta | `#BE185D` | `#E481B3` |
+| Indigo | `#4338CA` | `#9496FF` |
+| Amber | `#92400E` | `#D49425` |
+
+Each dark value clears 4.5:1 on all three dark surfaces (night `#15140F`,
+raised `#1E1D18`, containerLow `#19180F`) and sits below 0.366 luminance.
+
 ### Where colour is spent, and where it is not
 
 **Spent on:** action-card gradients, per-destination top-bar accent spines,
