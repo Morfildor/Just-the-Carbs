@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
@@ -120,7 +121,17 @@ fun OnboardingScreen(
                 .background(foreground.copy(alpha = 0.14f), CircleShape),
         )
 
-        Column(modifier = Modifier.fillMaxSize()) {
+        // Inset padding on the CONTENT, not on the Box above it, so the coloured background and its
+        // decorative circles still bleed to the screen edges while Skip and the CTA stay clear of
+        // the system bars.
+        //
+        // This screen was the one place in the app with no inset handling at all, which left Skip
+        // sitting underneath the status bar. It was survivable while the bars were transparent —
+        // the button was drawn over its own blue background and merely sat high. Against the opaque
+        // black bars this app now paints, the same layout clips it outright, so the pre-existing
+        // defect became a visible one and is fixed here rather than left for the screen that
+        // exposed it.
+        Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(Space.screenEdge),
                 horizontalArrangement = Arrangement.End,
