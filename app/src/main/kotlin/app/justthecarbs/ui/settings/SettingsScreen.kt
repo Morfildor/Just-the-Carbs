@@ -12,17 +12,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -38,8 +33,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.BuildConfig
 import app.justthecarbs.R
@@ -48,7 +41,9 @@ import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.ThemeChoice
 import app.justthecarbs.ocr.ScanEvidenceExport
 import app.justthecarbs.ocr.ScanEvidenceRecorder
+import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.SectionLabel
+import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 
@@ -79,25 +74,13 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding(),
+            .background(MaterialTheme.colorScheme.background),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = Space.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.product_back),
-                )
-            }
-            Text(
-                text = stringResource(R.string.settings_title),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(start = Space.s).semantics { heading() },
-            )
-        }
+        JtcTopBar(
+            title = stringResource(R.string.settings_title),
+            destination = Destination.SETTINGS,
+            onBack = onBack,
+        )
 
         Column(
             modifier = Modifier

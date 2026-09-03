@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -43,7 +42,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,7 +50,9 @@ import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.AppSettings
+import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
+import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
@@ -138,29 +138,13 @@ fun MealScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .statusBarsPadding(),
+                .background(MaterialTheme.colorScheme.background),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Space.s, vertical = Space.xs),
-                verticalAlignment = Alignment.CenterVertically,
+            JtcTopBar(
+                title = stringResource(R.string.meal_title),
+                destination = Destination.MEAL,
+                onBack = onBack,
             ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.product_back),
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.meal_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = Space.s)
-                        .semantics { heading() },
-                )
                 // Only offered when there is something to clear — a permanently-present destructive
                 // action on an empty screen is noise the user has to learn to ignore.
                 if (state.items.isNotEmpty()) {

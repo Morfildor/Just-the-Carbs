@@ -10,14 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,7 +36,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -48,11 +45,13 @@ import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.ProductSearchHit
+import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.components.RefreshErrorBanner
 import app.justthecarbs.ui.components.SearchResultRow
 import app.justthecarbs.ui.components.SecondaryAction
+import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
 
 /** Stable handles for instrumented tests. */
@@ -91,28 +90,13 @@ fun SearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding(),
+            .background(MaterialTheme.colorScheme.background),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = Space.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.product_back),
-                )
-            }
-            Text(
-                text = stringResource(R.string.search_title),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = Space.s)
-                    .semantics { heading() },
-            )
-        }
+        JtcTopBar(
+            title = stringResource(R.string.search_title),
+            destination = Destination.SEARCH,
+            onBack = onBack,
+        )
 
         val clearLabel = stringResource(R.string.search_clear)
         val searchLabel = stringResource(R.string.search_submit)
