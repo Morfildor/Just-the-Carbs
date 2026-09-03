@@ -357,8 +357,15 @@ fun JustTheCarbsTheme(
             // black whatever the theme).
             CompositionLocalProvider(
                 LocalContentColor provides (if (dark) DarkColors else LightColors).onBackground,
-                content = content,
-            )
+            ) {
+                // The scrim is drawn here, once, rather than by each screen — eleven screens each
+                // remembering to paint two bands is eleven chances to forget one, and the one that
+                // forgets is invisible until someone looks at that screen on a device.
+                androidx.compose.foundation.layout.Box {
+                    content()
+                    SystemBarScrim()
+                }
+            }
         }
     }
 }

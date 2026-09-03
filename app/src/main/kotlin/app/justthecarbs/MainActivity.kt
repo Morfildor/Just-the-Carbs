@@ -3,9 +3,9 @@ package app.justthecarbs
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalView
@@ -15,7 +15,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.ui.JustTheCarbsNavHost
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
-import app.justthecarbs.ui.theme.resolveDarkTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -24,7 +23,13 @@ class MainActivity : ComponentActivity() {
         // frame is ready (§6). Nothing is preloaded behind it.
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Explicitly dark on both bars. Left to resolve itself, `enableEdgeToEdge()` picks a
+        // light or dark scrim from the *device* configuration, which on a light-themed phone
+        // produced a pale scrim under bands this app now paints black.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.BLACK),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.BLACK),
+        )
 
         val container = (application as JustTheCarbsApplication).container
 
@@ -32,33 +37,27 @@ class MainActivity : ComponentActivity() {
             val settings by container.settingsRepository.settings
                 .collectAsStateWithLifecycle(initialValue = AppSettings())
 
-            // The same rule MaterialTheme uses, so the bars can never follow the device while the
-            // app follows the user's choice. `enableEdgeToEdge()` above resolves its own light/dark
-            // from the device configuration and runs once in onCreate, so on its own it was wrong
-            // in both directions: it ignored an explicit Light/Dark selection, and — because the
-            // manifest declares `configChanges="uiMode"`, so this Activity is never recreated — it
-            // also never re-ran when anything changed. Applying it here instead re-runs on every
-            // recomposition that changes the resolved theme, which is what makes switching
-            // immediate without an Activity restart or a visible flash.
-            val dark = resolveDarkTheme(settings.theme, isSystemInDarkTheme())
             val view = LocalView.current
 
             SideEffect {
                 val controller = WindowCompat.getInsetsController(window, view)
-                // "Light bars" means light *background*, hence dark icons. Light app theme
-                // therefore wants `true`, dark theme `false` — the inversion that made status-bar
-                // icons white-on-cream and effectively invisible in Light mode.
-                controller.isAppearanceLightStatusBars = !dark
-                controller.isAppearanceLightNavigationBars = !dark
+                // Light icons, unconditionally.
+                //
+                // This used to track the app theme (`!dark`), which was correct while the bars took
+                // the app's own background — a cream status bar needs dark icons. The bars are now
+                // painted opaque black by `SystemBarScrim` in both themes, so the ground behind
+                // these icons is a known constant and inverting them with the theme would make them
+                // black-on-black in Light mode.
+                controller.isAppearanceLightStatusBars = false
+                controller.isAppearanceLightNavigationBars = false
 
-                // API 29+ paints a translucent scrim behind the navigation bar when the app draws
-                // edge-to-edge. With three-button navigation over this app's flat backgrounds that
-                // scrim reads as a grey band that matches neither theme. Turning it off is safe
-                // here only because the icons keep their contrast from the line above, against a
-                // background that is a solid, known theme colour rather than arbitrary content.
-                // Gesture navigation is unaffected — its handle already follows the appearance flag.
+                // Re-enabled. The previous comment argued for `false` because the framework's
+                // translucent scrim "reads as a grey band that matches neither theme" over this
+                // app's flat backgrounds. That reasoning does not survive the change above: the
+                // band is now deliberately black, so the framework enforcing contrast against it
+                // agrees with the design instead of fighting it.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    window.isNavigationBarContrastEnforced = false
+                    window.isNavigationBarContrastEnforced = true
                 }
             }
 
