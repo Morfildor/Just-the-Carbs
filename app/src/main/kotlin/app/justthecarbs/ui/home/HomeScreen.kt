@@ -59,6 +59,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -73,6 +75,7 @@ import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.CarbResult
 import app.justthecarbs.domain.MealItem
+import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.FavoriteButton
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.ProductThumbnail
@@ -131,14 +134,9 @@ fun HomeScreen(
     onSearchRetry: () -> Unit = {},
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Doc's decorative blue-soft circle, bleeding off the top-right corner (result.html).
-        // Purely decorative — sits behind all content, never intercepts touches.
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 80.dp, y = (-90).dp)
-                .size(220.dp)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f), CircleShape),
+        AccentBackdrop(
+            accent = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.align(Alignment.TopEnd),
         )
 
         Column(
@@ -563,7 +561,10 @@ private fun HomeBody(
                 icon = Icons.Filled.QrCodeScanner,
                 title = stringResource(R.string.home_scan_button),
                 subtitle = stringResource(R.string.home_action_barcode_subtitle),
-                filled = true,
+                gradient = listOf(
+                    MaterialTheme.colorScheme.primary,
+                    MaterialTheme.extendedColors.accents.indigo,
+                ),
                 onClick = onScan,
                 modifier = Modifier.testTag(HOME_SCAN_BARCODE_TAG),
             )
@@ -573,7 +574,10 @@ private fun HomeBody(
                 icon = Icons.Filled.DocumentScanner,
                 title = stringResource(R.string.home_empty_scan_label),
                 subtitle = stringResource(R.string.home_action_label_subtitle),
-                filled = false,
+                gradient = listOf(
+                    MaterialTheme.extendedColors.accents.teal,
+                    MaterialTheme.extendedColors.accents.green,
+                ),
                 onClick = onScanLabel,
                 modifier = Modifier.testTag(HOME_SCAN_LABEL_TAG),
             )
@@ -654,11 +658,11 @@ private fun HomeBody(
 /**
  * One way into the app: an icon, what it does, and why you'd pick it over the other one.
  *
- * The two camera actions share this shape so they read as two options of one kind, and differ only
- * in weight — [filled] carries the app's primary blue and its lifted shadow, the outlined variant
- * borrows [RecentCard]'s exact surface and border so the whole column is visibly one system. The
- * icon roundel is the only place the outlined card spends colour, using the existing orange, which
- * is what keeps the two scanners distinguishable at a glance without adding a hue (§5).
+ * The two camera actions share this shape so they read as two options of one kind, and both now
+ * carry their own two-stop [gradient] so they read as a matched pair rather than one filled card and
+ * one outlined afterthought. The icon roundel and both text colours are white throughout — the
+ * ground here is always a gradient, never a flat surface, so a theme-derived ink would be tuned for
+ * the wrong background.
  *
  * Semantics are merged into a single button node: without that, TalkBack announces the icon, the
  * title and the subtitle as three separate stops inside one tappable thing.
@@ -668,54 +672,24 @@ private fun HomeActionCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
-    filled: Boolean,
+    gradient: List<Color>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(Space.cardRadius)
-    val container = if (filled) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerLowest
-    }
-    val titleColor = if (filled) {
-        MaterialTheme.colorScheme.onPrimary
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-    // On the filled card the subtitle must stay legible against the accent, so it is the same ink at
-    // reduced opacity rather than onSurfaceVariant, which is tuned for the page background.
-    val subtitleColor = if (filled) {
-        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
     val description = stringResource(R.string.home_action_description, title, subtitle)
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .then(
-                if (filled) {
-                    Modifier.shadow(
-                        elevation = 12.dp,
-                        shape = shape,
-                        ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
-                        spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
-                    )
-                } else {
-                    Modifier
-                },
+            .shadow(
+                elevation = 10.dp,
+                shape = shape,
+                ambientColor = gradient.last().copy(alpha = 0.30f),
+                spotColor = gradient.last().copy(alpha = 0.30f),
             )
             .clip(shape)
-            .background(container)
-            .then(
-                if (filled) {
-                    Modifier
-                } else {
-                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                },
-            )
+            .background(Brush.linearGradient(gradient))
             .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {
                 role = Role.Button
@@ -727,50 +701,29 @@ private fun HomeActionCard(
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .background(
-                    color = if (filled) {
-                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f)
-                    } else {
-                        MaterialTheme.colorScheme.tertiaryContainer
-                    },
-                    shape = CircleShape,
-                ),
+                .background(Color.White.copy(alpha = 0.20f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (filled) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onTertiaryContainer
-                },
-                modifier = Modifier.size(24.dp),
-            )
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
         }
 
         Column(modifier = Modifier.weight(1f).padding(horizontal = Space.m)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = titleColor,
-            )
+            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
             Spacer(Modifier.height(2.dp))
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = subtitleColor,
+                // White at 0.82 rather than a theme colour: the ground here is an accent gradient,
+                // not a surface, so onSurfaceVariant would be tuned for the wrong background. Both
+                // gradient stops are checked against white in ContrastTest.
+                color = Color.White.copy(alpha = 0.82f),
             )
         }
 
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = if (filled) {
-                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            tint = Color.White.copy(alpha = 0.75f),
         )
     }
 }

@@ -3,6 +3,7 @@ package app.justthecarbs.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,10 +42,12 @@ import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.ThemeChoice
 import app.justthecarbs.ocr.ScanEvidenceExport
 import app.justthecarbs.ocr.ScanEvidenceRecorder
+import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.SectionLabel
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.extendedColors
 
 /**
@@ -71,16 +74,22 @@ fun SettingsScreen(
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        JtcTopBar(
-            title = stringResource(R.string.settings_title),
-            destination = Destination.SETTINGS,
-            onBack = onBack,
+    Box(modifier = Modifier.fillMaxSize()) {
+        AccentBackdrop(
+            accent = Destination.SETTINGS.accent(),
+            modifier = Modifier.align(Alignment.TopEnd),
         )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            JtcTopBar(
+                title = stringResource(R.string.settings_title),
+                destination = Destination.SETTINGS,
+                onBack = onBack,
+            )
 
         Column(
             modifier = Modifier
@@ -275,6 +284,7 @@ fun SettingsScreen(
                 )
             }
             Spacer(Modifier.height(Space.l))
+        }
         }
     }
 

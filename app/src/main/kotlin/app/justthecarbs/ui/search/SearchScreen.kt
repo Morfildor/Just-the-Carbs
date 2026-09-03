@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.ProductSearchHit
+import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.RecoveryPanel
@@ -53,6 +54,7 @@ import app.justthecarbs.ui.components.SearchResultRow
 import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.accent
 
 /** Stable handles for instrumented tests. */
 const val SEARCH_FIELD_TAG = "search_field"
@@ -87,16 +89,22 @@ fun SearchScreen(
 ) {
     val focusManager = LocalFocusManager.current
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        JtcTopBar(
-            title = stringResource(R.string.search_title),
-            destination = Destination.SEARCH,
-            onBack = onBack,
+    Box(modifier = Modifier.fillMaxSize()) {
+        AccentBackdrop(
+            accent = Destination.SEARCH.accent(),
+            modifier = Modifier.align(Alignment.TopEnd),
         )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            JtcTopBar(
+                title = stringResource(R.string.search_title),
+                destination = Destination.SEARCH,
+                onBack = onBack,
+            )
 
         val clearLabel = stringResource(R.string.search_clear)
         val searchLabel = stringResource(R.string.search_submit)
@@ -279,6 +287,7 @@ fun SearchScreen(
                     },
                 )
             }
+        }
         }
     }
 }

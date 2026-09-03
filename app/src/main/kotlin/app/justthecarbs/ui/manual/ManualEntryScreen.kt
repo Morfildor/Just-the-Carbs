@@ -11,11 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -36,9 +33,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.extendedColors
 
 /**
@@ -58,12 +57,9 @@ fun ManualEntryScreen(
     onBack: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset(x = (-80).dp, y = (-90).dp)
-                .size(200.dp)
-                .background(MaterialTheme.extendedColors.orangeSoft.copy(alpha = 0.9f), CircleShape),
+        AccentBackdrop(
+            accent = Destination.MANUAL.accent(),
+            modifier = Modifier.align(Alignment.TopEnd),
         )
 
         Column(

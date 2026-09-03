@@ -10,13 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -50,10 +48,12 @@ import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.AppSettings
+import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.NumberType
+import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 
@@ -127,12 +127,9 @@ fun MealScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 80.dp, y = (-90).dp)
-                .size(200.dp)
-                .background(MaterialTheme.extendedColors.orangeSoft.copy(alpha = 0.9f), CircleShape),
+        AccentBackdrop(
+            accent = Destination.MEAL.accent(),
+            modifier = Modifier.align(Alignment.TopEnd),
         )
 
         Column(
