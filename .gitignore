@@ -57,3 +57,6 @@ Test labels/
 # photographs are not.
 [Ss]can [Ee]vidence*/
 docs/[Ss]can [Ee]vidence*/
+
+# Brainstorming visual companion working files (local only)
+.superpowers/
