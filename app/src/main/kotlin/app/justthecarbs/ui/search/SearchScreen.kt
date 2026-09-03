@@ -106,86 +106,86 @@ fun SearchScreen(
                 onBack = onBack,
             )
 
-        val clearLabel = stringResource(R.string.search_clear)
-        val searchLabel = stringResource(R.string.search_submit)
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChanged,
-            singleLine = true,
-            placeholder = { Text(stringResource(R.string.search_hint)) },
-            // Typing searches by itself, debounced in the ViewModel so a typed word costs one
-            // request rather than one per keystroke (Open Food Facts' search endpoint allows
-            // 10 reads/min/IP). The IME action and the trailing icon remain: they skip the wait for
-            // anyone who has finished typing, and are the only way in for anyone not on a soft
-            // keyboard. Both go through the same request pipeline, so neither can duplicate the
-            // other's call.
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(
-                onSearch = {
-                    onSearchSubmit()
-                    focusManager.clearFocus()
-                },
-            ),
-            // Both sized explicitly, like every other IconButton in the app. A text field's
-            // decoration slots constrain their content, so an unsized IconButton here measured 40dp
-            // rather than the Material default 48 — measured at 105px on a 420dpi device.
-            trailingIcon = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (state.query.isNotEmpty()) {
+            val clearLabel = stringResource(R.string.search_clear)
+            val searchLabel = stringResource(R.string.search_submit)
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQueryChanged,
+                singleLine = true,
+                placeholder = { Text(stringResource(R.string.search_hint)) },
+                // Typing searches by itself, debounced in the ViewModel so a typed word costs one
+                // request rather than one per keystroke (Open Food Facts' search endpoint allows
+                // 10 reads/min/IP). The IME action and the trailing icon remain: they skip the wait for
+                // anyone who has finished typing, and are the only way in for anyone not on a soft
+                // keyboard. Both go through the same request pipeline, so neither can duplicate the
+                // other's call.
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        onSearchSubmit()
+                        focusManager.clearFocus()
+                    },
+                ),
+                // Both sized explicitly, like every other IconButton in the app. A text field's
+                // decoration slots constrain their content, so an unsized IconButton here measured 40dp
+                // rather than the Material default 48 — measured at 105px on a 420dpi device.
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (state.query.isNotEmpty()) {
+                            IconButton(
+                                onClick = { onQueryChanged("") },
+                                modifier = Modifier
+                                    .size(Space.minTouchTarget)
+                                    .semantics { contentDescription = clearLabel },
+                            ) {
+                                Icon(Icons.Filled.Close, contentDescription = null)
+                            }
+                        }
                         IconButton(
-                            onClick = { onQueryChanged("") },
+                            onClick = {
+                                onSearchSubmit()
+                                focusManager.clearFocus()
+                            },
                             modifier = Modifier
                                 .size(Space.minTouchTarget)
-                                .semantics { contentDescription = clearLabel },
+                                .testTag(SEARCH_SUBMIT_TAG)
+                                .semantics { contentDescription = searchLabel },
                         ) {
-                            Icon(Icons.Filled.Close, contentDescription = null)
+                            Icon(Icons.Filled.Search, contentDescription = null)
                         }
                     }
-                    IconButton(
-                        onClick = {
-                            onSearchSubmit()
-                            focusManager.clearFocus()
-                        },
-                        modifier = Modifier
-                            .size(Space.minTouchTarget)
-                            .testTag(SEARCH_SUBMIT_TAG)
-                            .semantics { contentDescription = searchLabel },
-                    ) {
-                        Icon(Icons.Filled.Search, contentDescription = null)
-                    }
-                }
-            },
-            shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.screenEdge)
-                .testTag(SEARCH_FIELD_TAG),
-        )
+                },
+                shape = RoundedCornerShape(Space.buttonRadius),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.screenEdge)
+                    .testTag(SEARCH_FIELD_TAG),
+            )
 
-        // Refreshing over results that are still on screen: a hairline under the field, not a
-        // spinner replacing the list. Blanking a good list on every keystroke and rebuilding it is
-        // the flicker this whole pass exists to avoid, and the previous results stay usable — the
-        // user can tap one while the newer search is still running.
-        //
-        // The indicator occupies the gap that was already there rather than adding to it, so the
-        // results below do not jump by its height each time a search starts and finishes.
-        Box(modifier = Modifier.fillMaxWidth().height(Space.s), contentAlignment = Alignment.Center) {
-            if (state.searching && state.hits.isNotEmpty()) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Space.screenEdge)
-                        .height(2.dp)
-                        // The tag has to survive the semantics wipe below, so it goes inside
-                        // clearAndSetSemantics rather than before it — a testTag set outside would
-                        // be cleared with everything else and the node would be unfindable.
-                        //
-                        // Deliberately not a live region and carrying no description: it toggles on
-                        // every debounce, and announcing that would talk over the results a TalkBack
-                        // user is reading. The completed outcome is what gets announced.
-                        .clearAndSetSemantics { testTag = SEARCH_REFRESH_PROGRESS_TAG },
-                )
-            }
+            // Refreshing over results that are still on screen: a hairline under the field, not a
+            // spinner replacing the list. Blanking a good list on every keystroke and rebuilding it is
+            // the flicker this whole pass exists to avoid, and the previous results stay usable — the
+            // user can tap one while the newer search is still running.
+            //
+            // The indicator occupies the gap that was already there rather than adding to it, so the
+            // results below do not jump by its height each time a search starts and finishes.
+            Box(modifier = Modifier.fillMaxWidth().height(Space.s), contentAlignment = Alignment.Center) {
+                if (state.searching && state.hits.isNotEmpty()) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = Space.screenEdge)
+                            .height(2.dp)
+                            // The tag has to survive the semantics wipe below, so it goes inside
+                            // clearAndSetSemantics rather than before it — a testTag set outside would
+                            // be cleared with everything else and the node would be unfindable.
+                            //
+                            // Deliberately not a live region and carrying no description: it toggles on
+                            // every debounce, and announcing that would talk over the results a TalkBack
+                            // user is reading. The completed outcome is what gets announced.
+                            .clearAndSetSemantics { testTag = SEARCH_REFRESH_PROGRESS_TAG },
+                    )
+                }
         }
 
         when {
