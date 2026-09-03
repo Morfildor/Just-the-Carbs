@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -72,15 +71,27 @@ fun JtcTopBar(
         modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .height(56.dp)
-            .padding(horizontal = Space.s),
+            // 56dp of bar plus 8dp of breathing room beneath it, owned here rather than left to
+            // each screen to remember. Without it every adopting screen's first row began
+            // immediately under the title — measured on Settings, where "Appearance" touched the
+            // bar. Putting it in the component is the whole reason the component exists: four
+            // screens each adding their own top padding is four chances to pick a different value.
+            .height(64.dp)
+            .padding(bottom = Space.s)
+            // Left inset is the spine's own margin — at Space.s (8dp) the spine sat almost against
+            // the screen edge and read as a clipped rendering artefact rather than as a deliberate
+            // accent. Only visible by looking at the device; every assertion passed either way.
+            .padding(start = Space.m, end = Space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .padding(vertical = Space.m)
+                // A short centred bar sized against the title's cap height, rather than one
+                // filling the row. Filling it made the spine's ends land at whatever the row's
+                // padding happened to leave, which looked arbitrary next to the text; 22dp reads
+                // as deliberately paired with the title.
+                .height(22.dp)
                 .width(4.dp)
-                .fillMaxHeight()
                 .clip(RoundedCornerShape(2.dp))
                 .background(accent),
         )
@@ -90,7 +101,12 @@ fun JtcTopBar(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.product_back),
-                    tint = accent,
+                    // Ordinary foreground ink, NOT the accent. Tinting it accent-coloured makes the
+                    // one control on the bar inherit whatever hue the destination happens to carry
+                    // — on Settings that is a muted neutral, which rendered the back arrow as the
+                    // faintest thing on a screen where it is the only way out. The spine carries
+                    // the destination's colour; the control carries contrast.
+                    tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
         } else {

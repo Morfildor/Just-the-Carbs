@@ -85,9 +85,19 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .weight(1f)
+                // `navigationBarsPadding()` BEFORE `verticalScroll`, and the order is the whole
+                // thing. Applied after, it pads the scrolling *content*, so the reserved space sits
+                // at the far end of the scrollable extent and travels with the content instead of
+                // holding the viewport's bottom clear — the last row then comes to rest under the
+                // navigation bar. Applied here it pads the viewport, which is the edge the user is
+                // actually looking at.
+                //
+                // Same trap this codebase already recorded for the portion zone's fade modifier.
+                // Both were invisible until someone looked at the screen: the padding exists in
+                // both orderings, so nothing crashes and no assertion fails.
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = Space.screenEdge)
-                .navigationBarsPadding(),
+                .padding(horizontal = Space.screenEdge),
             verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {
             SectionLabel(stringResource(R.string.settings_appearance))
