@@ -111,6 +111,64 @@ class ContrastTest {
     }
 
     @Test
+    fun `every destination accent on every surface it is drawn on`() {
+        // The refresh spends these on top-bar spines, section headings and icon roundels, all of
+        // which land on one of these three grounds. Asserted as a loop over the whole palette so a
+        // seventh accent cannot be added without either passing or failing here — the alternative,
+        // one test per colour, is what lets a new one be added with no test at all.
+        mapOf(
+            "teal" to 0x0F766E,
+            "violet" to 0x6D28D9,
+            "green" to 0x15803D,
+            "magenta" to 0xBE185D,
+            "indigo" to 0x4338CA,
+            "amber" to 0x92400E,
+        ).forEach { (name, accent) ->
+            assertContrast("$name/cream", accent, cream)
+            assertContrast("$name/white", accent, white)
+            assertContrast("$name/surfaceContainerLow", accent, surfaceContainerLow)
+        }
+    }
+
+    @Test
+    fun `every dark accent on every dark surface it is drawn on`() {
+        // The dark scheme was previously untested here — ContrastTest covered light only, on the
+        // stated grounds that Light is the fresh-install default. That reasoning holds for which
+        // palette matters *most*, not for which one may be unreadable, and the accents ship in
+        // both.
+        val night = 0x15140F
+        val nightRaised = 0x1E1D18
+        val darkContainerLow = 0x19180F
+
+        mapOf(
+            "teal" to 0x43B1A6,
+            "violet" to 0xA997D3,
+            "green" to 0x45B56E,
+            "magenta" to 0xE481B3,
+            "indigo" to 0x9496FF,
+            "amber" to 0xD49425,
+        ).forEach { (name, accent) ->
+            assertContrast("dark $name/night", accent, night)
+            assertContrast("dark $name/nightRaised", accent, nightRaised)
+            assertContrast("dark $name/containerLow", accent, darkContainerLow)
+        }
+    }
+
+    @Test
+    fun `white text on a filled accent card`() {
+        // The Home action cards render white title and subtitle over an accent gradient. The
+        // gradient's *darkest* stop is not the risk — its lightest is, so each end is checked.
+        listOf(
+            "blue→indigo start" to 0x1B6FBF,
+            "blue→indigo end" to 0x4338CA,
+            "teal→green start" to 0x0F766E,
+            "teal→green end" to 0x15803D,
+        ).forEach { (name, stop) ->
+            assertContrast("white/$name", 0xFFFFFF, stop)
+        }
+    }
+
+    @Test
     fun `light tokens match the values Theme kt actually ships`() {
         // Without this, the literals above could drift from the palette and every assertion would
         // keep passing while the real app regressed — the exact "green suite, broken screen" failure

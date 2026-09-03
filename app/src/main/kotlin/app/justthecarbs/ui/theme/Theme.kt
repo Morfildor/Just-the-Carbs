@@ -86,6 +86,7 @@ data class ExtendedColors(
     val orangeSoft: Color,
     val onOrangeSoft: Color,
     val disabledButton: Color,
+    val accents: AccentPalette,
 )
 
 private val LightExtendedColors = ExtendedColors(
@@ -96,6 +97,7 @@ private val LightExtendedColors = ExtendedColors(
     // at 4.51:1; this sits at 4.79:1 for margin, an imperceptible further shift.
     onOrangeSoft = Color(0xFF965D08),
     disabledButton = DisabledBlue,
+    accents = LightAccents,
 )
 
 private val DarkExtendedColors = ExtendedColors(
@@ -103,6 +105,7 @@ private val DarkExtendedColors = ExtendedColors(
     orangeSoft = OrangeSoftDark,
     onOrangeSoft = OrangeDark,
     disabledButton = DisabledBlueDark,
+    accents = DarkAccents,
 )
 
 /**
