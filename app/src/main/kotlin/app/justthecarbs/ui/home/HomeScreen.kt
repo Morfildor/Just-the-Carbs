@@ -859,18 +859,22 @@ private fun RecentCard(
                 shape = RoundedCornerShape(Space.cardRadius),
             )
             .clickable(onClick = onClick)
-            .padding(start = 0.dp, top = Space.s, bottom = Space.s, end = Space.xs),
+            // The spine needs its own left margin. At `start = 0.dp` it sat flush against the
+            // card's 18dp corner radius and read as overflowing the rounded edge rather than
+            // sitting inside it — the same defect the top bar's spine had at 8dp, on a surface
+            // whose curve makes it more obvious. Visible only on a device; the layout is
+            // "correct" either way and no assertion looks at it.
+            .padding(start = Space.s + Space.xs, top = Space.s, bottom = Space.s, end = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .padding(vertical = Space.xs)
                 .width(4.dp)
-                .height(44.dp)
+                .height(36.dp)
                 .clip(RoundedCornerShape(2.dp))
                 .background(spine),
         )
-        Spacer(Modifier.width(Space.s))
+        Spacer(Modifier.width(Space.s + Space.xs))
 
         ProductThumbnail(product = product)
 
