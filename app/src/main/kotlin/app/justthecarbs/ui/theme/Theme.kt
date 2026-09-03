@@ -3,6 +3,7 @@ package app.justthecarbs.ui.theme
 import app.justthecarbs.R
 import app.justthecarbs.domain.ThemeChoice
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -361,7 +362,7 @@ fun JustTheCarbsTheme(
                 // The scrim is drawn here, once, rather than by each screen — eleven screens each
                 // remembering to paint two bands is eleven chances to forget one, and the one that
                 // forgets is invisible until someone looks at that screen on a device.
-                androidx.compose.foundation.layout.Box {
+                Box {
                     content()
                     SystemBarScrim()
                 }
