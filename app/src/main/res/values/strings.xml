@@ -32,6 +32,14 @@
     <!-- Recents list -->
     <string name="recent_summary">%1$s → %2$s</string>
     <string name="recent_never_used">Not used yet</string>
+    <!--
+      Recents previously rendered "150 g → 5.6 g" as one grey line. The carbohydrate figure was
+      already computed and was styled as metadata, so the number a returning user came for was on
+      screen and looked like a caption. It is now its own labelled column; this is the label.
+    -->
+    <string name="recent_carbs_label" tools:ignore="MissingTranslation">CARBS</string>
+    <!-- The portion alone, now that the carbs figure has its own column. -->
+    <string name="recent_portion_only" tools:ignore="MissingTranslation">%1$s</string>
     <string name="favorite_add">Add to favourites</string>
     <string name="favorite_remove">Remove from favourites</string>
 
@@ -503,6 +511,11 @@
     <string name="verify_found_value">%1$s g per 100 %2$s</string>
     <string name="verify_found_confirm">That\'s right — use it</string>
     <string name="verify_found_reject">Not right</string>
+    <!-- The nutrient row the value was read from, so the proposal states where on the label to
+         look rather than only what it believes it found. -->
+    <string name="verify_found_row">From: %1$s</string>
+    <string name="verify_found_zoom_description">Close-up of the row this figure was read from</string>
+    <string name="verify_found_photo_description">The photograph this figure was read from, with the row outlined</string>
     <string name="conflict_title">Two different readings</string>
     <string name="conflict_body">The photo was read more than once and the results disagreed (%1$s), so nothing is being guessed. Point at the right figure instead.</string>
     <string name="conflict_assist">Point at the figure</string>

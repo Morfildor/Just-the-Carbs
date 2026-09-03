@@ -33,6 +33,7 @@ import app.justthecarbs.ui.home.HOME_SEARCH_REFRESH_ERROR_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_RESULTS_TAG
 import app.justthecarbs.ui.home.HomeScreen
 import app.justthecarbs.ui.home.RecentEntry
+import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.ui.meal.MEAL_BAR_TAG
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
@@ -408,5 +409,60 @@ class HomeScreenTest {
         compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Enter manually").performScrollTo().assertIsDisplayed()
+    }
+
+    // ---- The carbohydrate figure on a recent card --------------------------------------------
+
+    @Test
+    fun aRecentProductShowsItsCarbFigureAsAFigure() {
+        // The figure was always computed by `rememberedCarbs`; it was rendered as grey supporting
+        // text inside "150 g → 5.6 g". This asserts it is present as its own labelled value, which
+        // is what makes Home answer the question a returning user actually has.
+        val product = Product(
+            barcode = "1",
+            name = "Griekse yoghurt",
+            carbsPer100 = BigDecimal("3.7"),
+            basis = NutritionBasis.PER_100_G,
+            dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
+            lastPortion = BigDecimal("150"),
+        )
+        compose.setContent {
+            JustTheCarbsTheme {
+                HomeScreen(
+                    recents = listOf(RecentEntry(product = product, lastUnit = null)),
+                    settings = AppSettings(),
+                    onScan = {}, onManualEntry = {}, onOpenProduct = {},
+                    onToggleFavorite = {}, onOpenSettings = {},
+                )
+            }
+        }
+        compose.onNodeWithText("5.6 g").assertIsDisplayed()
+        compose.onNodeWithText("CARBS").assertIsDisplayed()
+    }
+
+    @Test
+    fun theRecentCarbFigureFollowsTheConfiguredResultStyle() {
+        // Recents and the calculator disagreeing about a number is a defect this repo has already
+        // fixed once — the whole-gram/decimal split. Promoting the figure to a prominent position
+        // makes any future disagreement more visible, not less, so it is pinned here.
+        val product = Product(
+            barcode = "1",
+            name = "Griekse yoghurt",
+            carbsPer100 = BigDecimal("3.7"),
+            basis = NutritionBasis.PER_100_G,
+            dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
+            lastPortion = BigDecimal("150"),
+        )
+        compose.setContent {
+            JustTheCarbsTheme {
+                HomeScreen(
+                    recents = listOf(RecentEntry(product = product, lastUnit = null)),
+                    settings = AppSettings(resultStyle = ResultStyle.WHOLE_DOMINANT),
+                    onScan = {}, onManualEntry = {}, onOpenProduct = {},
+                    onToggleFavorite = {}, onOpenSettings = {},
+                )
+            }
+        }
+        compose.onNodeWithText("6 g").assertIsDisplayed()
     }
 }

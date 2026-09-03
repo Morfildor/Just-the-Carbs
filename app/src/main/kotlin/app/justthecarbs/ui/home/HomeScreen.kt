@@ -86,6 +86,7 @@ import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
+import kotlin.math.absoluteValue
 
 /** Stable handles for instrumented tests. */
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
@@ -808,34 +809,44 @@ private fun RecentCard(
     // to compute while reading `lastCount` to label was the P0 defect: `lastPortion` legitimately
     // survives a direct-carb use, so a product last eaten as "4 slices" could print that count over
     // a number scaled from a stale gram amount left by an earlier weight-based use.
-    val summary = rememberedCarbs(product, entry.lastUnit)?.let { remembered ->
+    val remembered = rememberedCarbs(product, entry.lastUnit)
+
+    val portionLabel = remembered?.let {
         // Countable-portions brief §12: when the product was last used as "2 slices", Recents says
         // so — not the gram amount the user never actually thought in.
-        val amountLabel = when (remembered) {
+        when (it) {
             is RememberedCarbs.Countable ->
                 // Plural agreement follows the count, so a remembered single portion reads "1
                 // slice" rather than the "1 slices" the previous hardcoded `count = 2` produced.
                 // Anything that is not exactly one takes the plural, which keeps a fractional
                 // count ("1.5 slices") correct rather than truncating it to the singular.
-                "${remembered.count.stripTrailingZeros().toPlainString()} " +
+                "${it.count.stripTrailingZeros().toPlainString()} " +
                     entry.lastUnit!!.unitLabel(
-                        count = if (remembered.count.compareTo(BigDecimal.ONE) == 0) 1 else 2,
+                        count = if (it.count.compareTo(BigDecimal.ONE) == 0) 1 else 2,
                     )
-
             is RememberedCarbs.Weight ->
-                "${remembered.portion.stripTrailingZeros().toPlainString()} ${product.portionUnit}"
+                "${it.portion.stripTrailingZeros().toPlainString()} ${product.portionUnit}"
         }
-        // Follows the user's configured result style (§18). Recents previously always showed the
-        // whole gram while the calculator led with the decimal, so the same portion of the same
-        // product read as "30 g" here and "30.2 g" one tap away — the app appearing to disagree
-        // with itself about a number the user is about to rely on.
-        val carbsLabel = when (settings.resultStyle) {
-            ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(remembered.exactCarbs)} g"
-            ResultStyle.WHOLE_DOMINANT ->
-                "${ResultFormatter.whole(ResultFormatter.wholeGrams(remembered.exactCarbs))} g"
-        }
-        stringResource(R.string.recent_summary, amountLabel, carbsLabel)
     } ?: stringResource(R.string.recent_never_used)
+
+    // Unchanged rule: follows the user's configured result style, so Recents and the calculator
+    // cannot print different numbers for the same portion of the same product.
+    val carbsLabel = remembered?.let {
+        when (settings.resultStyle) {
+            ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(it.exactCarbs)} g"
+            ResultStyle.WHOLE_DOMINANT ->
+                "${ResultFormatter.whole(ResultFormatter.wholeGrams(it.exactCarbs))} g"
+        }
+    }
+
+    // One accent per card, derived from the barcode so a given product keeps the same colour
+    // between launches. Decoration only — it encodes nothing, and the card is fully legible in
+    // greyscale.
+    val accents = MaterialTheme.extendedColors.accents
+    val spine = listOf(
+        accents.teal, accents.violet, accents.green,
+        accents.magenta, accents.indigo, accents.amber,
+    )[(product.barcode.hashCode().absoluteValue) % 6]
 
     Row(
         modifier = Modifier
@@ -848,9 +859,19 @@ private fun RecentCard(
                 shape = RoundedCornerShape(Space.cardRadius),
             )
             .clickable(onClick = onClick)
-            .padding(start = Space.s + Space.xs, top = Space.s, bottom = Space.s, end = Space.xs),
+            .padding(start = 0.dp, top = Space.s, bottom = Space.s, end = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(
+            modifier = Modifier
+                .padding(vertical = Space.xs)
+                .width(4.dp)
+                .height(44.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(spine),
+        )
+        Spacer(Modifier.width(Space.s))
+
         ProductThumbnail(product = product)
 
         Column(
@@ -867,12 +888,35 @@ private fun RecentCard(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = summary,
+                text = portionLabel,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+
+        // The answer, as an answer.
+        //
+        // The SAME red as the calculator, because it is the same fact — not a new hue. A second red
+        // would make the app appear to have two kinds of carbohydrate figure.
+        if (carbsLabel != null) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.padding(end = Space.xs),
+            ) {
+                Text(
+                    text = carbsLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.extendedColors.result,
+                    maxLines = 1,
+                )
+                Text(
+                    text = stringResource(R.string.recent_carbs_label),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         FavoriteButton(favorite = product.favorite, onToggle = onToggleFavorite)
