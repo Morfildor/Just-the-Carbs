@@ -284,7 +284,7 @@ fun SettingsScreen(
                     )
                 }
                 Spacer(Modifier.height(Space.l))
-        }
+            }
         }
     }
 

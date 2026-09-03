@@ -287,7 +287,7 @@ fun SearchScreen(
                     },
                 )
             }
-        }
+            }
         }
     }
 }
