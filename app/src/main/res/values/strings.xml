@@ -38,8 +38,6 @@
       screen and looked like a caption. It is now its own labelled column; this is the label.
     -->
     <string name="recent_carbs_label" tools:ignore="MissingTranslation">CARBS</string>
-    <!-- The portion alone, now that the carbs figure has its own column. -->
-    <string name="recent_portion_only" tools:ignore="MissingTranslation">%1$s</string>
     <string name="favorite_add">Add to favourites</string>
     <string name="favorite_remove">Remove from favourites</string>
 
