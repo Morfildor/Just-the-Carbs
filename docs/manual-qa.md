@@ -1454,7 +1454,7 @@ Photograph the truffle-sauce label twice, framing as in the recording.
 
 | # | Check | ✓ |
 |---|---|---|
-| 29.12 | The genuine high-carbohydrate drink still auto-advances as **`41 g / 100 ml`** | ☐ |
+| 29.12 | The genuine high-carbohydrate drink still reaches **`41 g / 100 ml`** — as a one-tap confirmation on the photograph since §33; it no longer auto-advances, because corroboration is scale-invariant and cannot establish that `41` is not a collapsed `4,1`. The figure must still be **shown immediately**, never sent to recovery and never retyped | ☐ |
 | 29.13 | Its bundle still records `automatic-verification: DISTINCT_OCR_AGREEMENT` | ☐ |
 | 29.14 | The cracker still advances as **`72 g / 100 g`**, and never as `72 g / serving` | ☐ |
 | 29.15 | A cracker capture whose header reads `1009` still refuses rather than fabricating a serving basis | ☐ |
@@ -1491,5 +1491,463 @@ Cold: `scan ______ms / parse ______ms`  ·  Warm: `scan ______ms / parse ______m
 | 29.26 | The truffle bundles carry a `correction hand-off:` line stating `basis=PER_100_ML` | ☐ |
 | 29.27 | Their `=== recovery proposal ===` block lists every suppressed number with the rule that removed it | ☐ |
 | 29.28 | No bundle from this run shows a `72 g / serving` or `89 g / 100 ml` proposal | ☐ |
+
+**Result:** ____________________ **Date:** ____________
+
+## §30 — The blind confirmation and the single-run scale hole (eighth phone session, 1.0.3)
+
+Gate for the work done after `Screen_Recording_20260902_213037` and `scan-evidence (9).zip` (eight
+captures `212902`–`213026`). Debug APK `C8FC97D9…808B1`, `versionCode 4` / `1.0.3-debug`.
+**§§26–29 remain open alongside this section.**
+
+### What the eighth session found
+
+Two captures were correct, five recovered or refused, and **one was wrong and offered for one-tap
+confirmation**. A red Lidl label printing **`7,2 g / 100 g`** was recognised as `12g`, and
+`20260902-213005-691` shows the app's own account of why that reached the user:
+
+```
+automatic-verification: NONE — only one recognition run (PASS_A)
+strategy B      : RAN_NO_READING
+scale evidence  : established (no paired value in this clause to share a scale with)
+final UI action : CONFIRM
+```
+
+The scale rule reported *absence of evidence* as *establishment*, so the reading was proposed. Worse,
+the proposal was drawn over the **live camera preview** — the frozen photograph had already been
+recycled — and the recording shows the package moved away by then. There was nothing on screen to
+check the number against, so the tap could only ever mean "yes, there is a number there".
+
+**`7,2` is recoverable from none of the four red-label recognitions** (`12g`, `724`, and twice
+`carbono2g` with the `7,` fused into the nutrient word). Seven acquisition variants were measured on
+all four captures — upscaling, grayscale, contrast, and their combinations. **None recovered `7.2`,
+and three produced a confident *wrong* value instead**, including `72 g / 100 g`, ten times the
+printed figure. No preprocessing was shipped; see `RedLabelAcquisitionExperimentTest`, whose KDoc
+carries the full table. **Focused entry is the honest fallback for this label, and 30.6 is where that
+is judged.**
+
+**Nothing in this section may be ticked from an emulator.** The changed surface is which screen a
+proposal is drawn on and which photograph is behind it.
+
+### 30a — The red Lidl label: at least 10 varied captures
+
+Vary distance, angle and lighting. Record what each capture did.
+
+| # | Check | ✓ |
+|---|---|---|
+| 30.1 | **No capture ever displays `12 g / 100 g`** — automatically, on a proposal, or in recovery | ☐ |
+| 30.2 | `724`, a bare `2`, and `6.1` are likewise never offered as the total | ☐ |
+| 30.3 | Nothing ever displays `7.2` that OCR did not read — the app must not manufacture the right answer | ☐ |
+| 30.4 | Every proposal that does appear is drawn on the **frozen photograph**, never over the live camera | ☐ |
+| 30.5 | Each proposal shows an enlarged close-up of the row, and names the row it read (`From: …`) | ☐ |
+| 30.6 | **At least 8 of 10 captures reach a correct `7.2 / 100 g`** within at most one confirmation — by automatic reading, by proposal, **or by focused entry**. If not, state plainly that recognition reliability for this label remains inadequate | ☐ |
+| 30.7 | Focused entry preserves `/100 g` and shows **no basis picker** | ☐ |
+| 30.8 | Rejecting a proposal keeps the photograph and does **not** prefill the rejected number | ☐ |
+| 30.9 | The sugars `6,1`, fibre `0,8`, protein `1,8` and salt `0,25` never appear as a carbohydrate total | ☐ |
+
+Captures reaching a correct `7.2`: ____ / 10.
+
+### 30b — The green drink: at least 5 captures
+
+| # | Check | ✓ |
+|---|---|---|
+| 30.10 | A clean capture still reaches **`0.5 g / 100 ml`** | ☐ |
+| 30.11 | Its bundle still records `scale evidence : established (the candidate's own token carries a decimal separator)` | ☐ |
+| 30.12 | A capture whose runs disagree still refuses **both** `0.5` and `5`, and says the readings conflicted | ☐ |
+| 30.13 | `0.59` and `1.3` remain suppressed where unit accompaniment rejects them | ☐ |
+| 30.14 | The `/100 ml` basis survives manual correction and reaches the calculator | ☐ |
+
+### 30c — The cracker: at least 5 captures
+
+| # | Check | ✓ |
+|---|---|---|
+| 30.15 | Still auto-advances as **`72 g / 100 g`**, and never as `72 g / serving` | ☐ |
+| 30.16 | Its bundle still records a `CROSS_COLUMN` or `DISTINCT_OCR_AGREEMENT` verification | ☐ |
+| 30.17 | A verified capture still logs `strategy B : SKIPPED_CROSS_COLUMN_VERIFIED` — no extra OCR pass | ☐ |
+
+### 30d — Nothing device-proven regressed
+
+| # | Check | ✓ |
+|---|---|---|
+| 30.18 | The genuine high-carbohydrate drink still reaches **`41 g / 100 ml`** — the integer control that must not be refused | ☐ |
+| 30.19 | The US linear sauce still offers **`6 g / 18 g serving`** → `33.3 g / 100 g` | ☐ |
+| 30.20 | The truffle label still never displays or offers `89`, and never manufactures `8.9` | ☐ |
+| 30.21 | A clean decimal label reads correctly and advances as it did before | ☐ |
+
+### 30e — Capture lifecycle (the P0-A surface)
+
+| # | Check | ✓ |
+|---|---|---|
+| 30.22 | *Retake* from a proposal returns to the live camera and the next capture works | ☐ |
+| 30.23 | Closing the scanner from a proposal leaks nothing and does not crash | ☐ |
+| 30.24 | Rotating the device on a proposal keeps the photograph and the figure | ☐ |
+| 30.25 | Rapid capture → retake → capture, five times, shows no stale result and no crash | ☐ |
+| 30.26 | No `RejectedExecutionException`, `IllegalStateException: bitmap is recycled`, or OCR backlog in logcat | ☐ |
+
+### 30f — Timing, recorded cold and warm **separately**
+
+The eighth session's captures measured **379–638 ms** total (`user-visible` 379–630 ms) at capture
+time, which excludes Strategy B. Nothing in this pass adds an OCR pass to the common path; the P0-B
+change only alters which screen an *already computed* outcome is shown on. That is an argument, not a
+device measurement — record both figures.
+
+| # | Check | ✓ |
+|---|---|---|
+| 30.27 | Force-stop, scan: record **cold** `scan` and `parse` from `meta.txt` | ☐ |
+| 30.28 | Scan again without leaving: record **warm** `scan` and `parse` | ☐ |
+| 30.29 | **Warm user-visible p95 ≤ 2 s** across the whole run | ☐ |
+
+Cold: `scan ______ms / parse ______ms`  ·  Warm p95: `______ms`
+
+### 30g — Evidence
+
+| # | Check | ✓ |
+|---|---|---|
+| 30.30 | A refused single-run reading records `scale evidence : UNSUPPORTED — …`, never `established (no paired value …)` | ☐ |
+| 30.31 | A proposal held on the capture records `final UI action : CONFIRM_ON_CAPTURE` | ☐ |
+| 30.32 | Every exported archive opens and every attempt inside it is complete | ☐ |
+| 30.33 | No bundle from this run shows a `12 g / 100 g` proposal | ☐ |
+
+**Result:** ____________________ **Date:** ____________
+
+---
+
+## §31 — Discarded correct readings (ninth phone session, 1.0.3)
+
+**Status: OPEN.** §§26–30 remain open alongside it and nothing in this section closes any of them.
+
+The 2026-09-03 session (`docs/Scan Evidence 03-09/`, nine bundles `084935`–`085128`, with
+`Screen_Recording_20260903_085136`) produced **no wrong value at all** — the eighth session's `12`
+proposal did not recur, which is the P0 fix holding. It exposed the opposite failure: on three
+captures the app **held a correct reading and showed the user nothing**.
+
+| bundle | package prints | Strategy B read | app showed |
+|---|---|---|---|
+| `084951-833` | `0,5 g / 100 ml` | `Confident 0.5/PER_100_ML` | recovery, `0.5g` suppressed |
+| `085019-213` | `2,8 g / 100 g` | `Confident 2.8/PER_100_G` | recovery, `2.8` suppressed |
+| `085032-269` | `2,8 g / 100 g` | `Confident 2.8/PER_100_G` | recovery, `2.8` suppressed |
+
+The cause was the automatic veto asking `mayAdvance`, which answers *false* for
+`NeedsVerification` — the right answer to "may this skip confirmation" and the wrong answer to "may
+this be shown at all". **Present at `c57aee0`; not a regression from the eighth-session patch.**
+
+### 31a — The three captures that lost a correct reading
+
+Each must now reach a confirmation **on the frozen photograph**, not the crop screen.
+
+| # | Check | ✓ |
+|---|---|---|
+| 31.1 | White Dutch table (`Koolhydraten, waarvan 2,8 g`): a proposal reading **2.8 g per 100 g** appears | ☐ |
+| 31.2 | That proposal is drawn over the **frozen photograph**, never the live preview | ☐ |
+| 31.3 | The enlarged close-up shows the carbohydrate row it was read from | ☐ |
+| 31.4 | Confirming reaches Quick calculation at `2.8 g carbs / 100 g` | ☐ |
+| 31.5 | Green drink: a proposal reading **0.5 g per 100 ml** appears, or an honest refusal — never a wrong number | ☐ |
+| 31.6 | No capture requires more than **one** unsuccessful step before focused entry | ☐ |
+
+### 31b — Controls that must not move
+
+| # | Check | ✓ |
+|---|---|---|
+| 31.7 | Cracker still advances automatically to `72 g / 100 g` | ☐ |
+| 31.8 | Blue tub still advances automatically to `3.2 g / 100 g` | ☐ |
+| 31.9 | Red Lidl label (`7,2 g`) **never** displays or proposes `12` | ☐ |
+| 31.10 | Red Lidl label routes to focused entry with the basis preserved and the field **empty** | ☐ |
+| 31.11 | Ingredient-only underside still refuses; the crop screen is still offered there | ☐ |
+
+### 31c — Reliability gate (three captures per clear label)
+
+Record every attempt. **A safe refusal is not a success.**
+
+| Product | correct automatically | correct after 1 interaction | manual entry needed | wrong shown |
+|---|---|---|---|---|
+| White Dutch table `2,8` | ___ /3 | ___ /3 | ___ /3 | ___ /3 |
+| Cracker `72` | ___ /3 | ___ /3 | ___ /3 | ___ /3 |
+| Blue tub `3,2` | ___ /3 | ___ /3 | ___ /3 | ___ /3 |
+| Green drink `0,5` | ___ /3 | ___ /3 | ___ /3 | ___ /3 |
+| Red Lidl `7,2` | ___ /3 | ___ /3 | ___ /3 | ___ /3 |
+
+**Release minimum:** zero wrong values shown or proposed · ≥80% correct automatically across the
+clear supported set · no clear supported product failing automatically on all three attempts ·
+focused entry reachable after at most one unsuccessful row tap. **If unmet, report NOT release-ready.**
+
+### 31d — Evidence completeness
+
+The Strategy B document was previously **never recorded**, so a session where Pass A and Strategy B
+disagreed could not be replayed — which is exactly this session's shape, and why its diagnosis
+required reconstruction. `strategyB.txt` is new.
+
+| # | Check | ✓ |
+|---|---|---|
+| 31.12 | A capture where Strategy B ran writes `strategyB.txt` with its own element dump | ☐ |
+| 31.13 | Its `elements=` header matches the number of element lines it prints | ☐ |
+| 31.14 | A capture where Strategy B did not run writes no `strategyB.txt` (not an empty one) | ☐ |
+| 31.15 | `final UI action` reads `CONFIRM_ON_CAPTURE` for a held proposal and `RECOVERY` for a withheld one | ☐ |
+| 31.16 | Export the archive **after** the run and confirm it holds this run's bundles, not an earlier session's | ☐ |
+
+### 31e — Timing, recorded cold and warm **separately**
+
+This session measured ML Kit at **323–1974 ms** and total `scan` at **487–2458 ms** — materially
+slower than the eighth session's 379–638 ms, on the same device and app version. That is unexplained
+and is **not** attributed to this pass; record it rather than assuming it away.
+
+| # | Check | ✓ |
+|---|---|---|
+| 31.17 | Force-stop, scan: record **cold** `scan`, `mlkit` and `parse` from `meta.txt` | ☐ |
+| 31.18 | Scan again without leaving: record **warm** `scan`, `mlkit` and `parse` | ☐ |
+| 31.19 | Warm `user-visible` p95 ≤ 2 s across the run | ☐ |
+
+Cold: `scan ______ms / mlkit ______ms / parse ______ms` · Warm p95: `______ms`
+
+**Result:** ____________________ **Date:** ____________
+
+---
+
+## §32 — Deterministic proposals and the recovery leak (tenth pass, 1.0.3)
+
+**Status: OPEN — this is the release gate.** §§26–31 remain open alongside it. Nothing in this
+section closes any of them, and **the verdict stays NOT release-ready until every row below is
+ticked on physical hardware.**
+
+Evidence for the analysis: `scan-evidence (10).zip`, SHA-256
+`3391e49c41d387090b4638aee3010240f0a3d0fe6026aed46c0e41f54f382c43` — the nine correct
+`20260903-084935-802`..`085128-913` bundles. Those bundles were produced by the **previous** APK, so
+they establish what was wrong, never that it is fixed.
+
+**Artifact to test — UPDATED by the eleventh pass (2026-09-03). Pin THIS hash to the device run:**
+`app/build/outputs/apk/debug/app-debug.apk` (also on the Desktop as `JustTheCarbs-debug.apk`),
+**89,848,583 bytes**, SHA-256
+`f39656454686aed3c35c2f34d2348847d2decde9c0444304aac3520d4a45d72a`, `versionCode=4` /
+`1.0.3-debug`; permissions unchanged (CAMERA, INTERNET, ACCESS_NETWORK_STATE).
+
+*(Superseded: the tenth pass's APK was 89,846,131 bytes, SHA-256 `48adb3a7…37224f`. Do not run §32
+against it — it predates the three corrections below.)*
+
+### What the eleventh pass changed beneath these rows (2026-09-03)
+
+The rows in this section are **unchanged and still the gate**. Three defects were fixed underneath
+them, each reproduced by a test that failed before the fix:
+
+- **P1a — the scale rule could be bypassed by corroboration.** `ReadingEligibility` tested
+  corroboration first and returned eligible on it outright. Neither corroboration route this app has
+  observes absolute scale (`CrossColumnRatioCheck` compares a ratio, which is scale-invariant;
+  `DISTINCT_OCR_AGREEMENT` compares two recognitions of the same pixels, which can lose the same
+  separator twice), so a demonstrated ambiguity is now checked **before** corroboration.
+  `mayAdvanceVerified` also never consulted eligibility at all, and now does.
+- **P1b — Strategy B's highlight was drawn in the wrong space.** Its element boxes are crop-local and
+  were consumed as full-frame, so the box was short by **exactly the crop origin**. Translation now
+  happens once, at presentation.
+- **P2 — the evidence document was the unfiltered one**, so a neighbouring panel's `62 g` was visible
+  to stages reasoning about "this table".
+
+**Rows 29.12 and 30.18 stood unchanged in the eleventh pass, and 29.12 was NARROWED in the
+thirteenth — see §33.** The reasoning recorded here was that a lone separatorless integer is
+`Unsupported` rather than `Ambiguous`, so corroboration could still admit it and `41 g / 100 ml`
+would auto-advance.
+
+The thirteenth session measured what that permits: `20260904-081421-421` skipped both confirmations
+with `scale evidence: UNSUPPORTED` in its own bundle. Both verification routes are scale-invariant,
+so the same reasoning admits a collapsed `1,1` identically. Corroboration therefore no longer
+authorises *skipping* the confirmation.
+
+**It still authorises showing the figure**, which is the half these rows exist to protect: `41` is
+proposed immediately on the frozen photograph, one tap from the calculator, never sent to recovery
+and never retyped. Row 30.18's wording ("still reaches") already describes that; row 29.12 said
+"auto-advances" and now says the same thing as 30.18. Both rows remain **unticked** — no
+hardware-verified behaviour was contradicted.
+
+**The OCR corpus was NOT re-run against this build.** It fails 17/39 on the `carbscan` emulator at
+clean `c57aee0` as well, so an emulator run measures the emulator; CLAUDE.md records **39/39 on real
+hardware**. Row 32.18 below is where that is settled.
+
+### What changed, and what each row is testing
+
+1. **The green drink now has one exact expected outcome.** Its Pass A resolves **no column** — the
+   printed `PER: 100 ml` came back as `100` + `m`, and `m` is not a unit spelling — so `0.5` was
+   rejected with `no column` and the resolver returned `Nothing`. That is why its bundle differs
+   from the white table's `NeedsVerification` despite both showing `RECOVERY`. Strategy B read the
+   header cleanly and established all four facts, so the required outcome is a **proposal**, not a
+   refusal.
+2. **A tap is no longer treated as evidence about decimal scale.** Recovery and the automatic path
+   now share one eligibility decision, so they cannot contradict each other about the same
+   candidate.
+
+### 32a — The green drink: one outcome, no disjunction
+
+| # | Check | ✓ |
+|---|---|---|
+| 32.1 | Green drink (`0,5 g / 100 ml`): a proposal reading **0.5 g per 100 ml** appears | ☐ |
+| 32.2 | It is drawn over the **frozen photograph**, never the live preview | ☐ |
+| 32.3 | Confirming reaches Quick calculation at `0.5 g carbs / 100 ml` | ☐ |
+| 32.4 | It is **never** advanced automatically — a confirmation step is always shown | ☐ |
+
+### 32b — The red label: no wrong value by ANY route
+
+The package prints `7,2 g / 100 g`. No recognition of it contains `7.2`, so nothing may display it.
+
+| # | Check | ✓ |
+|---|---|---|
+| 32.5 | No capture ever displays or proposes `12` | ☐ |
+| 32.6 | **Tapping the carbohydrate row** offers neither `12` nor `72` — the list is empty or refuses | ☐ |
+| 32.7 | Tapping *every* element of that row (word, value, unit) offers no figure at all | ☐ |
+| 32.8 | Focused entry is reachable, `/100 g` preserved, and the field is **empty** | ☐ |
+| 32.9 | Nothing anywhere displays `7.2` — it is in no recognition and may not be invented | ☐ |
+
+### 32c — Controls that must not move
+
+| # | Check | ✓ |
+|---|---|---|
+| 32.10 | White Dutch table proposes **2.8 g per 100 g** on the frozen photograph | ☐ |
+| 32.11 | Cracker still advances automatically to `72 g / 100 g` | ☐ |
+| 32.12 | Blue tub still advances automatically to `3.2 g / 100 g` | ☐ |
+| 32.13 | A US linear panel (Korean sauce shape) still offers `6 g / 18 g serving` when tapped | ☐ |
+| 32.14 | Ingredient-only underside still refuses and still offers the crop screen | ☐ |
+
+### 32d — Reliability gate: three captures per label
+
+Record **every** attempt, including retries. **A safe refusal is not a success**, and a wrong value
+shown or offered by any route fails the gate outright.
+
+| label | capture | outcome (auto-correct / confirmed-correct / focused-entry / **wrong**) |
+|---|---|---|
+| green drink `0,5 / 100 ml` | 1 | ____________ |
+| green drink | 2 | ____________ |
+| green drink | 3 | ____________ |
+| white table `2,8 / 100 g` | 1 | ____________ |
+| white table | 2 | ____________ |
+| white table | 3 | ____________ |
+| red Lidl `7,2 / 100 g` | 1 | ____________ |
+| red Lidl | 2 | ____________ |
+| red Lidl | 3 | ____________ |
+
+**Totals — report these four separately, never as one pass rate:**
+
+- automatic-correct: ______
+- confirmed-correct: ______
+- focused-entry (honest refusal): ______
+- **wrong value shown or offered: ______  ← must be 0**
+
+### 32e — Timing, cold and warm reported separately
+
+Cold = first scan after a force-stop. Warm = subsequent scans in the same session. Read
+**`user-visible`** from the trace summary, not `scan`: stages marked `*` are off-path, and the debug
+build carries an evidence writer a user never pays for.
+
+| # | Check | ✓ |
+|---|---|---|
+| 32.15 | Cold `user-visible` recorded for the first capture | ☐ |
+| 32.16 | Warm `user-visible` recorded for at least 8 further captures | ☐ |
+| 32.17 | Warm p95 ≤ 2 s | ☐ |
+
+Cold: `scan ______ms / mlkit ______ms / parse ______ms` · Warm p95: `______ms`
+
+The ninth session measured ML Kit at **323–1974 ms** against the eighth session's 379–638 ms on the
+same device and app version, with two captures over 2 s. That is unexplained and was not re-measured
+in this pass; 32.15–32.17 are where it is settled.
+
+### 32f — The eleventh pass's three corrections, on hardware
+
+Added 2026-09-03. Each row tests a defect fixed in JVM and never seen on a device.
+
+| # | Check | ✓ |
+|---|---|---|
+| 32.18 | **OCR corpus 39/39 on hardware** against this APK — the emulator's 17/39 measures the emulator, not the diff | ☐ |
+| 32.19 | **P1b:** on a capture Strategy B answers, the highlight sits on the **correct row** in the photograph — not offset upward by the crop origin | ☐ |
+| 32.20 | The row close-up in the verification screen shows the **carbohydrate row**, not a neighbouring one | ☐ |
+| 32.21 | **P2:** on a label with a second panel in frame, no figure from that panel is proposed or offered | ☐ |
+| 32.22 | **P1a:** the truffle label (`89`/`13` separatorless pair) is refused **even when both routes verify it** | ☐ |
+| 32.23 | The `41 g / 100 ml` integer case still **auto-advances** — the reordering must not have cost it | ☐ |
+| 32.24 | A uniform 3-row decimal collapse never advances | ☐ |
+
+Rows 32.22–32.24 are the behaviour matrix's three scale cases. 32.23 is the control: if it fails, the
+ambiguity/corroboration ordering has been made stricter than intended and `Unsupported` is being
+treated as `Ambiguous`.
+
+**Result:** ____________________ **Date:** ____________
+
+---
+
+## §33 — Recall, scale and the tap (thirteenth pass, 1.0.3, debug APK `F618E982…01740`)
+
+Built from the thirteenth phone session, `docs/Scan evidence 04-09 1st test/` — nineteen captures
+across twelve packages, with `Screen_Recording_20260904_081200`. Ground truth for every row below was
+read **off the photograph**, not off the parser: three captures in that session recognise a
+confidently wrong number, and two of them would look like successes if the app's own answer were
+taken as truth.
+
+Debug APK `app-debug.apk`, 89,569,105 bytes, SHA-256
+`f618e98208c0fd16d7331c132ba69eb2050097ab8ae1acd9ba887b77f3701740`, `versionCode=4` /
+`1.0.3-debug` read from the APK with `aapt2 dump badging`. Permissions unchanged: CAMERA, INTERNET,
+ACCESS_NETWORK_STATE.
+
+Pin **this** hash to the device run. It is the artefact built after the negative controls were
+restored **and** after the still-path executor-rejection guard was added (see row 33.19), so it is
+the tree the rows below describe.
+
+### What changed, and what each row is testing
+
+1. **A corroborated reading may no longer skip both confirmations on an unestablished scale.**
+   `20260904-081421-421` advanced automatically with `scale evidence: UNSUPPORTED` and
+   `automatic-verification: DISTINCT_OCR_AGREEMENT` in the same bundle. The jar genuinely prints
+   `11 g`, so the value was right — and both verification routes are scale-invariant, so the same
+   reasoning would have admitted a collapsed `1,1`. **The figure is still shown**, immediately, on
+   the frozen photograph; only the permission to bypass that tap is withdrawn.
+2. **A capture whose row and basis are known asks for the digits, not for a crop.**
+   `20260904-081307-240` prints `Koolhydraten 6,2 g` in large flat type; the `g` came back as a `0`
+   (`6,20`), the row and the `Ø/100 ml` column were both resolved, and the app opened the **crop**
+   screen — a rectangle the user cannot usefully change, over a row already located.
+3. **A tap inside an element's box belongs to that element.** On the yoghurt tub the child label
+   `waarvan` `[311,1948,486,2015]` sits inside the total's `Koolhydraten/Glucides`
+   `[297,1884,802,1988]` both vertically and horizontally. A tap on the sugars word resolved to the
+   **total** row, so a user deliberately tapping sugars was handed the total's candidates.
+4. **The assisted screen is theme-correct.** It forced `Color.Black` with Material controls left on
+   their defaults, so in Light theme the focused-entry field's label, outline, cursor and digits
+   rendered dark-on-black.
+
+### Rows
+
+| # | Check | ✔ |
+|---|---|---|
+| 33.1 | **No capture, on any package, displays or offers a figure the package does not print** | ☐ |
+| 33.2 | The red Lidl carton (`7,2 g / 100 g`) never displays or offers **`12`** through any route | ☐ |
+| 33.3 | The mayonnaise (`1,3 g / 100 ml`) never displays or offers **`13`** through any route | ☐ |
+| 33.4 | The peanut butter (`11 g / 100 g`) reaches the user — as a **one-tap confirmation on the photograph**, not recovery, not retyped | ☐ |
+| 33.5 | A label printing a decimal (yoghurt `3,2`, fritessaus `13,2`) still **auto-advances** | ☐ |
+| 33.6 | The green Lidl drink (`6,2 g / 100 ml`) opens **focused amount entry** — "type the number printed under 100 ml" — and **not** the crop screen | ☐ |
+| 33.7 | That focused-entry screen offers **no basis picker**; the basis reads per 100 ml and cannot be changed | ☐ |
+| 33.8 | Typing `6.2` there reaches Quick Calculation as `6.2 g carbs / 100 ml` | ☐ |
+| 33.9 | Tapping the **carbohydrate number** on a frozen clear table selects the total row on the **first** tap | ☐ |
+| 33.10 | Tapping the **sugars number** is refused, and the screen says why | ☐ |
+| 33.11 | Tapping the **sugars word** on a label whose child clause is indented under its parent is refused — it must not be answered with the total's candidates | ☐ |
+| 33.12 | No tap loop: one deliberate tap either completes, or leads to focused entry / manual completion. Never the same screen twice | ☐ |
+| 33.13 | **Light theme** — focused `/100 g` and `/100 ml` fields: label, outline, cursor, typed digits, buttons and helper copy all legible | ☐ |
+| 33.14 | **Dark theme** — the same six, all legible | ☐ |
+| 33.15 | In both themes the photograph is still clearly readable behind/above the controls | ☐ |
+| 33.16 | Warm scans reach the first actionable screen in **≤ 2 s** (report cold and warm separately) | ☐ |
+| 33.17 | The progress indicator does not visibly stutter while a large label is parsed (the parse now runs off the main thread) | ☐ |
+| 33.18 | The nine-photograph OCR corpus on **real hardware** — record pass/fail per fixture | ☐ |
+| 33.19 | **Lifecycle race** — capture, then immediately Retake, then capture again: no crash, no stale photograph, the second result is the one shown | ☐ |
+| 33.20 | **Lifecycle race** — capture, then immediately leave the scanner: no crash, and re-entering the scanner works normally (the still path releases its bitmap even when its listener is rejected at dispatch) | ☐ |
+
+### Cold and warm timing
+
+Report separately. The thirteenth session's own bundles measured `user-visible` at 298–1113 ms
+(median ~500 ms), so any figure materially above that is a regression rather than the expected cost.
+
+| run | package | cold/warm | user-visible ms | action reached |
+|---|---|---|---|---|
+| 1 | | | | |
+| 2 | | | | |
+| 3 | | | | |
+
+### What this pass could NOT verify
+
+**No physical device was attached.** Everything measured for §33 is JVM plus the `carbscan`
+emulator (`ro.kernel.qemu=1`, `ro.hardware=ranchu`), whose virtual camera cannot produce a nutrition
+table — so the *automatic* accept path was not exercised end to end and **no row above is ticked**.
+
+The nine-photograph OCR corpus was run on that emulator and measured **29/39, against a clean-`7617da5`
+control of 22/39 on the same emulator in the same session** — zero new failures, seven fixed,
+compared programmatically by test name. That is a same-emulator comparison, not device evidence:
+CLAUDE.md records this corpus as 39/39 on real hardware, and row 33.18 is where that is settled.
 
 **Result:** ____________________ **Date:** ____________
