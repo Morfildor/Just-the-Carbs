@@ -502,6 +502,31 @@ changed.
 
 ## 7. Technical evidence — release candidate
 
+### 2026-09-04 — `versionCode 4` / `1.0.3`, BUILT AND NOT UPLOADED (commit `7cbf78d`)
+
+**Built from `clean` on a committed tree and verified. Play has NOT seen it.** Nothing goes into
+[`version-history.md`](version-history.md) until Play accepts it. The one blocking gate below is
+**physical-device verification**, which is owner work and is not satisfied by anything in this table.
+
+| Check | Result |
+|---|---|
+| Release AAB | **Built from `clean` on the committed tree at `7cbf78d`** (branch `ui-refresh-2026-09-03`). **35,850,832 bytes**, SHA-256 `d94632a56519ae8074e6030be933bf98725e4ffaeea37ffc0ede79b30338ec83`. |
+| Signature | **UPLOADABLE KEY** — signer `C=NL, L=Haarlem, O=JustTheCarbs, OU=Release, CN=Tunc Bilen`, SHA256withRSA, valid 2026-08-26 → 2051-08-20, cert SHA-256 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — **identical to the key that signed `versionCode` 1, 2 and 3**, which is what lets Play accept it as an update. Read off the artifact with `keytool -printcert -jarfile`, not inferred from a green build: the Gradle guard cannot tell a real upload key from a disposable one. |
+| Identity in the bundle's own manifest | `package="app.justthecarbs"`, `versionName` `1.0.3`, `versionCode 4` — read from the bundle's protobuf manifest, not from the Gradle configuration. |
+| JVM tests | **PASS — 1688/1688**, 0 failures, 0 errors, 0 skipped (`--rerun-tasks`, counted from 168 JUnit XML files). |
+| Lint | **PASS — 0 errors**, 23 warnings (unchanged baseline). |
+| Connected OCR suite | **33 tests, 9 failures — and all 9 are pre-existing.** A `git worktree` control at clean `47ad5d1`, same emulator and same session, fails the identical 9 by name. Before this pass the same run measured 12; the three that went were stale `FromRow` provenance contracts, never values. The 9 are the emulator's ML Kit degradation (`Koolhydraten` → `nlhioonorate`) that this repo already records; **the corpus is 39/39 on real hardware and is unverified against this diff.** |
+| R8 privacy barriers | **PASS** — `ScanEvidenceRecorder` and `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`, `OcrDiagnosticsReport`, `ScanTrace` and `ZipIntegrity` **absent from `mapping.txt` entirely**. Safety rules retained as real classes: `ScaleAmbiguity`→`jf3`, `RecoveryCandidates`→`t63`, `CrossColumnRatioCheck`→`xh0`, `CarbCandidate`→`x30`, `UnitMarkerFilter`→`p84`, `CandidateProvenance`→`j10`, `DisputedCandidates`→`jq0`, `NutrientRowSegments`→`gh2`, `PackageBasisResolver`→`co2`. |
+| `NutritionDocumentModel` absent from `mapping.txt` | **Inlined, not dropped — checked behaviourally rather than assumed**, per this repo's standing warning. It is a single-function `internal object`, so it has no nested types to survive; instead every type its `build` produces ships as a real class (`SemanticNutritionDocument`→`jj3`, `NutritionPanel`→`jh2`, `NutrientDeclaration`→`bh2`, `NutritionPanelLocator2D`→`nh2` with its nested `NumericCluster`/`RawSpan`), and both callers ship (`NutritionTableInterpreter`→`th2`, `RecoveryCandidates`→`t63`). Do not read the marker as a feature shipping disabled. |
+| Release manifest providers | **PASS** — zero `FileProvider` matches, so the debug evidence provider does not ship. |
+| Permissions | **PASS — CAMERA, INTERNET, ACCESS_NETWORK_STATE** (transitive via ML Kit, disclosed), plus AGP's own `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. Unchanged. *Note for the next reader:* a raw scan of the manifest also turns up `BIND_JOB_SERVICE` and `DUMP`. Those are `android:permission` **guards on components** (a datatransport JobService and AndroidX's ProfileInstallReceiver), **not `uses-permission` requests** — verified by enumerating the `uses-permission` elements themselves. They do not appear in Play's permission list and are not Data Safety-relevant. |
+| `debuggable` / `allowBackup` | **PASS** — no `debuggable` attribute; `allowBackup="false"` read from the shipped bundle. |
+| Locale configs in the bundle | **PASS** — none; English-only, so the `localeFilters` restriction still holds. |
+| OSV dependency scan | **PASS 2026-09-04** — 226 resolved release-runtime artifacts, 0 known vulnerabilities, control query positive. |
+| Release APK | **NOT BUILT** — bundle-only, as for every previous version. `apksigner` cannot read an AAB; use `keytool -printcert -jarfile`. |
+| Play acceptance | **NOT DONE.** Not uploaded. |
+| **Physical-device verification** | **NOT DONE — this is the gate.** Everything above is JVM plus the `carbscan` emulator, whose virtual camera cannot produce a nutrition table, so the automatic accept path was not exercised end to end. `docs/manual-qa.md` **§34** covers this pass's change (rows 34.1–34.5 decide whether the pair leak is closed; 34.6–34.8 are the controls that must keep working); §§26–33 remain open alongside it. |
+
 ### 2026-08-28 — `versionCode 2` / `1.0.1`, the shipped artifact (commit `45f3dd9`)
 
 **Uploaded to closed testing and accepted by Play on 2026-08-28.** This is the current release.

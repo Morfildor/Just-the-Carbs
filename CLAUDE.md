@@ -3844,7 +3844,7 @@ disagrees, this one is right — and fix the older passage rather than working a
 | What is the latest release? | `1.0.2` / **`versionCode 3`**, uploaded and **accepted by Play 2026-08-29**, built from `29a4f3d` |
 | Which track? | **Closed testing.** `versionCode 1` (internal → closed) and `2` preceded it |
 | Closed-testing period | **Running.** 12+ testers opted in |
-| What is in development? | **`1.0.3` / `versionCode 4`** — OPEN since 2026-08-29, bumped in `branding.gradle.kts`. **Never built as a release, never uploaded, on no track.** Committed 2026-08-30 on branch `1.0.3-quick-calculation` (3 commits off `8ce1817`); `main` is untouched. See the OCR quick-calculation section above |
+| What is in development? | **`1.0.3` / `versionCode 4`** — OPEN since 2026-08-29, bumped in `branding.gradle.kts`. **A signed release AAB was built 2026-09-04 from committed `7cbf78d` on branch `ui-refresh-2026-09-03` and is NOT uploaded**, so the version stays open and on no track. Artifact, signer and barrier evidence: `docs/play-release-readiness.md` §7. The gate before upload is physical-device QA (`docs/manual-qa.md` §34, §§26–33) |
 | Is 1.0.2 released? | **Yes.** Uploaded 2026-08-29, in `docs/version-history.md` with its hash, size and signer |
 | What do I develop against? | **`versionCode 4`**, already open. See the note below before bumping again |
 | Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
