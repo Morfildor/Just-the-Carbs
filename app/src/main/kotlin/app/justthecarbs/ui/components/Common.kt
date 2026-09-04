@@ -191,19 +191,19 @@ fun RecoveryPanel(
  * apart in size and emphasis.
  */
 @Composable
-fun PrimaryAction(text: String, onClick: () -> Unit) {
+fun PrimaryAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Button(
         onClick = onClick,
         shape = RoundedCornerShape(Space.buttonRadius),
-        modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+        modifier = modifier.fillMaxWidth().height(Space.primaryButtonHeight),
     ) { Text(text) }
 }
 
 @Composable
-fun SecondaryAction(text: String, onClick: () -> Unit) {
+fun SecondaryAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     TextButton(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+        modifier = modifier.fillMaxWidth().height(Space.minTouchTarget),
     ) { Text(text) }
 }
 
@@ -289,7 +289,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
  * "no value" instead of printing a unit nothing supports.
  */
 @Composable
-fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit) {
+fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val basis = hit.basis
     val carbsText = if (hit.carbsPer100 != null && basis != null) {
         stringResource(
@@ -302,7 +302,7 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit) {
     }
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = Space.s)

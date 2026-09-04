@@ -187,6 +187,8 @@ fun VerificationScreen(
                 val scale = displayed.width / bitmap.width
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     drawRect(
+                        // Not a theme token: drawn over an arbitrary photograph, where a theme
+                        // colour carries no contrast guarantee.
                         color = Color(0xFF4C8DF6),
                         topLeft = Offset(
                             displayed.left + rowInSourceSpace.left * scale,
