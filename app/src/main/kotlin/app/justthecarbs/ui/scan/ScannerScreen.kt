@@ -1,9 +1,5 @@
 package app.justthecarbs.ui.scan
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -84,29 +80,14 @@ fun ScannerScreen(
     onClose: () -> Unit,
     onEnterManually: () -> Unit,
 ) {
-    val context = LocalContext.current
-    var hasPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var permissionRequested by remember { mutableStateOf(false) }
-
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        hasPermission = granted
-        permissionRequested = true
-    }
-
-    // §9: ask in context, at the moment the camera is actually needed, not on first launch.
-    LaunchedEffect(Unit) {
-        if (!hasPermission) launcher.launch(Manifest.permission.CAMERA)
-    }
+    // §6, startup-hardening pass: one shared five-state gate, used identically by this screen and
+    // LabelScannerScreen. Previously each screen tracked only granted/not-granted plus whether a
+    // request had been made, which made every denial a dead end — a "not this time" answer had no
+    // way back to the system dialog, and a "never ask me again" answer had no way to Settings.
+    val permission = rememberCameraPermissionController()
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        if (hasPermission) {
+        if (permission.state == CameraPermissionState.Granted) {
             CameraPreview(
                 hapticsEnabled = hapticsEnabled,
                 onBarcode = onBarcode,
@@ -115,9 +96,10 @@ fun ScannerScreen(
                 onEnterManually = onEnterManually,
             )
         } else {
-            PermissionRationale(
-                showSettingsHint = permissionRequested,
-                onAllow = { launcher.launch(Manifest.permission.CAMERA) },
+            CameraPermissionRationale(
+                state = permission.state,
+                onAllow = permission::request,
+                onOpenSettings = permission::openSettings,
                 onEnterManually = onEnterManually,
                 onClose = onClose,
             )
@@ -400,61 +382,5 @@ private fun ScrimIconButton(
             .semantics { contentDescription = description },
     ) {
         Icon(imageVector = icon, contentDescription = null, tint = Color.White)
-    }
-}
-
-/**
- * §9's exact requirement: a concise explanation, then **Allow camera** and **Enter manually**.
- * Manual entry is present in every state, so declining the camera never costs the user the app.
- */
-@Composable
-private fun PermissionRationale(
-    showSettingsHint: Boolean,
-    onAllow: () -> Unit,
-    onEnterManually: () -> Unit,
-    onClose: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .padding(Space.screenEdge),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = stringResource(R.string.permission_title),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(Space.s))
-        Text(
-            text = stringResource(R.string.permission_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(Space.l))
-
-        if (!showSettingsHint) {
-            Button(
-                onClick = onAllow,
-                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
-                shape = RoundedCornerShape(Space.buttonRadius),
-            ) { Text(stringResource(R.string.permission_allow)) }
-            Spacer(Modifier.height(Space.s))
-        }
-
-        Button(
-            onClick = onEnterManually,
-            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
-            shape = RoundedCornerShape(Space.buttonRadius),
-        ) { Text(stringResource(R.string.permission_manual)) }
-
-        TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
-            Text(stringResource(R.string.action_close))
-        }
     }
 }
