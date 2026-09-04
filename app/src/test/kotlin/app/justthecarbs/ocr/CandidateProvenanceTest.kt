@@ -39,8 +39,12 @@ class CandidateProvenanceTest {
         assertEquals(NutritionBasis.PER_100_G, (reading as LabelReading.Confident).candidate.basis)
 
         val provenance = report.provenance
-        assertTrue("expected row provenance, got $provenance", provenance is CandidateProvenance.FromRow)
-        val rowText = (provenance as CandidateProvenance.FromRow).rowText.lowercase()
+        assertTrue(
+            "expected declaration provenance, got $provenance",
+            provenance is CandidateProvenance.FromDeclaration,
+        )
+        val rowText = (provenance as CandidateProvenance.FromDeclaration).rowTexts
+            .joinToString(" ").lowercase()
         assertTrue("value must come from the Koolhydraten row, not the sugars row: $rowText", "koolhydraten" in rowText)
         assertTrue("value must NOT come from the sugars row: $rowText", "suikers" !in rowText)
     }

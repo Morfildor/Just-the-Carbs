@@ -86,7 +86,9 @@ object OcrDiagnosticsReport {
             }
             LabelReading.NotFound -> {
                 appendLine("  NOT FOUND")
-                appendLine("  reason: ${notFoundReason(report, rows, columns)}")
+                appendLine(
+                    "  reason: ${report.failureReason?.name ?: notFoundReason(report, rows, columns)}",
+                )
             }
         }
         report.servingCandidate?.let { serving ->
@@ -110,6 +112,9 @@ object OcrDiagnosticsReport {
             append("  provenance: ")
             when (provenance) {
                 is CandidateProvenance.FromRow -> appendLine("row '${provenance.rowText}'")
+                is CandidateProvenance.FromDeclaration -> appendLine(
+                    "declaration rows ${provenance.rowTexts.joinToString(prefix = "'", postfix = "'", separator = "' / '")}",
+                )
                 is CandidateProvenance.FromProseSpan ->
                     appendLine("prose span '${provenance.nutrientTerm}' -> elements ${provenance.valueElementIndices}")
             }

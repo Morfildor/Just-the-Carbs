@@ -78,6 +78,7 @@ import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.ServingDescriptor
 import app.justthecarbs.ocr.CarbCandidate
+import app.justthecarbs.ocr.CarbFailureDiagnosis
 import app.justthecarbs.ocr.AutomaticScanAdvance
 import app.justthecarbs.ocr.AutomaticVerification
 import app.justthecarbs.ocr.CropChange
@@ -869,6 +870,12 @@ private fun LabelCamera(
                 },
                 disputed = disputed,
                 scaleVerdict = scaleVerdict,
+                failureReason = CarbFailureDiagnosis.classify(
+                    report = result.filtered.report,
+                    outcome = result.outcome,
+                    scaleVerdict = scaleVerdict,
+                    action = decision,
+                ),
                 // Strategy B's own document, when it ran. The bundle used to record only its verdict,
                 // so a session where Pass A and Strategy B disagreed could not be replayed — which is
                 // precisely the ninth session's shape, and why its diagnosis needed a reconstruction.

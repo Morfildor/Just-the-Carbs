@@ -80,10 +80,16 @@ object RecoveryCandidates {
         disputed: DisputedCandidates = DisputedCandidates.NONE,
     ): List<Candidate> {
         if (document == null || document.elements.isEmpty()) return emptyList()
-        val rows = LogicalRowBuilder.build(document)
-        val columns = ColumnClassifier.classify(rows, document.width)
-        return contributingRows(rows, columns)
-            .flatMap { candidatesOn(it, rows, columns, document, disputed) }
+        return NutritionDocumentModel.build(document).panels.flatMap { panel ->
+            val localDocument = document.copy(elements = panel.elements)
+            panel.declarations
+                .filter { it.kind == NutritionRowKind.TOTAL_CARBOHYDRATE }
+                .flatMap { declaration ->
+                    declaration.sourceRows.flatMap { row ->
+                        candidatesOn(row, panel.rows, panel.columns, localDocument, disputed)
+                    }
+                }
+        }.distinctBy { candidate -> candidate.box to candidate.reading }
     }
 
     /**
@@ -100,18 +106,25 @@ object RecoveryCandidates {
         disputed: DisputedCandidates = DisputedCandidates.NONE,
     ): List<String> {
         if (document == null || document.elements.isEmpty()) return emptyList()
-        val rows = LogicalRowBuilder.build(document)
-        val columns = ColumnClassifier.classify(rows, document.width)
-        val servingBasis = ServingDeclaration.of(rows)
         val lines = mutableListOf<String>()
+        val semantic = NutritionDocumentModel.build(document)
 
-        lines += "serving declaration: " + (servingBasis?.label ?: "none")
+        semantic.panels.forEach { panel ->
+            val localDocument = document.copy(elements = panel.elements)
+            val servingBasis = ServingDeclaration.of(panel.rows)
+            lines += "panel ${panel.id}: " +
+                if (panel.localized) "localized ${panel.bounds}" else "full-document fallback"
+            lines += "serving declaration: " + (servingBasis?.label ?: "none")
 
-        contributingRows(rows, columns).forEach { row ->
-            val mayDecline = UnitAccompanimentPolicy.mayDeclineBareValues(document, rows)
+            panel.declarations
+                .filter { it.kind == NutritionRowKind.TOTAL_CARBOHYDRATE }
+                .flatMap { it.sourceRows }
+                .distinct()
+                .forEach { row ->
+            val mayDecline = UnitAccompanimentPolicy.mayDeclineBareValues(localDocument, panel.rows)
             val segment = NutrientRowSegments.totalCarbohydrateSegment(row)
             val anchors = CarbohydrateTermAnchor.nutrientAnchors(row)
-            val percentIndices = PercentAssociation.percentElementIndices(row, document.width)
+            val percentIndices = PercentAssociation.percentElementIndices(row, localDocument.width)
 
             row.elements.forEachIndexed { index, element ->
                 val raw = element.text.trim()
@@ -123,13 +136,13 @@ object RecoveryCandidates {
                     valueIn(raw) == null -> null // not value-shaped; not worth a line
                     mayDecline && !CarbUnitAccompaniment.isAccompanied(element, row.elements) ->
                         "states no unit on a label that prints them"
-                    contradicted(document, row, element, valueIn(raw)!!) ->
+                    contradicted(localDocument, row, element, valueIn(raw)!!) ->
                         "the table's own rows contradict it"
-                    basisFor(element, columns, document.width, servingBasis, row.elements) == null ->
+                    basisFor(element, panel.columns, localDocument.width, servingBasis, row.elements) == null ->
                         "no column claims it, so it states no basis"
                     disputed.disputes(
                         valueIn(raw)!!,
-                        basisFor(element, columns, document.width, servingBasis, row.elements)
+                        basisFor(element, panel.columns, localDocument.width, servingBasis, row.elements)
                             ?.let { basisEnumOf(it) },
                     ) -> "a distinct recognition run read it differently (${disputed.describe()})"
                     else -> {
@@ -141,7 +154,7 @@ object RecoveryCandidates {
                         // crash on the evidence path.
                         val value = valueIn(raw)
                         val basis =
-                            basisFor(element, columns, document.width, servingBasis, row.elements)
+                            basisFor(element, panel.columns, localDocument.width, servingBasis, row.elements)
                         if (value == null || basis == null) {
                             null
                         } else {
@@ -152,7 +165,7 @@ object RecoveryCandidates {
                                 rowText = row.text,
                             )
                             (
-                                ReadingEligibility.evaluate(document, probe)
+                                ReadingEligibility.evaluate(localDocument, probe)
                                     as? ReadingEligibility.Verdict.Refused
                                 )?.reason
                         }
@@ -162,6 +175,7 @@ object RecoveryCandidates {
                     lines += "  suppressed '$raw' @x=${element.box.centerX.toInt()}: $reason"
                 }
             }
+                }
         }
 
         of(document, disputed).forEach { candidate ->
@@ -185,39 +199,6 @@ object RecoveryCandidates {
     }
 
     /**
-     * Whether a row may contribute a choice at all.
-     *
-     * Only a row that **names the total carbohydrate** does. Everything else on a package carries
-     * numbers — an energy figure, a batch code, a postal address, `8 400 kJ/2 000 kcal` in the
-     * reference-intake footnote, `0.12` in an ingredient percentage — and a probe over the nine
-     * device captures offered every one of them.
-     *
-     * That is not merely untidy. The choices this screen shows are a claim that each is a plausible
-     * reading of *the carbohydrate figure*, and a list containing `400 g / 100 ml` from a kilojoule
-     * footnote makes the real answer harder to find in exactly the moment the user is already
-     * struggling. Restricting to the carbohydrate row is the same restriction the "tap the row"
-     * interaction rests on, applied to the list the screen opens with.
-     *
-     * The damaged-label recovery is consulted too, so a capture whose carbohydrate word OCR mangled
-     * still offers its own row rather than nothing — that is the whole point of that recovery, and
-     * it would be strange for the automatic path to find the row and the assisted path not to.
-     */
-    private fun contributingRows(
-        rows: List<LogicalRow>,
-        columns: List<NutritionColumn>,
-    ): List<LogicalRow> {
-        // classifyAll, so a row past the declaration boundary can never contribute a choice. The
-        // sauce's ingredient list would otherwise offer its own numbers as carbohydrate readings.
-        val kinds = RowClassifier.classifyAll(rows)
-        val totals = rows.filterIndexed { index, _ -> kinds[index] == NutritionRowKind.TOTAL_CARBOHYDRATE }
-        if (totals.isNotEmpty()) return totals
-
-        return DamagedCarbohydrateLabel.recoverTotalRowIndex(rows, kinds, columns)
-            ?.let { listOf(rows[it]) }
-            ?: emptyList()
-    }
-
-    /**
      * The choices on the row containing [tappedY] — the "tap the carbohydrate row" interaction.
      *
      * Restricting to the tapped row is the safety property that interaction rests on: a figure from
@@ -231,10 +212,20 @@ object RecoveryCandidates {
         disputed: DisputedCandidates = DisputedCandidates.NONE,
     ): List<Candidate> {
         if (document == null || document.elements.isEmpty()) return emptyList()
-        val rows = LogicalRowBuilder.build(document)
-        val row = rowAt(rows, tappedY, tappedX) ?: return emptyList()
-        val columns = ColumnClassifier.classify(rows, document.width)
-        return candidatesOn(row, rows, columns, document, disputed, tappedX)
+        val selected = panelRowAt(document, tappedY, tappedX) ?: return emptyList()
+        val (panel, row) = selected
+        val declaration = panel.declarations.firstOrNull { candidate ->
+            candidate.kind == NutritionRowKind.TOTAL_CARBOHYDRATE && row in candidate.sourceRows
+        }
+        val ownedRow = declaration?.sourceRows?.firstOrNull { it == row } ?: row
+        return candidatesOn(
+            ownedRow,
+            panel.rows,
+            panel.columns,
+            document.copy(elements = panel.elements),
+            disputed,
+            tappedX,
+        )
     }
 
     /**
@@ -242,8 +233,24 @@ object RecoveryCandidates {
      */
     fun rowTextAt(document: OcrDocument?, tappedY: Int, tappedX: Int? = null): String? {
         if (document == null) return null
-        return rowAt(LogicalRowBuilder.build(document), tappedY, tappedX)?.text
+        val (panel, row) = panelRowAt(document, tappedY, tappedX) ?: return null
+        return panel.declarations.firstOrNull { declaration ->
+            declaration.kind == NutritionRowKind.TOTAL_CARBOHYDRATE && row in declaration.sourceRows
+        }?.text ?: row.text
     }
+
+    private fun panelRowAt(
+        document: OcrDocument,
+        tappedY: Int,
+        tappedX: Int?,
+    ): Pair<NutritionPanel, LogicalRow>? =
+        NutritionDocumentModel.build(document).panels.mapNotNull { panel ->
+            rowAt(panel.rows, tappedY, tappedX)?.let { row -> panel to row }
+        }.minByOrNull { (_, row) ->
+            row.elements.filter { element ->
+                tappedX != null && element.box.contains(tappedX, tappedY)
+            }.minOfOrNull { it.box.area() } ?: row.box.area()
+        }
 
     /**
      * Which reconstructed row a tap at [tappedY] means.
@@ -396,8 +403,7 @@ object RecoveryCandidates {
      */
     fun isChildRowAt(document: OcrDocument?, tappedY: Int, tappedX: Int? = null): Boolean {
         if (document == null) return false
-        val rows = LogicalRowBuilder.build(document)
-        val row = rowAt(rows, tappedY, tappedX) ?: return false
+        val (_, row) = panelRowAt(document, tappedY, tappedX) ?: return false
         if (RowClassifier.classify(row) != NutritionRowKind.CARBOHYDRATE_CHILD) return false
         if (tappedTheTotalClause(row, tappedX)) return false
 

@@ -3,6 +3,7 @@ package app.justthecarbs.ocr
 import app.justthecarbs.domain.NutritionBasis
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,10 +35,18 @@ import java.math.BigDecimal
  */
 class NinthSessionRegressionTest {
 
+    /**
+     * One capture's evidence, so every view shares its [PhysicalObservationId].
+     *
+     * That is the physical truth of these fixtures — Pass A and Strategy B are both recognitions of
+     * the one photograph this session recorded — and since 2026-09-04 it is also what stops them
+     * corroborating each other for automatic advancement.
+     */
     private fun evidence(source: EvidenceSource, document: OcrDocument) = RecognitionEvidence(
         source = source,
         report = NutritionTableInterpreter.interpret(document),
         document = document,
+        physicalObservation = ONE_CAPTURE,
     )
 
     /** Pass A twice (one recognition, two views) plus a distinct Strategy B run — the device shape. */
@@ -237,21 +246,53 @@ class NinthSessionRegressionTest {
         )
     }
 
+    /**
+     * The blue tub is still **proposed**, and no longer advances. Updated 2026-09-04.
+     *
+     * All three sources read `Confident 3.2/PER_100_G`, and this test previously asserted that the
+     * third — Strategy B — was "a genuinely separate recognition run, which is what makes it
+     * corroboration". That premise is false: Strategy B recognises a *crop of the same JPEG*, so it
+     * inherits that photograph's focus, blur and glyph damage.
+     *
+     * `20260904-113653-044` is what the premise cost. A Fanta bottle printing `0,5 g / 100 ml` was
+     * read `0.59` by every view of one capture, the agreement satisfied
+     * [AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT], and the app advanced with no confirmation
+     * on a figure ten times the printed one.
+     *
+     * **The reading is not lost** — `3.2` is still correct, still resolved and still put in front of
+     * the user. The value's survival is asserted below so a future change cannot turn a demotion
+     * into a disappearance.
+     *
+     * ## Amended 2026-09-04 (seventeenth session): it advances again, by a different route
+     *
+     * The optical route is still refused, and that is the property this test was written to hold —
+     * it is asserted directly below rather than inferred from the final action. What changed is
+     * that the **table** now answers: this is a Lidl yoghurt printing `Ø/100 g` beside `Ø/125 g`,
+     * and the off-basis second column makes seven of its rows form pairs at the printed 1.25
+     * serving ratio, the carbohydrate row among them.
+     *
+     * That is [AutomaticVerification.Route.CROSS_COLUMN] — structural evidence from the label's own
+     * other nutrients, which is independent of the photograph in the way a second view of the same
+     * pixels is not. So the `0.59` failure that motivated the physical-observation rule cannot
+     * return through it: a tenfold misread of one cell does not also misread four other rows
+     * consistently in the same direction, which is exactly what the ratio check tests for.
+     */
     @Test
-    fun `the blue tub still advances on distinct-run agreement`() {
+    fun `the blue tub is not corroborated by same-frame agreement`() {
         val document = NinthSessionFixtures.blueTubAutoAdvance()
-        // The bundle records all three sources reading `Confident 3.2/PER_100_G`, the third from a
-        // genuinely separate recognition run — which is what makes it corroboration.
         val evidence = sessionEvidence(document, document)
         val outcome = EvidenceResolver.resolve(evidence)
         val verification = AutomaticVerification.verify(evidence)
-        assertTrue(
-            "a distinct run agreeing must verify it; got ${verification.route}",
-            verification.mayAdvanceAutomatically,
+
+        assertNotEquals(
+            "views of one photograph cannot corroborate each other",
+            AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT,
+            verification.route,
         )
         assertEquals(
-            AutomaticScanAdvance.Presentation.Advance,
-            AutomaticScanAdvance.presentation(outcome, verification, document, automatic = true),
+            "the label's own other rows are what vouch for it",
+            AutomaticVerification.Route.CROSS_COLUMN,
+            verification.route,
         )
         assertEquals(
             0,
@@ -303,5 +344,10 @@ class NinthSessionRegressionTest {
             AutomaticScanAdvance.Presentation.NotApplicable,
             AutomaticScanAdvance.presentation(outcome, verification, document, automatic = true),
         )
+    }
+
+    private companion object {
+        /** Every fixture in this session came from one photograph per capture. */
+        val ONE_CAPTURE = PhysicalObservationId("NINTH_SESSION_CAPTURE")
     }
 }

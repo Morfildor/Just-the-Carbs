@@ -178,17 +178,56 @@ class ThirteenthSessionRegressionTest {
      * These are the numbers reported in this pass's summary. They are asserted rather than merely
      * printed because "the suite is green" must not be able to coexist with a silent recall
      * regression — the exact failure this repo has recorded more than once.
+     *
+     * ## Updated 2026-09-04: three automatic advances became confirmations
+     *
+     * `CORRECT_AUTO` was 3 and `CORRECT_CONFIRM` was 5; they are now 0 and 8. **No reading was lost**
+     * — the same three captures still show the same correct values, now behind one confirmation tap.
+     *
+     * The cause is deliberate: all three advanced on [AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT]
+     * counted over recognition *runs*, and that route now requires two distinct
+     * [PhysicalObservationId]s. Two runs over one photograph share its optical defects, which is how
+     * `20260904-113653-044` advanced automatically on a printed `0,5 g` read as `0.59`.
+     *
+     * `WRONG_AUTO` remains 0 and `UNNECESSARY_RECOVERY` remains 1, which is what says this is a
+     * safety trade rather than a recall regression. The automatic rate is restored by an independent
+     * second observation, never by trusting the same pixels twice.
      */
     @Test
     fun `the corpus aggregate is the measured one`() {
         val counts = Outcome.entries.associateWith { o -> results.count { it.classification == o } }
-        assertEquals("CORRECT_AUTO", 3, counts[Outcome.CORRECT_AUTO])
-        assertEquals("CORRECT_CONFIRM", 5, counts[Outcome.CORRECT_CONFIRM])
+        // 2026-09-04 (seventeenth session): one capture moved CONFIRM -> AUTO. It is the Lidl
+        // yoghurt, whose printed `Ø/100 g` beside `Ø/125 g` lets its own other rows corroborate the
+        // carbohydrate row at the printed 1.25 serving ratio — CROSS_COLUMN, not the optical route
+        // the physical-observation rule closed. `CORRECT_AUTO + CORRECT_CONFIRM` is unchanged at 8.
+        assertEquals("CORRECT_AUTO", 1, counts[Outcome.CORRECT_AUTO])
+        assertEquals("CORRECT_CONFIRM", 7, counts[Outcome.CORRECT_CONFIRM])
         assertEquals("WRONG_AUTO", 0, counts[Outcome.WRONG_AUTO])
         assertEquals("WRONG_CONFIRM", 0, counts[Outcome.WRONG_CONFIRM])
         assertEquals("UNNECESSARY_RECOVERY", 1, counts[Outcome.UNNECESSARY_RECOVERY])
         assertEquals("OCR_NO_EVIDENCE", 9, counts[Outcome.OCR_NO_EVIDENCE])
         assertEquals("GROUND_TRUTH_UNKNOWN", 1, counts[Outcome.GROUND_TRUTH_UNKNOWN])
         assertEquals(19, results.size)
+    }
+
+    /**
+     * The count above may move between AUTO and CONFIRM; it may never shrink.
+     *
+     * Asserted separately from the exact aggregate because the two say different things. The
+     * aggregate pins *this* measurement so a change is deliberate; this pins the **invariant** that
+     * survives any future retuning — a correct value the app holds must stay in front of the user,
+     * whether or not it still skips the confirmation tap.
+     *
+     * Without it, a later change could satisfy the aggregate by editing the expected numbers and
+     * quietly move readings into recovery, which is precisely the regression shape this repo keeps
+     * rediscovering.
+     */
+    @Test
+    fun `every correct reading stays visible whether or not it advances`() {
+        val shown = results.count {
+            it.classification == Outcome.CORRECT_AUTO || it.classification == Outcome.CORRECT_CONFIRM
+        }
+
+        assertEquals("correct readings put in front of the user", 8, shown)
     }
 }

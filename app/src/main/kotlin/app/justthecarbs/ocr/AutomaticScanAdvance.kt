@@ -233,9 +233,50 @@ internal object AutomaticScanAdvance {
             // `PerQuantity`. Do not "fix" this by widening the wrapping — that would assert a
             // declaration the automatic path never read.
             basis = confident.candidate.basis?.let { app.justthecarbs.domain.CarbBasis.PerHundred(it) },
-            // Verified by a route that is not scale-invariant — a second recognition run reading the
-            // same digits, or the label's own other rows. The scale question is already answered.
-            corroborated = verification.mayAdvanceAutomatically,
+            // ## The *proposal* question, not the advancement one
+            //
+            // This asks whether the figure may be put on screen behind a confirmation tap, which is
+            // strictly weaker than whether it may skip that tap. [AutomaticVerification.mayBeProposed]
+            // therefore also accepts agreement between two views of one photograph.
+            //
+            // Passing `mayAdvanceAutomatically` here conflated the two, and the cost was measured: once
+            // same-frame agreement stopped verifying advancement (2026-09-04), `20260904-113818-873`
+            // (`57 g per 100 gram`) and `20260904-114311-968` (`koolhydraten 35 g`) fell from
+            // `CONFIRM_ON_CAPTURE` to `RECOVERY` — the app still held the correct value and stopped
+            // showing it. Removing a wrong automatic route must not remove a correct proposal.
+            //
+            // Every scale rule still applies on top of this: [ReadingEligibility] refuses a
+            // demonstrated [ScaleAmbiguity.Verdict.Ambiguous] *before* it consults corroboration at
+            // all, precisely because agreement is scale-invariant.
+            corroborated = verification.mayBeProposed,
+            // ## Why same-frame corroboration is still allowed to answer the scale question here
+            //
+            // It was briefly restricted to advancement-grade evidence, to suppress
+            // `20260904-113950-065` — a Hellmann's bottle printing `1,3 g / 100 ml` that every view of
+            // the one capture read as `13g`, and which is therefore offered for confirmation at ten
+            // times the printed figure.
+            //
+            // **Measured, that restriction costs more than it saves.** All three separatorless
+            // integers in the corpus are `Unsupported` for the identical reason — no paired value in
+            // the clause — so nothing distinguishes them:
+            //
+            // | capture | printed | read | correct |
+            // |---|---|---|---|
+            // | `113818-873` | `57 g`  | `57`   | yes |
+            // | `114311-968` | `35 g`  | `35g.` | yes |
+            // | `113950-065` | `1,3 g` | `13g`  | no  |
+            //
+            // Restricting the flag hid `57` and `35` — two correct readings pushed into recovery — to
+            // suppress one wrong proposal that **no rule could have fixed anyway**: `1,3` appears
+            // nowhere in any recognition of that capture, so the correct value is simply absent and
+            // only a different photograph can supply it.
+            //
+            // Trading two correct readings for one is the wrong direction, and the wrong proposal is
+            // already behind a confirmation tap on the frozen photograph rather than advancing. So the
+            // scale question stays answerable by same-frame agreement, and the mayonnaise is recorded
+            // as a known remaining wrong proposal instead of being papered over. The route that
+            // actually fixes it is a second physical observation.
+            corroborationSettlesScale = true,
         )
     }
 

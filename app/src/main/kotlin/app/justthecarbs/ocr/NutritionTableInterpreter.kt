@@ -36,8 +36,68 @@ object NutritionTableInterpreter {
     private val NUMBER = Regex("(?<!\\d)(\\d{1,3}(?:[.,]\\d{1,3})?)(?!\\d)")
 
     fun interpret(document: OcrDocument): NutritionParseReport {
+        val semantic = NutritionDocumentModel.build(document)
+        if (semantic.panels.isEmpty()) {
+            return NutritionParseReport(
+                LabelReading.NotFound,
+                emptyList(),
+                failureReason = CarbFailureReason.CARB_TERM_MISSING,
+            )
+        }
+        val reports = semantic.panels.map { panel ->
+            interpretPanel(document.copy(elements = panel.elements), panel)
+        }
+        if (reports.size == 1) return reports.single()
+
+        val diagnostics = reports.flatMapIndexed { index, report ->
+            listOf(OcrDiagnostic("panel", "panel $index")) + report.diagnostics
+        }.toMutableList()
+        val candidates = reports.flatMap { report ->
+            when (val reading = report.reading) {
+                is LabelReading.Confident -> listOf(reading.candidate)
+                is LabelReading.Ambiguous -> reading.candidates
+                LabelReading.NotFound -> emptyList()
+            }
+        }.distinctBy { it.value.stripTrailingZeros() to it.basis }
+        val materialReports = reports.filter { it.reading !is LabelReading.NotFound }
+        val allPanelsConfident = materialReports.isNotEmpty() &&
+            materialReports.all { it.reading is LabelReading.Confident }
+        return when {
+            candidates.isEmpty() -> NutritionParseReport(
+                LabelReading.NotFound,
+                diagnostics,
+                failureReason = reports.mapNotNull { it.failureReason }.distinct().singleOrNull()
+                    ?: CarbFailureReason.STRUCTURAL_CONFLICT,
+            )
+            candidates.size == 1 && allPanelsConfident -> {
+                val winning = reports.first { report ->
+                    (report.reading as? LabelReading.Confident)?.candidate?.let { candidate ->
+                        candidate.value.compareTo(candidates.single().value) == 0 &&
+                            candidate.basis == candidates.single().basis
+                    } == true
+                }
+                NutritionParseReport(
+                    LabelReading.Confident(candidates.single()),
+                    diagnostics,
+                    winning.servingCandidate,
+                    winning.provenance,
+                )
+            }
+            else -> NutritionParseReport(
+                LabelReading.Ambiguous(candidates),
+                diagnostics,
+                failureReason = CarbFailureReason.STRUCTURAL_CONFLICT,
+            )
+        }
+    }
+
+    private fun interpretPanel(document: OcrDocument, panel: NutritionPanel): NutritionParseReport {
         val diagnostics = mutableListOf<OcrDiagnostic>()
-        val rows = LogicalRowBuilder.build(document)
+        diagnostics += OcrDiagnostic(
+            "panel",
+            if (panel.localized) "localized ${panel.bounds}" else "full-document fallback",
+        )
+        val rows = panel.rows
         rows.forEach { diagnostics += OcrDiagnostic("row", "${it.text} @ ${it.box}") }
 
         // classifyAll, not classify: a row past the package's own declaration boundary is not
@@ -49,63 +109,42 @@ object NutritionTableInterpreter {
         // Classified before the no-total-row exit, not after: the prose fallback's eligibility
         // predicate needs to see whether the document resolved any basis column at all, and that exit
         // is one of the two places it can be reached from. One call site, hoisted — not duplicated.
-        val columns = ColumnClassifier.classify(rows, document.width)
+        val columns = panel.columns
         columns.forEach {
             diagnostics += OcrDiagnostic("column", "${it.kind.name} '${it.headerText}' @ x=${it.centerX}")
         }
 
-        val classifiedTotals = typed.filter { it.second == NutritionRowKind.TOTAL_CARBOHYDRATE }.map { it.first }
-        // A row whose total declaration was printed BEFORE the child term that excluded it. Only
-        // consulted when the classifier found no total row at all, so a table that reads normally is
-        // untouched by this. See [MergedTotalRowRecovery].
-        //
-        // Skipped entirely on a prose label. A running sentence names the total and its child on one
-        // reconstructed row by nature rather than by reconstruction damage, so recovery would fire on
-        // every prose document and quietly move it off the prose path — reaching the right value with
-        // the wrong provenance, and bypassing the eligibility gate that decides prose is safe to read
-        // at all. Prose keeps its own stage; this exists for tables whose rows chained.
-        val totalRows = classifiedTotals.ifEmpty {
-            if (ProseNutritionReader.isProseLabel(rows, columns, document.width)) {
-                emptyList()
-            } else {
-                val merged = typed.filter { it.second == NutritionRowKind.CARBOHYDRATE_CHILD }
-                    .mapNotNull { (row, _) ->
-                        MergedTotalRowRecovery.recover(row)?.also {
-                            diagnostics += OcrDiagnostic(
-                                "merged-row",
-                                "recovered total span '${it.text}' from child row '${row.text}'",
-                            )
-                        }
-                    }
-                // A total row whose *label* OCR damaged, recovered from the table's structure. Only
-                // reached when neither ordinary classification nor merged-row recovery found a total
-                // row, so a table that reads normally never consults it. See
-                // [DamagedCarbohydrateLabel] for the six conditions and why none of them is a
-                // relaxation of the carbohydrate vocabulary.
-                merged.ifEmpty {
-                    DamagedCarbohydrateLabel
-                        .recoverTotalRowIndex(rows, typed.map { it.second }, columns)
-                        ?.let { index ->
-                            diagnostics += OcrDiagnostic(
-                                "damaged-label",
-                                "row '${rows[index].text}' typed as the total row: it precedes a " +
-                                    "child row, carries a value in a resolved basis column, and " +
-                                    "states a carbohydrate suffix",
-                            )
-                            listOf(rows[index])
-                        }
-                        .let { if (it == null) emptyList() else it }
-                }
-            }
+        val classifiedTotals = typed.count { it.second == NutritionRowKind.TOTAL_CARBOHYDRATE }
+        val proseLabel = ProseNutritionReader.isProseLabel(rows, columns, document.width)
+        val totalDeclarations = if (
+            classifiedTotals == 0 && proseLabel
+        ) {
+            emptyList()
+        } else {
+            panel.declarations.filter { it.kind == NutritionRowKind.TOTAL_CARBOHYDRATE }
         }
-        if (totalRows.isEmpty()) {
+        totalDeclarations.forEach { declaration ->
+            diagnostics += OcrDiagnostic(
+                "declaration",
+                "TOTAL_CARBOHYDRATE across ${declaration.sourceRows.size} physical row(s): '${declaration.text}'",
+            )
+        }
+        if (totalDeclarations.isEmpty()) {
             diagnostics += OcrDiagnostic("result", "No total-carbohydrate row")
             proseFallback(rows, columns, document.width, diagnostics)?.let { return it }
-            return NutritionParseReport(LabelReading.NotFound, diagnostics, null)
+            diagnostics += OcrDiagnostic("failure", CarbFailureReason.CARB_TERM_MISSING.name)
+            return NutritionParseReport(
+                LabelReading.NotFound,
+                diagnostics,
+                failureReason = CarbFailureReason.CARB_TERM_MISSING,
+            )
         }
 
-        if (totalRows.size > 1) {
-            diagnostics += OcrDiagnostic("info", "${totalRows.size} total-carbohydrate rows; interpreting all")
+        if (totalDeclarations.size > 1) {
+            diagnostics += OcrDiagnostic(
+                "info",
+                "${totalDeclarations.size} total-carbohydrate declarations; interpreting all",
+            )
         }
 
         // EVERY total row is interpreted, never just the first (correction pass §3).
@@ -135,6 +174,8 @@ object NutritionTableInterpreter {
         var serving: BigDecimal? = null
         var servingColumn: NutritionColumn? = null
         // Rows that contributed a per-100 reading, so a candidate quotes the line it came from.
+        val contributingDeclarations =
+            mutableMapOf<Pair<BigDecimal, NutritionBasis>, NutrientDeclaration>()
         val contributingRows = mutableMapOf<Pair<BigDecimal, NutritionBasis>, LogicalRow>()
         // Which column each accepted reading came out of, keyed exactly like [contributingRows].
         //
@@ -162,7 +203,8 @@ object NutritionTableInterpreter {
         // there.
         var perHundredCellRejected = false
 
-        totalRows.forEach { totalRow ->
+        totalDeclarations.forEach { declaration ->
+            declaration.valueCells.map { it.sourceRow }.distinct().forEach { totalRow ->
             // A basis printed inside the value row itself, e.g. "Carbohydrate per 100 g 45 g", on a
             // label with no separate header row (correction pass §6).
             val inlineBases = InlineBasisSpans.find(totalRow)
@@ -226,6 +268,7 @@ object NutritionTableInterpreter {
                     } else {
                         val key = validated.stripTrailingZeros() to inlineBasis
                         perHundred += validated to inlineBasis
+                        contributingDeclarations.putIfAbsent(key, declaration)
                         contributingRows.putIfAbsent(key, totalRow)
                     }
                     return@forEach
@@ -248,6 +291,7 @@ object NutritionTableInterpreter {
                         } else {
                             val key = validated.stripTrailingZeros() to basis
                             perHundred += validated to basis
+                            contributingDeclarations.putIfAbsent(key, declaration)
                             contributingRows.putIfAbsent(key, totalRow)
                             contributingColumns.putIfAbsent(key, column.kind)
                         }
@@ -266,6 +310,7 @@ object NutritionTableInterpreter {
                             "${cell.value.toPlainString()}: ${column.kind.name} column",
                         )
                 }
+            }
             }
         }
 
@@ -337,10 +382,28 @@ object NutritionTableInterpreter {
         }
 
         var provenance: CandidateProvenance? = null
+        var failureReason: CarbFailureReason? = null
 
         val reading = when {
             distinct.isEmpty() -> {
                 diagnostics += OcrDiagnostic("result", "Total-carbohydrate row found but no usable per-100 cell")
+                val hasRawValue = totalDeclarations.any { declaration ->
+                    declaration.sourceRows.any { ColumnOwnership.competingCells(it).isNotEmpty() }
+                }
+                val hasPerHundredBasis = columns.any {
+                    it.kind == NutritionColumnKind.PER_100_G ||
+                        it.kind == NutritionColumnKind.PER_100_ML
+                } || totalDeclarations.any { declaration ->
+                    declaration.sourceRows.any { InlineBasisSpans.find(it).isNotEmpty() }
+                }
+                failureReason = when {
+                    !hasRawValue && hasDetachedValue(panel, totalDeclarations) ->
+                        CarbFailureReason.DECLARATION_FRAGMENTED
+                    !hasRawValue -> CarbFailureReason.CARB_VALUE_MISSING
+                    !hasPerHundredBasis -> CarbFailureReason.BASIS_MISSING
+                    else -> CarbFailureReason.CARB_VALUE_MISSING
+                }
+                diagnostics += OcrDiagnostic("failure", failureReason.name)
                 // The table answered and its answer was unusable — see [perHundredCellRejected]. No
                 // other stage may substitute a different number for the one this label actually
                 // printed in its per-100 column.
@@ -358,18 +421,38 @@ object NutritionTableInterpreter {
             distinct.size == 1 -> {
                 val (value, basis) = distinct.single()
                 diagnostics += OcrDiagnostic("selected", "${value.toPlainString()} ${basis.name}")
-                val row = rowFor(value, basis, contributingRows, totalRows)
-                provenance = CandidateProvenance.FromRow(row.text, row.box)
+                val declaration = declarationFor(
+                    value,
+                    basis,
+                    contributingDeclarations,
+                    totalDeclarations,
+                )
+                val sourceRow = contributingRows[value.stripTrailingZeros() to basis]
+                    ?: declaration.sourceRows.first()
+                provenance = CandidateProvenance.FromDeclaration(
+                    declaration.sourceRows.map { it.text },
+                    declaration.bounds,
+                )
                 val column = contributingColumns[value.stripTrailingZeros() to basis]
                 diagnostics += OcrDiagnostic("column", column?.name ?: "inline declaration (no column)")
-                LabelReading.Confident(candidate(row, value, basis, column))
+                LabelReading.Confident(candidate(declaration, sourceRow, value, basis, column))
             }
             else -> {
                 diagnostics += OcrDiagnostic("ambiguous", "${distinct.size} distinct total-carbohydrate readings")
+                failureReason = CarbFailureReason.STRUCTURAL_CONFLICT
+                diagnostics += OcrDiagnostic("failure", failureReason.name)
                 LabelReading.Ambiguous(
                     distinct.map { (value, basis) ->
+                        val declaration = declarationFor(
+                                value,
+                                basis,
+                                contributingDeclarations,
+                                totalDeclarations,
+                            )
                         candidate(
-                            rowFor(value, basis, contributingRows, totalRows),
+                            declaration,
+                            contributingRows[value.stripTrailingZeros() to basis]
+                                ?: declaration.sourceRows.first(),
                             value,
                             basis,
                             contributingColumns[value.stripTrailingZeros() to basis],
@@ -379,7 +462,23 @@ object NutritionTableInterpreter {
             }
         }
 
-        return NutritionParseReport(reading, diagnostics, servingCandidate, provenance)
+        return NutritionParseReport(reading, diagnostics, servingCandidate, provenance, failureReason)
+    }
+
+    private fun hasDetachedValue(
+        panel: NutritionPanel,
+        declarations: List<NutrientDeclaration>,
+    ): Boolean {
+        val totalRows = declarations.flatMap { it.sourceRows }.toSet()
+        return declarations.any { declaration ->
+            val lastIndex = panel.rows.indexOf(declaration.sourceRows.last())
+            if (lastIndex < 0) return@any false
+            panel.rows.drop(lastIndex + 1).take(2).any { row ->
+                row !in totalRows &&
+                    RowClassifier.classify(row) == NutritionRowKind.OTHER &&
+                    ColumnOwnership.competingCells(row).isNotEmpty()
+            }
+        }
     }
 
     /**
@@ -503,12 +602,13 @@ object NutritionTableInterpreter {
         return PrintedWeightResult.Accepted(descriptor.copy(weightOrVolume = AmountWithBasis(weight.amount, weight.basis)))
     }
 
-    private fun rowFor(
+    private fun declarationFor(
         value: BigDecimal,
         basis: NutritionBasis,
-        contributingRows: Map<Pair<BigDecimal, NutritionBasis>, LogicalRow>,
-        totalRows: List<LogicalRow>,
-    ): LogicalRow = contributingRows[value.stripTrailingZeros() to basis] ?: totalRows.first()
+        contributingDeclarations: Map<Pair<BigDecimal, NutritionBasis>, NutrientDeclaration>,
+        totalDeclarations: List<NutrientDeclaration>,
+    ): NutrientDeclaration =
+        contributingDeclarations[value.stripTrailingZeros() to basis] ?: totalDeclarations.first()
 
     /**
      * Turns a serving column's header into a typed descriptor.
@@ -586,18 +686,19 @@ object NutritionTableInterpreter {
     private val GENERIC_SERVING_WORDS = setOf("serving", "portion", "portie", "schaaltje")
 
     private fun candidate(
-        row: LogicalRow,
+        declaration: NutrientDeclaration,
+        sourceRow: LogicalRow,
         value: BigDecimal,
         basis: NutritionBasis,
         /** Null when the basis came from an inline declaration rather than a column header. */
         column: NutritionColumnKind? = null,
     ) = CarbCandidate(
-        sourceLine = row.text,
-        label = row.elements.firstOrNull()?.text.orEmpty().replaceFirstChar { it.uppercase() },
+        sourceLine = declaration.text,
+        label = declaration.labelElements.firstOrNull()?.text.orEmpty().replaceFirstChar { it.uppercase() },
         value = value,
         basis = basis,
         score = NutritionParserThresholds.CONFIDENT_SCORE,
-        geometry = row.box,
+        geometry = sourceRow.box,
         evidence = listOf(
             CandidateEvidence("total-carbohydrate row", NutritionParserThresholds.CARBOHYDRATE_ANCHOR),
             CandidateEvidence("${basis.name} column", NutritionParserThresholds.PER_100_HEADER),

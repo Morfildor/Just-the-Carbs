@@ -108,12 +108,21 @@ object ReadingEligibility {
     /**
      * Whether a figure whose scale evidence is [scale] and whose basis is [basis] may be shown.
      *
-     * [corroborated] is evidence from **outside** this recognition run — a second run reading the
+     * [corroborated] is evidence from **outside** this recognition run — another view reading the
      * same digits, or the label's own other rows agreeing through [CrossColumnRatioCheck]. It is
      * passed in rather than recomputed because the two callers establish it differently and both
-     * already hold the answer: the automatic path from [AutomaticVerification], recovery from the
-     * cross-run dispute set. Either way it settles the scale question by a route that is not
-     * scale-invariant.
+     * already hold the answer: the automatic path from [AutomaticVerification.Verdict.mayBeProposed],
+     * recovery from the cross-run dispute set.
+     *
+     * ## It is proposal-grade evidence, and that is weaker than it sounds
+     *
+     * Note this parameter governs whether a figure may be **shown**, never whether it may skip the
+     * user's confirmation. It is therefore satisfied by agreement between two views of *one*
+     * photograph, which cannot settle absolute decimal scale or an optical corruption — both views
+     * inherit the same pixels. That is why the [ScaleAmbiguity.Verdict.Ambiguous] refusal below is
+     * checked **before** this flag rather than after it, and why
+     * [AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT] now requires a second
+     * [PhysicalObservationId] that this flag does not.
      *
      * The order of the checks is the order of the evidence's strength, and each returns its own
      * sentence so a bundle can say which one applied.
@@ -122,6 +131,19 @@ object ReadingEligibility {
         scale: ScaleAmbiguity.Verdict?,
         basis: CarbBasis?,
         corroborated: Boolean,
+        /**
+         * Whether [corroborated] came from evidence that can see decimal scale.
+         *
+         * True for a second [PhysicalObservationId] or the label's own structure; **false** for
+         * agreement between views of one photograph, which cannot see a separator that is missing
+         * from the ink.
+         *
+         * Measured on `20260904-113950-065`: a Hellmann's bottle prints `1,3 g / 100 ml` and every
+         * view of the one capture read `13g`, so agreement was unanimous and unanimously wrong by a
+         * factor of ten. Defaults to true so existing callers — recovery, where a human is pointing at
+         * a number they can see — keep their behaviour unchanged.
+         */
+        corroborationSettlesScale: Boolean = true,
     ): Verdict {
         // ## Corroboration is NOT checked first, and the reason is arithmetic
         //
@@ -163,7 +185,18 @@ object ReadingEligibility {
         // the basis test — because it remains the strongest evidence available against a *single*
         // misread digit, which is what both routes were built for and still catch. What it no longer
         // does is overrule the one thing it cannot see.
-        if (corroborated) {
+        // Corroboration may only answer the scale question when it can *see* scale.
+        //
+        // `Unsupported` means the recognised text says nothing about the separator either way. Filling
+        // that silence with agreement between views of one photograph is precisely the mistake the
+        // 2026-09-04 pass removed from automatic advancement: every view inherits the same ink, so a
+        // separator missing from the print is missing from all of them and their agreement is
+        // unanimous and uninformative. The Hellmann's `1,3 g` -> `13g` is the measured instance.
+        //
+        // Agreement is still admitted for a scale that is *not* in question — the `Established` branch
+        // above already returned, and a declared serving basis is handled below — so this narrows the
+        // rule to the one question correlated views cannot answer.
+        if (corroborated && (corroborationSettlesScale || scale !is ScaleAmbiguity.Verdict.Unsupported)) {
             return Verdict.Eligible("corroborated by evidence outside this recognition run")
         }
 

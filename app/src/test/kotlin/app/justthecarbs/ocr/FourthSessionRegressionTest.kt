@@ -172,15 +172,54 @@ class FourthSessionRegressionTest {
             AutomaticVerification.verify(document, report).route,
         )
 
+        // "A second recognition" means a second **photograph** since 2026-09-04. Two recognitions of
+        // one JPEG share its optical defects, so they no longer verify — see
+        // [PhysicalObservationProvenanceTest] and the Fanta capture that forced the change.
         val verdict = AutomaticVerification.verify(
             listOf(
-                RecognitionEvidence(EvidenceSource.FULL_FRAME_PASS_A, report, document),
-                RecognitionEvidence(EvidenceSource.SELECTED_REGION_OCR, report, document),
+                RecognitionEvidence(
+                    EvidenceSource.FULL_FRAME_PASS_A, report, document,
+                    physicalObservation = PhysicalObservationId("FRAME_A"),
+                ),
+                RecognitionEvidence(
+                    EvidenceSource.SECOND_OBSERVATION_PASS, report, document,
+                    physicalObservation = PhysicalObservationId("FRAME_B"),
+                ),
             ),
         )
 
         assertEquals(AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT, verdict.route)
         assertTrue(verdict.mayAdvanceAutomatically)
+    }
+
+    /**
+     * The same two recognitions of **one** photograph do not verify it.
+     *
+     * The companion to the case above, and the reason it had to be rewritten: what was previously
+     * modelled as "a second recognition" was a re-read of the same pixels, which is exactly how
+     * `20260904-113653-044` advanced automatically on a printed `0,5 g` recognised as `0.59`.
+     */
+    @Test
+    fun `the same capture read twice does not verify the clean drink`() {
+        val document = FourthSessionFixtures.drinkCleanAutomatic()
+        val report = NutritionTableInterpreter.interpret(document)
+        val oneFrame = PhysicalObservationId("FRAME_A")
+
+        val verdict = AutomaticVerification.verify(
+            listOf(
+                RecognitionEvidence(
+                    EvidenceSource.FULL_FRAME_PASS_A, report, document,
+                    physicalObservation = oneFrame,
+                ),
+                RecognitionEvidence(
+                    EvidenceSource.SELECTED_REGION_OCR, report, document,
+                    physicalObservation = oneFrame,
+                ),
+            ),
+        )
+
+        assertEquals(AutomaticVerification.Route.NONE, verdict.route)
+        assertFalse(verdict.mayAdvanceAutomatically)
     }
 
     /**

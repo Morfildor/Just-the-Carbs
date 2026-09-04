@@ -4,6 +4,7 @@ import app.justthecarbs.domain.NutritionBasis
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -112,8 +113,19 @@ class EstablishedBasisRoutingTest {
     @Test
     fun `a confident verified reading is unaffected`() {
         // The yoghurt. Nothing about this change may touch a capture that already succeeds.
+        //
+        // 2026-09-04 (seventeenth session): it now advances rather than asking. The label prints
+        // `Ø/100 g` beside `Ø/125 g` and four of its rows corroborate the carbohydrate row at the
+        // printed 1.25 serving ratio, so the table itself vouches for the figure. What this test
+        // guards is that a succeeding capture keeps succeeding, which it does — asserted as "the
+        // figure reaches the user without a crop or a recovery step" rather than as one exact
+        // action, so a future move between AUTO and CONFIRM does not read as a break.
         val document = ThirteenthSessionFixtures.yoghurtThreePointTwo()
         val action = decide(document)
-        assertEquals(ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE, action)
+        assertTrue(
+            "the reading must still reach the user directly, was $action",
+            action == ScanPresentationDecision.Action.AUTO_ADVANCE ||
+                action == ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE,
+        )
     }
 }

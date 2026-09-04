@@ -83,7 +83,7 @@ class SelectedTableInterferenceTest {
     // ------------------------------------------------------------------ the reported failure shape
 
     @Test
-    fun `an adjacent prose panel destroys the reading, and the user's selection restores it`() {
+    fun `an adjacent prose panel is isolated before physical rows are built`() {
         // The measured Kinder situation: a second package's ingredient panel sits beside the table,
         // so reconstructed rows span both panels before any downstream stage sees them.
         val table = RealLabelFixtures.kinder(slopePercent = 4.0)
@@ -100,14 +100,11 @@ class SelectedTableInterferenceTest {
             NormalizedRegion(left = 0.0, top = 0.20, right = 0.56, bottom = 0.62),
         )
 
-        assertTrue(
-            "PRECONDITION: the full frame must be damaged by the adjacent panel, otherwise this " +
-                "test proves nothing about filtering. Got ${fullFrame.reading}",
-            fullFrame.reading !is LabelReading.Confident ||
-                (fullFrame.reading as LabelReading.Confident).candidate.value.compareTo(
-                    BigDecimal("53.5"),
-                ) != 0,
-        )
+        val fullConfident = fullFrame.reading as? LabelReading.Confident
+            ?: throw AssertionError("expected panel-local full-frame reading, got ${fullFrame.reading}")
+        assertEquals(0, fullConfident.candidate.value.compareTo(BigDecimal("53.5")))
+        assertEquals(NutritionBasis.PER_100_G, fullConfident.candidate.basis)
+        assertTrue(NutritionDocumentModel.build(withProse).panels.single().localized)
 
         val confident = selected.reading as? LabelReading.Confident
             ?: throw AssertionError("expected a confident reading from the selection, got ${selected.reading}")
@@ -129,8 +126,9 @@ class SelectedTableInterferenceTest {
 
         val provenance = selected.provenance
         assertNotNull("a recovered reading must carry provenance", provenance)
-        val rowText = (provenance as? CandidateProvenance.FromRow)?.rowText
-            ?: throw AssertionError("expected row provenance, got $provenance")
+        val rowText = (provenance as? CandidateProvenance.FromDeclaration)?.rowTexts
+            ?.firstOrNull()
+            ?: throw AssertionError("expected declaration provenance, got $provenance")
 
         // Checked against the production classifier rather than a literal, so this assertion cannot
         // drift from what the parser itself treats as a total row versus a child row.

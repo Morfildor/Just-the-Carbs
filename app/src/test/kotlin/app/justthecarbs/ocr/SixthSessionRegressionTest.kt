@@ -29,13 +29,31 @@ class SixthSessionRegressionTest {
     private fun report(document: OcrDocument): NutritionParseReport =
         NutritionTableInterpreter.interpret(document)
 
+    /**
+     * Evidence whose originating photograph is stated by the caller.
+     *
+     * Several cases here assert that a scale rule holds **even when the reading is corroborated**, so
+     * their preconditions need corroboration that actually exists. Since 2026-09-04 that means two
+     * distinct [PhysicalObservationId]s — two views of one JPEG no longer corroborate anything — so
+     * those cases pass separate ids, and the ones modelling a single capture share one.
+     */
     private fun confidentEvidence(
         source: EvidenceSource,
         document: OcrDocument,
+        observation: PhysicalObservationId = PhysicalObservationId("ONE_CAPTURE"),
     ): RecognitionEvidence = RecognitionEvidence(
         source = source,
         report = report(document),
         document = document,
+        physicalObservation = observation,
+    )
+
+    /** Two genuinely separate photographs of one label, for the "even when corroborated" cases. */
+    private fun independentEvidence(document: OcrDocument) = listOf(
+        confidentEvidence(EvidenceSource.FULL_FRAME_PASS_A, document, PhysicalObservationId("FRAME_A")),
+        confidentEvidence(
+            EvidenceSource.SECOND_OBSERVATION_PASS, document, PhysicalObservationId("FRAME_B"),
+        ),
     )
 
     /**
@@ -285,10 +303,7 @@ class SixthSessionRegressionTest {
                 OcrElement("41g", OcrBox(430, 200, 500, 240), 0, 1),
             ),
         )
-        val evidence = listOf(
-            confidentEvidence(EvidenceSource.FULL_FRAME_PASS_A, document),
-            confidentEvidence(EvidenceSource.SELECTED_REGION_OCR, document),
-        )
+        val evidence = independentEvidence(document)
         val verdict = AutomaticVerification.verify(evidence)
         assertEquals(AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT, verdict.route)
         assertTrue(
@@ -303,6 +318,46 @@ class SixthSessionRegressionTest {
     }
 
     /**
+     * `41g` stays confirmable when only *views of one photograph* agree, too.
+     *
+     * The companion to the case above, added 2026-09-04. Demoting same-frame agreement below
+     * automatic advancement must not also demote it below *proposal*: the good capture's whole point
+     * is that a correct lone integer keeps reaching the user, and on a real device the two agreeing
+     * views are usually all there is.
+     *
+     * The difference from the case above is the tap, not the number — see
+     * [SameFrameProposalEligibilityTest].
+     */
+    @Test
+    fun `a lone integer agreed by views of one photograph is still confirmable`() {
+        val document = OcrDocument(
+            width = 1000,
+            height = 1000,
+            elements = listOf(
+                OcrElement("per 100 ml", OcrBox(400, 100, 620, 140), 0, 0),
+                OcrElement("Koolhydraten", OcrBox(60, 200, 300, 240), 0, 1),
+                OcrElement("41g", OcrBox(430, 200, 500, 240), 0, 1),
+            ),
+        )
+        val oneFrame = PhysicalObservationId("FRAME_A")
+        val evidence = listOf(
+            confidentEvidence(EvidenceSource.FULL_FRAME_PASS_A, document, oneFrame),
+            confidentEvidence(EvidenceSource.SELECTED_REGION_OCR, document, oneFrame),
+        )
+        val verdict = AutomaticVerification.verify(evidence)
+
+        assertEquals(
+            "one photograph cannot verify itself for advancement",
+            AutomaticVerification.Route.NONE,
+            verdict.route,
+        )
+        assertTrue(
+            "but the value must still reach the user for confirmation",
+            AutomaticScanAdvance.mayConfirm(EvidenceResolver.resolve(evidence), verdict, document),
+        )
+    }
+
+    /**
      * **The correction itself.** The truffle's separatorless *pair* is refused even when verified.
      *
      * This is the assertion that replaces the old endorsement above, on the same document, so the
@@ -311,10 +366,10 @@ class SixthSessionRegressionTest {
     @Test
     fun `the truffle collapse is refused even when two distinct runs agree`() {
         val document = SixthSessionFixtures.sauceSharedScaleCollapse()
-        val evidence = listOf(
-            confidentEvidence(EvidenceSource.FULL_FRAME_PASS_A, document),
-            confidentEvidence(EvidenceSource.SELECTED_REGION_OCR, document),
-        )
+        // Two separate photographs, so the corroboration the precondition needs genuinely exists —
+        // and the point stands all the stronger: a separatorless *pair* is refused even by the
+        // strongest corroboration the app has, because agreement is scale-invariant.
+        val evidence = independentEvidence(document)
         val verdict = AutomaticVerification.verify(evidence)
         assertTrue(
             "precondition: something must corroborate it, or this proves nothing",

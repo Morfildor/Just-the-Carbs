@@ -35,6 +35,17 @@ enum class EvidenceSource {
      * corroborate and it can be offered for verification; it can never finish the scan on its own.
      */
     LIVE_STABLE_FRAME,
+
+    /**
+     * A recognition of a **second, separately acquired photograph** of the same label.
+     *
+     * The only source that can carry a different [PhysicalObservationId] from the capture being
+     * verified, and therefore the only one that can restore automatic advancement once same-frame
+     * agreement stops counting. A second frame has its own focus, its own hand-shake and its own
+     * highlight, so it can disagree with the first — which is exactly what makes its agreement worth
+     * something.
+     */
+    SECOND_OBSERVATION_PASS,
     ;
 
     /**
@@ -55,16 +66,81 @@ enum class EvidenceSource {
             FULL_FRAME_PASS_A, FILTERED_PASS_A -> RecognitionRun.PASS_A
             SELECTED_REGION_OCR -> RecognitionRun.SELECTED_REGION
             LIVE_STABLE_FRAME -> RecognitionRun.LIVE
+            SECOND_OBSERVATION_PASS -> RecognitionRun.SECOND_OBSERVATION
         }
 }
 
 /**
  * A distinct execution of a recognizer.
  *
- * Consensus is counted over *runs*, never over sources: only separate runs can independently confirm
- * a value, because only they can independently get it wrong.
+ * Consensus is **not** counted over runs — see [PhysicalObservationId], which is the unit that
+ * actually decides independence. This type is retained because it still says something true and
+ * useful in diagnostics (which recognizer call produced this evidence), and because the
+ * two-parses-of-one-run rule it was introduced for remains correct as far as it goes.
+ *
+ * It is simply not sufficient: two *runs* over one photograph are still one observation.
  */
-enum class RecognitionRun { PASS_A, SELECTED_REGION, LIVE }
+enum class RecognitionRun { PASS_A, SELECTED_REGION, LIVE, SECOND_OBSERVATION }
+
+/**
+ * Which **photograph** a piece of evidence was recognised from.
+ *
+ * ## Why the unit of independence is the frame, not the run
+ *
+ * [RecognitionRun] distinguishes `PASS_A` from `SELECTED_REGION`, and those genuinely are separate ML
+ * Kit invocations. Both, however, read *the same JPEG*: `SELECTED_REGION` crops the capture and
+ * recognises it again. So they see the same ink, the same focus, the same motion blur and the same
+ * specular highlight. When the optics are what corrupted a glyph, looking again at those pixels
+ * reproduces the corruption — and two correlated observations agreeing is one observation counted
+ * twice.
+ *
+ * That is not a theoretical concern. On `docs/Scan Evidence new structure/20260904-113653-044`, a
+ * Fanta bottle printing `0,5 g / 100 ml`:
+ *
+ * ```
+ * FULL_FRAME_PASS_A   [run=PASS_A]          Confident 0.59/PER_100_ML
+ * FILTERED_PASS_A     [run=PASS_A]          Confident 0.59/PER_100_ML
+ * SELECTED_REGION_OCR [run=SELECTED_REGION] Confident 0.59/PER_100_ML
+ * automatic-verification: DISTINCT_OCR_AGREEMENT
+ * final UI action : AUTO_ADVANCE
+ * ```
+ *
+ * The `g` was recognised as a `9` in every view, because there was only ever one view of one
+ * photograph. The app advanced to Quick Calculation, with no confirmation step, on a figure **ten
+ * times** the printed one — on a dosing input.
+ *
+ * ## What is and is not correlated
+ *
+ * Everything derived from one capture shares its id, whatever transform produced it:
+ *
+ * ```
+ * FRAME_A ── full frame ── crop ── rotation ── upscale ── contrast
+ * FRAME_B ── a genuinely different photograph
+ * ```
+ *
+ * Only `FRAME_A` against `FRAME_B` is independent evidence. A different bitmap instance, a different
+ * scale, a different preprocessing chain and a different recognizer call are all still `FRAME_A`.
+ *
+ * ## What same-observation views may still do
+ *
+ * Everything except satisfy [AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT]. They recover labels
+ * the full frame cannot read, they generate candidates, they support confirmation and focused entry,
+ * and their disagreement is still a conflict. Only the route that *skips the user's tap* requires a
+ * second photograph.
+ */
+@JvmInline
+value class PhysicalObservationId(val value: String) {
+    companion object {
+        /**
+         * Evidence whose originating photograph was never stated.
+         *
+         * Shared by every un-annotated piece of evidence, so two of them are always "the same
+         * observation" and can never corroborate each other. See the field KDoc on
+         * [RecognitionEvidence.physicalObservation] for why this is the safe default.
+         */
+        val UNKNOWN = PhysicalObservationId("UNKNOWN")
+    }
+}
 
 /**
  * One recognition pass's contribution, with everything the resolver needs to compare it to another.
@@ -109,6 +185,21 @@ data class RecognitionEvidence(
      * consumer, which is three places to get subtly different and no way to notice.
      */
     val crop: SelectedRegionCrop.PixelRect? = null,
+    /**
+     * Which photograph this evidence was recognised from. See [PhysicalObservationId].
+     *
+     * ## Why the default is a shared constant rather than null or a fresh id
+     *
+     * The default has to be the **safe** reading, and the safe reading of "nobody said which frame
+     * this came from" is *possibly the same frame as everything else*. So every un-annotated piece of
+     * evidence shares [PhysicalObservationId.UNKNOWN] and therefore cannot corroborate anything.
+     *
+     * Generating a fresh id per instance would be the dangerous default: two pieces of evidence
+     * constructed without thinking about provenance would look like two photographs and would satisfy
+     * automatic advancement. That is precisely the failure this type exists to prevent, so it must not
+     * be reachable by omission.
+     */
+    val physicalObservation: PhysicalObservationId = PhysicalObservationId.UNKNOWN,
 ) {
     val reading: LabelReading get() = report.reading
 

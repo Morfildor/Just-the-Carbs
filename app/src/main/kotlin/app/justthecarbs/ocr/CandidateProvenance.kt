@@ -14,6 +14,12 @@ sealed interface CandidateProvenance {
     /** A value read from a reconstructed table row. */
     data class FromRow(val rowText: String, val rowBox: OcrBox) : CandidateProvenance
 
+    /** A value read from one semantic declaration while retaining every strict source row. */
+    data class FromDeclaration(
+        val rowTexts: List<String>,
+        val declarationBox: OcrBox,
+    ) : CandidateProvenance
+
     /**
      * A value bound to a nutrient term inside a prose declaration.
      *

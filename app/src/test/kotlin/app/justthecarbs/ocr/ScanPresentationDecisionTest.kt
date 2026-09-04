@@ -20,10 +20,12 @@ import org.junit.Test
  */
 class ScanPresentationDecisionTest {
 
+    /** One capture's views, so none of them can corroborate another (2026-09-04). */
     private fun evidence(source: EvidenceSource, document: OcrDocument) = RecognitionEvidence(
         source = source,
         report = NutritionTableInterpreter.interpret(document),
         document = document,
+        physicalObservation = PhysicalObservationId("ONE_CAPTURE"),
     )
 
     private fun sessionEvidence(passA: OcrDocument, strategyB: OcrDocument) = listOf(

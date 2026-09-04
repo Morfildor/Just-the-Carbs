@@ -49,9 +49,12 @@ internal object AutomaticVerification {
         CROSS_COLUMN,
 
         /**
-         * A genuinely separate recognition run read the same amount and the same basis.
+         * A **separate photograph** read the same amount and the same basis.
          *
-         * "Separate" is counted over [RecognitionRun], never over [EvidenceSource].
+         * "Separate" is counted over [PhysicalObservationId], never over [EvidenceSource] and — since
+         * 2026-09-04 — no longer over [RecognitionRun] either. A crop, rotation, upscale or contrast
+         * variant of one capture is the same observation and cannot reach this route, because it
+         * inherits the optical defect that corrupted the glyph in the first place.
          */
         DISTINCT_OCR_AGREEMENT,
 
@@ -72,8 +75,27 @@ internal object AutomaticVerification {
         val medianRatio: Double? = null,
         val candidateRatio: Double? = null,
         val rejectionReason: String? = null,
+        /**
+         * Whether two or more recognition views agreed, **including views of one photograph**.
+         *
+         * Proposal-grade evidence, not advancement-grade — see [agreesAcrossViews]. Carried on the
+         * verdict rather than passed separately so the callers of
+         * [AutomaticScanAdvance.eligibility] keep their signatures and cannot accidentally supply the
+         * advancement answer to the proposal question, which is the confusion that let `0.59`
+         * advance in the first place.
+         */
+        val viewsAgree: Boolean = false,
     ) {
         val mayAdvanceAutomatically: Boolean get() = route != Route.NONE
+
+        /**
+         * Evidence sufficient to **offer** the figure for confirmation.
+         *
+         * Deliberately weaker than [mayAdvanceAutomatically]: an independent observation or the
+         * label's own structure removes the tap, while agreement between two views of one frame only
+         * earns the right to show the number behind one.
+         */
+        val mayBeProposed: Boolean get() = mayAdvanceAutomatically || viewsAgree
     }
 
     /**
@@ -124,6 +146,7 @@ internal object AutomaticVerification {
      */
     fun verify(evidence: List<RecognitionEvidence>): Verdict {
         val confident = evidence.filter { it.isConfident }
+        val viewsAgree = agreesAcrossViews(evidence)
         val primary = confident.firstOrNull()
             ?: return Verdict(Route.NONE, rejectionReason = "no confident reading to verify")
 
@@ -139,6 +162,7 @@ internal object AutomaticVerification {
             return Verdict(
                 route = Route.NONE,
                 rejectionReason = "confident passes disagree; there is no single candidate to verify",
+                viewsAgree = false,
             )
         }
 
@@ -157,16 +181,34 @@ internal object AutomaticVerification {
             .forEach { candidate ->
                 val document = candidate.document ?: return@forEach
                 val structural = verify(document, candidate.report)
-                if (structural.mayAdvanceAutomatically) return structural
+                if (structural.mayAdvanceAutomatically) {
+                    return structural.copy(viewsAgree = viewsAgree)
+                }
                 // A *contradiction* is final: a second recognition agreeing with a reading the label
                 // itself refutes does not rescue it, it means both runs made the same mistake. Only
                 // the "could not answer" case falls through to the optical route.
+                //
+                // `viewsAgree` is deliberately NOT carried here: when the table refutes the row, the
+                // fact that two views read it the same way is what a repeated misread looks like, so
+                // it must not become a reason to propose the figure anyway.
                 if (structural.candidateRatio != null) return structural
                 if (structuralGap == null) structuralGap = structural
             }
 
-        val distinctRuns = confident.map { it.source.recognitionRun }.distinct()
-        if (distinctRuns.size >= 2) return Verdict(Route.DISTINCT_OCR_AGREEMENT)
+        // Independence is a property of the photograph, not of the recognizer invocation.
+        //
+        // This counted `recognitionRun` until 2026-09-04, and `20260904-113653-044` is what that
+        // cost: Pass A and the selected-region pass are two runs, they are also two views of one
+        // JPEG, and both read the Fanta's printed `0,5 g` as `0.59` because the `g` glyph was
+        // corrupted in the pixels they share. Two correlated observations agreeing is one observation
+        // counted twice, and the app advanced with no confirmation on a tenfold error.
+        //
+        // See [PhysicalObservationId]. Everything derived from one capture — crop, rotation, upscale,
+        // contrast — shares its id, so only a genuinely separate photograph reaches this route.
+        val distinctObservations = confident.map { it.physicalObservation }.distinct()
+        if (distinctObservations.size >= 2) {
+            return Verdict(Route.DISTINCT_OCR_AGREEMENT, viewsAgree = viewsAgree)
+        }
 
         // Both reasons, not just the second one.
         //
@@ -178,17 +220,79 @@ internal object AutomaticVerification {
         // label could not corroborate itself. Which of the two is missing decides whether a capture
         // is fixed by a better photograph or by a label that prints a second column at all.
         val structural = structuralGap?.rejectionReason
+        val runs = confident.map { it.source.recognitionRun }.distinct()
         return Verdict(
             route = Route.NONE,
             supportingRows = structuralGap?.supportingRows ?: 0,
+            viewsAgree = viewsAgree,
             rejectionReason = buildString {
-                append(
-                    "only one recognition run (${distinctRuns.joinToString()}); " +
-                        "two parses of one run cannot corroborate each other",
-                )
+                // Say which of the two reasons applies, because they call for different actions.
+                //
+                // "One run" means the app looked once and a second look might help. "One physical
+                // observation" means it looked twice at the same photograph, which cannot settle an
+                // optical corruption however many times it is repeated — that one needs a second
+                // photograph, and a bundle saying "only one recognition run" would be plainly false
+                // on a capture where two runs demonstrably happened.
+                if (runs.size >= 2) {
+                    append(
+                        "all ${runs.size} recognition runs read one physical observation " +
+                            "(${distinctObservations.single().value}); views of the same photograph " +
+                            "share its optical defects and cannot corroborate each other",
+                    )
+                } else {
+                    append(
+                        "only one recognition run (${runs.joinToString()}); " +
+                            "two parses of one run cannot corroborate each other",
+                    )
+                }
                 structural?.let { append(" — and the table could not corroborate it either: $it") }
             },
         )
+    }
+
+    /**
+     * Whether two or more recognition **views** read the same amount and basis, same frame or not.
+     *
+     * ## A deliberately weaker question than [verify]
+     *
+     * This asks *may this figure be shown for confirmation*, where [verify] asks *may this figure skip
+     * the confirmation tap*. Same-frame views can answer the first and not the second, and collapsing
+     * the two is what made the `0.59` advance possible.
+     *
+     * Two views of one photograph share its pixels, so they cannot settle an **optical** corruption or
+     * the **absolute decimal scale** — both inherit whatever the glyph actually looked like. They can
+     * still disagree about tokenisation, row association and column ownership, which is the far more
+     * common way a single digit goes wrong, so their agreement is real evidence against *that*.
+     *
+     * ## Why this is not a loophole back to the defect
+     *
+     * Nothing here reaches [Route.DISTINCT_OCR_AGREEMENT]; the only consumer is
+     * [ReadingEligibility]'s `corroborated` parameter, which governs whether a value is **offered**.
+     * Every scale rule still applies on top: [ReadingEligibility] refuses a demonstrated
+     * [ScaleAmbiguity.Verdict.Ambiguous] *before* consulting corroboration at all, precisely because
+     * agreement is scale-invariant.
+     *
+     * Measured: without this, `20260904-113818-873` (`57 g per 100 gram`) and `20260904-114311-968`
+     * (`koolhydraten 35 g`) fall from `CONFIRM_ON_CAPTURE` to `RECOVERY` — the app holds the correct
+     * value and shows the user nothing, which is a regression in exactly the direction this app has
+     * repeatedly had to fix.
+     */
+    fun agreesAcrossViews(evidence: List<RecognitionEvidence>): Boolean {
+        val confident = evidence.filter { it.isConfident }
+        val primary = confident.firstOrNull() ?: return false
+
+        // Two *parses of one recognition* are not two views, and this predates the physical-observation
+        // work rather than being softened by it: `FILTERED_PASS_A` is literally a subset of
+        // `FULL_FRAME_PASS_A`'s elements, carrying the same characters, so their agreeing proves only
+        // that the filter kept the winning row. Grated cheese resolved to the known-wrong `2.09`
+        // exactly this way.
+        //
+        // Without this bound the red label's `12` — confident, scale-unsupported, and read by the two
+        // Pass A views alone — would become proposable, which is the eighth session's release blocker
+        // reopening through the proposal door.
+        if (confident.map { it.source.recognitionRun }.distinct().size < 2) return false
+
+        return confident.size >= 2 && confident.all { it.fullyAgreesWith(primary) }
     }
 
     private fun format(ratio: Double): String = String.format("%.3f", ratio)

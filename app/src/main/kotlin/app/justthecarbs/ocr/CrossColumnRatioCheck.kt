@@ -110,22 +110,40 @@ internal object CrossColumnRatioCheck {
         val rows = LogicalRowBuilder.build(document)
         val columns = ColumnClassifier.classify(rows, document.width)
 
-        val perHundredColumn = columns.singleOrNull {
-            it.kind == NutritionColumnKind.PER_100_G || it.kind == NutritionColumnKind.PER_100_ML
-        } ?: return Verdict.NotEnoughEvidence(0)
+        // The per-100 column, collapsed the same way the serving column below it already was.
+        //
+        // A multilingual package prints one column header once per language, and each recognised
+        // phrase emits its own column: the Turkish rice-flour box states `100 g.`, `For 100 g.`,
+        // `Für 100 g.`, `Pour 100 g.`, `Voor 100g.` and `Pr 100 g.`, giving six `PER_100_G` columns
+        // spanning 91 px of a 1684 px frame. `singleOrNull` refused the check on precisely the
+        // labels it is needed for.
+        //
+        // The bound is what keeps this safe, and it has a measured counter-example:
+        // `docs/Scan Evidence 3rd testr/20260904-134552-198` photographs an Indomie packet printing
+        // **two separate per-100 g tables**, one for the noodles (27 g) and one for the bouillon
+        // (2,7 g). Those columns sit 443 px apart — 26% of the width — so they are not collapsed,
+        // and the check declines rather than inventing a table that is not printed.
+        val perHundredColumn = singlePrintedColumn(
+            columns.filter {
+                it.kind == NutritionColumnKind.PER_100_G || it.kind == NutritionColumnKind.PER_100_ML
+            },
+            document,
+        ) ?: return Verdict.NotEnoughEvidence(0)
 
         // A multilingual header states "portion" and "portie/" on two recognised rows, so the same
         // printed column is emitted twice a few pixels apart. Requiring exactly one would refuse the
         // check on precisely the labels it is needed for. They are collapsed when they agree on
         // position — which is what makes them one printed column — and a genuine disagreement (two
         // serving columns far apart) still yields no verification.
-        val servingColumns = columns.filter { it.kind == NutritionColumnKind.PER_SERVING }
-        if (servingColumns.isEmpty()) return Verdict.NotEnoughEvidence(0)
-        val servingCentre = servingColumns.map { it.centerX }
-        if (servingCentre.max() - servingCentre.min() > document.width * SAME_COLUMN_FRACTION) {
-            return Verdict.NotEnoughEvidence(0)
-        }
-        val servingColumn = servingColumns.first()
+        //
+        // When the label states no serving column at all, a position whose meaning was never
+        // established may stand in — see [offBasisDenominator] for why that is sound here and
+        // nowhere else.
+        val servingColumn = singlePrintedColumn(
+            columns.filter { it.kind == NutritionColumnKind.PER_SERVING },
+            document,
+        ) ?: offBasisDenominator(columns, perHundredColumn, document)
+        ?: return Verdict.NotEnoughEvidence(0)
 
         val candidateRow = rows.firstOrNull { row ->
             row.box.verticalOverlapRatio(candidate.geometry) > ROW_MATCH_OVERLAP
@@ -166,6 +184,68 @@ internal object CrossColumnRatioCheck {
             Verdict.Conflicting(median, ratioOfAcceptedValue, coherent)
         }
     }
+
+    /**
+     * The one printed column [candidates] describe, or null when they describe none or several.
+     *
+     * Columns of one kind that sit within [SAME_COLUMN_FRACTION] of the frame width are one printed
+     * column read once per language; columns further apart are different columns, and a check that
+     * merged them would be reasoning about a table the package does not print.
+     */
+    private fun singlePrintedColumn(
+        candidates: List<NutritionColumn>,
+        document: OcrDocument,
+    ): NutritionColumn? {
+        if (candidates.isEmpty()) return null
+        val centres = candidates.map { it.centerX }
+        if (centres.max() - centres.min() > document.width * SAME_COLUMN_FRACTION) return null
+        return candidates.first()
+    }
+
+    /**
+     * A second value column whose *meaning* was never established, usable here and nowhere else.
+     *
+     * ## What `UNKNOWN` means, and why it is not an objection to a ratio
+     *
+     * [NutritionColumnKind.UNKNOWN] marks a position the label prints values under whose meaning the
+     * app could not establish — `Ø/125 g`, `Ø/9 g`, `250 ml`. There is no
+     * [app.justthecarbs.domain.NutritionBasis] member for any of those, so **reading a value from
+     * such a column is refused everywhere in this app, and that refusal is unchanged.** It is the
+     * rule that closed the 2.6x error.
+     *
+     * It is not an objection to using the column as a *denominator*. This class computes
+     * `second / perHundred` for each row, compares those ratios against each other, and discards
+     * them. The quantity is dimensionless, it never leaves this file, no basis is inferred from it,
+     * no value is read out of the column, and nothing derived from it is ever displayed. What is
+     * being asked is only *does this row behave like every other row of the same table?* — and the
+     * answer to that does not depend on knowing what the second column means.
+     *
+     * ## The labels this exists for
+     *
+     * `docs/Scan Evidence 3rd testr/20260904-134233-470` prints `Ø/100 g` and `Ø/125 g`, and states
+     * the serving ratio on three independent rows — energie 1.2505, vetten 1.2500, koolhydraten
+     * 1.2500. `-134917-744` prints `Ø/100 g` and `Ø/9 g` and states it on three more — 0.0887,
+     * 0.0899, 0.0912. Both were read correctly and both were made to ask the user, because their
+     * second column has no name this app recognises.
+     *
+     * ## The bounds
+     *
+     * - Consulted **only** when the label resolved no `PER_SERVING` column, so an established
+     *   meaning always wins over an unestablished position.
+     * - [NutritionColumnKind.REFERENCE_PERCENT] is never eligible. A `%RI` cell is a fraction of a
+     *   reference intake, not the nutrient restated, so it would compare a mass against a
+     *   percentage and move the median every other judgement rests on. Only `UNKNOWN` qualifies.
+     * - It must be a single printed column, by the same distance rule as every other column here.
+     * - It must not be the per-100 column itself.
+     */
+    private fun offBasisDenominator(
+        columns: List<NutritionColumn>,
+        perHundred: NutritionColumn,
+        document: OcrDocument,
+    ): NutritionColumn? = singlePrintedColumn(
+        columns.filter { it.kind == NutritionColumnKind.UNKNOWN && it !== perHundred },
+        document,
+    )
 
     /**
      * The two figures [row] prints under the two columns, or null when it does not print both.

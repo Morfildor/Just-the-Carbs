@@ -86,6 +86,17 @@ sealed interface LabelReading {
 
 data class OcrDiagnostic(val stage: String, val message: String)
 
+/** The first pipeline layer that could not establish a safe total-carbohydrate reading. */
+enum class CarbFailureReason {
+    CARB_TERM_MISSING,
+    CARB_VALUE_MISSING,
+    BASIS_MISSING,
+    DECLARATION_FRAGMENTED,
+    STRUCTURAL_CONFLICT,
+    SCALE_UNRESOLVED,
+    OCR_CONFLICT,
+}
+
 data class NutritionParseReport(
     val reading: LabelReading,
     val diagnostics: List<OcrDiagnostic>,
@@ -96,7 +107,24 @@ data class NutritionParseReport(
      * the reading is `Ambiguous` — an ambiguity has no single source to attribute.
      */
     val provenance: CandidateProvenance? = null,
+    val failureReason: CarbFailureReason? = null,
 )
+
+/** Adds resolver and presentation evidence to the parser's first-failing-layer diagnosis. */
+internal object CarbFailureDiagnosis {
+    fun classify(
+        report: NutritionParseReport,
+        outcome: EvidenceResolver.Outcome,
+        scaleVerdict: ScaleAmbiguity.Verdict?,
+        action: ScanPresentationDecision.Action,
+    ): CarbFailureReason? = when {
+        outcome is EvidenceResolver.Outcome.Conflicted -> CarbFailureReason.OCR_CONFLICT
+        action == ScanPresentationDecision.Action.RECOVERY &&
+            scaleVerdict != null && scaleVerdict !is ScaleAmbiguity.Verdict.Established ->
+            CarbFailureReason.SCALE_UNRESOLVED
+        else -> report.failureReason
+    }
+}
 
 /**
  * Spatial nutrition-table parser. Contains no Android or ML Kit types.

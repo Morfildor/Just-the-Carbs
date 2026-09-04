@@ -17,11 +17,29 @@ import java.math.BigDecimal
  */
 class AutomaticVerificationTest {
 
+    /**
+     * Evidence from a **separate photograph** unless [observation] says otherwise.
+     *
+     * The default gives each [EvidenceSource] its own [PhysicalObservationId] so the cases below keep
+     * testing what they were written to test: whether *independent* recognitions can corroborate each
+     * other. Since 2026-09-04 that requires distinct observations, not merely distinct
+     * [RecognitionRun]s — see [PhysicalObservationProvenanceTest] for the same-photograph cases, which
+     * pass one shared id on purpose.
+     *
+     * Note the two Pass A views deliberately share `PASS_A`: they are two parses of one recognition,
+     * which was already the rule this class pinned, and it still holds.
+     */
     private fun evidence(
         source: EvidenceSource,
         value: String?,
         basis: NutritionBasis? = NutritionBasis.PER_100_G,
         document: OcrDocument? = null,
+        observation: PhysicalObservationId = PhysicalObservationId(
+            when (source) {
+                EvidenceSource.FULL_FRAME_PASS_A, EvidenceSource.FILTERED_PASS_A -> "PASS_A"
+                else -> source.name
+            },
+        ),
     ): RecognitionEvidence {
         val reading = if (value == null || basis == null) {
             LabelReading.NotFound
@@ -47,6 +65,7 @@ class AutomaticVerificationTest {
             source = source,
             report = NutritionParseReport(reading = reading, diagnostics = emptyList()),
             document = document,
+            physicalObservation = observation,
         )
     }
 
@@ -232,10 +251,18 @@ class AutomaticVerificationTest {
             AutomaticVerification.verify(document, report).rejectionReason!!.contains("coherent row"),
         )
 
+        // Two separate photographs: the optical route needs independent observations since
+        // 2026-09-04, and what this case is about is the *fall-through*, not what satisfies it.
         val verdict = AutomaticVerification.verify(
             listOf(
-                RecognitionEvidence(EvidenceSource.FULL_FRAME_PASS_A, report, document),
-                RecognitionEvidence(EvidenceSource.SELECTED_REGION_OCR, report, document),
+                RecognitionEvidence(
+                    EvidenceSource.FULL_FRAME_PASS_A, report, document,
+                    physicalObservation = PhysicalObservationId("FRAME_A"),
+                ),
+                RecognitionEvidence(
+                    EvidenceSource.SECOND_OBSERVATION_PASS, report, document,
+                    physicalObservation = PhysicalObservationId("FRAME_B"),
+                ),
             ),
         )
 

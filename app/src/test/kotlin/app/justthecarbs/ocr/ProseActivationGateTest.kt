@@ -27,7 +27,7 @@ class ProseActivationGateTest {
         assertTrue(report.reading is LabelReading.Confident)
         assertTrue(
             "a table's provenance must be a row, not a prose span",
-            report.provenance is CandidateProvenance.FromRow,
+            report.provenance is CandidateProvenance.FromDeclaration,
         )
     }
 

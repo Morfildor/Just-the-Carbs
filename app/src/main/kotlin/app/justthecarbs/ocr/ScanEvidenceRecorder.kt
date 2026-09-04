@@ -568,6 +568,8 @@ object ScanEvidenceRecorder {
         scaleVerdict: ScaleAmbiguity.Verdict? = null,
         /** The basis handed to Edit or focused entry, and whether the amount was prefilled. */
         correctionHandoff: String? = null,
+        /** Final first-failing layer after parser, resolver, scale, and presentation decisions. */
+        failureReason: CarbFailureReason? = report.failureReason,
         /**
          * The document Strategy B recognised, when it ran and returned one.
          *
@@ -636,6 +638,7 @@ object ScanEvidenceRecorder {
                     appendLine("elements        : $elementsBefore -> $elementsAfter")
                     appendLine("reading         : ${report.reading::class.simpleName} (Strategy A re-parse)")
                     appendLine("provenance      : ${report.provenance}")
+                    appendLine("failure reason  : ${failureReason?.name ?: "none"}")
                     appendLine(
                         "resolver.verdict: " + (resolverVerdict ?: "not supplied by caller") +
                             "  <- what AutomaticScanAdvance reads",

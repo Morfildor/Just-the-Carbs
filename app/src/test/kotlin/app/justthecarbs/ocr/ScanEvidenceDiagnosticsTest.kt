@@ -57,6 +57,7 @@ class ScanEvidenceDiagnosticsTest {
         strategyBCrop: SelectedRegionCrop.PixelRect? = null,
         strategyBStatus: String = SelectedTableResolution.StrategyBStatus.RAN_CONFIDENT.name,
         uiAction: String = ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE.name,
+        failureReason: CarbFailureReason? = null,
     ) {
         val passA = table()
         ScanEvidenceRecorder.recordSelection(
@@ -70,6 +71,7 @@ class ScanEvidenceDiagnosticsTest {
             resolverVerdict = "Resolved",
             strategyBStatus = strategyBStatus,
             uiAction = uiAction,
+            failureReason = failureReason,
             strategyBDocument = strategyBDocument,
             strategyBCrop = strategyBCrop,
         )
@@ -202,5 +204,19 @@ class ScanEvidenceDiagnosticsTest {
                 .first { it.startsWith("final UI action") }
             assertTrue("expected ${action.name} in: $line", line.contains(action.name))
         }
+    }
+
+    @Test
+    fun `the bundle records the final cross-layer failure reason`() {
+        val out = folder.newFolder("failure")
+        record(
+            out,
+            strategyBDocument = null,
+            failureReason = CarbFailureReason.OCR_CONFLICT,
+        )
+
+        assertTrue(
+            File(out, "selection.txt").readText().contains("failure reason  : OCR_CONFLICT"),
+        )
     }
 }

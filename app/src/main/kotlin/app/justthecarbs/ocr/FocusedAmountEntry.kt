@@ -74,9 +74,8 @@ internal object FocusedAmountEntry {
      */
     fun of(document: OcrDocument?): Target? {
         if (document == null || document.elements.isEmpty()) return null
-        val rows = LogicalRowBuilder.build(document)
-        val kinds = rows.map { RowClassifier.classify(it) }
-        val columns = ColumnClassifier.classify(rows, document.width)
+        val panel = NutritionDocumentModel.build(document).panels.singleOrNull() ?: return null
+        val columns = panel.columns
 
         val basis = columns
             .mapNotNull {
@@ -90,25 +89,25 @@ internal object FocusedAmountEntry {
             .singleOrNull()
             ?: return null
 
-        val rowIndex = kinds.indexOfFirst { it == NutritionRowKind.TOTAL_CARBOHYDRATE }
-            .takeIf { it >= 0 }
-            ?: DamagedCarbohydrateLabel.recoverTotalRowIndex(rows, kinds, columns)
-            // A row that merged the carbohydrate declaration with the `waarvan suikers` clause that
-            // follows it classifies as a child, so neither branch above finds it — yet the label
-            // plainly printed a carbohydrate row and the user can see it. Measured on both truffle
-            // captures of the seventh session, where this returned null and the screen offered no
-            // way forward at all after a tap.
+        val totals = panel.declarations.filter { it.kind == NutritionRowKind.TOTAL_CARBOHYDRATE }
+        val declaration = totals.singleOrNull()
+            // A nutrient name printed in several languages is one declaration, not several.
             //
-            // Asking for [NutrientRowSegments.totalCarbohydrateClause] rather than relaxing the
-            // classification keeps the distinction that matters: this establishes *which row to ask
-            // about*, and the user then types the number. No value is read from the row, so the
-            // merged-row guard's concern — reading a figure out of a clause that may not be what it
-            // looks like — does not arise.
-            ?: rows.indexOfFirst { NutrientRowSegments.totalCarbohydrateClause(it) != null }
-                .takeIf { it >= 0 }
+            // `docs/Scan Evidence 3rd testr/20260904-134420-616` prints its carbohydrate row as
+            // `Karbonhidrat / Kohlenhydrate glucides 80 g / carbohydrate / koolhydraten-kulhydrat`,
+            // reconstructed as four rows that each name a carbohydrate term and therefore each type
+            // `TOTAL_CARBOHYDRATE`. `singleOrNull` fired on a label agreeing with itself in five
+            // languages, and sent a capture whose row and basis were both established to the crop
+            // screen, where dragging corners cannot help.
+            //
+            // The guard exists to stop the app arbitrating between declarations stating **different
+            // figures**, and a row printing only a nutrient name states no figure: it cannot be what
+            // the user is asked to confirm and it cannot disagree with anything. So the rows that
+            // carry a value are what must be unambiguous — two of those still return null, which is
+            // the arbitration the guard was written for.
+            ?: totals.filter { it.valueCells.isNotEmpty() }.singleOrNull()
             ?: return null
 
-        val row = rows[rowIndex]
-        return Target(basis = basis, rowText = row.text, rowBox = row.box)
+        return Target(basis = basis, rowText = declaration.text, rowBox = declaration.bounds)
     }
 }
