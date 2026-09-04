@@ -1208,6 +1208,195 @@ everything. The misplacement is cosmetic and was left alone with a note in the c
 **Stage deletions with the commit they belong to, and do not rewrite history to fix a tidy-ness
 problem.**
 
+## Startup hardening: onboarding flash, OCR basis defaults, permission recovery, evidence concurrency (2026-09-04/05) — 1.0.4, READ FIRST
+
+Four release-blocking safety items, scoped down at the owner's direction from a larger 15-section
+review to the highest-severity items only: startup state, OCR basis defaults, camera-permission
+recovery on both scanners, and `LiveEvidenceBuffer` concurrency. The usage-semantics rewrite
+(recent-usage/"Usual portion" model), UI-backdrop fixes and Settings accessibility work were
+explicitly deferred and are **not** addressed here. Nothing about the calculation, schema,
+migrations, the §10 lookup priority, barcode detection or any OCR *recognition* rule changed.
+
+### Onboarding could flash before Home on a returning user's cold start
+
+`JustTheCarbsNavHost`'s `startDestination` was decided from whatever `AppSettings` value
+`setContent {}` first composed with, and `collectAsStateWithLifecycle` needs an `initialValue` —
+which was `AppSettings()`, whose `hasSeenOnboarding` defaults to `false`. A returning user could
+therefore see Onboarding rendered for a frame or two before the real DataStore value replaced it.
+
+`MainActivity` now holds the splash screen on screen (`SplashScreen.setKeepOnScreenCondition`)
+until the first real settings value arrives, via a new sealed `StartupState`
+(`Loading`/`Ready(settings)`) and `Flow<AppSettings>.asStartupState()`. While `Loading`, the
+composition renders nothing but a neutral black background — under the splash, so it is never
+actually seen — rather than either destination, which is the one thing a default-shaped value must
+never imply. `startupState` is mirrored into a plain `var` because
+`setKeepOnScreenCondition`'s lambda runs outside composition and cannot itself collect a `Flow`.
+
+**A caught lint defect, worth recording because it is a general trap.** The first implementation
+called `container.settingsRepository.settings.asStartupState()` directly inside the composable
+body — `asStartupState()` applies a `Flow.map`, and lint's `FlowOperatorInvokedInComposition` rule
+correctly refuses this: called there, it builds a *new* mapped `Flow` on every recomposition
+instead of once. Fixed by wrapping it in `remember(container)`. Caught by a lint run, not by
+reading the code — the pattern is easy to write correctly by accident when the operator is hidden
+inside a named extension function rather than a visible `.map {}`.
+
+`OnboardingViewModel.complete()` is now `suspend`, guarded by a `Mutex` plus a `completed` flag, so
+it returns only once `hasSeenOnboarding = true` is durable — the *NavHost*'s `onGetStarted` handler
+now `launch`es a coroutine that calls `complete()` before navigating, with a separate UI-layer
+`completing` boolean guarding against a rapid double tap starting two navigation attempts (the
+ViewModel's own mutex already makes the DataStore write idempotent; this is the separate guarantee
+that "completed once, navigated once" holds even when a second tap lands before the first
+coroutine resumes).
+
+### The last unsafe OCR basis default is gone, and manual entry's basis is now genuinely optional
+
+One `NutritionBasis.valueOf(...)` call remained in the codebase: the saved-state label-comparison
+handoff in `JustTheCarbsNavHost`, which would have crashed the whole screen on a corrupted or
+unrecognised basis string. Replaced with a new pure top-level function,
+`parseDetectedLabelReading(carbsText, basisText): Pair<BigDecimal, NutritionBasis>?`, using
+`entries.firstOrNull` — the same safe-parsing idiom already used elsewhere in this file (e.g.
+`SettingsRepository`'s unrecognised-theme fallback). A parse failure now calls
+`ProductViewModel.reportLabelHandoffFailure()`, which renders a dismissible `AlertDialog`
+(`label_handoff_failed`) saying the scan result could not be read back — stated, not swallowed,
+the same "say it out loud" rule `quickSaveFailed` already follows.
+
+**The more consequential gap was in `LabelScannerScreen`'s *Correct* action.** `CandidateChoice`'s
+unknown-basis branch — reached when the parser found a value but could not establish what it was
+measured per — hard-coded `onCorrect(candidate.value, NutritionBasis.PER_100_G)`. A pre-selected
+grams chip on the following manual-entry screen is indistinguishable from a basis the app actually
+read; it is exactly the "grams of what?" guess this app must never make on the user's behalf.
+
+Fixed by threading `NutritionBasis?` (nullable) through the entire callback chain —
+`LabelScannerScreen.onCorrectValue` → `LabelCamera` → `ProposalCard`/`AmbiguousCard` →
+`CandidateChoice` — down to the one click site, which now calls `onCorrect(candidate.value, null)`.
+`ManualEntryUiState.basis` is now `NutritionBasis?` (previously defaulted to `PER_100_G`
+unconditionally); `canSave` requires it non-null. `ManualEntryViewModel.start()` distinguishes two
+cases by whether `ocrCarbs` is non-blank: **blank** (ordinary Home entry, or an *Edit* action with
+no basis) still defaults to grams exactly as before; **non-blank with an unparsable `ocrBasis`**
+(a scanned figure genuinely being carried in, basis unresolved) leaves `basis` as `null` rather
+than defaulting. `ManualEntryScreen` shows neither g/ml chip selected and an explanatory line
+(`manual_basis_unresolved`) in that state, with Save disabled until the user picks one with the
+package in hand.
+
+The route-level disambiguation this relies on already existed independently: `Routes.QUICK`'s own
+malformed-basis fallback (`navController.navigate(Routes.manual(null, carbsArg, basisArg))`) was
+already producing the same "carbs non-blank, basis blank" shape before this pass, so the rule in
+`start()` is general rather than specific to the *Correct* action — confirmed by a JVM test using
+that exact input shape.
+
+### Camera-permission recovery: both scanners had the identical dead end
+
+Neither `ScannerScreen` nor `LabelScannerScreen` had any way back to the camera once a permission
+request had been answered. Both tracked only `hasPermission` (bool) plus `permissionRequested`
+(bool), and once `permissionRequested` was true the rationale screen showed only *Enter manually* —
+whether the denial was "not this time" (Android would still show its own dialog again) or "never
+ask me again" (Android has stopped offering it, and the only remaining path is the app's own
+Settings page). *Enter manually* was always present, so the app itself was never lost — but the
+*camera* was a dead end from the first "Deny" onward, on both scanners, independently duplicated.
+
+New shared `CameraPermissionState` (`ui/scan/CameraPermissionGate.kt`): `Granted` / `NotRequested`
+/ `DeniedCanAskAgain` / `PermanentlyDenied`, derived by a pure `currentPermissionState(granted,
+requestedThisVisit, canAskAgain)` — deliberately Android-framework-free (no `Activity` parameter)
+so it is plain-JVM-testable without Robolectric, which this codebase does not use. The caller reads
+`Activity.shouldShowRequestPermissionRationale(CAMERA)` and passes the boolean in.
+
+`rememberCameraPermissionController()` requests once automatically on first composition (§9's
+"ask in context" rule, unchanged) and adds an `ON_RESUME` recheck via `LifecycleEventObserver` —
+new to this codebase — which is what recognises a permission granted in the app's own Settings
+page after the user returns: `ContextCompat.checkSelfPermission` only changes because the OS
+changed it while the screen was backgrounded, and `ON_RESUME` is exactly the signal that a
+backgrounding-and-return just happened. Neither
+`ActivityResultContracts.RequestPermission()`'s callback nor an ordinary recomposition would
+observe this transition on their own.
+
+`CameraPermissionRationale` (shared, replacing `ScannerScreen`'s `PermissionRationale` and
+`LabelScannerScreen`'s near-identical `LabelPermissionRationale`) shows *Allow camera* for
+`NotRequested`/`DeniedCanAskAgain` and *Open Settings* (`Intent(Settings
+.ACTION_APPLICATION_DETAILS_SETTINGS)`, this app's own package URI) for `PermanentlyDenied`, with
+different body text (`permission_settings_body`) explaining why in the latter case. *Enter
+manually* is present in every state, unchanged.
+
+### `LiveEvidenceBuffer` had a real, not hypothetical, concurrent-access hazard
+
+`record()` (called from the analyzer's frame callback, marshalled onto the main thread) and
+`clear()` (called from Compose on retake/screen exit) mutate a plain `ArrayDeque`; `stableConsensus()`
+/`asEvidence()` are read from `LabelScannerScreen`'s `saveScope.launch { withContext(Dispatchers.IO)
+{ ... SelectedTableResolution.resolve(..., liveEvidence = liveEvidence.asEvidence(...)) } }` — a
+background-dispatcher read racing main-thread writes on a data structure `ArrayDeque` explicitly
+documents as not thread-safe. This needed no unusual timing to reach: a live frame lands roughly
+every 30-100 ms during normal aiming, and the still-recognition coroutine reads the buffer on every
+capture.
+
+Every method touching `observations` is now wrapped in `synchronized(lock)`. That alone stops
+corruption but does nothing about a *different* hazard: a live frame from an abandoned attempt (a
+Retake mid-recognition) or a different package the camera swept past could still silently
+corroborate the capture being evaluated now, simply by being recent enough. `Observation` now
+carries a `sessionId` (default `0L`, so every pre-existing caller and test is unaffected);
+`record()` is stamped with `LabelScannerScreen`'s existing `captureSession.get()` — already bumped
+on dispose, retake and every new capture — and `stableConsensus(nowMs, sessionId)`/`asEvidence(nowMs,
+sessionId)` only ever consider observations from the session being asked about. The still-recognition
+coroutine captures its `session` value on the main thread *before* switching to `Dispatchers.IO`,
+so it always asks about the session that started it, never whichever session happens to be current
+by the time the background read runs.
+
+### Verified
+
+JVM full suite, `--rerun-tasks`: **1715/1715** (0 failures, 0 errors, 0 skipped, counted from 170
+JUnit XML files). New coverage: `StartupStateTest` (2), `CameraPermissionStateTest` (6),
+`LabelHandoffParsingTest` (9, the extracted `parseDetectedLabelReading`), 8 new
+`ManualEntryViewModelTest` cases (unresolved-basis blocks save, chip selection unblocks it, a known
+OCR basis preselects, ordinary Home entry is unaffected, a blank-carbs blank-basis case still
+defaults, an invalid basis string never becomes grams, idempotent re-`start()` does not resurrect a
+default, `save()` itself refuses with a null basis even called directly), 4 new
+`OnboardingViewModelTest` cases (idempotent `complete()`, a counting-`DataStore`-decorator proving
+exactly one write across three calls, two concurrent callers both returning only after the write
+lands), and 10 new `LiveEvidenceBufferTest` cases (session-scoped consensus, session isolation
+against a stale-session pool, `asEvidence` inheriting the same scoping, `clear()` forgetting every
+session, two concurrency-stress tests hammering `record`/`stableConsensus`/`snapshot`/`clear` from
+multiple threads with a 10 s deadline, and a same-thread "queued callback right after a snapshot"
+case proving the earlier snapshot is unaffected by a later write).
+
+Lint: **0 errors, 23 warnings** — unchanged baseline. **One `lintDebug` run hit a transient internal
+crash** (`ExperimentalDetector`, `FirExpressionStub` cast failure analyzing `LiveEvidenceBuffer.kt`)
+that reproduces the general pattern this file already records under "A lint crash that is a lint
+bug, not a code defect" — a `--rerun-tasks` retry with **zero code changes** came back clean. Do not
+chase this as a code error if it recurs; it is a lint-internal issue, not a defect in the analyzed
+file. `git diff --check` clean (one CRLF-normalization notice only). `assembleDebug` and
+`compileDebugAndroidTestKotlin` both succeed.
+
+**Connected OCR corpus** (`RealImageOcrTest` + `ProductionStillPipelineTest` +
+`SelectedTableProductionTest` + `EvidencePipelineProductionTest`, 39 tests) on the `carbscan`
+emulator: **10 failures**. **A `git worktree` control at clean `266338b`, same emulator, same
+session, measured the identical 10 by name** — compared with a sorted-list diff, zero differences.
+None of this pass touches OCR recognition or parsing code (`LiveEvidenceBuffer`'s change is a
+concurrency wrapper, functionally inert for the single-threaded default-session usage every
+existing fixture and caller exercises), so this is the expected result, not a regression.
+
+**Two of the ten failures show a wrong value, and that is stated plainly rather than smoothed
+over**: `stokbroodStillReadsFortySixThroughTheProductionStillPath` /
+`stokbroodStillResolvesThroughTheEvidencePipeline` / `noFixtureGainsAConfidentWrongValueThrough…`
+show the emulator's ML Kit reading `6.4` where the fixture prints `46`, and
+`kinderStillReadsItsPerPieceRelationship` shows `3` where it states `6.7`. The parser is not at
+fault — these tests run the real ML Kit recognizer against the fixture bitmap on *this* emulator,
+and the wrong value originates entirely in what the recognizer reports, which the parser then
+correctly interprets. Same class of degradation this file already records elsewhere (`Koolhydraten`
+→ `nlhioonorate`, `Glucides` → `Gucides`), and this exact corpus is recorded as **39/39 on real
+hardware** — so this reads as further evidence the emulator's camera pipeline is worse than real
+optics on these specific photographs, not evidence the app's OCR safety logic is unsound. It has
+not been re-confirmed against this diff on real hardware, which is the open gate.
+
+### NOT verified, and this is the gate
+
+**No physical device was attached.** Everything above is JVM plus the `carbscan` emulator
+(`ro.kernel.qemu=1`, `ro.hardware=ranchu`, `ro.build.characteristics=emulator`), whose virtual
+camera cannot exercise the real capture/permission/OCR flow end to end. Specifically unverified:
+the onboarding-flash fix on a real cold start, both camera-permission recovery flows (temporary
+denial → re-request; permanent denial → Settings → return with grant) on both scanners, the
+`LiveEvidenceBuffer` session-boundary behaviour under a real capture/retake sequence, and whether
+the standing 39/39 real-hardware OCR figure still holds against this diff (it should — no
+recognition or parsing code changed — but that is an argument, not a measurement).
+`docs/manual-qa.md` §35 is the gate.
+
 ## Pair-symmetry fix + the connected gate attributed (2026-09-04, eighteenth session) — READ FIRST
 
 A review pass over the fourth-test evidence (`docs/Scan Evıdence 4th test/`, thirteen captures
@@ -3844,11 +4033,17 @@ disagrees, this one is right — and fix the older passage rather than working a
 | What is the latest release? | `1.0.3` / **`versionCode 4`**, uploaded and **accepted by Play 2026-09-04**, built from `7cbf78d` on branch `ui-refresh-2026-09-03` |
 | Which track? | **Closed testing.** `versionCode 1` (internal → closed), `2` and `3` preceded it |
 | Closed-testing period | **Running.** 12+ testers opted in |
-| What is in development? | **Nothing. No version is open.** `versionCode 4` is spent, so `branding.gradle.kts` currently names a used number |
+| What is in development? | **`1.0.4` / `versionCode 5`, OPEN.** Opened 2026-09-04 by a feedback/rate-us settings patch; the 2026-09-04/05 startup-hardening pass (onboarding flash, OCR basis defaults, permission recovery, `LiveEvidenceBuffer` concurrency) landed under the same open heading. `branding.gradle.kts` already names `5` |
 | Is 1.0.3 released? | **Yes.** Uploaded 2026-09-04, in `docs/version-history.md` with its hash, size and signer. Artifact and barrier evidence: `docs/play-release-readiness.md` §7 |
-| What do I develop against? | **`1.0.4` / `versionCode 5`** — open it with the *first code change*, bumping `branding.gradle.kts` and renaming `CHANGELOG.md`'s Unreleased heading in that same change |
+| What do I develop against? | **`1.0.4` / `versionCode 5`** — already open (see above); further changes this cycle land under `CHANGELOG.md`'s existing `## 1.0.4` heading, not a new bump, until it is built and Play accepts it |
 | **What 1.0.3 shipped without** | **Any physical-device verification.** It was built and uploaded on JVM + emulator evidence alone; `docs/manual-qa.md` §34 and §§26–33 were all unticked at upload. Testers are the first hardware this build has run on — see the note below |
 | Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
+
+**An earlier revision of this table said "Nothing. No version is open" and "`versionCode 4` is
+spent, so `branding.gradle.kts` currently names a used number".** That was correct on 2026-08-28 and
+went stale the moment 1.0.4 was opened (2026-09-04); the row above supersedes it. Do not read the
+"already spent" framing as still describing the current number — check `branding.gradle.kts` and
+`CHANGELOG.md`'s topmost version heading before trusting either this table or your own memory of it.
 
 **THE VERSIONING RULE, resolved by the owner 2026-08-30. This wording is authoritative.**
 

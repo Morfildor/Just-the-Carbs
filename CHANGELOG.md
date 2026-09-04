@@ -91,6 +91,43 @@ calculation, database or networking file was touched.
   from the user's own product — reusing the existing conditional slot and height budget rather than
   adding a new line to the result panel.
 
+### Fixed — startup hardening (2026-09-04/05)
+
+Four release-blocking safety items, scoped down from a larger review at the owner's direction (the
+usage-semantics rewrite, UI-backdrop fixes and Settings accessibility items were explicitly
+deferred). Nothing about the calculation, schema, migrations, the §10 lookup priority, barcode
+detection or any OCR *recognition* rule changed.
+
+- **A returning user could briefly see Onboarding before Home**, because the start destination was
+  decided from `AppSettings()`'s synthetic default while the real DataStore value was still loading.
+  `MainActivity` now holds the splash screen (`StartupState.Loading`/`Ready`) until the first real
+  settings value arrives, so the start destination is never chosen from a default. Onboarding
+  completion is now durable-before-navigation (`OnboardingViewModel.complete()` is `suspend`,
+  mutex-guarded), with a UI-layer double-tap guard on top.
+- **An OCR reading with no established basis could still become `PER_100_G`.** The one remaining
+  unsafe `NutritionBasis.valueOf(...)` call (the saved-state label-comparison handoff) is replaced
+  with safe parsing that reports a dismissible failure instead of guessing or crashing.
+  `LabelScannerScreen`'s *Correct* action threads a nullable basis end to end from the one button
+  that used to hard-code grams for an unresolved reading. Manual entry's basis field is now
+  genuinely nullable: neither chip is pre-selected and Save stays disabled until the user picks one,
+  when reached from a scanned value with no established basis. Ordinary manual entry from Home is
+  unaffected and still defaults to grams.
+- **Denying the camera permission was a dead end on both scanners.** Neither screen had a way back
+  to the system permission dialog after a "not this time" denial, nor a way to the app's Settings
+  page after a "never ask me again" one. Both scanners now share one five-state permission gate
+  (`CameraPermissionState`) with an `ON_RESUME` recheck that recognises a grant made in Settings.
+- **`LiveEvidenceBuffer` had an unsynchronized concurrent-access hazard.** It is written from the
+  main thread and read from a background dispatcher inside the still-recognition coroutine — a real
+  race on a plain `ArrayDeque`, not a hypothetical. Every access is now synchronized, and
+  observations are stamped with the capture session they belong to, so a live frame from an
+  abandoned attempt or a different package can never corroborate a later capture.
+
+Verified: JVM full suite **1715/1715** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 170 XML
+files). Lint 0 errors, 23 warnings (unchanged baseline). The connected OCR corpus (39 tests) on the
+`carbscan` emulator shows 10 pre-existing failures, confirmed identical by name against a clean-HEAD
+worktree control — zero regressions from this pass; none of the changes touch OCR recognition or
+parsing code. `docs/manual-qa.md` §35 is the gate — nothing here has been seen on physical hardware.
+
 ## 1.0.3 (versionCode 4) — RELEASED 2026-09-04, closed testing
 
 Opened 2026-08-29, built from committed `7cbf78d` and **accepted by Play onto the closed track on

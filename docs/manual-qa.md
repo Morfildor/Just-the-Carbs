@@ -2032,3 +2032,116 @@ evidence**: CLAUDE.md records this corpus as 39/39 on real hardware, and row 33.
 settled.
 
 **Result:** ____________________ **Date:** ____________
+
+## §35 — Startup hardening: onboarding flash, OCR basis defaults, permission recovery, evidence concurrency (2026-09-04/05, 1.0.4)
+
+**Status: OPEN.** §§26–34 remain open alongside it; nothing here closes any of them. Scope for this
+pass was narrowed by the owner to the release-blocking safety items only: startup state, OCR basis
+defaults, camera-permission recovery and `LiveEvidenceBuffer` concurrency. Usage-semantics rewrite,
+UI-backdrop fixes and Settings accessibility work were explicitly deferred and are not addressed
+here.
+
+### What changed
+
+- **Startup**: `MainActivity` now holds the splash screen (`setKeepOnScreenCondition`) until the
+  first real DataStore value arrives, via a new `StartupState` sealed interface (`Loading`/`Ready`).
+  A returning user can no longer see Onboarding flash before the real `hasSeenOnboarding` value
+  loads, because nothing is rendered from `AppSettings()`'s synthetic default — the screen paints a
+  neutral black background instead, under the splash, until `Ready`. `OnboardingViewModel.complete()`
+  is now `suspend`, mutex-guarded for idempotency, and navigation to Home only happens after the
+  write lands (UI-layer double-tap guard on top).
+- **OCR basis defaults removed**: the one remaining unsafe `NutritionBasis.valueOf(...)` call (the
+  saved-state label-comparison handoff in `JustTheCarbsNavHost`) is replaced with safe
+  `entries.firstOrNull` parsing, extracted into a pure `parseDetectedLabelReading` function; a
+  malformed/missing basis now reports `ProductViewModel.reportLabelHandoffFailure()` (a dismissible
+  dialog) rather than crashing or silently defaulting to grams. `LabelScannerScreen`'s *Correct*
+  action (`onCorrectValue`) now threads `NutritionBasis?` end to end from the one button click that
+  used to hard-code `PER_100_G` for an unresolved basis. `ManualEntryUiState.basis` is now
+  `NutritionBasis?`; `canSave` requires it non-null; the basis chip row shows neither chip selected
+  and an explanatory line when reached from an OCR value with no established basis, and Save stays
+  disabled until the user picks one. Ordinary Home-initiated manual entry (`ocrCarbs` blank) is
+  **unaffected** — it still opens on grams, exactly as before; the rule only refuses to default when
+  a scanned figure is genuinely being carried in with no resolvable basis.
+- **Camera-permission recovery**: a new shared `CameraPermissionState` (five values: `Granted`,
+  `NotRequested`, `DeniedCanAskAgain`, `PermanentlyDenied`, plus the `ON_RESUME`-triggered recheck
+  that moves `PermanentlyDenied` back to `Granted`) and `rememberCameraPermissionController()`,
+  used identically by `ScannerScreen` and `LabelScannerScreen` — previously each screen had its own
+  copy of granted/requested tracking, and **both** went dead the moment a request was answered: no
+  way back to the system dialog for a "not this time" denial, no way to the app's Settings page for
+  a "never ask me again" one. A shared `CameraPermissionRationale` composable now shows *Allow
+  camera* for the first two states and *Open Settings* (via
+  `ACTION_APPLICATION_DETAILS_SETTINGS`) for the permanent-denial state; *Enter manually* is present
+  in every state.
+- **`LiveEvidenceBuffer` concurrency**: the buffer is read (`stableConsensus`/`asEvidence`) from a
+  background dispatcher inside `LabelScannerScreen`'s still-recognition coroutine
+  (`withContext(Dispatchers.IO)`) while written (`record`/`clear`) from the main thread — a genuine
+  concurrent-access hazard on a plain unsynchronized `ArrayDeque`, not a hypothetical. Every method
+  touching the deque is now `synchronized`. Observations also carry a `sessionId`, stamped from the
+  existing `captureSession` generation counter (already bumped on dispose/retake/every new capture);
+  `stableConsensus`/`asEvidence` only ever consider observations from the requested session, so a
+  live frame from an abandoned attempt or a different package swept past can never corroborate a
+  later capture.
+
+### Verified this pass
+
+JVM full suite, `--rerun-tasks`: **1715/1715** (0 failures, 0 errors, 0 skipped, 170 XML files) —
+up from the pre-pass baseline by the new `StartupStateTest`, `CameraPermissionStateTest`,
+`LabelHandoffParsingTest`, plus the new `ManualEntryViewModelTest`/`OnboardingViewModelTest`/
+`LiveEvidenceBufferTest` cases described above. Lint: **0 errors, 23 warnings** (unchanged baseline;
+one transient `ExperimentalDetector` internal crash on the first `lintDebug` run reproduced the
+documented lint-bug pattern from an earlier pass and cleared on retry with no code change — see
+CLAUDE.md's "A lint crash that is a lint bug, not a code defect"). `git diff --check` clean.
+`assembleDebug` and `compileDebugAndroidTestKotlin` both succeed.
+
+**Connected OCR corpus** (`RealImageOcrTest` + `ProductionStillPipelineTest` +
+`SelectedTableProductionTest` + `EvidencePipelineProductionTest`, 39 tests) on the `carbscan`
+emulator: **10 failures**, and **a clean-HEAD (`266338b`) worktree control on the same emulator in
+the same session measured the identical 10 by name — zero differences**, confirmed programmatically
+(sorted-list diff, not eyeballed). None of this pass's changes touch OCR recognition or parsing code
+— `LiveEvidenceBuffer`'s change is a concurrency wrapper, functionally inert for the single-threaded
+default-session usage every existing caller and fixture exercises — so this result is expected and
+is not evidence of a regression.
+
+**Read honestly, not just compared.** Two of the ten failures (`stokbroodStillReadsFortySix…` /
+`stokbroodStillResolvesThroughTheEvidencePipeline`, and `noFixtureGainsAConfidentWrongValueThrough…`)
+show the emulator's ML Kit recognizing `6.4` where the fixture prints `46`, and
+`kinderStillReadsItsPerPieceRelationship` shows `3` where the fixture states `6.7` — a **wrong value
+confidently produced**, not merely a safe refusal or a stale test contract. The parser is not at
+fault: `analyse(...)` in these tests runs the real ML Kit recognizer against the fixture bitmap on
+*this* emulator, and the wrongness originates entirely in what the recognizer reports, which the
+parser then correctly interprets. This is the same class of degradation this file already records
+for other fixtures (`Koolhydraten` → `nlhioonorate`, `Glucides` → `Gucides`) and CLAUDE.md records
+this exact corpus as **39/39 on real hardware** — so it is read as further evidence that the
+emulator's virtual camera pipeline reads these particular photographs worse than real optics, **not**
+as evidence the app's OCR safety logic is unsound. It remains true that this has not been
+re-confirmed against *this* diff on real hardware, and that is the gate below.
+
+### NOT verified, and this is the gate
+
+**No physical device was attached.** Everything above is JVM plus the `carbscan` emulator
+(`ro.kernel.qemu=1`, `ro.hardware=ranchu`, `ro.build.characteristics=emulator`), whose virtual camera
+cannot exercise the real capture/permission/OCR flow end to end. In particular:
+
+- The onboarding-flash fix, the camera-permission recovery flows (temporary denial → re-request,
+  permanent denial → Settings → return with grant), and the `LiveEvidenceBuffer` session-boundary
+  behaviour under a real capture/retake sequence have **not** been seen on hardware.
+- The OCR corpus's 10 emulator failures have not been re-run on real hardware against this diff to
+  confirm the standing 39/39 figure still holds — it should, since no recognition or parsing code
+  changed, but that is an argument, not a measurement.
+
+| # | Check | ✅ |
+|---|---|---|
+| 35.1 | Fresh install (or Settings → clear data), no prior onboarding: app opens directly to Onboarding, no flash of Home first | ☐ |
+| 35.2 | Returning user (onboarding already completed): app opens directly to Home, no flash of Onboarding first | ☐ |
+| 35.3 | Tap *Get started* rapidly twice: navigates to Home exactly once, no crash, no double-write artefact | ☐ |
+| 35.4 | Scan a label whose basis the app cannot establish, tap *Correct*: manual entry opens with **neither** g/ml chip selected, Save disabled, explanatory text visible | ☐ |
+| 35.5 | From 35.4, tap the g chip: Save becomes enabled; saving stores the product at the chosen basis | ☐ |
+| 35.6 | Ordinary manual entry from Home (no scan): opens on grams as before, Save enabled once name+carbs are filled | ☐ |
+| 35.7 | Deny camera permission once (still eligible for the system dialog): the screen offers *Allow camera* again, not only *Enter manually* | ☐ |
+| 35.8 | Deny camera permission a second time (system stops offering its dialog): the screen now offers *Open Settings*, not a dead *Allow camera* button | ☐ |
+| 35.9 | From 35.8, tap *Open Settings*, grant the permission there, press back: the scanner recognises the grant and shows the camera without needing to leave and re-enter the screen again | ☐ |
+| 35.10 | Both `ScannerScreen` (barcode) and `LabelScannerScreen` (label) behave identically for 35.7–35.9 | ☐ |
+| 35.11 | Scan a label, retake mid-recognition several times in quick succession: no crash, no `ConcurrentModificationException` in logcat, no reading from an abandoned attempt appearing on the new capture | ☐ |
+| 35.12 | Cold and warm timing for a normal label scan is unchanged from the standing figures (no regression from the `synchronized` guards) | ☐ |
+
+**Result:** ____________________ **Date:** ____________
