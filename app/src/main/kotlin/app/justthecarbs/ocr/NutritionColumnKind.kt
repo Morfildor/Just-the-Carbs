@@ -73,7 +73,18 @@ object ColumnClassifier {
             fromHeaders.none { abs(it.centerX - candidate.centerX) <= documentWidth * NEAR_COLUMN_FRACTION }
         }
 
-        return (fromHeaders + percentColumns).sortedBy { it.centerX }
+        // A serving column whose size is printed on the line below the header it belongs to. The
+        // span walk above reads one row at a time, so a header split across two rows loses the half
+        // that gives it meaning. See [ServingColumnHeaders] for the two captures this was measured
+        // on and for why a printed quantity is not a vocabulary.
+        val servingColumns = ServingColumnHeaders.recover(
+            rows = rows,
+            kinds = kinds,
+            existing = fromHeaders + percentColumns,
+            documentWidth = documentWidth,
+        )
+
+        return (fromHeaders + percentColumns + servingColumns).sortedBy { it.centerX }
     }
 
     /**
@@ -501,17 +512,47 @@ object ColumnClassifier {
         }
 
         val quantityElement = elements.getOrNull(index) ?: return null
-        val quantityText = NutritionTerminology.normalize(quantityElement.text)
+        val rawQuantityText = NutritionTerminology.normalize(quantityElement.text)
+
+        // ## The connective may be fused to its own quantity (eleventh session)
+        //
+        // `20260903-143023-402` prints `per 100g` and `per 45g`, and ML Kit returned the second
+        // header as the single token **`per45`** followed by `g` — the space lost, exactly as
+        // `PourPerlPro 100g:` and `o/9g` were welded in earlier sessions. That is a spelling of the
+        // shape this function exists for, not a different shape.
+        //
+        // Without recognising it the token is neither all-digits nor quantity-fused, so the rule
+        // returned null, no column was created at x=1378, and both printed cells fell to the single
+        // surviving per-100 column. Measured on the fixture: one column `PER_100_G @ 1152` covering
+        // both, and the label read `NotFound` — the printed `67,0 g / 100 g` lost. On a
+        // differently-reconstructed capture of the same package the same geometry instead produced
+        // `Ambiguous [67.0, 30.2]`, offering the per-45-g figure under a per-100-g basis.
+        //
+        // **Only the connective is stripped, and only when a real connective is what precedes the
+        // digits.** `45g` keeps its existing fused handling, `100` is still the per-100 case, and a
+        // token that merely starts with letters (`E202`, `b12`) matches nothing here because the
+        // prefix must be a connective this classifier already recognises on its own.
+        val fusedConnective = FUSED_CONNECTIVE_QUANTITY.matchEntire(rawQuantityText)
+            ?.takeIf { isConnective(it.groupValues[1]) }
+        val quantityText = fusedConnective?.groupValues?.get(2) ?: rawQuantityText
 
         // The quantity and its unit may be fused into one token ("250ml", "9g") or split across two.
         val fused = OFF_BASIS_FUSED.matchEntire(quantityText)
         if (fused != null) {
-            if (fused.groupValues[1] == PER_100_QUANTITY) return null
+            if (isPerHundredQuantity(fused.groupValues[1])) return null
             return (span + quantityElement).takeIf { it.isNotEmpty() }
         }
 
+        // `l00` must be excluded here for the same reason `100` is, now that [RowClassifier] and
+        // [ColumnClassifier] both read it as the per-100 quantity. Without this the off-basis rule
+        // would claim a header the per-100 vocabulary is about to claim, and emit it as UNKNOWN —
+        // turning the letter-ell recovery into a different way of losing the same column.
+        // `l00` must be excluded here for the same reason `100` is, now that [RowClassifier] and
+        // [ColumnClassifier] both read it as the per-100 quantity. Asked **before** the all-digits
+        // test, because `l00` is not all digits: without this the token would fall through, head no
+        // column at all, and the letter-ell recovery would be undone by a different route.
+        if (isPerHundredQuantity(quantityText)) return null
         if (!quantityText.all { it.isDigit() } || quantityText.isEmpty()) return null
-        if (quantityText == PER_100_QUANTITY) return null
 
         // The **quantity** was recognised twice, overlapping — the same duplication the unit shows
         // below, one token earlier.
@@ -684,8 +725,30 @@ object ColumnClassifier {
     private val OFF_BASIS_FUSED =
         Regex("(\\d{1,4})\\s*(?:${BasisUnitSpellings.alternation})", RegexOption.IGNORE_CASE)
 
-    /** The one quantity that names a basis this app has. */
-    private const val PER_100_QUANTITY = "100"
+    /**
+     * A connective fused to its quantity: `per45`, `pro250`.
+     *
+     * The letters are captured rather than matched against a fixed list so the caller can check them
+     * with [isConnective], which is the same test the split spelling already passes through — one
+     * definition of what introduces a basis phrase rather than two that can drift. Requiring the
+     * whole token to be `<letters><digits>` keeps ordinary label text out: `E202` fails because
+     * `e` is not a connective, and a value like `0,5` has no leading letters at all.
+     */
+    private val FUSED_CONNECTIVE_QUANTITY = Regex("([a-z]{2,6})(\\d{1,4})", RegexOption.IGNORE_CASE)
+
+    /**
+     * Whether [quantityText] is the per-100 quantity, in any spelling this parser accepts.
+     *
+     * Delegates to [NutritionTerminology.PER_100_QUANTITY_PATTERN] rather than restating it, so the
+     * off-basis rule's *exclusion* cannot drift from what the per-100 vocabulary *includes*. If
+     * those two disagreed, a header would be claimed by neither and the column would be lost — the
+     * same shape as the defect this recovery exists for.
+     */
+    private fun isPerHundredQuantity(quantityText: String): Boolean =
+        PER_100_QUANTITY_SPELLINGS.matches(quantityText)
+
+    private val PER_100_QUANTITY_SPELLINGS =
+        Regex(NutritionTerminology.PER_100_QUANTITY_PATTERN, RegexOption.IGNORE_CASE)
 
     /**
      * The box of the tokens within [span] that actually state the basis, or null when none can be
@@ -963,7 +1026,14 @@ object ColumnClassifier {
      * Only reachable once run-together headers are split apart; on a spaced header the two phrases
      * were always separate elements. Pinned by `RunTogetherHeaderTest`.
      */
-    private val PER_100 = Regex("(?:^|\\s)100\\s*(${NutritionTerminology.basisUnitAlternation})(?=$|\\s)")
+    // The quantity spelling is shared with [RowClassifier]'s own PER_100 rather than written out
+    // here. Two stages must agree that a row is a header before either can act on it, so a spelling
+    // added to one and not the other silently does nothing — measured in the Dutch pass, where
+    // fixing this regex alone changed no outcome at all.
+    private val PER_100 = Regex(
+        "(?:^|\\s)${NutritionTerminology.PER_100_QUANTITY_PATTERN}" +
+            "\\s*(${NutritionTerminology.basisUnitAlternation})(?=$|\\s)",
+    )
     private val REFERENCE_PERCENT = Regex("(?:^|\\s)(?:ri|dv|gda|reference intake|daily value)(?:$|\\s)")
 
     /** Runs against RAW element text — normalization would strip the "%" these depend on. */

@@ -185,7 +185,13 @@ object RowClassifier {
      * only ever looks at `HEADER` rows, so the column vocabulary never got a chance to run. Two
      * stages have to agree that a row is a header before either can act on it.
      */
-    private val PER_100 = Regex("(?:^|\\s)100\\s*(?:${NutritionTerminology.basisUnitAlternation})(?:$|\\s)")
+    // Shares its quantity spelling with [ColumnClassifier]'s PER_100 — see
+    // [NutritionTerminology.PER_100_QUANTITY_PATTERN]. This stage runs first and gates the other, so
+    // the two must never disagree about what a per-100 header looks like.
+    private val PER_100 = Regex(
+        "(?:^|\\s)${NutritionTerminology.PER_100_QUANTITY_PATTERN}" +
+            "\\s*(?:${NutritionTerminology.basisUnitAlternation})(?:$|\\s)",
+    )
 
     /** "%RI", "%DV", "reference intake", "RI*" — the percentage column's vocabulary. */
     private val REFERENCE_INTAKE = Regex("(?:^|\\s)(?:ri|dv|gda|reference intake|daily value)(?:$|\\s)")

@@ -32,6 +32,43 @@ class LabelAnalyzer(
 ) : ImageAnalysis.Analyzer {
 
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+    /**
+     * The thread ML Kit's completion listeners run on, and therefore the thread the parse runs on.
+     *
+     * ## Why this had to be supplied explicitly (thirteenth pass)
+     *
+     * `Task.addOnSuccessListener(listener)` — the no-executor overload — dispatches on the
+     * **Android main thread**. The still path's listener does the whole post-recognition pipeline
+     * before handing the result over:
+     *
+     * ```
+     * MlKitOcrMapper.toDocument(...)          "to-domain"
+     * NutritionTableParser.parseWithDiagnostics(...)   "parse"
+     * ScanRegionRelevance.apply(...)          "relevance"
+     * ```
+     *
+     * The thirteenth session measured `parse` at 26–198 ms across nineteen captures, on documents of
+     * 36–341 elements. That is main-thread time during which Compose cannot draw a frame, on the
+     * screen showing a progress indicator — so the indicator itself stutters exactly when it is
+     * being watched.
+     *
+     * The surrounding code was already careful about this: `analyzeStillRetaining` is *called* from
+     * a background executor and its callback explicitly hops to `mainExecutor`. Only the listener
+     * dispatch was left implicit, which quietly pulled the heaviest stage back onto main.
+     *
+     * ## Why a dedicated single thread
+     *
+     * Serial by construction, so two captures cannot parse concurrently and contend — `inFlight`
+     * already serialises the still path, and this keeps the live path's parses in the same queue
+     * rather than racing them. A daemon thread so it can never hold the process alive, matching the
+     * evidence writer's convention.
+     */
+    private val parseExecutor: java.util.concurrent.ExecutorService =
+        java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "jtc-ocr-parse").apply { isDaemon = true }
+        }
+
     private val inFlight = AtomicBoolean(false)
     private val pendingStill = AtomicReference<StillRequest?>(null)
     private val closed = AtomicBoolean(false)
@@ -104,8 +141,38 @@ class LabelAnalyzer(
 
         val started = System.nanoTime()
         val input = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        recognizer.process(input)
-            .addOnSuccessListener { text ->
+        // ## Why the listeners are guarded rather than merely attached
+        //
+        // They are dispatched on [parseExecutor], which [close] shuts down. A task submitted to a
+        // shut-down executor is **rejected**, and `addOnCompleteListener` is where `imageProxy` is
+        // released — so a frame in flight across a screen disposal would leak a camera buffer and,
+        // with enough of them, stall the analyzer.
+        //
+        // `runCatching` around the whole chain converts that into the ordinary teardown path: the
+        // proxy is closed here instead. `close()` is idempotent on an `ImageProxy`, so the normal
+        // case (no rejection) is unaffected by the fallback existing.
+        runCatching {
+            attachAnalysisListeners(recognizer.process(input), imageProxy, started)
+        }.onFailure {
+            // The executor is gone; nobody else will release this frame.
+            inFlight.set(false)
+            imageProxy.close()
+        }
+    }
+
+    /** The live-frame listener chain, extracted so its rejection path has one home. */
+    private fun attachAnalysisListeners(
+        task: com.google.android.gms.tasks.Task<Text>,
+        imageProxy: ImageProxy,
+        started: Long,
+    ) {
+        task
+            // [parseExecutor], not the implicit main-thread overload. The block below maps every
+            // recognised element and runs the full geometry-first parse; on the main thread that is
+            // a frame the preview cannot draw. The comment further down already assumed "this
+            // listener runs on ML Kit's callback thread" — that was true only of the *recognition*,
+            // not of this dispatch, and supplying the executor makes the assumption correct.
+            .addOnSuccessListener(parseExecutor) { text ->
                 // Bail before the parse, not after it.
                 //
                 // `paused` is set the instant the user taps capture, and the two `!paused` checks
@@ -141,8 +208,14 @@ class LabelAnalyzer(
                 val toSurface = stability.onFrame(report.reading, System.nanoTime())
                 if (!paused && toSurface != null) onReading(toSurface)
             }
-            .addOnFailureListener { OcrDiagnosticsLogger.failure("Live OCR failed", it) }
-            .addOnCompleteListener {
+            .addOnFailureListener(parseExecutor) { OcrDiagnosticsLogger.failure("Live OCR failed", it) }
+            // Also on the parse thread, and this one is ordering-critical rather than cost-driven:
+            // it must run *after* the success listener, and both being on the same single-threaded
+            // executor guarantees that. `startPendingStillIfPossible` is what begins recognising the
+            // still the user is waiting on, so it must not be able to overtake the frame's own
+            // teardown. `imageProxy.close()` is safe off-main — CameraX documents it as callable
+            // from any thread, and the analyzer is already invoked on a background executor.
+            .addOnCompleteListener(parseExecutor) {
                 inFlight.set(false)
                 imageProxy.close()
                 startPendingStillIfPossible()
@@ -397,8 +470,33 @@ class LabelAnalyzer(
         }
 
         val passAStarted = System.nanoTime()
-        recognizer.process(input)
-            .addOnSuccessListener { text ->
+        // ## The rejection guard, for the same reason the live path has one
+        //
+        // These listeners are dispatched on [parseExecutor], and [close] shuts it down. A task
+        // submitted to a shut-down executor is **rejected at submission** — so on the
+        // "capture, then immediately leave the scanner" path neither listener would ever run, and
+        // two things would be left behind: the decoded full-resolution `upright` bitmap (~24 MB on
+        // an 8 MP capture) would never be recycled, and `inFlight` would stay `true`.
+        //
+        // Bounded rather than cumulative — it needs a disposal to happen inside the recognition
+        // window — but it is a real leak on a real gesture, so it is closed here rather than
+        // reasoned away.
+        //
+        // The handler deliberately does **not** call `request.fail()`. A rejection only happens
+        // during [close], i.e. the screen is gone: the scanner's stale-session guard would discard
+        // the result anyway, and invoking the callback there would deliver a `NotFound` into a
+        // disposed composition. Releasing the resources and staying silent is the honest teardown.
+        //
+        // The chain stays inline here, unlike the live path's, because this listener body closes
+        // over `trace`, `ocrWidth`, `ocrHeight`, `evidence`, `loaded` and `finish` — extracting it
+        // would mean threading six parameters through a helper purely to gain a rejection handler.
+        runCatching {
+            recognizer.process(input)
+            // The still path's parse is the expensive one — the thirteenth session measured it at
+            // 26-198 ms over documents of 36-341 elements — and it runs entirely inside this
+            // listener, before `finish` hands the result over. Dispatched on [parseExecutor] so none
+            // of it occupies the main thread while the user is watching a progress indicator.
+            .addOnSuccessListener(parseExecutor) { text ->
                 val passAMs = (System.nanoTime() - passAStarted) / 1_000_000
                 trace.mark("mlkit")
                 val document = trace.time("to-domain") {
@@ -411,9 +509,6 @@ class LabelAnalyzer(
                 val report = trace.time("relevance") {
                     ScanRegionRelevance.apply(parsed, request.region, ocrWidth, ocrHeight)
                 }
-                OcrDiagnosticsLogger.report(passAMs, report)
-                OcrDiagnosticsLogger.stillDiagnostics(document, report)
-
                 // Both evidence writes are queued, not performed, and both are queued only AFTER the
                 // result has been handed over — the ordering is the fix, and the `Async` suffix alone
                 // would not be enough if these still ran before `finish`.
@@ -428,10 +523,51 @@ class LabelAnalyzer(
                 // (the report and document are values; the recognizer's `Text` is flattened to a
                 // string before the hand-off) and only the file write is deferred.
                 finish(report, passAMs, document)
+
+                // ## The logcat diagnostics are written AFTER the hand-over, for the same reason the
+                // evidence files are (twelfth session)
+                //
+                // These two calls used to sit immediately above `finish`, so every debug scan
+                // rendered the whole diagnostics report and emitted it to logcat *line by line*
+                // before the result reached the screen. `OcrDiagnosticsReport.render` walks every
+                // element and every reconstructed row, and each resulting line is its own `Log.d`.
+                //
+                // Measured on the twelfth session's own `meta.txt` stage breakdowns, where this work
+                // fell inside the `handoff` window:
+                //
+                // ```
+                //   77 elements -> handoff  26 ms       160 elements -> handoff  58 ms
+                //  134 elements -> handoff  67 ms       290 elements -> handoff 123 ms
+                //  546 elements -> handoff 281 ms
+                // ```
+                //
+                // A hand-over is a callback invocation; it does not scale with document size. What
+                // scaled was the logging, and on the 546-element tortilla it was **281 ms of the
+                // 1341 ms the user waited** — for output only a developer reads, in a build only a
+                // developer runs.
+                //
+                // This is the third time this repo has found debug-only work on the answer path
+                // (2026-08-25 `ScanEvidenceRecorder`, 2026-09-01 `evidence-diagnostics`). It came
+                // back through a different door because the earlier fixes moved *the evidence
+                // recorder*, and this is the *logger*. The rule is the one already written there:
+                // work is off the path when it happens after delivery, and nothing else makes it so.
+                //
+                // Safe to move: `report` and `document` are immutable values, `finish` does not
+                // touch either, and the bitmap — the one thing `finish` can recycle — is not
+                // referenced here.
+                //
+                // Deliberately **not** given a `ScanTrace` stage. `finish` takes `trace.summary()`
+                // as its last act, so a mark recorded here would appear in no log at all — the same
+                // dead instrumentation the `evidence-capture` mark once was. The measurement that
+                // shows this worked is `handoff` collapsing in the next device bundle, which is
+                // where the cost was being counted.
+                OcrDiagnosticsLogger.report(passAMs, report)
+                OcrDiagnosticsLogger.stillDiagnostics(document, report)
+
                 ScanEvidenceRecorder.recordRecognizedTextAsync(evidence, text)
                 ScanEvidenceRecorder.recordDiagnosticsAsync(evidence, document, report)
             }
-            .addOnFailureListener { error ->
+            .addOnFailureListener(parseExecutor) { error ->
                 OcrDiagnosticsLogger.failure("Still OCR failed", error)
                 finish(
                     NutritionParseReport(LabelReading.NotFound, emptyList()),
@@ -439,6 +575,12 @@ class LabelAnalyzer(
                     document = null,
                 )
             }
+        }.onFailure {
+            // The executor is gone; neither listener will run, so nobody else will release these.
+            upright?.recycle()
+            inFlight.set(false)
+            request.file.delete()
+        }
     }
 
     /**
@@ -482,6 +624,12 @@ class LabelAnalyzer(
         paused = true
         pendingStill.getAndSet(null)?.file?.delete()
         recognizer.close()
+        // The parse thread belongs to this analyzer, which belongs to a camera session, so it is
+        // released with it. `shutdown()` rather than `shutdownNow()`: a listener already dispatched
+        // is finishing a parse whose result the session guard will discard anyway, and interrupting
+        // it mid-way buys nothing while risking a half-applied teardown. The thread is a daemon, so
+        // even a task that outlives the process's interest in it cannot keep the JVM alive.
+        parseExecutor.shutdown()
     }
 
     private data class StillRequest(

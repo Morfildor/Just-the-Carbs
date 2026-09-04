@@ -161,6 +161,39 @@ object NutritionTerminology {
     internal val millilitreUnits = BasisUnitSpellings.millilitre
     internal val basisUnitAlternation = BasisUnitSpellings.alternation
 
+    /**
+     * How the quantity `100` can be spelled once a recognizer has seen it.
+     *
+     * ## Why a lowercase `l` is admitted for `1`
+     *
+     * Measured on `docs/Scan Evidence 03-09 2nd test/20260903-143036-432`: ML Kit returned the
+     * printed `per 100 g` as **`per l00 g`**. That one glyph cost the whole label — the row matched
+     * no per-100 vocabulary, typed `OTHER` instead of `HEADER`, and `ColumnClassifier` only ever
+     * looks at header rows, so **zero** columns resolved. With no basis there is no reading, and
+     * [FocusedAmountEntry] returns null too, so even the escape hatch was unavailable.
+     *
+     * `1` and `l` are the same printed shape in most sans-serif faces; this is the same family as
+     * the `(g)` -> `(9)` and `Ø` -> `o` misreads already recorded here.
+     *
+     * ## Why this is not the numeric repair this repo has refused
+     *
+     * The refused repair is one that changes a **value** — trimming a digit from `790`, or turning
+     * `72` into `7.2`. Those are unfalsifiable from the app's side and produce a plausible wrong
+     * number the user has no reason to check.
+     *
+     * This admits an alternative spelling of a **fixed literal** in a header, and the literal is the
+     * one quantity that names a basis this app has. It cannot alter any value: nothing downstream
+     * reads a number out of this token, and the only outcome of a match is that a column is
+     * classified per-100 rather than left unresolved. A false match would have to be a header
+     * printing `l00` beside a basis unit and meaning something else, which is not a thing packages
+     * print.
+     *
+     * `0` and `O` are deliberately **not** interchanged. That would make `lOO`, `100`, `l00` and
+     * `1OO` all equivalent, and `OO` appears inside ordinary words in a way `00` does not — the
+     * narrower rule covers the measured failure and nothing more.
+     */
+    internal const val PER_100_QUANTITY_PATTERN = "[1l]00"
+
     internal fun basisUnitFor(normalizedWord: String): NutritionBasis? =
         BasisUnitSpellings.basisFor(normalizedWord)
 

@@ -58,14 +58,48 @@ package app.justthecarbs.ocr
  * 1. **It asks about punctuation, not magnitude.** There is no "values above 50 are suspicious"
  *    threshold anywhere here, and none may be added — such a rule would refuse flour and sugar
  *    while still admitting a collapsed `4,6` -> `46`.
- * 2. **It requires a pair.** A single-value label states one number with nothing to share a scale
- *    with, so those labels are untouched. The pair is what makes a *uniform* rescaling expressible.
+ * 2. **A pair is what makes ambiguity *demonstrable*, not what makes scale *doubtful*.** See the
+ *    correction below: an unpaired separatorless value is [Verdict.Unsupported], not established.
  * 3. **It is only ever asked of an unverified reading.** See [EvidenceResolver] and
  *    [AutomaticScanAdvance] — a reading two distinct recognition runs agree on, or one the label's
  *    own structure supports through a route that is not scale-invariant, has its scale settled by
  *    that evidence and never reaches this question. That is what keeps
  *    `20260902-131357-353` (`41g`, integer-like, no separator, and **correct**) advancing exactly as
  *    it did.
+ *
+ * ## The correction this type carries (eighth session, `20260902-213005-691`)
+ *
+ * The rule above originally had only two answers, and property 2 read *"it requires a pair — a
+ * single-value label states one number with nothing to share a scale with, so those labels are
+ * untouched"*. That reasoning conflates two different situations, and the difference cost a wrong
+ * value on a confirmation card.
+ *
+ * A red Lidl label printing `7,2 g / 100 g` was recognised as `12g`, alone on its row, under a
+ * correctly resolved per-100 column. No sibling value existed to pair against, so the old code
+ * returned `Established("no paired value in this clause to share a scale with")` — and the bundle
+ * printed exactly that sentence, which says *absence of evidence* while the type said *presence of
+ * it*. Nothing else corroborated the reading (`automatic-verification: NONE`, Strategy B returned
+ * no reading), so the app offered `12 g / 100 g` for a one-tap confirmation.
+ *
+ * **Finding no pair is not the same as finding that the scale is sound.** A separator that survived
+ * on the candidate is positive evidence; a sibling that kept its separator is positive evidence; a
+ * row where no second measurement was printed *or recognised* is simply silence. The recognizer
+ * fusing `7,` into the nutrient word (`carbono2g`, measured on two other captures of this same
+ * package) produces exactly that silence, so the unpaired case is not rare and is not safe.
+ *
+ * So the verdict is now three-valued, and the third value is the honest one:
+ *
+ * | verdict | meaning | evidence |
+ * |---|---|---|
+ * | [Verdict.Established] | the scale is stated | a separator on the candidate, or on a sibling |
+ * | [Verdict.Ambiguous] | a common rescaling is equally consistent | a separatorless **pair** |
+ * | [Verdict.Unsupported] | nothing here speaks to the scale either way | a separatorless lone value |
+ *
+ * `Unsupported` is deliberately **not** a refusal on its own. It says only that this rule has
+ * nothing to contribute, so a caller must look elsewhere — which is why an integer a second
+ * recognition run also read still advances, and why the caller with a human pointing at a specific
+ * number (recovery) is unaffected. See [AutomaticScanAdvance.mayConfirm] for where the distinction
+ * is actually spent.
  *
  * ## What it never does
  *
@@ -77,9 +111,15 @@ package app.justthecarbs.ocr
  */
 object ScaleAmbiguity {
 
-    /** Whether the evidence establishes the reading's absolute scale. */
+    /** What the evidence says about the reading's absolute scale. */
     sealed interface Verdict {
-        /** The scale is established, or there is nothing here that could put it in doubt. */
+        /**
+         * The scale is stated by the recognised text.
+         *
+         * Only ever returned on **positive** evidence: a decimal separator that survived on the
+         * candidate's own token, or on a value printed beside it. "Nothing contradicted it" is not
+         * this verdict — that is [Unsupported].
+         */
         data class Established(val reason: String) : Verdict
 
         /**
@@ -93,6 +133,20 @@ object ScaleAmbiguity {
             val pairedText: String,
             val reason: String,
         ) : Verdict
+
+        /**
+         * This rule has nothing to say about the scale, in either direction.
+         *
+         * Returned when the candidate kept no separator and no sibling value was recognised on its
+         * row, so no rescaling can be *demonstrated* and none can be ruled out either. Measured on
+         * `20260902-213005-691`, where the printed `7,2 g` arrived as a lone `12g`.
+         *
+         * **Not a refusal by itself.** A caller holding other evidence — a second recognition run
+         * agreeing, or a human pointing at the number — is entitled to proceed; a caller holding
+         * none must not treat this as permission. That asymmetry is the whole point of separating it
+         * from [Established].
+         */
+        data class Unsupported(val candidateText: String, val reason: String) : Verdict
     }
 
     /**
@@ -104,14 +158,29 @@ object ScaleAmbiguity {
      * that happen to sit near each other.
      */
     fun check(document: OcrDocument, candidate: CarbCandidate): Verdict {
-        val row = rowContaining(document, candidate) ?: return Verdict.Established("no row to pair against")
-        val candidateElement = candidateElement(row, candidate)
-            ?: return Verdict.Established("the candidate's own element was not identifiable")
-
-        // A separator that survived on the candidate itself settles it outright: the recognizer
-        // reported where the point is, so the scale is stated rather than inferred.
-        if (hasDecimalSeparator(candidateElement.text)) {
+        // A separator that survived on the candidate settles it outright, and is checked first so
+        // that a value whose row or element could not be located is still judged on its own text.
+        // `sourceLine` is not consulted: it is the whole row, and a separator belonging to a
+        // *neighbouring* number would then vouch for this one.
+        val row = rowContaining(document, candidate)
+        val candidateElement = row?.let { candidateElement(it, candidate) }
+        if (candidateElement != null && hasDecimalSeparator(candidateElement.text)) {
             return Verdict.Established("the candidate's own token carries a decimal separator")
+        }
+
+        // Neither of these is evidence about the scale. They used to return `Established`, which
+        // meant a candidate the rule could not even locate counted as vouched for.
+        if (row == null) {
+            return Verdict.Unsupported(
+                candidateText = candidate.value.toPlainString(),
+                reason = "no row to pair against",
+            )
+        }
+        if (candidateElement == null) {
+            return Verdict.Unsupported(
+                candidateText = candidate.value.toPlainString(),
+                reason = "the candidate's own element was not identifiable",
+            )
         }
 
         // The sibling **value** cells: tokens to the right of the candidate, inside the same
@@ -141,7 +210,14 @@ object ScaleAmbiguity {
                 looksLikeAValueCell(it.text)
         }
         if (siblings.isEmpty()) {
-            return Verdict.Established("no paired value in this clause to share a scale with")
+            // No second measurement was printed on this row, or none was recognised. Either way this
+            // rule has seen nothing that speaks to the scale, and saying "established" here is what
+            // put `12 g / 100 g` on a confirmation card for a package printing `7,2 g`.
+            return Verdict.Unsupported(
+                candidateText = candidateElement.text.trim(),
+                reason = "no paired value in this clause to share a scale with, and the candidate " +
+                    "kept no decimal separator of its own",
+            )
         }
 
         // If any sibling kept a separator, the recognizer demonstrably preserved decimal points on

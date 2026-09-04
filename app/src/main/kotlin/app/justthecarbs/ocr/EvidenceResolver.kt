@@ -54,6 +54,32 @@ object EvidenceResolver {
 
     /** What the scanner should do, once every available pass has reported. */
     sealed interface Outcome {
+
+        /**
+         * The pass whose reading this outcome carries, when it carries one.
+         *
+         * ## Why the outcome has to say this
+         *
+         * The reading and the report were carried; **the recognition they came out of was not**. The
+         * scanner therefore evaluated and drew every outcome against `captured.document` — Pass A's
+         * whole-frame recognition — whichever pass had actually won.
+         *
+         * That is wrong in two ways whenever Strategy B wins, and both are measurable rather than
+         * theoretical:
+         *
+         * * **The parser question is asked of the wrong document.** [ScaleAmbiguity] looks for the
+         *   candidate's row and its sibling cells. Strategy B's candidate geometry is in *crop-local*
+         *   coordinates, so it matches no row in Pass A's full-frame document and the scale question
+         *   silently degrades to "no row to pair against".
+         * * **The geometry is drawn in the wrong space.** [app.justthecarbs.ui.scan.VerificationScreen]
+         *   scales `candidate.geometry` against the full capture bitmap, so a crop-local box lands
+         *   short by the crop's own origin — the highlight and the close-up point at the wrong part of
+         *   the photograph, which is precisely the evidence the user is being asked to check against.
+         *
+         * Null for [Conflicted] and [Nothing], which carry no reading to attribute.
+         */
+        val winningEvidence: RecognitionEvidence? get() = null
+
         /**
          * Corroborated by at least two independent passes, or produced by Pass A alone exactly as
          * before. Safe to present as the scanner's answer — still subject to the user tapping it.
@@ -62,6 +88,8 @@ object EvidenceResolver {
             val reading: LabelReading,
             val report: NutritionParseReport,
             val agreeingSources: List<EvidenceSource>,
+            /** The pass [report] came from. See [Outcome.winningEvidence]. */
+            override val winningEvidence: RecognitionEvidence? = null,
         ) : Outcome
 
         /**
@@ -76,6 +104,8 @@ object EvidenceResolver {
             val reading: LabelReading.Confident,
             val report: NutritionParseReport,
             val source: EvidenceSource,
+            /** The pass [report] came from. See [Outcome.winningEvidence]. */
+            override val winningEvidence: RecognitionEvidence? = null,
         ) : Outcome
 
         /**
@@ -122,6 +152,8 @@ object EvidenceResolver {
             val reading: LabelReading,
             val report: NutritionParseReport,
             val source: EvidenceSource,
+            /** The pass [report] came from. See [Outcome.winningEvidence]. */
+            override val winningEvidence: RecognitionEvidence? = null,
         ) : Outcome
 
         /** Nothing usable from any pass. */
@@ -152,6 +184,7 @@ object EvidenceResolver {
                 reading = ambiguous.reading,
                 report = ambiguous.report,
                 source = ambiguous.source,
+                winningEvidence = ambiguous,
             )
         }
 
@@ -193,6 +226,7 @@ object EvidenceResolver {
                 reading = best.reading,
                 report = best.report,
                 agreeingSources = agreed.map { it.source },
+                winningEvidence = best,
             )
         }
 
@@ -211,6 +245,7 @@ object EvidenceResolver {
                 reading = lone.reading,
                 report = lone.report,
                 agreeingSources = agreed.map { it.source },
+                winningEvidence = lone,
             )
         }
 
@@ -257,6 +292,7 @@ object EvidenceResolver {
                 reading = lone.reading,
                 report = lone.report,
                 agreeingSources = agreed.map { it.source },
+                winningEvidence = lone,
             )
         }
 
@@ -264,6 +300,7 @@ object EvidenceResolver {
             reading = lone.reading as LabelReading.Confident,
             report = lone.report,
             source = lone.source,
+            winningEvidence = lone,
         )
     }
 }

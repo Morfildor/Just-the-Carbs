@@ -254,27 +254,87 @@ class SixthSessionRegressionTest {
     // ---------------------------------------------------------------- the rule stays general
 
     /**
-     * A verified integer reading is untouched.
+     * A verified integer reading is untouched — on a label where the integer is *lone*.
      *
-     * `20260902-131357-353` reads `41g` - integer-like, no decimal separator, exactly the shape the
-     * ambiguity rule keys on - and it is **correct**, verified by three distinct recognition runs.
-     * The rule must not touch it, or the fix costs a good capture. This is why the ambiguity
-     * question is asked only of *unverified* readings.
+     * ## The fixture changed, and the assertion was inverted (tenth pass)
+     *
+     * This case used to drive [SixthSessionFixtures.sauceSharedScaleCollapse] — the truffle document
+     * whose printed `8,9`/`1,3` was recognised as `89`/`13` — and assert that two distinct runs
+     * agreeing made **that** reading confirmable. It therefore asserted the safety of the exact
+     * value this whole class exists to keep off the screen, on the reasoning that agreement
+     * "resolves the scale question".
+     *
+     * It does not. Both corroboration routes are scale-invariant, which `ScaleInvarianceTest`
+     * measures rather than argues: a uniform separator loss leaves every cross-column ratio
+     * unchanged, and two runs of one recognizer over the same pixels repeat it. So the truffle is
+     * now refused **however** it was verified, and that is asserted below.
+     *
+     * The original intent — a verified integer must not become collateral damage — is retained on
+     * `20260902-131357-353`'s actual shape: `41g`, integer-like, **lone**, with no sibling on its row
+     * to share a rescale with. That verdict is `Unsupported`, not `Ambiguous`, so corroboration still
+     * admits it and the good capture still behaves as it did.
      */
     @Test
-    fun `a verified reading is never made ambiguous`() {
+    fun `a verified lone integer is never made ambiguous`() {
+        val document = OcrDocument(
+            width = 1000,
+            height = 1000,
+            elements = listOf(
+                OcrElement("per 100 ml", OcrBox(400, 100, 620, 140), 0, 0),
+                OcrElement("Koolhydraten", OcrBox(60, 200, 300, 240), 0, 1),
+                OcrElement("41g", OcrBox(430, 200, 500, 240), 0, 1),
+            ),
+        )
+        val evidence = listOf(
+            confidentEvidence(EvidenceSource.FULL_FRAME_PASS_A, document),
+            confidentEvidence(EvidenceSource.SELECTED_REGION_OCR, document),
+        )
+        val verdict = AutomaticVerification.verify(evidence)
+        assertEquals(AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT, verdict.route)
+        assertTrue(
+            "precondition: a lone integer is Unsupported, never Ambiguous",
+            ScaleAmbiguity.check(document, confidentCandidate(document))
+                is ScaleAmbiguity.Verdict.Unsupported,
+        )
+        assertTrue(
+            "a verified lone integer must still be confirmable",
+            AutomaticScanAdvance.mayConfirm(EvidenceResolver.resolve(evidence), verdict, document),
+        )
+    }
+
+    /**
+     * **The correction itself.** The truffle's separatorless *pair* is refused even when verified.
+     *
+     * This is the assertion that replaces the old endorsement above, on the same document, so the
+     * scenario the original case covered is still exercised — with the answer the evidence supports.
+     */
+    @Test
+    fun `the truffle collapse is refused even when two distinct runs agree`() {
         val document = SixthSessionFixtures.sauceSharedScaleCollapse()
         val evidence = listOf(
             confidentEvidence(EvidenceSource.FULL_FRAME_PASS_A, document),
             confidentEvidence(EvidenceSource.SELECTED_REGION_OCR, document),
         )
-        // Two distinct runs agreeing is DISTINCT_OCR_AGREEMENT, which resolves the scale question.
         val verdict = AutomaticVerification.verify(evidence)
-        assertEquals(AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT, verdict.route)
         assertTrue(
-            "a verified reading must still be confirmable",
-            AutomaticScanAdvance.mayConfirm(EvidenceResolver.resolve(evidence), verdict, document),
+            "precondition: something must corroborate it, or this proves nothing",
+            verdict.mayAdvanceAutomatically,
         )
+        val outcome = EvidenceResolver.resolve(evidence)
+        assertFalse(
+            "a separatorless pair is not rescued by scale-invariant corroboration",
+            AutomaticScanAdvance.mayConfirm(outcome, verdict, document),
+        )
+        assertFalse(
+            "and it must never advance",
+            AutomaticScanAdvance.mayAdvanceVerified(outcome, verdict, document),
+        )
+    }
+
+    private fun confidentCandidate(document: OcrDocument): CarbCandidate {
+        val candidate = (report(document).reading as? LabelReading.Confident)?.candidate
+        assertNotNull("precondition: the fixture must parse confidently", candidate)
+        return candidate!!
     }
 
     /**

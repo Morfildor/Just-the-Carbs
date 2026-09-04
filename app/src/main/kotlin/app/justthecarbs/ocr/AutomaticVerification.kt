@@ -166,19 +166,29 @@ internal object AutomaticVerification {
             }
 
         val distinctRuns = confident.map { it.source.recognitionRun }.distinct()
-        return if (distinctRuns.size >= 2) {
-            Verdict(Route.DISTINCT_OCR_AGREEMENT)
-        } else {
-            Verdict(
-                route = Route.NONE,
-                rejectionReason = if (distinctRuns.size < 2) {
+        if (distinctRuns.size >= 2) return Verdict(Route.DISTINCT_OCR_AGREEMENT)
+
+        // Both reasons, not just the second one.
+        //
+        // `structuralGap` holds why the *structural* route could not answer — "only 1 coherent row
+        // pair; 3 needed" — and it was computed and then discarded, so every bundle in the twelfth
+        // session recorded the optical route's reason alone: *"only one recognition run (PASS_A)"*.
+        // That is true and it is not the whole answer, and on this evidence it is the misleading
+        // half: it reads as "the app never looked at the table", when the app did look and found the
+        // label could not corroborate itself. Which of the two is missing decides whether a capture
+        // is fixed by a better photograph or by a label that prints a second column at all.
+        val structural = structuralGap?.rejectionReason
+        return Verdict(
+            route = Route.NONE,
+            supportingRows = structuralGap?.supportingRows ?: 0,
+            rejectionReason = buildString {
+                append(
                     "only one recognition run (${distinctRuns.joinToString()}); " +
-                        "two parses of one run cannot corroborate each other"
-                } else {
-                    "recognition runs disagree on amount or basis"
-                },
-            )
-        }
+                        "two parses of one run cannot corroborate each other",
+                )
+                structural?.let { append(" — and the table could not corroborate it either: $it") }
+            },
+        )
     }
 
     private fun format(ratio: Double): String = String.format("%.3f", ratio)

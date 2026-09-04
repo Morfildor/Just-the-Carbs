@@ -211,11 +211,9 @@ internal object NutrientRowSegments {
         // and the words `Koolhydraten` and `suikers` are nonetheless printed in different places on
         // the package, which is what the user is pointing at. So the boundary is found by asking
         // which **element** names which nutrient, independently of how the spans group.
-        val naming = row.elements.mapNotNull { element ->
-            kindOfTerm(NutritionTerminology.normalize(element.text))
-                ?.takeIf { it != NutritionRowKind.OTHER }
-                ?.let { it to element }
-        }
+        val naming = namingElements(row)
+            .filter { it.kind != NutritionRowKind.OTHER }
+            .map { it.kind to it.element }
 
         // The **first** element naming the total opens the clause.
         //
@@ -261,6 +259,88 @@ internal object NutrientRowSegments {
             startX = total.box.left,
             endX = boundary ?: Int.MAX_VALUE,
         )
+    }
+
+    /**
+     * Which nutrient's clause a tap at [tappedX] landed in, or null when the row names none.
+     *
+     * The companion of [totalCarbohydrateClause], for the mirror-image defect. That one stops a
+     * merged row's *total* clause being answered "this looks like sugars". This one lets a caller
+     * see that the finger was in some **other** nutrient's clause entirely — the fat line, the salt
+     * line — on a row that merely happens to name a child somewhere along it.
+     *
+     * ### The measured failure
+     *
+     * `20260903-212700-478` reconstructs the pickle's fat row together with a slice of the
+     * ingredient list printed beside it:
+     *
+     * ```
+     * aDin, suiker, zout   vetten,   0,2 g   0,06 g
+     *        ^x=213         ^x=602    ^1075   ^1313
+     * ```
+     *
+     * The word `suiker` belongs to the ingredient list; `vetten` (fat) and both values belong to the
+     * table. [RowClassifier] types the whole row `CARBOHYDRATE_CHILD`, which is correct and
+     * unchanged — the row genuinely cannot be *read* as a total. But every tap on it, including a
+     * tap on the fat figures 800 px away from the word `suiker`, was answered *"This looks like
+     * sugars or fibre."* That statement is simply false about where the finger was, and it is the
+     * message the user is given instead of a way forward.
+     *
+     * ### The rule
+     *
+     * A tap belongs to the clause of the **last nutrient named at or before it**, which is reading
+     * order — the same argument [CarbohydrateTermAnchor] makes about which nutrient owns a number. A
+     * tap before every nutrient name on the row belongs to the first clause, so the bullet of a
+     * `- suikers 2,3 g` row is still a sugars tap.
+     *
+     * This decides only which **message** is shown. It reads no value, promotes no row and relaxes
+     * no suppression: [RecoveryCandidates] still offers nothing from a child row, so a tap here can
+     * never produce a number it could not produce before.
+     */
+    fun nutrientClauseKindAt(row: LogicalRow, tappedX: Int): NutritionRowKind? {
+        val naming = namingElements(row)
+        if (naming.isEmpty()) return null
+        val owner = naming.lastOrNull { it.element.box.left <= tappedX } ?: naming.first()
+        return owner.kind
+    }
+
+    /** A nutrient name printed on the row, attributed to the element that begins it. */
+    private data class NamingElement(
+        val kind: NutritionRowKind,
+        val term: String,
+        val element: OcrElement,
+    )
+
+    /**
+     * Every nutrient name printed on [row], attributed to the element that **begins** it.
+     *
+     * ### One element at a time, deliberately
+     *
+     * This is the walk [totalCarbohydrateClause] has always used, extracted so
+     * [nutrientClauseKindAt] asks the same question of the same words rather than restating it.
+     *
+     * It is **not** the greedy span walk [nutrientTermsIn] uses, and the difference is the point:
+     * that walk tries the longest span first and would match the four-element child term
+     * `koolhydraten 12 g waarvan suikers` starting at the carbohydrate word, recording it as naming
+     * a *child*. Right for its own question (*may this row be read as a total row?*), useless for
+     * this one (*which printed clause did the finger land on?*).
+     *
+     * Multi-element nutrient names — `Hidratos de carbono`, the hyphenated `Kool-hydraten` — are
+     * therefore invisible here, and that is a known limit rather than an oversight. A two-pass
+     * variant that fills the gaps with spans was written and measured against this repo's whole
+     * corpus: it changed no outcome anywhere, and it moved the Dutch `waarvan suikers` boundary from
+     * the printed word `suikers` back to `waarvan`, failing [MergedRowTapBoundTest] and
+     * [SeventhSessionRegressionTest] — device-measured behaviour from the seventh session. It is not
+     * kept, because a capability with no measured beneficiary and a measured cost is not a
+     * capability. Add it when a merged row on such a label actually appears in a session.
+     */
+    private fun namingElements(row: LogicalRow): List<NamingElement> {
+        if (ParserWorkCounters.enabled) ParserWorkCounters.segmentationCalls++
+        return row.elements.mapNotNull { element ->
+            val text = NutritionTerminology.normalize(element.text)
+            if (text.isEmpty()) return@mapNotNull null
+            kindOfTerm(text)?.let { NamingElement(it, text, element) }
+        }
     }
 
     /** A nutrient name found on the row, with where it starts. */

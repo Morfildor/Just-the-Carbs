@@ -59,17 +59,24 @@ object SelectedRegionRecognizer {
         val started = System.nanoTime()
         val trace = ScanTrace()
         var cropped: Bitmap? = null
+        // Who frees the crop, decided by [CropRecycleOwnership] rather than by which `return` ran.
+        // Starts as the caller so an exception before the task is even submitted still releases.
+        var owner = CropRecycleOwnership.Owner.CALLER
         try {
             // Native pixels. createBitmap over a sub-rectangle is a copy, not a scale.
             cropped = Bitmap.createBitmap(source, crop.left, crop.top, crop.width, crop.height)
             trace.mark("crop")
 
             val latch = java.util.concurrent.CountDownLatch(1)
-            var recognized: com.google.mlkit.vision.text.Text? = null
+            // @Volatile in spirit: written on ML Kit's callback thread, read on this one. The latch
+            // already establishes happens-before, so this is safe today — but `LabelAnalyzer` marks
+            // its cross-thread fields explicitly and an unannotated `var` is one refactor away from
+            // being read without the latch. An array cell is the local equivalent of that marker.
+            val recognized = arrayOfNulls<com.google.mlkit.vision.text.Text>(1)
             val input = InputImage.fromBitmap(cropped, 0)
             trace.mark("mlkit-input")
-            recognizer.process(input)
-                .addOnSuccessListener { recognized = it; latch.countDown() }
+            val task = recognizer.process(input)
+                .addOnSuccessListener { recognized[0] = it; latch.countDown() }
                 .addOnFailureListener {
                     OcrDiagnosticsLogger.failure("Selected-region OCR failed", it)
                     latch.countDown()
@@ -77,10 +84,23 @@ object SelectedRegionRecognizer {
 
             if (!latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                 OcrDiagnosticsLogger.failure("Selected-region OCR timed out after ${timeoutMs}ms")
+                // **The crash this avoids.** ML Kit is still reading `input`, which wraps `cropped`.
+                // Recycling it here — which the `finally` below used to do unconditionally — frees
+                // pixels out from under a running native detector. Hand the release to the task, the
+                // same way [LabelAnalyzer.warmUp] releases its probe bitmap.
+                val abandoned = cropped
+                // Ownership transfers only if the listener is actually attached. If `addOnComplete‑
+                // Listener` throws, `owner` stays CALLER and the `finally` releases as before —
+                // a leaked 8 MP crop is worse than the synchronous release, and the alternative to
+                // both is a crash.
+                owner = runCatching {
+                    task.addOnCompleteListener { abandoned?.takeIf { b -> !b.isRecycled }?.recycle() }
+                    CropRecycleOwnership.of(CropRecycleOwnership.Completion.TIMED_OUT)
+                }.getOrDefault(CropRecycleOwnership.Owner.CALLER)
                 return null
             }
             trace.mark("mlkit")
-            val text = recognized ?: return null
+            val text = recognized[0] ?: return null
 
             val document = trace.time("to-domain") {
                 MlKitOcrMapper.toDocument(text, crop.width, crop.height)
@@ -93,6 +113,12 @@ object SelectedRegionRecognizer {
                 report = report,
                 document = document,
                 elapsedMs = (System.nanoTime() - started) / 1_000_000,
+                // Where these pixels came from. `document` is measured in crop coordinates — its
+                // width and height are the crop's, and every box is relative to the crop's own
+                // origin — so anything drawing this pass's geometry over the full photograph, or
+                // comparing it against Pass A's boxes, needs this to translate with. Carried rather
+                // than left for the caller to re-derive: see [RecognitionEvidence.crop].
+                crop = crop,
             )
         } catch (error: Exception) {
             // A second opinion is a bonus, never a dependency: any failure here must leave the
@@ -102,7 +128,14 @@ object SelectedRegionRecognizer {
         } finally {
             // The crop is a full copy of a region of an 8 MP bitmap and is useless after parsing.
             // Releasing it here bounds peak memory to source + one crop (§29).
-            cropped?.takeIf { !it.isRecycled }?.recycle()
+            //
+            // **Unless ML Kit still holds it.** On a timeout the task is still reading these pixels
+            // and has taken responsibility for freeing them; recycling here as well would be the
+            // use-after-free this guard exists to prevent. [CropRecycleOwnership] is the one place
+            // that decides, so the `finally` cannot drift back to releasing unconditionally.
+            if (owner == CropRecycleOwnership.Owner.CALLER) {
+                cropped?.takeIf { !it.isRecycled }?.recycle()
+            }
         }
     }
 

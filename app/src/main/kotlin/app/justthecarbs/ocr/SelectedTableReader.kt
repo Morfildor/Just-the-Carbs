@@ -55,6 +55,27 @@ internal object SelectedTableReader {
         val outcome: Outcome,
         val elementsBefore: Int,
         val elementsAfter: Int,
+        /**
+         * The document [report] was actually parsed from.
+         *
+         * ## Why this is carried rather than left to the caller
+         *
+         * [SelectedTableResolution] built its Strategy A evidence as `report = filtered.report,
+         * document = passA.document` — the filtered *parse* beside the unfiltered *document*,
+         * because the filtered document was a local inside [read] and there was nothing else to
+         * pass. Every stage reading `evidence.document` was then handed elements the user's
+         * rectangle had **excluded**: the resolver's richest-document tie-break,
+         * [AutomaticVerification]'s structural route, [RecognitionEvidence.valueConfidence] and,
+         * through the scanner, [ScaleAmbiguity].
+         *
+         * A row the user cropped away is not evidence about the row they cropped to, so a filtered
+         * report must travel with the document it was filtered from.
+         *
+         * Null for [Outcome.NO_DOCUMENT], where nothing was recognised. For
+         * [Outcome.RETAINED_WHOLE_FRAME] it is the whole frame, which is the honest answer: the
+         * selection excluded nothing.
+         */
+        val document: OcrDocument? = null,
     ) {
         /**
          * How much of the recognised document the selection actually removed (spec §11).
@@ -94,7 +115,13 @@ internal object SelectedTableReader {
         region: NormalizedRegion?,
     ): Result {
         if (document == null) {
-            return Result(wholeFrameReport, Outcome.NO_DOCUMENT, elementsBefore = 0, elementsAfter = 0)
+            return Result(
+                wholeFrameReport,
+                Outcome.NO_DOCUMENT,
+                elementsBefore = 0,
+                elementsAfter = 0,
+                document = null,
+            )
         }
 
         val filtered = ElementRegionFilter.filter(document, region)
@@ -103,6 +130,9 @@ internal object SelectedTableReader {
                 Outcome.RETAINED_WHOLE_FRAME,
                 elementsBefore = document.elements.size,
                 elementsAfter = document.elements.size,
+                // The selection excluded nothing usable, so the whole frame is what this report was
+                // produced from — stating it plainly rather than leaving it null.
+                document = document,
             )
 
         // The full production parser, unchanged. Every safety rule — the child-nutrient exclusion,
@@ -115,6 +145,9 @@ internal object SelectedTableReader {
             outcome = Outcome.FILTERED,
             elementsBefore = document.elements.size,
             elementsAfter = filtered.elements.size,
+            // The elements this report was parsed from, so evidence built on it cannot be judged
+            // against text the rectangle excluded.
+            document = filtered,
         )
     }
 }

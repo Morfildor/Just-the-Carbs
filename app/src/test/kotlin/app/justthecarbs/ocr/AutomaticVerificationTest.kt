@@ -246,7 +246,13 @@ class AutomaticVerificationTest {
 
     @Test
     fun `an unverified reading never clears the automatic gate`() {
-        val report = evidence(EvidenceSource.FULL_FRAME_PASS_A, "72").report
+        // A real document rather than a synthetic candidate, because the gate now also asks
+        // [ReadingEligibility] about the reading's decimal scale, and that question is only
+        // answerable against the document the value was read from. The cracker's `72,0` carries its
+        // own separator, so its scale is `Established` and this test isolates the *verification*
+        // half of the gate — which is what it is about.
+        val document = FourthSessionFixtures.crackerCorrectFirst()
+        val report = NutritionTableInterpreter.interpret(document)
         val resolved = EvidenceResolver.Outcome.Resolved(
             reading = report.reading,
             report = report,
@@ -257,16 +263,22 @@ class AutomaticVerificationTest {
             "the structural half must still pass, or this test proves nothing",
             AutomaticScanAdvance.mayAdvance(resolved),
         )
+        assertTrue(
+            "precondition: the scale must be established, or this measures the wrong refusal",
+            AutomaticScanAdvance.scaleVerdict(resolved, document) is ScaleAmbiguity.Verdict.Established,
+        )
         assertFalse(
             AutomaticScanAdvance.mayAdvanceVerified(
                 resolved,
                 AutomaticVerification.Verdict(AutomaticVerification.Route.NONE),
+                document,
             ),
         )
         assertTrue(
             AutomaticScanAdvance.mayAdvanceVerified(
                 resolved,
                 AutomaticVerification.Verdict(AutomaticVerification.Route.CROSS_COLUMN),
+                document,
             ),
         )
     }

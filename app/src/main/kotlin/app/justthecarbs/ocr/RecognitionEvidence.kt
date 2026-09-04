@@ -82,10 +82,33 @@ enum class RecognitionRun { PASS_A, SELECTED_REGION, LIVE }
 data class RecognitionEvidence(
     val source: EvidenceSource,
     val report: NutritionParseReport,
-    /** Recognized document backing [report], when one exists. Null when recognition itself failed. */
+    /**
+     * Recognized document backing [report], when one exists. Null when recognition itself failed.
+     *
+     * **This document's coordinate space is the pass's own**, which is not always the capture's. A
+     * [EvidenceSource.SELECTED_REGION_OCR] pass recognises a crop of the source bitmap, so its
+     * element boxes and its `width`/`height` are crop-local. [crop] is what relates the two, and
+     * every consumer must be explicit about which space it wants — see [sourceSpaceGeometry].
+     */
     val document: OcrDocument?,
     /** Wall-clock cost of this pass, for the latency budget (§28). */
     val elapsedMs: Long = 0,
+    /**
+     * Where [document] sits inside the source bitmap, for a pass that recognised a sub-rectangle.
+     *
+     * Null means [document] is already in source-image coordinates — every pass except Strategy B,
+     * which is why the field defaults to null and Pass A is untouched by its introduction.
+     *
+     * ## Why this has to be carried rather than recomputed
+     *
+     * [SelectedRegionCrop.toSourceSpace] has existed, with tests, since the crop pass was written,
+     * and its KDoc states that "evidence and assisted-mode tapping" need it. It had **no production
+     * caller at all** — so the translation was available and never applied, and Strategy B's
+     * crop-local geometry travelled into a full-frame world unchanged. Recomputing the rectangle at
+     * the point of use would mean re-deriving it from the region and the bitmap dimensions at every
+     * consumer, which is three places to get subtly different and no way to notice.
+     */
+    val crop: SelectedRegionCrop.PixelRect? = null,
 ) {
     val reading: LabelReading get() = report.reading
 
@@ -100,18 +123,54 @@ data class RecognitionEvidence(
     val isConfident: Boolean get() = reading is LabelReading.Confident
 
     /**
-     * Mean recognizer confidence of the elements making up the accepted value's row/span.
+     * Mean recognizer confidence of the elements making up the accepted value's **own clause**.
      *
      * Null when unknown — either the engine reported none, or there is no accepted value. Used only
      * to *withhold* trust (§8), never to choose which nutrient a number belongs to.
+     *
+     * ## Why the clause bound is here
+     *
+     * This used to select purely on `verticalOverlapRatio > 0.5`, with no horizontal bound, so on a
+     * **merged row** it averaged the candidate's clause together with the child nutrient's. ML Kit
+     * routinely merges the two: the seventh session measured one reconstructed row carrying
+     * `Koolhydraten/Glucides 8,9 g` and `waarvan suikers/dont sucres 1,3 g` together.
+     *
+     * The consequence is measurable rather than theoretical. With a cleanly recognised carbohydrate
+     * clause (0.90) beside a damaged sugars clause (0.10), the unbounded average is **0.443** —
+     * under [EvidenceResolver.MIN_PROPOSAL_CONFIDENCE], so [EvidenceResolver] rule 4 dropped a
+     * correct lone re-recognition *in silence* because the neighbouring clause read badly. Bounded,
+     * the same fixture measures **0.70** and is proposed.
+     *
+     * Note the bound is [NutrientRowSegments]'s, not a tighter one invented here: its greedy span
+     * walk puts the connective `waarvan` in the *total's* clause, so a damaged connective still
+     * counts against the candidate. That is the intended reading of "this nutrient's own clause",
+     * and deliberately not re-litigated at this call site — a second, differently-drawn boundary is
+     * exactly the drift this bound exists to prevent.
+     *
+     * [NutrientRowSegments] is the same bound [ScaleAmbiguity], [RecoveryCandidates] and the
+     * automatic path already use, so the four cannot disagree about where the clause ends. On an
+     * ordinary single-nutrient row it returns null, the whole row is the clause, and the average is
+     * exactly what it was before — pinned by `an ordinary row is unaffected`.
+     *
+     * **This can only ever withhold a proposal, never create one.** A wrong average cannot
+     * manufacture a value; the bound simply stops it losing a good one for the wrong reason.
      */
     val valueConfidence: Float?
         get() {
             val candidate = (reading as? LabelReading.Confident)?.candidate ?: return null
-            val elements = document?.elements ?: return null
+            val doc = document ?: return null
             val box = candidate.geometry
-            val overlapping = elements.filter { it.box.verticalOverlapRatio(box) > 0.5 }
-            val scores = overlapping.mapNotNull { it.confidence }
+            val overlapping = doc.elements.filter { it.box.verticalOverlapRatio(box) > 0.5 }
+
+            // The candidate's printed clause, when the row carries more than one. Located from the
+            // reconstructed row rather than from the raw element list, because a clause boundary is
+            // a property of the row's nutrient names and their positions.
+            val clause = LogicalRowBuilder.build(doc)
+                .firstOrNull { row -> row.elements.any { it.box == box || it.box.verticalOverlapRatio(box) > 0.5 } }
+                ?.let { NutrientRowSegments.totalCarbohydrateSegment(it) }
+
+            val inClause = if (clause == null) overlapping else overlapping.filter { clause.contains(it.box) }
+            val scores = inClause.mapNotNull { it.confidence }
             return scores.takeIf { it.isNotEmpty() }?.average()?.toFloat()
         }
 
@@ -141,4 +200,27 @@ data class RecognitionEvidence(
      * agreement helper.
      */
     val statesABasis: Boolean get() = basis != null
+
+    /**
+     * The accepted candidate's box **in source-image coordinates**, or null when there is no
+     * candidate.
+     *
+     * ## The one translation boundary
+     *
+     * Geometry is translated **exactly once**, here, and only for presentation, tapping,
+     * highlighting and evidence export. It is deliberately *not* applied before parsing: the parser,
+     * the row and column classifiers and [ScaleAmbiguity] all reason about a document in its own
+     * space, and moving the boxes without moving the document they are compared against would break
+     * every one of them. That is why [document] stays crop-local and this is a separate accessor
+     * rather than a normalisation applied at construction.
+     *
+     * For every pass but Strategy B [crop] is null and this returns the geometry unchanged, so no
+     * existing coordinate is disturbed.
+     */
+    val sourceSpaceGeometry: OcrBox?
+        get() {
+            val box = (reading as? LabelReading.Confident)?.candidate?.geometry ?: return null
+            val origin = crop ?: return box
+            return SelectedRegionCrop.toSourceSpace(box, origin)
+        }
 }

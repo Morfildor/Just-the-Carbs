@@ -17,6 +17,17 @@ data class OcrBox(
     val centerX: Double get() = (left + right) / 2.0
     val centerY: Double get() = (top + bottom) / 2.0
 
+    /**
+     * Area in square pixels, as a `Long` so a full-frame box cannot overflow.
+     *
+     * Used to resolve a tap that lands inside two nested boxes — an indented child nutrient label
+     * sitting within its parent's span — where the tighter box is the one the finger aimed at.
+     */
+    fun area(): Long = width.toLong() * height.toLong()
+
+    /** Whether the point (x, y) lies within this box, edges included. */
+    fun contains(x: Int, y: Int): Boolean = x >= left && x <= right && y >= top && y <= bottom
+
     fun union(other: OcrBox): OcrBox = OcrBox(
         left = minOf(left, other.left),
         top = minOf(top, other.top),

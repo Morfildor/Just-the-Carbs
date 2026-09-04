@@ -115,7 +115,11 @@ internal object SelectedTableResolution {
             evidence += RecognitionEvidence(
                 source = EvidenceSource.FILTERED_PASS_A,
                 report = filtered.report,
-                document = passA.document,
+                // **The filtered document, not Pass A's.** This used to pass `passA.document` — the
+                // filtered *parse* beside the unfiltered *document* — so every stage reading
+                // `evidence.document` was handed elements the user's rectangle had excluded. A row
+                // the user cropped away is not evidence about the row they cropped to.
+                document = filtered.document ?: passA.document,
             )
         }
 

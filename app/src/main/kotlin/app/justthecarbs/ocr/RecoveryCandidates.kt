@@ -132,13 +132,31 @@ object RecoveryCandidates {
                         basisFor(element, columns, document.width, servingBasis, row.elements)
                             ?.let { basisEnumOf(it) },
                     ) -> "a distinct recognition run read it differently (${disputed.describe()})"
-                    ScaleAmbiguity.check(
-                        document,
-                        probeFor(row, element, valueIn(raw)!!),
-                    ).let { it as? ScaleAmbiguity.Verdict.Ambiguous } != null ->
-                        "its decimal scale is not established by the evidence " +
-                            "(paired with a value that also lost its separator)"
-                    else -> null
+                    else -> {
+                        // The centralized eligibility decision, reported in the words it was made in
+                        // so a bundle says which evidence was missing rather than merely that the
+                        // number was withheld. The basis is non-null here — the branch above returns
+                        // for a cell no column claims — but it is read safely rather than asserted,
+                        // because a reordering of these branches must not turn a diagnostic into a
+                        // crash on the evidence path.
+                        val value = valueIn(raw)
+                        val basis =
+                            basisFor(element, columns, document.width, servingBasis, row.elements)
+                        if (value == null || basis == null) {
+                            null
+                        } else {
+                            val probe = Candidate(
+                                reading = CarbReading(value, basis, BasisProvenance.DECLARED),
+                                box = element.box,
+                                rawText = raw,
+                                rowText = row.text,
+                            )
+                            (
+                                ReadingEligibility.evaluate(document, probe)
+                                    as? ReadingEligibility.Verdict.Refused
+                                )?.reason
+                        }
+                    }
                 }
                 if (reason != null && valueIn(raw) != null) {
                     lines += "  suppressed '$raw' @x=${element.box.centerX.toInt()}: $reason"
@@ -256,7 +274,51 @@ object RecoveryCandidates {
      * depend on document order.
      */
     fun rowAt(rows: List<LogicalRow>, tappedY: Int, tappedX: Int? = null): LogicalRow? {
-        // The elements the tap actually landed on, across every row.
+        // ## Containment first: the box the finger is actually inside owns the tap
+        //
+        // Everything below this block tests `tappedY` alone, so a row qualified when *any* of its
+        // elements spanned the tapped y — however far away in x. On a real label that is not hit
+        // testing, and the thirteenth session measured the consequence.
+        //
+        // `20260904-081055-219` (yoghurt) reconstructs the child clause indented under its parent:
+        //
+        // ```
+        // 'Koolhydraten/Glucides'  [297,1884,802,1988]   TOTAL_CARBOHYDRATE
+        // 'waarvan'                [311,1948,486,2015]   CARBOHYDRATE_CHILD
+        // ```
+        //
+        // The two overlap by 40 px vertically **and** 175 px horizontally. A tap at the centre of
+        // `waarvan` is inside `waarvan` — and the y-only filter admitted both rows, after which the
+        // nutrient-name preference found a carbohydrate word in each and handed the tap to the
+        // **total**. So a user deliberately tapping *sugars* was offered the total row's candidates,
+        // and `isChildRowAt` answered `false`, so the screen did not even say what had happened.
+        //
+        // ### Smallest containing box wins
+        //
+        // When boxes genuinely nest — an indented child label inside its parent's span — the tighter
+        // box is the one the user aimed at. Ties (identical areas) fall through to the existing
+        // rules rather than being decided arbitrarily by document order.
+        //
+        // ### Bounded to a located tap
+        //
+        // With no `tappedX` there is nothing to contain against, so this is skipped entirely and the
+        // pre-existing behaviour stands unchanged for every caller that has no horizontal position.
+        if (tappedX != null) {
+            val containing = rows.mapNotNull { row ->
+                row.elements
+                    .filter { it.box.contains(tappedX, tappedY) }
+                    .minByOrNull { it.box.area() }
+                    ?.let { row to it }
+            }
+            if (containing.isNotEmpty()) {
+                val smallest = containing.minOf { it.second.box.area() }
+                val winners = containing.filter { it.second.box.area() == smallest }
+                if (winners.size == 1) return winners.single().first
+            }
+        }
+
+        // The elements the tap landed on vertically, across every row. Reached when the finger was
+        // in whitespace, when no `tappedX` was supplied, or when two equally tight boxes contain it.
         val onElement = rows.filter { row ->
             row.elements.any { tappedY >= it.box.top && tappedY <= it.box.bottom }
         }
@@ -337,7 +399,64 @@ object RecoveryCandidates {
         val rows = LogicalRowBuilder.build(document)
         val row = rowAt(rows, tappedY, tappedX) ?: return false
         if (RowClassifier.classify(row) != NutritionRowKind.CARBOHYDRATE_CHILD) return false
-        return !tappedTheTotalClause(row, tappedX)
+        if (tappedTheTotalClause(row, tappedX)) return false
+
+        // Without a horizontal position there is nothing to locate the tap against, so the
+        // row-level answer stands exactly as it did — the same confinement [tappedTheTotalClause]
+        // already applies, and what keeps this change to a *located* tap.
+        if (tappedX == null) return true
+
+        // ## A nutrient row states a number; a paragraph that mentions sugar does not
+        //
+        // [RowClassifier] types a row `CARBOHYDRATE_CHILD` for naming a child nutrient anywhere
+        // along it, unconditionally. That is the correct and load-bearing rule for deciding what a
+        // row may be *read* as. It is the wrong basis for telling a user where their finger was.
+        //
+        // Measured on `20260903-212828-161`, where the tortilla's marketing paragraph reconstructs
+        // as one row:
+        //
+        // ```
+        // IStorbritannien. edetortila med fuldkom. Ingredienser: Contains stablser naturally
+        // (EA15), occurring Room sugars. termperature.dced Packaged ina protective d package
+        // ```
+        //
+        // Eighteen words, no numbers, and the single word `sugars.` types the whole thing a child
+        // nutrient row. It occupies a wide band of the photograph, and **every** tap anywhere in it
+        // was answered *"This looks like sugars or fibre. Tap the total carbohydrate row instead."*
+        // — a correction that is not true and that points nowhere, on the screen the user reached
+        // because nothing else had worked.
+        //
+        // A nutrition row states a quantity. Requiring one costs nothing on a real child row (every
+        // one in this repo's corpus carries its value) and removes the false correction on prose.
+        // Note what this does **not** do: it does not make the row selectable. [candidatesOn] still
+        // returns nothing from a child row, so the tap yields no value either way. All that changes
+        // is that the user is told the truth — the tap found nothing — which is what routes them to
+        // focused entry instead of to a third identical attempt.
+        if (ColumnOwnership.competingCells(row).isEmpty()) return false
+
+        // ## And the message must be about the clause the finger was actually in
+        //
+        // `20260903-212700-478` reconstructs the pickle's fat line together with a slice of the
+        // ingredient list printed beside it:
+        //
+        // ```
+        // aDin, suiker, zout   vetten,   0,2 g   0,06 g
+        //        ^x=213         ^x=602    ^1075   ^1313
+        // ```
+        //
+        // `suiker` is in the ingredient list; `vetten` (fat) and both values are the table's. The
+        // row types `CARBOHYDRATE_CHILD` — correctly, and unchanged — but a tap on the fat figures,
+        // 800 px from the word `suiker`, was answered *"This looks like sugars or fibre"*.
+        //
+        // Narrowed deliberately to a clause owned by an unrelated nutrient (fat, salt, protein,
+        // energy). A tap owned by the total's own clause is [tappedTheTotalClause]'s question and is
+        // already answered above — and answered *negatively* on the merged Croatian shape, where a
+        // child named before the total means no total clause opens and every tap stays a child tap.
+        // That stance is deliberate and is left exactly as it was.
+        if (NutrientRowSegments.nutrientClauseKindAt(row, tappedX) == NutritionRowKind.OTHER) {
+            return false
+        }
+        return true
     }
 
     /**
@@ -466,25 +585,35 @@ object RecoveryCandidates {
             // which reading is the printed one.
             if (disputed.disputes(value, basisEnumOf(basis))) return@mapIndexedNotNull null
 
-            // A value whose absolute decimal scale the evidence cannot establish is not a choice.
-            //
-            // The label prints `8,9 g` and the recognizer returned `89 g` beside a `13gk19;` that
-            // lost its separator too, so dividing the pair by ten is exactly as consistent with the
-            // recognised text. Offering `89` here would hand back, one tap later, precisely the
-            // figure the confirmation card was stopped from showing. Nothing is divided or
-            // repaired — the number is withheld and the user types what they can read.
-            if (ScaleAmbiguity.check(document, probeFor(row, element, value)) is
-                ScaleAmbiguity.Verdict.Ambiguous
-            ) {
-                return@mapIndexedNotNull null
-            }
-
-            Candidate(
+            val candidate = Candidate(
                 reading = CarbReading(value, basis, BasisProvenance.DECLARED),
                 box = element.box,
                 rawText = element.text.trim(),
                 rowText = row.text,
             )
+
+            // The scale question, asked through the **same** object the automatic path asks.
+            //
+            // ## Why this is no longer an asymmetry
+            //
+            // This used to refuse only [ScaleAmbiguity.Verdict.Ambiguous], on the reasoning that a
+            // human pointing at a number they can see needs no help from a rule about pairing. That
+            // is half right: a tap establishes *which row the user meant*, and nothing at all about
+            // whether the recognizer read the digits correctly. Measured on the red Lidl label —
+            // printed `7,2 g`, recognised `12g` — recovery offered `12 g / 100 g` one tap from the
+            // calculator, after the automatic path had already refused exactly that figure.
+            //
+            // The naive symmetry (refuse `Unsupported` here too) was measured and **deletes the
+            // Korean sauce's `6 g / 18 g serving`**, a control that must keep working. What
+            // separates the two is not the number but the *provenance of its basis*: the sauce's is
+            // a serving the label printed, the red label's is a per-hundred the app inferred. That
+            // distinction lives in [ReadingEligibility], which both surfaces now consult, so they
+            // cannot disagree about the same candidate.
+            if (!ReadingEligibility.evaluate(document, candidate).isEligible) {
+                return@mapIndexedNotNull null
+            }
+
+            candidate
         }
     }
 
@@ -632,12 +761,12 @@ object RecoveryCandidates {
         // Another numeric cell on this row sitting closer to that column's centre owns it. Only
         // value-shaped elements compete: the nutrient name printed in the label column is not a
         // rival for a value column, and letting it compete would detach legitimate cells.
-        val contested = rowElements.any { other ->
-            other !== element &&
-                valueIn(other.text) != null &&
-                abs(column.first.centerX - other.box.centerX) < column.second
+        //
+        // Asked through [ColumnOwnership], which is the same object the automatic path now asks, so
+        // the recovery screen and the parser cannot disagree about which cell occupies a column.
+        return column.first.takeIf {
+            ColumnOwnership.claims(it, element.box, ColumnOwnership.competingCells(rowElements), documentWidth)
         }
-        return if (contested) null else column.first
     }
 
     /** A `<quantity> <unit>` stated inside a serving column's own header — `per portie 50 g`. */

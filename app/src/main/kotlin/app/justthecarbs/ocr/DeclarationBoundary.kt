@@ -69,19 +69,84 @@ internal object DeclarationBoundary {
         // is tried. That preserves the ingredients-above-table case for exactly the reason "last"
         // was chosen for it, without letting a late boundary swallow the ingredient list.
         val boundary = candidates.firstOrNull { candidate ->
-            candidate > 0 && rows.take(candidate).any { namesANutrient(it) }
+            candidate > 0 &&
+                rows.take(candidate).count { namesANutrient(it) } >= MIN_DECLARATION_ROWS
         }
 
         return boundary
     }
 
-    /** Whether [row] states a nutrient, i.e. could be part of a declaration. */
-    private fun namesANutrient(row: LogicalRow): Boolean {
-        val kind = RowClassifier.classify(row)
-        return kind == NutritionRowKind.TOTAL_CARBOHYDRATE ||
-            kind == NutritionRowKind.CARBOHYDRATE_CHILD ||
-            kind == NutritionRowKind.HEADER
-    }
+    /**
+     * How many nutrient rows must stand above a boundary for it to be ending a *declaration*.
+     *
+     * ## Why one is not enough
+     *
+     * A nutrition declaration prints several nutrients — energy, fat, carbohydrate, sugars, protein,
+     * salt. A single row naming one nutrient is as likely to be a sentence as a table, and on the
+     * Baltic tortilla (`20260903-212828-161`) it was: the storage advice
+     *
+     * ```
+     * soga Fendes inden for 3 dage. aanwezige Bewaaradvies: suikers. Kamertemperatuur. Verpakt o
+     * ```
+     *
+     * names `suikers` and carries the number `3` — from *3 dage*, three days — so it passed the
+     * value test as a one-row "declaration". That let the boundary fire at the ingredient list
+     * printed above the table, and the table's own header 5 rows below was then past the boundary.
+     *
+     * Two is the smallest number that means "a table", and it is deliberately not larger: a
+     * short declaration is real, and requiring more would start losing boundaries on labels that
+     * print only a few nutrients.
+     */
+    private const val MIN_DECLARATION_ROWS = 2
+
+    /**
+     * Whether [row] states a nutrient **declaration**, i.e. could be the table this boundary ends.
+     *
+     * ## Why a nutrient word is not enough, and why that circularity mattered
+     *
+     * This test used to be `RowClassifier.classify(row)` naming a nutrient. That is circular: the
+     * classifier types a row `CARBOHYDRATE_CHILD` for containing a child term anywhere along it,
+     * which is exactly the over-reach the boundary exists to undo. So a paragraph of package prose
+     * could satisfy "there is a declaration above this boundary", and the boundary would then fire
+     * on that paragraph and cut off the real table printed below it.
+     *
+     * Measured on `20260903-212828-161`, the Baltic tortilla. Its marketing paragraph reconstructs
+     * as one row at y≈700:
+     *
+     * ```
+     * IStorbritannien. edetortila med fuldkom. Ingredienser: Contains stablser naturally (EA15),
+     * occurring Room sugars. termperature.dced Packaged ina protective d package
+     * ```
+     *
+     * It carries the boundary word `Contains` **and** the child term `sugars.`, so it was both the
+     * boundary and its own justification. The declaration was therefore declared to end at y≈700 —
+     * and the package's actual nutrition header,
+     * `Toitevaärtus toote kohta/ Uzturvērtība/ Maistinqumo o deklaracija: 100g`, sits at **y=1481**,
+     * 780 px below it. `RowClassifier.classify` types that row `HEADER`; `classifyAll` demoted it to
+     * `OTHER` for being past the boundary, so **no per-100 column resolved anywhere on the label**.
+     * The printed `47 g / 100 g` was then unreachable by every route at once: no automatic reading,
+     * no recovery candidate (a cell with no column states no basis) and no focused entry (which
+     * requires an established basis).
+     *
+     * ## The fix
+     *
+     * A declaration states quantities. A nutrient row above the boundary must therefore carry a
+     * value cell, or be a basis header — which is a structural claim in its own right and is what
+     * opens a declaration on a label whose values are printed further down. Prose that merely
+     * mentions sugar satisfies neither.
+     *
+     * This only ever makes the boundary **later** or absent, never earlier, so it cannot newly cut a
+     * declaration off. The Korean sauce control is unaffected: the US panel rows printed above its
+     * `ingredients:` line carry their own figures, so the boundary still lands there and the
+     * brown-sugar row is still excluded.
+     */
+    private fun namesANutrient(row: LogicalRow): Boolean =
+        when (RowClassifier.classify(row)) {
+            NutritionRowKind.HEADER -> true
+            NutritionRowKind.TOTAL_CARBOHYDRATE, NutritionRowKind.CARBOHYDRATE_CHILD ->
+                ColumnOwnership.competingCells(row).isNotEmpty()
+            NutritionRowKind.OTHER -> false
+        }
 
     /**
      * Whether the row at [index] lies past the declaration boundary.

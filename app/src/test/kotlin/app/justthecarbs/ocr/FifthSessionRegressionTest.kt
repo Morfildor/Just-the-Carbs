@@ -159,7 +159,7 @@ class FifthSessionRegressionTest {
 
         assertTrue(
             "the device showed RECOVERY for a cross-column-verified 72/PER_100_G",
-            AutomaticScanAdvance.mayAdvanceVerified(outcome, verdict),
+            AutomaticScanAdvance.mayAdvanceVerified(outcome, verdict, selectedRegionEvidence().document),
         )
     }
 
@@ -370,7 +370,7 @@ class FifthSessionRegressionTest {
             verdict.rejectionReason.orEmpty().contains("contradict"),
         )
         assertFalse(
-            AutomaticScanAdvance.mayAdvanceVerified(EvidenceResolver.resolve(evidence), verdict),
+            AutomaticScanAdvance.mayAdvanceVerified(EvidenceResolver.resolve(evidence), verdict, evidence.first().document),
         )
     }
 }

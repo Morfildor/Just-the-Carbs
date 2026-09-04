@@ -190,8 +190,15 @@ object NutritionTableInterpreter {
             // to the fallback stages like a column that printed nothing, and the prose reader would
             // be free to substitute a neighbouring column's number for the one the label actually
             // printed. Same reasoning, and the same flag, as a validator rejection.
+            // Every value-shaped cell printed on this row, whatever the parser then makes of it.
+            // This is what decides column ownership — see [ColumnOwnership]: a cell refused as a
+            // *value* still occupies the column it was printed in, and on the pickle capture that
+            // distinction is the difference between refusing and reporting a serving figure as a
+            // per-100 reading.
+            val competing = ColumnOwnership.competingCells(totalRow)
+
             declinedForNoUnit.forEach { box ->
-                val column = columnFor(NumberCell(BigDecimal.ZERO, box), columns, document.width)
+                val column = columnFor(NumberCell(BigDecimal.ZERO, box), columns, document.width, competing)
                 if (column?.kind == NutritionColumnKind.PER_100_G ||
                     column?.kind == NutritionColumnKind.PER_100_ML
                 ) {
@@ -200,7 +207,7 @@ object NutritionTableInterpreter {
             }
 
             cells.forEach { cell ->
-                val column = columnFor(cell, columns, document.width)
+                val column = columnFor(cell, columns, document.width, competing)
                 // An inline basis only applies when no classified column claims the cell, so a real
                 // header row always wins and this cannot quietly override a resolved table.
                 val inlineBasis = inlineBases.singleOrNull()?.basis
@@ -605,8 +612,21 @@ object NutritionTableInterpreter {
      * A column carrying a [NutritionColumn.verticalExtent] is only considered for cells inside that
      * band — see the field's own documentation for why a column recovered from cell shape is
      * evidence about its own rows and not about the whole frame.
+     *
+     * ## A column already spoken for cannot be claimed from a distance
+     *
+     * [competing] is every value-shaped cell printed on the same row. A column whose own position
+     * carries one of them is not available to a cell further away, whatever the loose tolerance
+     * allows — see [ColumnOwnership] for the pickle capture where that let a 30 g serving figure be
+     * reported as a per-100 reading. Passing an empty list disables the contest, which is what the
+     * caller does when the row is not known (there is then nothing to compete with).
      */
-    private fun columnFor(cell: NumberCell, columns: List<NutritionColumn>, documentWidth: Int): NutritionColumn? {
+    private fun columnFor(
+        cell: NumberCell,
+        columns: List<NutritionColumn>,
+        documentWidth: Int,
+        competing: List<OcrElement> = emptyList(),
+    ): NutritionColumn? {
         if (columns.isEmpty()) return null
         val loose = maxOf(
             NutritionParserThresholds.MIN_STRICT_COLUMN_PIXELS,
@@ -618,6 +638,7 @@ object NutritionTableInterpreter {
             .filter { it.second <= loose }
             .minByOrNull { it.second }
             ?.first
+            ?.takeIf { ColumnOwnership.claims(it, cell.box, competing, documentWidth) }
     }
 
     /**

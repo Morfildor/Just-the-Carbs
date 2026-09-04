@@ -86,6 +86,6 @@ class FifthSessionOutcomeTest {
         println("  resolver.verdict      : ${outcome::class.simpleName}")
         println("  reading               : ${reading?.candidate?.value}/${reading?.candidate?.basis}")
         println("  automatic-verification: ${verdict.route} (support=${verdict.supportingRows})")
-        println("  final UI action       : " + if (AutomaticScanAdvance.mayAdvanceVerified(outcome, verdict)) "AUTO_ADVANCE" else "CONFIRM/RECOVERY")
+        println("  final UI action       : " + if (AutomaticScanAdvance.mayAdvanceVerified(outcome, verdict, strategyBDocument)) "AUTO_ADVANCE" else "CONFIRM/RECOVERY")
     }
 }

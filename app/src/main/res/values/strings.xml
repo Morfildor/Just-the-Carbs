@@ -399,6 +399,18 @@
       closer" alone left the user adjusting aim, which cannot help.
     -->
     <string name="ocr_move_closer">Move closer — fill the frame with the nutrition table</string>
+    <!--
+      The package is sideways: the recognised words are taller than they are wide, so the table's
+      rows run up and down the frame rather than across it (§32). Row reconstruction groups by
+      vertical position, so on such a frame every reconstructed row cuts across the printed columns
+      and the label cannot be read at all — measured on `20260903-212804-751`, which produced a
+      silent NotFound with the printed 47 g plainly recognised.
+
+      Advisory only, exactly like ocr_move_closer: it never gates the shutter and never touches a
+      value. It names the gesture rather than the cause, because "turn the package" is something the
+      user can do and "the text orientation is 90 degrees off" is not.
+    -->
+    <string name="ocr_turn_upright">Turn the package upright — the label is sideways</string>
     <string name="ocr_capture_label">Capture label</string>
     <string name="ocr_capturing">Capturing label…</string>
     <string name="ocr_processing">Reading captured label…</string>
