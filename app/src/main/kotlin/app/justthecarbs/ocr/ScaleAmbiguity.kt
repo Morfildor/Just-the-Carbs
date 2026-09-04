@@ -183,10 +183,10 @@ object ScaleAmbiguity {
             )
         }
 
-        // The sibling **value** cells: tokens to the right of the candidate, inside the same
+        // The sibling **value** cells: tokens anywhere on the candidate's row, inside the same
         // carbohydrate clause, that read as a value rather than as a name.
         //
-        // Three restrictions, each load-bearing and each measured:
+        // Two restrictions, each load-bearing and each measured:
         //
         // * **Inside the carbohydrate clause.** A US linear panel prints every nutrient on one
         //   recognised row — `DV), Total Carb. 6g (2% DV), Fiber 1 g (4% DV),` — so without this
@@ -197,15 +197,39 @@ object ScaleAmbiguity {
         //   Null on an ordinary table row, where the whole row is the clause and nothing changes.
         // * **A value cell, not any token containing a digit.** A nutrient name may legitimately
         //   contain digits (`E471`, `Omega-3`), and treating one as a paired value would make every
-        //   such row ambiguous.
-        // * **To the right of the candidate.** A nutrition table prints the label column first and
-        //   its value columns after it, so a second measurement of the same nutrient is to the
-        //   right. Without this the nutrient's own name was pairing with its own value, which made a
-        //   legitimate single-column `41g` label read as ambiguous.
+        //   such row ambiguous. [looksLikeAValueCell] requires a **leading** digit, so every such
+        //   name is excluded whichever side of the candidate it sits on.
+        //
+        // ## A third restriction was removed here (2026-09-04), and it was the defect
+        //
+        // This filter also required `it.box.left > candidateElement.box.left` — the paired value must
+        // sit to the **right** — on the stated ground that a table prints its label column first, so
+        // without the bound "the nutrient's own name was pairing with its own value" and a legitimate
+        // single-column `41g` read as ambiguous.
+        //
+        // The consequence is real and the attribution was wrong. What excludes a *name* is the
+        // leading-digit rule above, not the direction: `Koolhydraten`, `Vetten` and `E471` all fail
+        // `looksLikeAValueCell` from either side, and `a lone value beside a nutrient name is
+        // unsupported, not ambiguous` in [ScalePairSymmetryTest] pins exactly that. What the
+        // direction actually removed was the **rightmost** cell's ability to see its own pair.
+        //
+        // Measured on `docs/Scan Evıdence 4th test/20260904-160639-565`, a protein bar printing
+        // `46 g / 100 g` and `12 g / 25 g reep` with neither separator recognised. The bundle's own
+        // recovery list:
+        //
+        // ```
+        // suppressed '46': a common rescaling of '46' and '12' is equally consistent …
+        // offered    '12' -> 12 g / serving | selectable (awaiting a tap)
+        // ```
+        //
+        // One member of a pair refused **because of** the other, and the other offered. The same
+        // shape appears twice more in that session (`160501-961`, `160532-812`). A common rescaling
+        // is a property of the *pair*, so it is symmetric by construction — this file's own rule says
+        // "a **pair** of values that move together" — and reporting it from one side only is the
+        // implementation disagreeing with the rule it documents.
         val clause = NutrientRowSegments.totalCarbohydrateSegment(row)
         val siblings = row.elements.filter {
             it !== candidateElement &&
-                it.box.left > candidateElement.box.left &&
                 (clause == null || clause.contains(it.box)) &&
                 looksLikeAValueCell(it.text)
         }
@@ -213,6 +237,9 @@ object ScaleAmbiguity {
             // No second measurement was printed on this row, or none was recognised. Either way this
             // rule has seen nothing that speaks to the scale, and saying "established" here is what
             // put `12 g / 100 g` on a confirmation card for a package printing `7,2 g`.
+            //
+            // **Column-wide separator survival was measured as a candidate here and rejected.** See
+            // [columnSeparatorWitness] for the counter-example and the general reason.
             return Verdict.Unsupported(
                 candidateText = candidateElement.text.trim(),
                 reason = "no paired value in this clause to share a scale with, and the candidate " +
@@ -222,14 +249,22 @@ object ScaleAmbiguity {
 
         // If any sibling kept a separator, the recognizer demonstrably preserved decimal points on
         // this row, so the candidate's lack of one is information rather than damage.
-        val separated = siblings.firstOrNull { hasDecimalSeparator(it.text) }
+        val separated = siblings
+            .filter { hasDecimalSeparator(it.text) }
+            .minByOrNull { horizontalGap(it.box, candidateElement.box) }
         if (separated != null) {
             return Verdict.Established(
                 "a paired value on this row kept its separator ('${separated.text.trim()}')",
             )
         }
 
-        val paired = siblings.first()
+        // The nearest sibling by horizontal distance, not the first in element order.
+        //
+        // With both sides admitted, "first" would name whichever cell the recogniser happened to
+        // emit earliest, which on a three-column row can be the far one. The adjacent column is the
+        // one a reader would call this value's pair, and `pairedText` is printed verbatim in the
+        // recovery list — so this decides only how the refusal *reads*, never whether it happens.
+        val paired = siblings.minBy { horizontalGap(it.box, candidateElement.box) }
         return Verdict.Ambiguous(
             candidateText = candidateElement.text.trim(),
             pairedText = paired.text.trim(),
@@ -237,6 +272,35 @@ object ScaleAmbiguity {
                 "separator, so a common rescaling of the pair is equally consistent",
         )
     }
+
+    /*
+     * ## Column-wide separator survival: BUILT, MEASURED, REJECTED (2026-09-04)
+     *
+     * Do not re-implement this. The reasoning is attractive and the counter-example is decisive.
+     *
+     * The idea: on a single-column table a correct `72 g / 100 g` has no sibling to pair against, so
+     * it returns `Unsupported` and is withheld — twice in the sixteenth session
+     * (`20260904-124822-392`, `-124835-611`), on a crisps tube whose other cells read `1,1g`,
+     * `9,9 g`, `9,8 g`, `2,20 g`. The recognizer plainly preserved separators in that column, so
+     * `72`'s lack of one looks like information rather than damage. Implemented as: two separated
+     * value cells elsewhere in the candidate's column establish the scale.
+     *
+     * **It rescued both `72` captures and simultaneously admitted the red Lidl `12`.** That capture
+     * (`20260904-124620-112`, `-124643-457`) photographs a package printing `7,2 g / 100 g`, and its
+     * column also kept separators — `<0,1g`, `6.1g`, `0,8 q`, `0,25 9` are all present — while the
+     * carbohydrate cell arrived as a bare `12g`, because the `7,` was fused into the multilingual
+     * nutrient text (`Hidratos de carbono/ Hidratos de carbono 12g`).
+     *
+     * So the premise is simply false: **a column preserving separators on other rows says nothing
+     * about whether this cell's separator survived.** Glyph loss is local — a fused nutrient word, a
+     * reflection, one blurred character — not a property of the column. The measurement is the whole
+     * argument, and it is the same shape as the preprocessing experiment recorded in CLAUDE.md: the
+     * change helped the labels it was written for and re-opened a known confident-wrong.
+     *
+     * `72` therefore stays withheld. That is a UX cost on a correct reading, and it is the right side
+     * of the trade — a second physical observation is the honest route to admitting it, not weaker
+     * scale evidence.
+     */
 
     private fun rowContaining(document: OcrDocument, candidate: CarbCandidate): LogicalRow? =
         LogicalRowBuilder.build(document)
@@ -286,6 +350,16 @@ object ScaleAmbiguity {
      * **before** it: the token must start with a digit, so a nutrient name that happens to contain
      * one is not mistaken for the second measurement of the same nutrient.
      */
+    /**
+     * The gap between two boxes on one row, measured edge to edge and zero when they overlap.
+     *
+     * Used only to choose **which** sibling a verdict names, never whether a verdict is reached, so
+     * it needs no tolerance and has no threshold. Centres are deliberately not used: cells differ in
+     * width, so a wide neighbour's centre can be further away than a distant narrow one's.
+     */
+    private fun horizontalGap(a: OcrBox, b: OcrBox): Int =
+        maxOf(0, maxOf(a.left - b.right, b.left - a.right))
+
     private fun looksLikeAValueCell(text: String): Boolean = VALUE_CELL.containsMatchIn(text.trim())
 
     private val VALUE_CELL = Regex("^\\d")
