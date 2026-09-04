@@ -55,8 +55,25 @@ Test labels/
 # What IS committed instead: the generated `*SessionFixtures.kt` files, which carry the recognized
 # element text and geometry these bundles produced. That is the evidence the tests need; the
 # photographs are not.
+#
+# The `[Iiı]` class is not decoration. The 2026-09-04 session arrived as
+# "Scan Evıdence 4th test" — a **dotless ı** (U+0131), which a Turkish keyboard layout produces and
+# which `[Ee]vidence` does not match. 140 MB of full-resolution captures sat untracked-but-visible in
+# a public repo, one `git add -A` from being permanent. Match every spelling, not the expected one.
 [Ss]can [Ee]vidence*/
 docs/[Ss]can [Ee]vidence*/
+
+# The dotless-i spellings, as SEPARATE patterns rather than a `[iIı]` class.
+#
+# Git's bracket expression matches **bytes**, not UTF-8 characters, and `ı` (U+0131) encodes as two
+# bytes — so `[iIı]` silently matches neither the character nor anything else useful. Verified with
+# `git check-ignore -v` rather than assumed; the class form looked right and matched nothing.
+[Ss]can [Ee]vıdence*/
+docs/[Ss]can [Ee]vıdence*/
+
+# Python bytecode from tools/. Build detritus, never source.
+__pycache__/
+*.pyc
 
 # Brainstorming visual companion working files (local only)
 .superpowers/
