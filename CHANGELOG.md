@@ -64,11 +64,27 @@ work after
 
 Nothing yet. `1.0.3` / `versionCode 4` is open below.
 
-## 1.0.3 (versionCode 4) — IN DEVELOPMENT, NOT UPLOADED
+## 1.0.3 (versionCode 4) — BUILT 2026-09-04, NOT YET UPLOADED
 
-Opened 2026-08-29 under the one-version-per-code-change rule. **Not built, not uploaded, not on any
-track.** Nothing goes into [`docs/version-history.md`](docs/version-history.md) until Play accepts an
-artifact for this code.
+Opened 2026-08-29 under the one-version-per-code-change rule. A signed AAB was built from the
+committed tree on 2026-09-04; **Play has not accepted it**, so nothing goes into
+[`docs/version-history.md`](docs/version-history.md) yet. Move this section there verbatim, with the
+artifact table, once the upload is accepted.
+
+### Play Store release notes (for *What's new*)
+
+Checked against the 500-character limit (**422**), and against §44 §7.1: no health claim, no mention
+of diabetes, no medical wording. It describes what the user sees, not what moved.
+
+```
+Scan a nutrition label and get the carbohydrate figure without saving a product.
+
+Label scanning is more careful about decimal points. When a printed value's decimal point
+cannot be read reliably, the app now shows you the photo with the row highlighted and asks you
+to type the number, instead of offering a figure that might be ten times out.
+
+American-style panels, multi-column tables and Dutch labels all read better.
+```
 
 ### Fixed — the eighteenth session (2026-09-04)
 
