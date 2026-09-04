@@ -178,25 +178,59 @@ class RealImageOcrTest {
     }
 
     /**
-     * Asserts the value came from a table row that names the carbohydrate term rather than the sugars
+     * Asserts the value came from a tabular source row naming the carbohydrate term, not the sugars
      * term. The row text is the observable proof the tabular path read the total row.
+     *
+     * ## Why this accepts two provenance types (2026-09-04)
+     *
+     * The tabular path now emits [CandidateProvenance.FromDeclaration] — one semantic declaration
+     * retaining every strict source row — where it previously emitted
+     * [CandidateProvenance.FromRow]. **No production code constructs `FromRow` at all any more**
+     * (verified by search, not assumed: the only remaining reference is a diagnostics branch), so
+     * requiring it made four of these cases unpassable regardless of what the parser read. They were
+     * failing on the *contract*, not on a value: each reported `expected row provenance` while the
+     * carbohydrate figure itself was still correct.
+     *
+     * The contract is therefore migrated rather than deleted, and it is migrated **without weakening
+     * what it proves**. Both types carry the same evidence — the source rows' text — and the two
+     * substantive claims are asserted on either:
+     *
+     * 1. the source rows name a carbohydrate term, so the tabular path read a total row;
+     * 2. **no source row names a child term** (`waarvan suikers`, `of which sugars`, polyols, fibre).
+     *
+     * The second is new and is the reason this is a migration rather than a relaxation. `FromRow`
+     * proved "the total and its child occupy different rows" only implicitly, by carrying one row;
+     * a declaration may span several, so the child exclusion has to be stated rather than inherited.
+     * It is checked against [NutritionTerminology.exclusionTerms] — the parser's own child
+     * vocabulary — so the assertion cannot drift from what the parser treats as a child nutrient.
      */
     private fun assertRowNamesTheTotalNotSugars(
         document: OcrDocument,
         report: NutritionParseReport,
-    ): CandidateProvenance.FromRow {
+    ): List<String> {
         val provenance = report.provenance
+        val rows = when (provenance) {
+            is CandidateProvenance.FromRow -> listOf(provenance.rowText)
+            is CandidateProvenance.FromDeclaration -> provenance.rowTexts
+            else -> null
+        }
         assertTrue(
-            "expected row provenance${explain(document, report)}",
-            provenance is CandidateProvenance.FromRow,
+            "expected tabular provenance (FromRow or FromDeclaration)${explain(document, report)}",
+            rows != null,
         )
-        val row = provenance as CandidateProvenance.FromRow
-        val rowText = NutritionTerminology.normalize(row.rowText)
+        val sourceRows = rows!!
+        val joined = NutritionTerminology.normalize(sourceRows.joinToString(" "))
         assertTrue(
-            "the source row must name a carbohydrate term${explain(document, report)}",
-            NutritionTerminology.carbohydrateTerms.any { NutritionTerminology.normalize(it) in rowText },
+            "the source rows must name a carbohydrate term${explain(document, report)}",
+            NutritionTerminology.carbohydrateTerms.any { NutritionTerminology.normalize(it) in joined },
         )
-        return row
+        assertTrue(
+            "the source rows must not name a child nutrient — a declaration spanning the sugars " +
+                "row would be the child-as-total failure this corpus exists to catch" +
+                explain(document, report),
+            NutritionTerminology.exclusionTerms.none { NutritionTerminology.normalize(it) in joined },
+        )
+        return sourceRows
     }
 
     // ---- 1. Juice, bilingual, per 100 ml ------------------------------------------------------
@@ -511,17 +545,28 @@ class RealImageOcrTest {
 
     /**
      * The prose reader must be unreachable for a readable table. All four fixtures below return
-     * `Confident` from the tabular path, so row provenance is the observable proof the prose stage
-     * was never consulted — a `FromProseSpan` on any of them would mean the second reader had started
-     * answering for tables, which is the failure the two independent gates exist to prevent.
+     * `Confident` from the tabular path, so tabular provenance is the observable proof the prose
+     * stage was never consulted — a `FromProseSpan` on any of them would mean the second reader had
+     * started answering for tables, which is the failure the two independent gates exist to prevent.
+     *
+     * ## Stated as "not prose", not as one exact type (2026-09-04)
+     *
+     * This required [CandidateProvenance.FromRow] specifically, and the tabular path now emits
+     * [CandidateProvenance.FromDeclaration] — so it was failing on a type name while the property it
+     * exists to protect held perfectly. The claim is that the *prose* reader did not answer, so that
+     * is what it asserts, and it stays a positive check against the tabular types rather than a
+     * negative one against `FromProseSpan`: a future third provenance type must be considered here
+     * rather than silently satisfying a `!is` test.
      */
     @Test
     fun theProseReaderIsNeverConsultedForAReadableTable() {
         listOf(SONDEY, KINDER, CHEESE, YOGHURT).forEach { name ->
             val (document, report) = parse(name)
+            val provenance = report.provenance
             assertTrue(
                 "$name must be read by the table path${explain(document, report)}",
-                report.provenance is CandidateProvenance.FromRow,
+                provenance is CandidateProvenance.FromRow ||
+                    provenance is CandidateProvenance.FromDeclaration,
             )
         }
     }
