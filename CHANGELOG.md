@@ -5,7 +5,7 @@ most recent released one; every uploaded version is copied into
 [`docs/version-history.md`](docs/version-history.md), the append-only archive that records each
 artifact's hash, size and signer.
 
-**Latest release: `1.0.2` / `versionCode 3`**, on closed testing since 2026-08-29.
+**Latest release: `1.0.3` / `versionCode 4`**, on closed testing since 2026-09-04.
 
 ## Versioning rule — one version per uploaded artifact (owner, resolved 2026-08-30)
 
@@ -62,28 +62,28 @@ work after
 
 ## Unreleased
 
-Nothing yet. `1.0.3` / `versionCode 4` is open below.
+Nothing yet. **No version is open** — `1.0.3` / `versionCode 4` shipped on 2026-09-04, so
+`branding.gradle.kts` currently names a **spent** number. The first code change after this bumps it
+to `1.0.4` / `versionCode 5` and renames this heading to that version **in the same change**, so the
+number and the notes never disagree. A documentation-only change opens nothing.
 
-## 1.0.3 (versionCode 4) — BUILT 2026-09-04, NOT YET UPLOADED
+## 1.0.3 (versionCode 4) — RELEASED 2026-09-04, closed testing
 
-Opened 2026-08-29 under the one-version-per-code-change rule. A signed AAB was built from the
-committed tree on 2026-09-04; **Play has not accepted it**, so nothing goes into
-[`docs/version-history.md`](docs/version-history.md) yet. Move this section there verbatim, with the
-artifact table, once the upload is accepted.
+Opened 2026-08-29, built from committed `7cbf78d` and **accepted by Play onto the closed track on
+2026-09-04**. Archived with its artifact hash, size and signer in
+[`docs/version-history.md`](docs/version-history.md); this section is kept here as the current
+release and must not be edited — correct it there with a dated note instead.
 
-### Play Store release notes (for *What's new*)
+**`versionCode 4` is now spent.** It is never rebuilt or re-uploaded; Play refuses a duplicate code.
 
-Checked against the 500-character limit (**422**), and against §44 §7.1: no health claim, no mention
-of diabetes, no medical wording. It describes what the user sees, not what moved.
+### Play Store release notes (as published)
+
+**This is the text that went into Play Console's *What's new*** — the owner's wording, recorded
+verbatim rather than the draft that preceded it. 384 characters against the 500 limit. Checked
+against §44 §7.1: no health claim, no mention of diabetes, no medical wording.
 
 ```
-Scan a nutrition label and get the carbohydrate figure without saving a product.
-
-Label scanning is more careful about decimal points. When a printed value's decimal point
-cannot be read reliably, the app now shows you the photo with the row highlighted and asks you
-to type the number, instead of offering a figure that might be ten times out.
-
-American-style panels, multi-column tables and Dutch labels all read better.
+Nutrition label scanning gets a major upgrade: faster, safer readings with better support for multi-column, serving-based and American-style labels. Good scans now go straight to a quick calculation, while uncertain values ask only for what’s missing. You can also save a quick calculation as a product for later. Plus smoother recovery, better row tapping and many reliability fixes.
 ```
 
 ### Fixed — the eighteenth session (2026-09-04)

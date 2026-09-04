@@ -3841,12 +3841,13 @@ disagrees, this one is right — and fix the older passage rather than working a
 
 | Question | Answer |
 |---|---|
-| What is the latest release? | `1.0.2` / **`versionCode 3`**, uploaded and **accepted by Play 2026-08-29**, built from `29a4f3d` |
-| Which track? | **Closed testing.** `versionCode 1` (internal → closed) and `2` preceded it |
+| What is the latest release? | `1.0.3` / **`versionCode 4`**, uploaded and **accepted by Play 2026-09-04**, built from `7cbf78d` on branch `ui-refresh-2026-09-03` |
+| Which track? | **Closed testing.** `versionCode 1` (internal → closed), `2` and `3` preceded it |
 | Closed-testing period | **Running.** 12+ testers opted in |
-| What is in development? | **`1.0.3` / `versionCode 4`** — OPEN since 2026-08-29, bumped in `branding.gradle.kts`. **A signed release AAB was built 2026-09-04 from committed `7cbf78d` on branch `ui-refresh-2026-09-03` and is NOT uploaded**, so the version stays open and on no track. Artifact, signer and barrier evidence: `docs/play-release-readiness.md` §7. The gate before upload is physical-device QA (`docs/manual-qa.md` §34, §§26–33) |
-| Is 1.0.2 released? | **Yes.** Uploaded 2026-08-29, in `docs/version-history.md` with its hash, size and signer |
-| What do I develop against? | **`versionCode 4`**, already open. See the note below before bumping again |
+| What is in development? | **Nothing. No version is open.** `versionCode 4` is spent, so `branding.gradle.kts` currently names a used number |
+| Is 1.0.3 released? | **Yes.** Uploaded 2026-09-04, in `docs/version-history.md` with its hash, size and signer. Artifact and barrier evidence: `docs/play-release-readiness.md` §7 |
+| What do I develop against? | **`1.0.4` / `versionCode 5`** — open it with the *first code change*, bumping `branding.gradle.kts` and renaming `CHANGELOG.md`'s Unreleased heading in that same change |
+| **What 1.0.3 shipped without** | **Any physical-device verification.** It was built and uploaded on JVM + emulator evidence alone; `docs/manual-qa.md` §34 and §§26–33 were all unticked at upload. Testers are the first hardware this build has run on — see the note below |
 | Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
 
 **THE VERSIONING RULE, resolved by the owner 2026-08-30. This wording is authoritative.**
@@ -3916,17 +3917,34 @@ Play-delivered build): **live search works**, **Light and Dark themes both rende
 reported status-bar and dark-mode-contrast defects are gone — and **barcode scanning is
 regression-free**. Do not re-list those as unverified.
 
-**Next technical action:** scan a real package into the new quick calculator on physical hardware.
-That is now the largest open item, because the emulator's virtual camera cannot produce a nutrition
-table, so the *automatic* accept path was exercised only through its assisted-reading sibling — see
-the OCR quick-calculation section above for exactly what that does and does not establish. Fold in
-the three checks already outstanding from 1.0.2 while the phone is in hand: the two theme *override*
-combinations (app forced Light on a dark phone, app forced Dark on a light phone), an OCR label
-scan, and a calculation from a search result. The overrides are the only part of the theme work
-still argued rather than observed — they exercise the system-bars-follow-the-app half, which
-`resolveDarkTheme` and its tests cover in both directions, but a test cannot watch a real status
-bar. Beyond that, the remaining path to production is Play Console forms plus the §44 signature,
-which is owner work, not engineering.
+**Next technical action:** run `docs/manual-qa.md` **§34** on physical hardware against the
+Play-delivered `versionCode 4`.
+
+**1.0.3 shipped on JVM and emulator evidence alone — no row of §34 or §§26–33 was ticked before
+upload.** That is a decision the owner made with the gaps stated, not an oversight, and it changes
+what the closed track now *is*: **the testers are the first hardware this build has run on.** Treat
+their reports as the missing measurement rather than as routine feedback, and read any scanning
+report against §34's rows before concluding anything about the code.
+
+The two highest-value things to watch for, because they are what this version changed and what it
+deliberately traded:
+
+- **§34.1–34.5 — no wrong figure offered.** A separatorless pair now withholds *both* members, so a
+  label like `46 g / 100 g` + `12 g / 25 g` should offer neither and route to focused entry with the
+  photograph and basis kept. A tester seeing `12` presented as a carbohydrate figure is a live
+  defect, not a preference.
+- **§34.6–34.8 — the controls.** The refusal must not have spread: a declared serving
+  (`6 g / 18 g serving`), a single-column label, and any value carrying its own decimal separator
+  must all still reach a proposal. A tester reporting that scanning got *worse* — more typing, fewer
+  answers — is most likely one of these, and is the failure mode this change risks.
+
+Fold in the three checks still outstanding from 1.0.2 while a phone is in hand: the two theme
+*override* combinations (app forced Light on a dark phone, and the reverse), an OCR label scan, and
+a calculation from a search result. The overrides are the only part of the theme work still argued
+rather than observed — a test cannot watch a real status bar.
+
+Beyond that, the remaining path to production is Play Console forms plus the §44 signature, which is
+owner work, not engineering.
 
 **The 14-day clock is RUNNING.** If this account is subject to Play's **12-testers / 14-days
 closed-testing requirement** (some personal accounts created from Nov 2023 onward are; organization

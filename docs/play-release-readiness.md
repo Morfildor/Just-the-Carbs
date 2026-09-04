@@ -1,6 +1,6 @@
 # Google Play release readiness — Just the Carbs
 
-**Status as of 2026-08-29**
+**Status as of 2026-09-04**
 
 | Area | Status |
 |---|---|
@@ -8,19 +8,26 @@
 | Release artifact | **READY** |
 | Store listing | **READY** |
 | Internal testing | **DEPLOYED** — `1.0.0` / `versionCode 1` |
-| Closed testing | **ACTIVE — running, 12+ testers opted in.** Currently `1.0.2` / `versionCode 3`, uploaded 2026-08-29 |
-| Version in development | **None.** `versionCode 3` is spent; the next code change opens `1.0.3` / `versionCode 4` (§2c) |
-| Play-delivered smoke test | **SUBSTANTIALLY DONE** (owner, 2026-08-29) — live search, Light/Dark theme rendering and barcode scanning all confirmed on the device. Outstanding: the two theme *override* combinations, an OCR label scan, and a calculation from a search result (§8a) |
+| Closed testing | **ACTIVE — running, 12+ testers opted in.** Currently `1.0.3` / `versionCode 4`, uploaded 2026-09-04 |
+| Version in development | **None.** `versionCode 4` is spent; the next code change opens `1.0.4` / `versionCode 5` (§2c) |
+| Play-delivered smoke test | **OUTSTANDING for `versionCode 4`.** The 2026-08-29 pass (live search, Light/Dark rendering, barcode scanning) was against `versionCode 3` and does not transfer: 1.0.3 changed OCR scanning substantially and **shipped with no physical-device verification at all**. Run `docs/manual-qa.md` §34 plus the three checks still outstanding from 1.0.2 (§8a) |
 | Production submission | **BLOCKED** — see §1b |
 
-**Closed testing is running, now on `1.0.2`.** `1.0.0` (`versionCode 1`) went to internal testers on
+**Closed testing is running, now on `1.0.3`.** `1.0.0` (`versionCode 1`) went to internal testers on
 2026-08-26 and **the same artifact was then promoted to the closed track** — one artifact and one
 hash progressing through two tracks, not two releases. `1.0.1` (`versionCode 2`) was then built from
 `45f3dd9`, uploaded and accepted on 2026-08-28, and `1.0.2` (`versionCode 3`) from `29a4f3d`,
 uploaded and accepted on 2026-08-29 — the first release carrying feature work (the search provider
-migration and the theme/system-bar fixes). 12 or more testers are
+migration and the theme/system-bar fixes). `1.0.3` (`versionCode 4`) followed from `7cbf78d`,
+uploaded and accepted on 2026-09-04, carrying the OCR quick calculation and a long run of
+nutrition-label scanning work. 12 or more testers are
 opted in and the testing period is under way. `docs/version-history.md` records each version once,
 by hash.
+
+**`1.0.3` shipped without any physical-device verification** — every gate row in
+`docs/manual-qa.md` §34 and §§26–33 was unticked at upload. That was a decision taken with the gaps
+stated, and it means the closed track is the first hardware this build has run on. Tester reports
+about scanning are the missing measurement, not routine feedback; read them against §34's rows.
 
 Play accepted the bundle and its signature, so **bundle format, upload-key signing and Play App
 Signing acceptance are proven facts, not open items** — do not re-list them.
@@ -32,25 +39,33 @@ is stale and has been corrected. What remains is elapsed time plus the productio
 Play currently displays the temporary name `app.justthecarbs (unreviewed)`. That is expected until
 app setup and review complete; it is **not** a defect and needs no rebuild.
 
-**`versionCode 2` / `1.0.1` is open and is the current development target.** It was opened during the
-closed beta and is set in `branding.gradle.kts`; nothing has been built or uploaded against it. Add
-work to its section in `CHANGELOG.md`, do not bump the number again, and do not build a release AAB
-except as a deliberate, instructed release step (§2c). Earlier revisions of this document said "do
-not create a `versionCode 2`" — that was written before 2 existed and is stale.
+**No version is open.** `versionCode` 1, 2, 3 and 4 are all spent and none may be rebuilt or
+re-uploaded — Play refuses a duplicate code. The first code change after 1.0.3 opens `1.0.4` /
+`versionCode 5`, bumping `branding.gradle.kts` and renaming `CHANGELOG.md`'s Unreleased heading in
+that same change. Do not build a release AAB except as a deliberate, instructed release step (§2c).
 
-**Engineering evidence** (unchanged, and still corresponding to this artifact): JVM **771/771**,
-instrumented **218/218**, both 0 skipped; lint **0 errors**. `app-release.aab` built from `clean` on
-`68c85a3` (recorded in `0b2312f`): 35,624,186 bytes, SHA-256
-`37be02324dec011c74edd876d346077a03dc611096eae4d98374ab791c7e604b`, signed with upload key SHA-256
+**Engineering evidence for the current artifact (`versionCode 4`):** JVM **1688/1688**, 0 skipped;
+lint **0 errors**, 23 warnings; OSV **226 artifacts / 0 known vulnerabilities**. `app-release.aab`
+built from `clean` on committed `7cbf78d`: 35,850,832 bytes, SHA-256
+`d94632a56519ae8074e6030be933bf98725e4ffaeea37ffc0ede79b30338ec83`, signed with upload key SHA-256
 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5`.
 R8 privacy barriers and the absent release `FileProvider` re-checked on this build's `mapping.txt`
 (§7).
 
+**There is no instrumented whole-suite figure for this artifact**, and the connected OCR suite ran
+**33 tests / 9 failures** on the emulator — all nine pre-existing, verified against a `git worktree`
+control at clean `47ad5d1` failing the identical nine by name. They are emulator ML Kit degradation;
+the same corpus is 39/39 on real hardware and was **not** re-run there. Do not quote the older
+218/218 as evidence for this build.
+
 The remaining path is Play Console form completion (§5a) plus two owner decisions — the **Health Apps
 declaration category** (§4a) and the **§44 signature**. Nothing that remains is engineering work.
 
-**Immediate next action: install the Play-delivered build on the Samsung device via the tester link
-and run the ten-step smoke test (§8a).**
+**Immediate next action: install the Play-delivered `versionCode 4` on the Samsung device via the
+tester link and run `docs/manual-qa.md` §34**, then the three checks still outstanding from 1.0.2
+(§8a). §34.1–34.5 decide whether the separatorless-pair leak is closed; §34.6–34.8 are the controls
+that must keep working — a report that scanning got *worse* (more typing, fewer answers) is most
+likely one of those and is the failure mode this version risks.
 
 **The 14-day clock is running.** If this account is subject to Play's **12-testers / 14-days
 closed-testing requirement**, the closed track now satisfies both halves of it in progress: 12+
@@ -502,11 +517,14 @@ changed.
 
 ## 7. Technical evidence — release candidate
 
-### 2026-09-04 — `versionCode 4` / `1.0.3`, BUILT AND NOT UPLOADED (commit `7cbf78d`)
+### 2026-09-04 — `versionCode 4` / `1.0.3`, the shipped artifact (commit `7cbf78d`)
 
-**Built from `clean` on a committed tree and verified. Play has NOT seen it.** Nothing goes into
-[`version-history.md`](version-history.md) until Play accepts it. The one blocking gate below is
-**physical-device verification**, which is owner work and is not satisfied by anything in this table.
+**Uploaded to closed testing and accepted by Play on 2026-09-04. This is the current release.**
+Archived in [`version-history.md`](version-history.md).
+
+**It shipped with the physical-device row below still unticked** — a decision taken with the gap
+stated, not an oversight. The consequence is recorded here because it changes how tester reports
+must be read: the closed track is now the first hardware this build has run on.
 
 | Check | Result |
 |---|---|
@@ -524,8 +542,8 @@ changed.
 | Locale configs in the bundle | **PASS** — none; English-only, so the `localeFilters` restriction still holds. |
 | OSV dependency scan | **PASS 2026-09-04** — 226 resolved release-runtime artifacts, 0 known vulnerabilities, control query positive. |
 | Release APK | **NOT BUILT** — bundle-only, as for every previous version. `apksigner` cannot read an AAB; use `keytool -printcert -jarfile`. |
-| Play acceptance | **NOT DONE.** Not uploaded. |
-| **Physical-device verification** | **NOT DONE — this is the gate.** Everything above is JVM plus the `carbscan` emulator, whose virtual camera cannot produce a nutrition table, so the automatic accept path was not exercised end to end. `docs/manual-qa.md` **§34** covers this pass's change (rows 34.1–34.5 decide whether the pair leak is closed; 34.6–34.8 are the controls that must keep working); §§26–33 remain open alongside it. |
+| Play acceptance | **PASS 2026-09-04** — uploaded to the closed track and accepted. Bundle format and upload signature validated by Play itself. |
+| **Physical-device verification** | **NOT DONE AT UPLOAD, and it shipped anyway.** Everything above is JVM plus the `carbscan` emulator, whose virtual camera cannot produce a nutrition table, so the automatic accept path was not exercised end to end. `docs/manual-qa.md` **§34** covers this pass's change (rows 34.1–34.5 decide whether the pair leak is closed; 34.6–34.8 are the controls that must keep working); §§26–33 remain open alongside it. |
 
 ### 2026-08-28 — `versionCode 2` / `1.0.1`, the shipped artifact (commit `45f3dd9`)
 
