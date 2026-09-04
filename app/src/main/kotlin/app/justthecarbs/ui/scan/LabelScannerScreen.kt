@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
@@ -82,6 +83,7 @@ import app.justthecarbs.ocr.AutomaticVerification
 import app.justthecarbs.ocr.CropChange
 import app.justthecarbs.ocr.DisputedCandidates
 import app.justthecarbs.ocr.EvidenceResolver
+import app.justthecarbs.ocr.EvidenceSource
 import app.justthecarbs.ocr.LabelAnalyzer
 import app.justthecarbs.ocr.LabelReading
 import app.justthecarbs.ocr.LiveEvidenceBuffer
@@ -89,6 +91,7 @@ import app.justthecarbs.ocr.NormalizedRegion
 import app.justthecarbs.ocr.PassAResult
 import app.justthecarbs.ocr.ScaleAmbiguity
 import app.justthecarbs.ocr.ScanEvidenceRecorder
+import app.justthecarbs.ocr.ScanPresentationDecision
 import app.justthecarbs.ocr.ScanRegionMapper
 import app.justthecarbs.ocr.SelectedTableResolution
 import app.justthecarbs.ocr.StatedBasis
@@ -97,7 +100,11 @@ import app.justthecarbs.ocr.TextResolutionGuidance
 import app.justthecarbs.ocr.OcrDiagnosticsLogger
 import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.product.kindLabel
+import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import kotlinx.coroutines.launch
 import java.io.File
 import java.math.BigDecimal
@@ -275,6 +282,25 @@ private fun LabelCamera(
      * memory.
      */
     var pendingCrop by remember { mutableStateOf<PassAResult?>(null) }
+
+    /**
+     * The captured JPEG, shown while recognition runs.
+     *
+     * ## Why this exists separately from [pendingCrop]
+     *
+     * [pendingCrop] is only assigned once recognition has *finished*, so for the whole 323–1974 ms
+     * the device evidence records ML Kit taking, the user was watching a **live camera preview of
+     * whatever the phone is now pointed at** while the app reasoned about a photograph they had
+     * already taken. Moving the phone during that window made the app look like it had lost the
+     * label. This holds the file from `onImageSaved`, which is the earliest moment a photograph
+     * exists at all.
+     *
+     * Loaded through Coil rather than `BitmapFactory`: it decodes off the main thread and
+     * downsamples to the target size, so an 8 MP JPEG does not compete for the CPU with the ML Kit
+     * pass the user is actually waiting on. Decoding it synchronously here would make the scan
+     * slower to make the wait look better, which is the wrong trade.
+     */
+    var capturedPreview by remember { mutableStateOf<File?>(null) }
     var cropSelection by remember { mutableStateOf<NormalizedRegion?>(null) }
     /** True while a confirmed crop is being re-parsed; disables the primary action. */
     var readingTable by remember { mutableStateOf(false) }
@@ -425,6 +451,10 @@ private fun LabelCamera(
         captureSession.incrementAndGet()
         pendingCrop?.recycle()
         pendingCrop = null
+        // Belongs to the capture being abandoned or replaced. Left set, a Retake would drop back to
+        // the live camera with the previous photograph still painted over it, and a new capture
+        // would briefly show the old one.
+        capturedPreview = null
         cropSelection = null
         readingTable = false
         // Belongs to the capture being abandoned. Left set, the next capture's crop screen would
@@ -450,6 +480,35 @@ private fun LabelCamera(
         disputedCandidates = DisputedCandidates.NONE
         liveEvidence.clear()
         analyzer.resume()
+    }
+
+    /**
+     * The proposal to draw on the frozen photograph for [outcome]'s confident reading.
+     *
+     * A [EvidenceResolver.Outcome.NeedsVerification] is already one and is passed through unchanged,
+     * so its `winningEvidence` — and therefore the coordinate space its geometry is measured in —
+     * survives. A [EvidenceResolver.Outcome.Resolved] is rewrapped, and **the winning evidence is
+     * carried across**: without it the screen would fall back to assuming full-frame coordinates,
+     * which is the defect this pass exists to close for a Strategy B reading.
+     */
+    fun proposalFor(
+        outcome: EvidenceResolver.Outcome,
+        confident: LabelReading.Confident,
+    ): EvidenceResolver.Outcome.NeedsVerification? = when (outcome) {
+        is EvidenceResolver.Outcome.NeedsVerification -> outcome
+        is EvidenceResolver.Outcome.Resolved -> EvidenceResolver.Outcome.NeedsVerification(
+            reading = confident,
+            report = outcome.report,
+            source = outcome.agreeingSources.firstOrNull() ?: EvidenceSource.FULL_FRAME_PASS_A,
+            winningEvidence = outcome.winningEvidence,
+        )
+        // No other outcome carries a confident reading, so `confident` is non-null only for the two
+        // above and none of these is reachable with one. Enumerated rather than defaulted so adding
+        // an outcome that *can* carry a reading is a compile error here, instead of silently
+        // falling through to full-frame geometry for a crop-local candidate.
+        is EvidenceResolver.Outcome.Unresolved -> null
+        is EvidenceResolver.Outcome.Conflicted -> null
+        EvidenceResolver.Outcome.Nothing -> null
     }
 
     /** Releases the frozen capture and its bitmap, returning the screen to the result cards. */
@@ -564,12 +623,30 @@ private fun LabelCamera(
                     (automaticVerification.rejectionReason?.let { " ($it)" } ?: ""),
             )
 
+            // **The document every parser question is asked of: the winning pass's own.**
+            //
+            // This used to be `captured.document` — Pass A's whole-frame recognition — whichever
+            // pass had actually produced the reading. When Strategy B wins, its candidate geometry
+            // is in *crop-local* coordinates, so it matches no row of Pass A's document and
+            // [ScaleAmbiguity] degrades silently to "no row to pair against": the scale question was
+            // being asked about a candidate that document has never seen.
+            //
+            // The winning pass's document is the one its candidate was measured in, so row lookup,
+            // sibling pairing and column association all resolve. It is **not** translated first:
+            // the parser reasons about a document in its own space, and moving the boxes without
+            // moving the document they are compared against would break every stage. Translation
+            // happens once, at the presentation boundary below.
+            //
+            // Falls back to the capture's own document when no pass carried one, which is the
+            // previous behaviour for every outcome that has no reading to attribute.
+            val evaluationDocument = result.outcome.winningEvidence?.document ?: captured.document
+
             // Whether the evidence establishes this reading's absolute decimal scale.
             //
             // Asked here, once, so the gate below and the evidence bundle read the same verdict.
             // See [ScaleAmbiguity]: a uniform decimal collapse preserves every column ratio, so
             // cross-column agreement cannot see it and this is a separate question.
-            val scaleVerdict = AutomaticScanAdvance.scaleVerdict(result.outcome, captured.document)
+            val scaleVerdict = AutomaticScanAdvance.scaleVerdict(result.outcome, evaluationDocument)
             (scaleVerdict as? ScaleAmbiguity.Verdict.Ambiguous)?.let {
                 OcrDiagnosticsLogger.timing(
                     "scale-ambiguous: '${it.candidateText}' paired with '${it.pairedText}' — ${it.reason}",
@@ -581,115 +658,155 @@ private fun LabelCamera(
             val disputed = DisputedCandidates.of(result.evidence)
             disputedCandidates = disputed
 
-            val declined = automatic && !AutomaticScanAdvance.mayAdvance(result.outcome)
-            if (declined) {
-                autoAttempted = true
-                OcrDiagnosticsLogger.timing("fast-path declined (${result.outcome::class.simpleName})")
-            }
+            // **One decision, and it is the one that runs.**
+            //
+            // This block used to compute `decision` and then *independently recompute the same
+            // policy*: a separate `declined` from `mayPresentAutomatically`, and a `when` whose
+            // branches each asked `AutomaticScanAdvance.presentation(...)` over again. The pure
+            // decision was consulted for nothing but a diagnostics string — so the rule a JVM test
+            // could reach and the rule the user actually met were two different pieces of code that
+            // merely happened to agree, which is the same shape as the eighth session's P0 (an
+            // anonymous `else` in this file) and the ninth's (a local `val` in this file).
+            //
+            // They are now one piece of code. [ScanPresentationDecision] is the authority; the
+            // `when` below acts on its `Action` and computes no policy of its own. The outcome is
+            // still read, but only to pick *which* non-proposal screen an action lands on and to
+            // carry the report — never to re-decide whether to show it.
+            val decision = ScanPresentationDecision.decide(
+                outcome = result.outcome,
+                verification = automaticVerification,
+                document = evaluationDocument,
+                automatic = automatic,
+            )
 
-            // What the app actually did, for the evidence bundle. Recorded rather than inferred:
-            // the bundle previously carried the gate's *inputs* and never its outcome, so telling an
-            // automatic advance from a one-tap confirmation meant watching the screen recording
-            // beside the files.
-            var uiAction = if (declined) "RECOVERY" else "CONFIRM"
+            // What the app actually did, for the evidence bundle. It *is* the executed action, taken
+            // from the decision that executed it rather than reconstructed beside it.
+            val uiAction = decision.name
 
-            if (!declined) when (val outcome = result.outcome) {
-                is EvidenceResolver.Outcome.Resolved -> {
-                    releaseCapture(captured)
-                    servingCandidate = outcome.report.servingCandidate
-                    val confident = outcome.reading as? LabelReading.Confident
+            // The photograph is released on exactly the transitions the decision calls terminal.
+            // The eighth session's P0 was `releaseCapture` running first and unconditionally, so a
+            // confirmation card inherited a recycled bitmap and fell back to drawing itself over the
+            // live preview — a question about a package the user had already moved away.
+            val releasesCapture = ScanPresentationDecision.releasesCapture(decision)
+
+            when (decision) {
+                ScanPresentationDecision.Action.CROP_FALLBACK -> {
+                    // Nothing worth presenting. The rectangle is the user's lever over an ambiguity,
+                    // a conflict or a failed read, so the crop screen takes over — and says it has
+                    // already tried.
+                    autoAttempted = true
+                    OcrDiagnosticsLogger.timing(
+                        "fast-path declined (${result.outcome::class.simpleName})",
+                    )
+                }
+
+                ScanPresentationDecision.Action.FOCUSED_AMOUNT_ENTRY -> {
+                    // The row and the basis are established; only the digits failed. Asking for a
+                    // crop here invites the user to fix a rectangle that is already correct — see
+                    // [ScanPresentationDecision.Action.FOCUSED_AMOUNT_ENTRY] for the capture that
+                    // measured it. The photograph is kept, because the digits are read off it.
+                    OcrDiagnosticsLogger.timing("row and basis established; asking for the digits")
+                    assisting = AssistState(
+                        document = captured.document,
+                        disputed = disputed,
+                        startOnFocusedEntry = true,
+                    )
+                }
+
+                ScanPresentationDecision.Action.AUTO_ADVANCE -> {
+                    val confident = AutomaticScanAdvance.confidentReading(result.outcome)
                     val basis = confident?.candidate?.basis
-                    if (automatic && confident != null && basis != null &&
-                        AutomaticScanAdvance.mayAdvanceVerified(outcome, automaticVerification)
-                    ) {
-                        // **The redundant confirmation, removed for VERIFIED readings only.**
-                        //
-                        // The capture passed `mayAdvanceVerified`, which requires two independent
-                        // things: a `Resolved` outcome carrying a `Confident` reading (the parser
-                        // placed the value in a column whose basis it resolved, and nothing
-                        // contradicted it), **and** an [AutomaticVerification] route — the label's
-                        // own other rows agreeing with it, or a genuinely separate recognition run
-                        // reading the same amount and basis.
-                        //
-                        // The second half is new in this pass and it is the release-blocking fix.
-                        // Structural confidence alone was reaching Quick Calculation unconfirmed,
-                        // and `085542-213` proved what that costs: `12` where the package prints
-                        // `72`, on a correctly classified row under a correctly resolved column.
-                        //
-                        // An unverified reading still reaches the user — through `ProposalCard`,
-                        // one tap, which is what this app did before the fast path existed.
-                        //
-                        // So a strong automatic reading goes straight to the calculator, which shows
-                        // the same figure with its basis and its provenance, and offers *Change*.
-                        // The correction path is preserved in full; only the acknowledgement is gone.
-                        //
-                        // Deliberately gated on `automatic`: a reading reached after the user
-                        // confirmed a crop keeps its proposal card, because there the user has
-                        // already been asked one question and an answer appearing without
-                        // acknowledgement would read as the app having ignored them.
-                        //
-                        // A null basis cannot advance. That is the "grams of what?" question this app
-                        // must never answer on the user's behalf, and it falls through to the card.
+                    if (confident != null && basis != null) {
+                        // Verified by something outside this recognition run, and its decimal scale
+                        // is established. Straight to the calculator, which shows the same figure
+                        // with its basis and provenance and offers *Change*.
                         OcrDiagnosticsLogger.timing(
                             "fast-path advanced (Confident ${basis.name}, " +
                                 "verified ${automaticVerification.route})",
                         )
-                        uiAction = "AUTO_ADVANCE"
+                        (result.outcome as? EvidenceResolver.Outcome.Resolved)?.let {
+                            servingCandidate = it.report.servingCandidate
+                        }
+                        // Terminal: the scan is over.
+                        releaseCapture(captured)
                         onUseValue(confident.candidate.value, basis)
-                    } else if (!AutomaticScanAdvance.mayConfirm(
-                            outcome,
-                            automaticVerification,
-                            captured.document,
-                        )
-                    ) {
-                        // Unverified, and the evidence cannot establish the decimal scale.
-                        //
-                        // A confirmation card asks *is this right?*, which is a fair question only
-                        // when the user can check the answer. Measured on `131545`: the card would
-                        // read `89 g / 100 ml` for a package printing `8,9 g`, and the separator the
-                        // recognizer dropped is absent from every value on that label, so nothing on
-                        // screen distinguishes the two. The tap would mean "yes, there is a number
-                        // there", not "yes, that is the figure".
-                        //
-                        // So the reading is withheld and the user is asked for the digits, with the
-                        // basis the label stated preserved. Nothing is divided, shifted or repaired.
-                        uiAction = "RECOVERY"
-                        OcrDiagnosticsLogger.timing("confirmation withheld (scale ambiguous)")
-                        assisting = AssistState(
-                            document = captured.document,
-                            disputed = disputed,
-                            scaleAmbiguous = true,
-                        )
                     } else {
-                        reading = outcome.reading
+                        // Unreachable: the decision cannot return AUTO_ADVANCE without a confident
+                        // reading carrying a basis. Handled rather than asserted so a future change
+                        // to the decision degrades to the crop screen instead of doing nothing.
+                        autoAttempted = true
+                        OcrDiagnosticsLogger.timing("fast-path advanced with no basis — declined")
                     }
                 }
-                is EvidenceResolver.Outcome.NeedsVerification -> {
-                    // Held on the frozen photo on purpose: the user is looking at the printed table,
-                    // which is the only place this can actually be checked.
-                    verification = outcome
+
+                ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE -> {
+                    // Confident and confirmable, and nothing outside this one recognition run agreed
+                    // with it. Asked on the frozen photograph, with the row highlighted and enlarged,
+                    // because the printed table is the only place the answer can be checked.
+                    val confident = AutomaticScanAdvance.confidentReading(result.outcome)
+                    if (confident != null) {
+                        OcrDiagnosticsLogger.timing(
+                            "unverified reading held on the capture (${automaticVerification.route})",
+                        )
+                        (result.outcome as? EvidenceResolver.Outcome.Resolved)?.let {
+                            servingCandidate = it.report.servingCandidate
+                        }
+                        verification = proposalFor(result.outcome, confident)
+                            ?: EvidenceResolver.Outcome.NeedsVerification(
+                                reading = confident,
+                                report = result.filtered.report,
+                                source = EvidenceSource.FULL_FRAME_PASS_A,
+                            )
+                    }
                 }
-                is EvidenceResolver.Outcome.Conflicted -> {
-                    conflicted = outcome
+
+                ScanPresentationDecision.Action.CONFIRM -> {
+                    // Reached through a confirmed crop, where the user has already been asked a
+                    // question. The outcome selects the screen; none of these is a proposal the
+                    // decision had to authorise.
+                    when (val outcome = result.outcome) {
+                        is EvidenceResolver.Outcome.Conflicted -> conflicted = outcome
+                        is EvidenceResolver.Outcome.Unresolved -> {
+                            reading = outcome.reading
+                            servingCandidate = outcome.report.servingCandidate
+                        }
+                        is EvidenceResolver.Outcome.Resolved -> {
+                            reading = outcome.reading
+                            servingCandidate = outcome.report.servingCandidate
+                        }
+                        is EvidenceResolver.Outcome.NeedsVerification -> verification = outcome
+                        EvidenceResolver.Outcome.Nothing -> assisting = AssistState(
+                            document = captured.document,
+                            ineffectiveSelection = result.selectionWasIneffective,
+                            disputed = disputed,
+                        )
+                    }
                 }
-                // The parser offered competing candidates and nothing narrowed them. Presented
-                // exactly as before — `AmbiguousCard`, showing each candidate with its own basis —
-                // but reached through an outcome that says "unresolved" rather than one that says
-                // "resolved", so the diagnostics and any future consumer read the truth.
-                is EvidenceResolver.Outcome.Unresolved -> {
-                    releaseCapture(captured)
-                    reading = outcome.reading
-                    servingCandidate = outcome.report.servingCandidate
-                }
-                EvidenceResolver.Outcome.Nothing -> {
-                    // The scan is not over. The frozen capture stays on screen and the user is
-                    // offered the assisted path, which is what removes the dead end (§17-§19).
+
+                ScanPresentationDecision.Action.RECOVERY -> {
+                    // Either the digits were withheld — the evidence could not establish their
+                    // decimal scale — or nothing usable was read at all. Both keep the photograph:
+                    // the user is being asked to read the number off it, with the basis the label
+                    // stated preserved. Nothing is divided, shifted or repaired.
+                    val withheld = AutomaticScanAdvance.confidentReading(result.outcome) != null
+                    if (withheld) {
+                        OcrDiagnosticsLogger.timing("confirmation withheld (scale not established)")
+                    }
                     assisting = AssistState(
                         document = captured.document,
-                        ineffectiveSelection = result.selectionWasIneffective,
+                        ineffectiveSelection = !withheld && result.selectionWasIneffective,
                         disputed = disputed,
+                        scaleAmbiguous = withheld,
                     )
                 }
+            }
+
+            // Belt-and-braces on the invariant, and the one statement of it in this function: a
+            // screen that still has a question for the user keeps the photograph that question is
+            // about. `AUTO_ADVANCE` releases above, as part of its own terminal transition; this
+            // asserts nothing else did.
+            check(!releasesCapture || pendingCrop == null) {
+                "a terminal action must have released the capture"
             }
 
             // Written only after the outcome is on screen. It used to run between the resolution and
@@ -724,7 +841,16 @@ private fun LabelCamera(
                     }
                     automaticVerification.rejectionReason?.let { append(" — $it") }
                 },
-                uiAction = uiAction,
+                // The branch that ran, and — when they differ — the pure decision that says what
+                // should have run. [ScanPresentationDecision] is the JVM-testable statement of this
+                // rule; the branches below it are the imperative UI that acts on it. A bundle
+                // printing two different names here is a divergence between them, which is the
+                // failure this recording exists to make visible rather than argued about.
+                uiAction = if (decision.name == uiAction) {
+                    uiAction
+                } else {
+                    "$uiAction (decision=${decision.name})"
+                },
                 // Each pass with what it actually contributed, and which evidence family it belongs
                 // to. The bare source list said `FULL_FRAME_PASS_A, FILTERED_PASS_A,
                 // SELECTED_REGION_OCR` even when the third produced no reading at all and the first
@@ -743,6 +869,18 @@ private fun LabelCamera(
                 },
                 disputed = disputed,
                 scaleVerdict = scaleVerdict,
+                // Strategy B's own document, when it ran. The bundle used to record only its verdict,
+                // so a session where Pass A and Strategy B disagreed could not be replayed — which is
+                // precisely the ninth session's shape, and why its diagnosis needed a reconstruction.
+                strategyBDocument = result.evidence
+                    .firstOrNull { it.source == EvidenceSource.SELECTED_REGION_OCR }
+                    ?.document,
+                // The space that document is measured in. Without it the dump's boxes cannot be
+                // compared against `diagnostics.txt`'s full-frame ones, and a reader would conclude
+                // the two passes disagree about where the row is when they agree exactly.
+                strategyBCrop = result.evidence
+                    .firstOrNull { it.source == EvidenceSource.SELECTED_REGION_OCR }
+                    ?.crop,
                 // Which basis the correction path was handed, and whether an amount went with it.
                 // A bundle previously could not say why a manual screen opened on `100 g`.
                 correctionHandoff = when {
@@ -750,12 +888,19 @@ private fun LabelCamera(
                     else -> {
                         val basis = StatedBasis.of(captured.document)
                         "basis=${basis?.name ?: "none established"}, amount=" +
-                            if (scaleVerdict is ScaleAmbiguity.Verdict.Ambiguous) {
-                                "blank (withheld: scale ambiguous)"
-                            } else if (!disputed.isEmpty) {
-                                "blank (withheld: cross-run dispute)"
-                            } else {
-                                "per the offered candidate"
+                            when {
+                                scaleVerdict is ScaleAmbiguity.Verdict.Ambiguous ->
+                                    "blank (withheld: scale ambiguous)"
+                                // The eighth session's case, and it must not be reported as though
+                                // an amount were handed over: an unverified reading whose scale
+                                // nothing established is withheld too, and the user types the
+                                // digits. Reporting "per the offered candidate" here is what made
+                                // `213005-691` read as though the app had handed over a figure.
+                                uiAction == "RECOVERY" &&
+                                    scaleVerdict is ScaleAmbiguity.Verdict.Unsupported ->
+                                    "blank (withheld: scale not established by the evidence)"
+                                !disputed.isEmpty -> "blank (withheld: cross-run dispute)"
+                                else -> "per the offered candidate"
                             }
                     }
                 },
@@ -781,7 +926,12 @@ private fun LabelCamera(
                             "${(android.os.SystemClock.elapsedRealtimeNanos() - shutterNanos) / 1_000_000}ms " +
                             "(shutter to file)",
                     )
-                    mainExecutor.execute { captureState = CaptureState.PROCESSING }
+                    mainExecutor.execute {
+                        captureState = CaptureState.PROCESSING
+                        // The photograph now exists on disk. Show it instead of the live preview
+                        // for the rest of the wait — see `capturedPreview`.
+                        capturedPreview = file
+                    }
                     // Recognition starts immediately and runs while the user is looking at the frozen
                     // photo and adjusting the rectangle, so the "Read table" tap costs only a
                     // re-parse of elements already in memory rather than a second ML Kit pass.
@@ -850,6 +1000,8 @@ private fun LabelCamera(
                     mainExecutor.execute {
                         if (session != captureSession.get()) return@execute
                         captureState = CaptureState.IDLE
+                        // The file was just deleted, so any reference to it must go with it.
+                        capturedPreview = null
                         reading = LabelReading.NotFound
                     }
                 }
@@ -967,6 +1119,10 @@ private fun LabelCamera(
         captureSession.incrementAndGet()
         pendingCrop?.recycle()
         pendingCrop = null
+        // Belongs to the capture being abandoned or replaced. Left set, a Retake would drop back to
+        // the live camera with the previous photograph still painted over it, and a new capture
+        // would briefly show the old one.
+        capturedPreview = null
         cropSelection = null
         readingTable = false
         // Belongs to the capture being replaced. A *Capture label* tap from the crop screen — the
@@ -1203,6 +1359,33 @@ private fun LabelCamera(
             },
         )
 
+        // The photograph, over the live preview, for as long as the app is reading it.
+        //
+        // Recognition takes 323–1974 ms on the measured device, and for all of it the user was
+        // previously watching a live camera feed of wherever the phone had drifted to — while the
+        // app worked on a picture already taken. Moving the phone during that window made the scan
+        // look lost. Showing the capture makes the wait legible: *this* is what is being read.
+        //
+        // Deliberately NOT a staged progress list. `analyzeStillRetaining` takes a single
+        // `onComplete` callback, so between the shutter and the result there is exactly one
+        // observable transition and no honest way to report thirds of it. Inventing stages on a
+        // timer would claim knowledge the app does not have, on the screen whose output someone
+        // doses insulin from. The existing single line already says what is happening.
+        val processingPhoto = capturedPreview
+        if (processingPhoto != null && captureState == CaptureState.PROCESSING) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(processingPhoto)
+                    // Coil decodes off the main thread and downsamples to the target size, so the
+                    // 8 MP JPEG does not compete for CPU with the ML Kit pass being waited on.
+                    .crossfade(Motion.QUICK_MS)
+                    .build(),
+                contentDescription = stringResource(R.string.ocr_captured_description),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         ScanRegionOverlay(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -1428,6 +1611,14 @@ private fun SearchingCard(
                             liveReadiness is LabelReading.Confident ||
                                 liveReadiness is LabelReading.Ambiguous ->
                                 R.string.ocr_ready_to_capture
+                            // Checked before size for the same reason the estimator computes it
+                            // first: on a sideways frame the size measure reports a rotated word's
+                            // width as its height, so "move closer" would be advice derived from a
+                            // number that means nothing. Measured on `20260903-212804-751`, where
+                            // every row reconstructed across the printed columns instead of along
+                            // the printed rows and the capture died silently as `NotFound`.
+                            framing?.readiness == TextResolutionGuidance.Readiness.SIDEWAYS ->
+                                R.string.ocr_turn_upright
                             // Checked only when no live frame managed a reading: text that IS being
                             // read is large enough by demonstration, whatever the measurement says.
                             framing?.readiness == TextResolutionGuidance.Readiness.TOO_SMALL ->

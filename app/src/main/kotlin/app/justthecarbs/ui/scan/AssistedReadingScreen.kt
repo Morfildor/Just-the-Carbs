@@ -101,6 +101,26 @@ data class AssistState(
      * equally consistent with the same pixels. The user is asked for the digits, not for the basis.
      */
     val scaleAmbiguous: Boolean = false,
+    /**
+     * Open directly on focused amount entry, because the row and basis are already established.
+     *
+     * ## The capture this exists for (thirteenth session)
+     *
+     * `20260904-081307-240` printed `Koolhydraten 6,2 g` in large, flat type. The parser found the
+     * total-carbohydrate row, resolved the `Ø/100 ml` column, and declined only the value cell — the
+     * printed `g` had been recognised as a `0`, giving `6,20`. Everything except the digits was
+     * known, and the app opened the **crop** screen: a rectangle the user could not usefully change,
+     * over a row the app had already located.
+     *
+     * When [ScanPresentationDecision] routes a capture here it has established, through
+     * [FocusedAmountEntry.of], that exactly one per-100 basis and one carbohydrate row exist. So the
+     * screen skips the *"tap the row / choose / type it in"* menu and asks the one question that
+     * remains. There is no basis picker on that step, deliberately: the label stated the basis and
+     * the app read it, so offering a choice would invite a guess to overwrite a fact.
+     *
+     * It changes no rule and reads no value — it selects the first screen.
+     */
+    val startOnFocusedEntry: Boolean = false,
 )
 
 /** Which step of the assisted flow the user is on. */
@@ -205,7 +225,7 @@ private fun BasisActions(
                 },
             ),
             style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.75f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 
@@ -269,12 +289,12 @@ private fun LabelledChoices(
                 Text(
                     text = candidate.label,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = stringResource(R.string.assist_unknown_serving),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             return@forEach
@@ -307,7 +327,7 @@ private fun LabelledChoices(
                         candidate.reading.basis.label,
                     ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.75f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -358,7 +378,16 @@ fun AssistedReadingScreen(
     onRetake: () -> Unit,
     onClose: () -> Unit,
 ) {
-    var step by remember { mutableStateOf<AssistStep>(AssistStep.Choosing) }
+    // The first screen. [AssistState.startOnFocusedEntry] is set only when the caller has already
+    // established, through [FocusedAmountEntry.of], that the row and exactly one per-100 basis
+    // exist — so the menu of ways forward would be offering choices about questions already
+    // answered. `remember` with no key: this selects the *initial* step, and the user's own
+    // navigation within the screen must not be undone by a recomposition.
+    var step by remember {
+        mutableStateOf<AssistStep>(
+            if (state.startOnFocusedEntry) AssistStep.TypingFocusedAmount else AssistStep.Choosing,
+        )
+    }
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
     var typed by remember { mutableStateOf("") }
     var rowCandidates by remember { mutableStateOf<List<RecoveryCandidates.Candidate>>(emptyList()) }
@@ -414,10 +443,24 @@ fun AssistedReadingScreen(
         onUseValue(perHundred.amount, basis)
     }
 
+    // ## Black is the photo's ground, not the screen's (thirteenth pass)
+    //
+    // This whole screen used to be `.background(Color.Black)` with `Color.White` text scattered
+    // through it and Material controls — `OutlinedTextField`, `Button`, helper and error text —
+    // left on their theme defaults. In **Light** theme those defaults are dark-on-light, so the
+    // field's label, outline, cursor and typed digits rendered dark grey on black. That is the
+    // low-contrast focused-entry state the owner reported, and it is worst on precisely the screen
+    // that exists for the user to type a number they can read.
+    //
+    // The fix is structural rather than a repaint: black is kept where it belongs — behind the
+    // photograph, where it is the correct ground for a label image — and the interactive half
+    // becomes an ordinary Material [Surface]. Every control inside it then sits on
+    // `colorScheme.surface` with `onSurface` content, which is what their defaults already assume,
+    // in both themes and with no hardcoded colour at all.
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
@@ -436,7 +479,7 @@ fun AssistedReadingScreen(
                     },
                 ),
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = stringResource(
@@ -455,7 +498,7 @@ fun AssistedReadingScreen(
                     },
                 ),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -463,6 +506,10 @@ fun AssistedReadingScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                // The photograph's own ground. `ContentScale.Fit` letterboxes a 1684x3648 capture in
+                // almost any viewport, and black is the right neutral behind a label image in both
+                // themes — a cream letterbox would compete with the package.
+                .background(Color.Black)
                 .onSizeChanged { viewSize = it },
         ) {
             androidx.compose.foundation.Image(
@@ -591,6 +638,49 @@ fun AssistedReadingScreen(
         ) {
             when (step) {
                 AssistStep.Choosing -> {
+                    // ## A withheld reading leads with focused entry (eleventh session)
+                    //
+                    // `20260903-142926-419`: the Lidl cracker prints `72,0 g / 100 g`, ML Kit
+                    // landed on its Spanish row and returned `72g` with the separator gone, and
+                    // [ReadingEligibility] refused it — correctly, and by the same rule that keeps
+                    // the red label's `12` out.
+                    //
+                    // What was wrong is only what came next. A withheld value is by definition
+                    // absent from `labelled`, so this screen offered *Tap the carbohydrate row* and
+                    // *Type it in*, and focused entry — the one screen that already knew the row
+                    // **and** the basis — was reachable only after a tap had been made and found
+                    // fruitless. The app established both facts before the screen was drawn;
+                    // making the user discover that by failing is the dead-end shape this whole
+                    // screen exists to remove.
+                    //
+                    // **Gated on `scaleAmbiguous`, not offered universally.** On an ordinary failed
+                    // read nothing was established, so an offer to type "the value printed under
+                    // 100 g" would name a basis the app never read — and there the tap genuinely is
+                    // the user's lever, so it stays first. `focusedTarget` is required as well
+                    // because the flag says a value was withheld, not that a target exists.
+                    //
+                    // No digits travel with it: the withheld number is exactly what the app
+                    // declined to stand behind, so prefilling it would re-propose it with the app's
+                    // authority attached.
+                    if (state.scaleAmbiguous && focusedTarget != null) {
+                        Text(
+                            text = stringResource(R.string.assist_focused_offer),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Button(
+                            onClick = { step = AssistStep.TypingFocusedAmount },
+                            shape = RoundedCornerShape(Space.buttonRadius),
+                            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                        ) {
+                            Text(
+                                stringResource(
+                                    R.string.assist_focused_action,
+                                    focusedTarget.basis.unitLabel,
+                                ),
+                            )
+                        }
+                    }
                     // The labelled choices lead when the label established a basis anywhere. They
                     // are the only route that reaches Quick Calculation without the user having to
                     // state a basis themselves, so putting anything above them would send people
@@ -603,11 +693,24 @@ fun AssistedReadingScreen(
                             modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
                         ) { Text(stringResource(R.string.assist_pick_labelled)) }
                     }
-                    Button(
-                        onClick = { step = AssistStep.PickingRow },
-                        shape = RoundedCornerShape(Space.buttonRadius),
-                        modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
-                    ) { Text(stringResource(R.string.assist_pick_row)) }
+                    // Tapping a row stays available and stays *primary* in the ordinary case. It is
+                    // demoted only when focused entry is offered above, so the screen has one
+                    // primary action rather than two competing ones — and tapping is genuinely the
+                    // weaker route there, since the row it would identify is already known.
+                    val focusedEntryLeads = state.scaleAmbiguous && focusedTarget != null
+                    if (focusedEntryLeads) {
+                        OutlinedButton(
+                            onClick = { step = AssistStep.PickingRow },
+                            shape = RoundedCornerShape(Space.buttonRadius),
+                            modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                        ) { Text(stringResource(R.string.assist_pick_row)) }
+                    } else {
+                        Button(
+                            onClick = { step = AssistStep.PickingRow },
+                            shape = RoundedCornerShape(Space.buttonRadius),
+                            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                        ) { Text(stringResource(R.string.assist_pick_row)) }
+                    }
                     OutlinedButton(
                         onClick = { step = AssistStep.TypingValue },
                         shape = RoundedCornerShape(Space.buttonRadius),
@@ -636,7 +739,7 @@ fun AssistedReadingScreen(
                             Text(
                                 text = it,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                         LabelledChoices(rowCandidates, ::accept)
@@ -652,7 +755,7 @@ fun AssistedReadingScreen(
                         Text(
                             text = stringResource(R.string.assist_focused_offer),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Button(
                             onClick = { step = AssistStep.TypingFocusedAmount },
@@ -686,7 +789,7 @@ fun AssistedReadingScreen(
                                 focusedTarget.basis.unitLabel,
                             ),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         OutlinedTextField(
                             value = typed,
