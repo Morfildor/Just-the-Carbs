@@ -1,5 +1,6 @@
 package app.justthecarbs.ui.settings
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,15 +11,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,6 +41,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.BuildConfig
 import app.justthecarbs.R
@@ -70,6 +80,8 @@ fun SettingsScreen(
     var confirmClearRecents by remember { mutableStateOf(false) }
     var confirmClearProducts by remember { mutableStateOf(false) }
     var privacyPolicyLinkFailed by remember { mutableStateOf(false) }
+    var feedbackLinkFailed by remember { mutableStateOf(false) }
+    var rateLinkFailed by remember { mutableStateOf(false) }
     var evidenceExportFailed by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
@@ -189,6 +201,28 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                // The one item in this section that is marketing rather than utility, so it leads
+                // rather than sitting between Feedback and the safety box as one more plain text row.
+                RateUsCard(
+                    failed = rateLinkFailed,
+                    onClick = {
+                        try {
+                            uriHandler.openUri("market://details?id=${BuildConfig.APPLICATION_ID}")
+                        } catch (_: Exception) {
+                            try {
+                                // Falls back to the web listing when the Play Store app itself cannot
+                                // handle the market:// scheme (e.g. not installed).
+                                uriHandler.openUri(
+                                    "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}",
+                                )
+                            } catch (_: Exception) {
+                                rateLinkFailed = true
+                            }
+                        }
+                    },
+                )
+
                 SettingsAction(
                     text = stringResource(R.string.settings_privacy_policy),
                     onClick = {
@@ -205,6 +239,37 @@ fun SettingsScreen(
                 if (privacyPolicyLinkFailed) {
                     Text(
                         text = stringResource(R.string.settings_privacy_policy_link_failed, BuildConfig.PRIVACY_POLICY_URL),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                val feedbackSubject = stringResource(R.string.settings_feedback_subject)
+                val feedbackBodyPrompt = stringResource(R.string.settings_feedback_body_prompt)
+                SettingsAction(
+                    text = stringResource(R.string.settings_feedback),
+                    onClick = {
+                        val body = buildString {
+                            appendLine("App version: ${BuildConfig.VERSION_NAME}")
+                            appendLine("Android version: API ${android.os.Build.VERSION.SDK_INT}")
+                            appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+                            appendLine()
+                            append(feedbackBodyPrompt)
+                        }
+                        val mailUri = "mailto:${BuildConfig.CONTACT_EMAIL}" +
+                            "?subject=${Uri.encode(feedbackSubject)}" +
+                            "&body=${Uri.encode(body)}"
+                        try {
+                            uriHandler.openUri(mailUri)
+                        } catch (_: Exception) {
+                            // No email app can handle the intent. The address is still shown so the
+                            // user can reach it another way, same fallback shape as Privacy Policy above.
+                            feedbackLinkFailed = true
+                        }
+                    },
+                )
+                if (feedbackLinkFailed) {
+                    Text(
+                        text = stringResource(R.string.settings_feedback_link_failed, BuildConfig.CONTACT_EMAIL),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -306,6 +371,92 @@ fun SettingsScreen(
     }
 }
 
+/**
+ * The Play Store rating ask (§43 amendment): our own marketing, so it reads as an invitation rather
+ * than one more configuration row. Amber rather than the primary blue — blue is already spent on
+ * every ordinary action/link in this screen, and amber is the accent already associated with a
+ * "gold star" reading elsewhere in the palette (see [app.justthecarbs.ui.theme.AccentPalette]).
+ *
+ * The card tint stays at the same low, text-safe opacity the safety card uses for `orangeSoft`
+ * rather than introducing a second saturated fill: the accent-recession rule that keeps this app's
+ * accents out of the result figure's way applies just as much to a card that competes for attention
+ * on this screen with the actual settings controls. The button itself is the one deliberate
+ * exception — `colorScheme.tertiary` (the brighter, saturated `Orange`/`OrangeDark` token, already
+ * used for the meal accent) rather than the text-safe amber, because a call-to-action is meant to
+ * stand out and amber measured as too close in hue to the safety card immediately below it to read
+ * as a distinct, inviting action. White text on that fill fails contrast badly (measured 1.9:1 in
+ * light, 1.7:1 in dark — nowhere near the 4.5:1 floor every other label in this app clears), so the
+ * button label uses the theme's own dark ink/chalk text instead, which clears it by a wide margin
+ * (9.15:1 / 10.8:1).
+ */
+@Composable
+private fun RateUsCard(failed: Boolean, onClick: () -> Unit) {
+    val amber = MaterialTheme.extendedColors.accents.amber
+    val gold = MaterialTheme.colorScheme.tertiary
+    val onGold = MaterialTheme.colorScheme.onBackground
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Space.cardRadius))
+            .background(amber.copy(alpha = 0.12f))
+            .border(1.dp, amber.copy(alpha = 0.35f), RoundedCornerShape(Space.cardRadius))
+            .padding(Space.m),
+        verticalArrangement = Arrangement.spacedBy(Space.s),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+            repeat(5) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = amber,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        Text(
+            text = stringResource(R.string.settings_rate_headline),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = stringResource(R.string.settings_rate_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier
+                .padding(top = Space.xs)
+                .heightIn(min = Space.minTouchTarget)
+                .clip(RoundedCornerShape(Space.buttonRadius))
+                .background(gold)
+                .clickable(onClick = onClick)
+                .semantics(mergeDescendants = true) { role = Role.Button }
+                .padding(horizontal = Space.m),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s),
+        ) {
+            Text(
+                text = stringResource(R.string.settings_rate),
+                style = MaterialTheme.typography.labelLarge,
+                color = onGold,
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = onGold,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        if (failed) {
+            Text(
+                text = stringResource(R.string.settings_rate_link_failed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 @Composable
 private fun SettingsAction(text: String, onClick: () -> Unit) {
     Text(
@@ -316,6 +467,7 @@ private fun SettingsAction(text: String, onClick: () -> Unit) {
             .fillMaxWidth()
             .height(Space.minTouchTarget)
             .clickable(onClick = onClick)
+            .semantics { role = Role.Button }
             .padding(vertical = 12.dp),
     )
 }

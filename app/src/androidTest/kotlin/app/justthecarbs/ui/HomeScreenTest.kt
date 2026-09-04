@@ -89,6 +89,7 @@ class HomeScreenTest {
         onScanLabel: () -> Unit = {},
         onManualEntry: () -> Unit = {},
         onSearchSubmit: () -> Unit = {},
+        onSearchQueryChanged: (String) -> Unit = {},
         density: Density? = null,
     ) {
         compose.setContent {
@@ -109,6 +110,7 @@ class HomeScreenTest {
                         },
                         searchState = searchState,
                         onSearchSubmit = onSearchSubmit,
+                        onSearchQueryChanged = onSearchQueryChanged,
                     )
                 }
             }
@@ -253,6 +255,47 @@ class HomeScreenTest {
         // Search owns the whole middle region, so the starter content and the action cards yield.
         compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
         compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertDoesNotExist()
+    }
+
+    /**
+     * Home is the app's start destination, so it sits at the bottom of the back stack — the system
+     * back button has nothing to pop and would otherwise close the app while the user is mid-search.
+     * Pressing back with a query present must clear it instead, the same action the field's own X
+     * button performs, rather than exiting.
+     */
+    @Test
+    fun systemBackClearsAnActiveSearchInsteadOfClosingTheApp() {
+        var cleared: String? = null
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(query = "haribo"),
+            onSearchQueryChanged = { cleared = it },
+        )
+
+        androidx.test.espresso.Espresso.pressBack()
+
+        assertEquals("", cleared)
+    }
+
+    /**
+     * With no query to leave, the interception must be OFF so back falls through to its default
+     * behaviour (closing the app, since Home has no back-stack entry) rather than being swallowed.
+     * Asserted by actually pressing back with a blank query: Espresso surfaces a fall-through exit
+     * as [androidx.test.espresso.NoActivityResumedException] rather than a normal return, which is
+     * itself the proof the app was not intercepted — a caught exception here would mean the handler
+     * wrongly stayed enabled and silently ate the press instead of letting the activity finish.
+     */
+    @Test
+    fun systemBackWithNoActiveSearchClosesTheAppRatherThanBeingSwallowed() {
+        show(recents = emptyList())
+
+        try {
+            androidx.test.espresso.Espresso.pressBack()
+            org.junit.Assert.fail("expected back to fall through and finish the activity")
+        } catch (expected: androidx.test.espresso.NoActivityResumedException) {
+            // The handler declined to intercept, so the press reached the activity and closed it —
+            // exactly the pre-existing (and here, still correct) behaviour for an empty query.
+        }
     }
 
     // ---- Home's inline search shares SearchScreen's refresh rules ----------------------------

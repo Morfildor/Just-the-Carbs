@@ -94,7 +94,7 @@
       No alarm colour and no warning icon: the online value is usually right, and dressing it as a
       fault every time trains the user to ignore it (§25).
     -->
-    <string name="product_result_unverified" tools:ignore="MissingTranslation">Not checked against the package</string>
+    <string name="product_result_unverified" tools:ignore="MissingTranslation">Not checked against the package — crowd-sourced data, may differ from yours</string>
     <string name="product_result_verified" tools:ignore="MissingTranslation">Checked against the package</string>
     <string name="product_source_verified">✓ Verified by you</string>
     <string name="product_source_manual">Entered by you</string>
@@ -594,6 +594,14 @@
     <string name="settings_version">Version %1$s</string>
     <string name="settings_privacy_policy" tools:ignore="MissingTranslation">Privacy Policy</string>
     <string name="settings_privacy_policy_link_failed" tools:ignore="MissingTranslation">Could not open a browser. The privacy policy is at: %1$s</string>
+    <string name="settings_feedback" tools:ignore="MissingTranslation">Send feedback / Report a problem</string>
+    <string name="settings_feedback_subject" tools:ignore="MissingTranslation">JustTheCarbs feedback</string>
+    <string name="settings_feedback_body_prompt" tools:ignore="MissingTranslation">Please describe what happened.\n\nIf this concerns a nutrition-label scan, you can also attach an exported Scan Evidence ZIP.</string>
+    <string name="settings_feedback_link_failed" tools:ignore="MissingTranslation">No email app found. You can reach us at %1$s.</string>
+    <string name="settings_rate_headline" tools:ignore="MissingTranslation">Enjoying Just the Carbs?</string>
+    <string name="settings_rate_body" tools:ignore="MissingTranslation">A quick rating on the Play Store helps other people find the app.</string>
+    <string name="settings_rate" tools:ignore="MissingTranslation">Rate JustTheCarbs</string>
+    <string name="settings_rate_link_failed" tools:ignore="MissingTranslation">Could not open the Play Store.</string>
     <!--
       Two licences, two lines: the database and the photographs are licensed separately by Open
       Food Facts, and one sentence covering only ODbL leaves the images uncredited. Both name the

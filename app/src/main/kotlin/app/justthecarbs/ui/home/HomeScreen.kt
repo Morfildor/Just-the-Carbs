@@ -1,5 +1,6 @@
 package app.justthecarbs.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -134,6 +135,14 @@ fun HomeScreen(
     onSearchEnterManually: () -> Unit = {},
     onSearchRetry: () -> Unit = {},
 ) {
+    // Home is the start destination, so the system back button has no back-stack entry to pop and
+    // would otherwise close the app while the user is mid-search. Intercept only while there is a
+    // query to leave — clearing it is the same action the field's own X button performs — and let
+    // an empty query fall through to the default (close) behaviour, unchanged.
+    BackHandler(enabled = searchState.query.isNotBlank()) {
+        onSearchQueryChanged("")
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         AccentBackdrop(
             accent = MaterialTheme.colorScheme.primary,

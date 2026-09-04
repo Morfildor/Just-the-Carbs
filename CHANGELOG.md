@@ -5,7 +5,8 @@ most recent released one; every uploaded version is copied into
 [`docs/version-history.md`](docs/version-history.md), the append-only archive that records each
 artifact's hash, size and signer.
 
-**Latest release: `1.0.3` / `versionCode 4`**, on closed testing since 2026-09-04.
+**Latest release: `1.0.3` / `versionCode 4`**, on closed testing since 2026-09-04. `1.0.4` /
+`versionCode 5` is now open below.
 
 ## Versioning rule — one version per uploaded artifact (owner, resolved 2026-08-30)
 
@@ -62,10 +63,33 @@ work after
 
 ## Unreleased
 
-Nothing yet. **No version is open** — `1.0.3` / `versionCode 4` shipped on 2026-09-04, so
-`branding.gradle.kts` currently names a **spent** number. The first code change after this bumps it
-to `1.0.4` / `versionCode 5` and renames this heading to that version **in the same change**, so the
-number and the notes never disagree. A documentation-only change opens nothing.
+Nothing yet. `1.0.4` / `versionCode 5` is open below; a documentation-only change opens nothing
+further and lands directly under that heading.
+
+## 1.0.4 (versionCode 5) — 2026-09-04, open
+
+Opened by a small trust + feedback polish patch, requested after reviewing closed-beta tester
+feedback (`docs/Closed_beta_tester_feedback.pdf`). Deliberately surgical — no OCR, scanning,
+calculation, database or networking file was touched.
+
+### Added
+
+- **Send feedback / Report a problem** (Settings → About). Opens the device's email app via
+  `mailto:`, prefilled with a subject and a body containing app version, Android API level and
+  device manufacturer/model, addressed to the app's existing support address
+  (`BuildConfig.CONTACT_EMAIL`). Shows an inline fallback message if no email app can handle it.
+  Nothing is attached or exported automatically.
+- **Rate JustTheCarbs** (Settings → About). Opens the Play Store app directly to the app's own
+  listing (`market://details?id=...`), falling back to the HTTPS listing if the Play Store app
+  cannot handle the intent, with an inline fallback message if neither succeeds. User-initiated
+  only — no in-app review API, no automatic prompts, no scan-count gating.
+
+### Changed
+
+- The existing "Not checked against the package" line shown beside the carbohydrate result (for
+  Open Food Facts-sourced values only) now also notes that the data is crowd-sourced and may differ
+  from the user's own product — reusing the existing conditional slot and height budget rather than
+  adding a new line to the result panel.
 
 ## 1.0.3 (versionCode 4) — RELEASED 2026-09-04, closed testing
 
