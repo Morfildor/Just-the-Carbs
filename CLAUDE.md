@@ -1208,6 +1208,142 @@ everything. The misplacement is cosmetic and was left alone with a note in the c
 **Stage deletions with the commit they belong to, and do not rewrite history to fix a tidy-ness
 problem.**
 
+## Pair-symmetry fix + the connected gate attributed (2026-09-04, eighteenth session) — READ FIRST
+
+A review pass over the fourth-test evidence (`docs/Scan Evıdence 4th test/`, thirteen captures
+`160320`–`160740` on a Samsung SM-S928B) and Codex's audit
+(`.audits/architectural-analysis-2026-09-04.md`). One real defect fixed, and the audit's headline P0
+**measured and materially corrected**. Nothing about the calculation, the schema, migrations, the §10
+lookup priority, barcode detection or any OCR *recognition* rule changed — no threshold moved and no
+parser rule was relaxed. Still `versionCode 4`, nothing built as a release, nothing uploaded.
+
+### The audit's P0 "12 of 33 connected tests fail" is real, and 9 of the 12 are NOT this tree
+
+Codex ran the connected OCR suite on the `carbscan` emulator and reported 33 tests / 12 failures,
+recommending it be treated as a release blocker. The count reproduces exactly. **What the audit did
+not do is run the control**, and the control is what decides whether those failures are regressions:
+
+| run | tests | failures |
+|---|---|---|
+| working tree, before this pass | 33 | **12** |
+| `git worktree` at clean `47ad5d1`, same emulator, same session | 33 | **9** |
+| working tree, after this pass | 33 | **9** — all 9 identical by name to the control |
+
+So **9 of the 12 were pre-existing** and are the emulator ML Kit degradation this file already
+records (`Koolhydraten` → `nlhioonorate`, `Glucides` → `Gucides`; the corpus is recorded as 39/39 on
+real hardware). Only **3** were new, and all three failed with `expected row provenance` — a stale
+test contract, never a wrong value.
+
+**Do not read the remaining 9 as a regression from this tree, and do not "fix" the fixtures against
+emulator output.** Equally, do not read 9 as green: the corpus is still unverified against this diff
+on hardware, and saying so is an argument rather than a measurement until a device is attached.
+
+### The stale contract was genuinely unpassable, not merely outdated
+
+`RealImageOcrTest.assertRowNamesTheTotalNotSugars` required `CandidateProvenance.FromRow`. The
+tabular path now emits `FromDeclaration`, and **no production code constructs `FromRow` at all** —
+verified by search, the only remaining reference being one diagnostics branch. So four cases could
+not pass whatever the parser read.
+
+Migrated rather than deleted, and **without weakening what it proves**. Both types carry the same
+evidence (the source rows' text), so both substantive claims are asserted on either — and the second
+is **new**, because it can no longer be inherited:
+
+1. the source rows name a carbohydrate term;
+2. **no source row names a child term.** `FromRow` proved "the total and its child occupy different
+   rows" implicitly, by carrying one row. A declaration may span several, so the child exclusion has
+   to be *stated*. Checked against `NutritionTerminology.exclusionTerms` — the parser's own child
+   vocabulary — so the assertion cannot drift from what the parser treats as a child.
+
+`theProseReaderIsNeverConsultedForAReadableTable` had the same defect and is now stated as a positive
+check against both tabular types, deliberately not as `!is FromProseSpan`: a future third provenance
+type must be considered rather than silently satisfying a negative test.
+
+### The real defect: a separatorless pair refused one member and offered the other
+
+`ScaleAmbiguity` searched for the paired value only among elements **to the right of** the candidate.
+So on a two-column row the left cell saw its pair and was refused, and the right cell saw nothing,
+returned `Unsupported`, and was then admitted by its declared serving basis. The bundles record the
+asymmetry in the app's own words — `20260904-160639-565`:
+
+```
+suppressed '46' @x=1161: a common rescaling of '46' and '12' is equally consistent …
+offered    '12' -> 12 g / serving | selectable (awaiting a tap)
+```
+
+One number refused **because of** the other, and the other offered. Three captures in this one
+session (`160639-565` `46`/`12`, `160501-961` `159`/`18`, `160532-812` `15`/`38g`), so it is a
+property of the rule rather than of one photograph. A common rescaling is a property of the **pair**
+and is symmetric by construction — this file's own stated rule says "a **pair** of values that move
+together" — and the implementation disagreed with the rule it documents.
+
+**The rightward bound's stated reason was misattributed.** It was added so "the nutrient's own name"
+could not pair with its own value, making a single-column `41g` read as ambiguous. That consequence
+is real; the cause is not the direction. What excludes a *name* is `looksLikeAValueCell`, which
+requires a **leading digit** — so `Koolhydraten`, `Vetten`, `E471` and `Omega-3` are all excluded from
+either side. The direction only removed the rightmost cell's ability to see its own pair. Both
+controls are pinned (`a lone value beside a nutrient name is unsupported, not ambiguous`, `a nutrient
+name containing digits is not a pair`).
+
+The paired sibling is now chosen by **nearest horizontal gap** rather than element order, since with
+both sides admitted "first" can name the far column. That decides only how the refusal *reads* in a
+bundle, never whether it happens.
+
+**No value is repaired.** `46` never becomes `4.6` and `12` never becomes `1.2`; a withheld figure
+routes to focused entry with the frozen photograph, the highlighted row and the basis preserved.
+
+**A declared serving basis does not rescue a demonstrated ambiguity**, and that is the one behaviour
+change worth stating plainly. A serving sentence the label printed says which quantity a figure is
+measured per; it says nothing about where the figure's decimal point is. The Korean sauce control is
+untouched — its `6 g / 18 g serving` is a *lone* separatorless value (`Unsupported`), never a
+demonstrated pair — and the whole JVM suite confirms it.
+
+### Verified
+
+JVM **1688/1688** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 168 JUnit XML files
+— up from 1678). Lint **exit 0, 0 errors, 23 warnings** — unchanged baseline. Connected OCR suite
+**33 tests, 9 failures, all 9 pre-existing at clean `47ad5d1`** on the same emulator in the same
+session, compared by name.
+
+`EighteenthSessionPairFixtures` is generated by `tools/derive-session-fixtures.py` from each bundle's
+own `diagnostics.txt`, and the tool asserts the parsed element count against the count the device
+declared (160, 179, 167 — all matching). The geometry is the phone's; no box was invented.
+
+**Negative control**, restored and re-verified green: restoring the `it.box.left >
+candidateElement.box.left` bound fails **6** — three unit cases in `ScalePairSymmetryTest` and all
+three real captures in `EighteenthSessionPairRegressionTest`.
+
+### What was reviewed and deliberately NOT changed
+
+- **`160359-876`'s cross-column "contradiction" is correct, not a false veto.** The Fanta reads
+  `Koolhydraten: 0.5g 13g` where `13g` is the 250 ml column's printed `1,3`. The ratio check reports
+  `row 26.0 vs table 2.6` and blocks automatic advancement — which is right. The value shown (`0.5`,
+  correct) still reaches the user, because its own token carries a separator. Working as designed.
+- **The audit's other P0 — the Hellmann's `1,3` → `13` proposal — is a documented, measured
+  trade-off**, not an oversight: suppressing it also suppresses two correct separatorless integers
+  (`57 g`, `35 g`). The route that actually closes it is a second physical observation, which is the
+  audit's own P1 and is a feature, not a fix. Left for that work rather than traded away here.
+- **P1 (`SECOND_OBSERVATION_PASS` unwired), P2s (semantic model as single source of truth, `Resolved`
+  evidence grades), the replay-harness consolidation and the held-out optical benchmark** are all
+  correctly identified and are architecture/validation work, not a release-blocker fix. Attempting
+  them in this pass would have been a large refactor of the trust core with no device to measure it
+  against.
+
+### NOT verified, and this is the gate
+
+**No physical device was attached** — everything above is JVM plus the `carbscan` emulator, whose
+virtual camera cannot produce a nutrition table, so the automatic accept path was not exercised end
+to end and **no physical-QA checkbox was ticked**. Nothing in this pass has been seen on hardware.
+
+The three captures the fix is about were **already routing to recovery or focused entry** on the
+device; what changed is that the offered figure is now withheld there too. Confirming that on
+hardware — that `12`, `18` and `38` no longer appear as one-tap choices, and that focused entry opens
+with the basis preserved — is the open gate, alongside §32 and §§26–31.
+
+**A leftover control worktree** may remain at `%TEMP%\jtc-control`; it is deregistered from git
+(`git worktree list` shows only the main tree) and Windows path-length refused its deletion. It is
+inert — delete it with an explorer or `rmdir /s` if it is in the way.
+
 ## UI refresh: colourful chrome, opaque bars (2026-09-04) — still 1.0.3 / versionCode 4, READ FIRST
 
 A UI/UX pass, plus a window-configuration fix the owner asked for. **Nothing about the

@@ -1951,3 +1951,84 @@ compared programmatically by test name. That is a same-emulator comparison, not 
 CLAUDE.md records this corpus as 39/39 on real hardware, and row 33.18 is where that is settled.
 
 **Result:** ____________________ **Date:** ____________
+
+---
+
+## §34 — The separatorless pair, from both sides (eighteenth session, 1.0.3)
+
+**Status: OPEN.** §§26–33 remain open alongside it; nothing here closes any of them.
+
+Evidence for the analysis: `docs/Scan Evıdence 4th test/`, thirteen bundles
+`20260904-160320-756`..`160740-278`, Samsung SM-S928B, API 36, app `1.0.3-debug`. **Those bundles
+were produced by the previous APK**, so they establish what was wrong and never that it is fixed.
+
+**Artifact to test — pin THIS hash to the device run:**
+`app/build/outputs/apk/debug/app-debug.apk`, **89,601,873 bytes**, SHA-256
+`f9c96c81542dc74d99a9dd6ac74432e1a1faa65f73356b716bedea9c101488d8`, `versionCode=4` /
+`1.0.3-debug` read from the APK with `aapt2 dump badging`. Permissions unchanged (CAMERA, INTERNET,
+ACCESS_NETWORK_STATE).
+
+*(A debug build is not byte-reproducible, so **rebuild and re-hash before the device run** if the
+tree has moved since. What matters is that the APK on the phone is the one the rows below are
+ticked against.)*
+
+### What changed beneath these rows
+
+`ScaleAmbiguity` looked for a candidate's paired value only among elements **to the right of** it, so
+on a two-column row the left cell saw the pair and was refused while the right cell saw nothing and
+was offered. Three captures in this session recorded it:
+
+| capture | recognised carbohydrate row | suppressed | was offered |
+|---|---|---|---|
+| `160639-565` | `Koolhydraten/Glucides 46 g 12 g` | `46` | **`12` → 12 g / serving** |
+| `160501-961` | `koolhydraten, waarvan 159 18` | `159` | **`18` → 18 g / serving** |
+| `160532-812` | `koolhydraten, waarvan 15 g 38g` | `15` | **`38g` → 38 g / 25 g** |
+
+A common rescaling is a property of the **pair** and is symmetric, so both members are now refused.
+**No value is repaired** — `46` never becomes `4.6` — and each routes to focused entry with the
+photograph, the highlighted row and the basis preserved.
+
+### The rows
+
+The three products above are the ones whose failures motivated this. Rows 34.1–34.3 are what decide
+whether the leak is actually closed on a phone.
+
+| # | Check | ✅ |
+|---|---|---|
+| 34.1 | Scan the **protein bar** (`46 g / 100 g`, `12 g / 25 g reep`). No screen — proposal card or recovery list — ever shows **`12`** as a selectable or pre-filled carbohydrate figure | ☐ |
+| 34.2 | Same package: **`46`** likewise never appears as a selectable or pre-filled figure (the control — it was already suppressed and must stay so) | ☐ |
+| 34.3 | Same package: the app routes to **focused entry**, the frozen photograph is on screen, the carbohydrate row is highlighted, and the basis the label stated is preserved (no "per 100 g or per 100 ml?" question) | ☐ |
+| 34.4 | Typing the printed `46` into focused entry reaches the calculator with `46 g / 100 g` | ☐ |
+| 34.5 | Repeat 34.1–34.4 for the **crisps/serving package** (`159`/`18` and `15`/`38g` captures): neither member of either pair is ever offered | ☐ |
+| 34.6 | **The Korean sauce control still works** — a label printing `Serv. size: 1 Tbsp (18 g)` still offers `6 g / 18 g serving`. A lone separatorless value under a *declared* serving is unaffected; only a demonstrated pair is refused | ☐ |
+| 34.7 | **A single-column label still reads** — a package printing one carbohydrate value with no second column (e.g. the `41 g / 100 ml` drink) still reaches a proposal, not a refusal | ☐ |
+| 34.8 | **A separated value is unaffected** — any label whose carbohydrate token keeps its decimal separator (`0,5 g`, `2,5 g`) still proposes exactly as before | ☐ |
+| 34.9 | Scan the **Fanta** (`0,5 g / 100 ml`, `1,3 g / 250 ml`). The figure shown is `0.5 / 100 ml`; **`13` and `1.3` are never offered as the per-100 figure** | ☐ |
+| 34.10 | Across every capture in the session: **zero wrong carbohydrate values shown or offered through any route** | ☐ |
+| 34.11 | Export the evidence bundle and confirm the recovery list no longer prints an `offered` line for a member of a pair whose sibling it `suppressed` | ☐ |
+
+### Cold and warm timing
+
+Report separately. This session's own bundles measured `user-visible` at 477–1443 ms, so any figure
+materially above that is a regression rather than the expected cost.
+
+| run | package | cold/warm | user-visible ms | action reached |
+|---|---|---|---|---|
+| 1 | | | | |
+| 2 | | | | |
+| 3 | | | | |
+
+### What this pass could NOT verify
+
+**No physical device was attached.** Everything is JVM plus the `carbscan` emulator
+(`ro.kernel.qemu=1`, `ro.hardware=ranchu`), whose virtual camera cannot produce a nutrition table —
+so the automatic accept path was not exercised end to end and **no row above is ticked**.
+
+The connected OCR suite was run on that emulator and measured **33 tests / 9 failures, against a
+clean-`47ad5d1` control of 33 / 9 on the same emulator in the same session** — identical by name,
+zero new failures. Before this pass the same run measured 12 failures; the three that went were
+stale `FromRow` provenance contracts, not values. That is a same-emulator comparison, **not device
+evidence**: CLAUDE.md records this corpus as 39/39 on real hardware, and row 33.18 is where that is
+settled.
+
+**Result:** ____________________ **Date:** ____________

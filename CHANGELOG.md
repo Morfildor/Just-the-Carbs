@@ -70,6 +70,42 @@ Opened 2026-08-29 under the one-version-per-code-change rule. **Not built, not u
 track.** Nothing goes into [`docs/version-history.md`](docs/version-history.md) until Play accepts an
 artifact for this code.
 
+### Fixed — the eighteenth session (2026-09-04)
+
+A separatorless **pair** of values demonstrates that a common rescaling is equally consistent with
+the recognised text — and that is true of both members, not only the left one. The app refused one
+and offered the other.
+
+- **Neither member of a separatorless pair is offered.** `ScaleAmbiguity` searched for a candidate's
+  paired value only among elements to the *right* of it, so on a two-column carbohydrate row the
+  left cell saw the pair and was withheld while the right cell saw nothing, reported "no paired
+  value", and was then admitted by its declared serving basis. Measured on three captures of the
+  2026-09-04 session: a protein bar printing `46 g / 100 g` and `12 g / 25 g reep` suppressed `46`
+  and **offered `12 g / serving`** one tap from the calculator. The pair relation is symmetric, so
+  both are now withheld.
+
+  The rightward bound existed so a nutrient *name* could not pair with its own value. That job is
+  actually done by the leading-digit rule — `Koolhydraten`, `Vetten` and `E471` are excluded from
+  either side — and both controls are pinned by tests. A single-column label reads exactly as before.
+
+  **No value is repaired**: `46` never becomes `4.6`. A withheld figure routes to focused entry with
+  the frozen photograph, the highlighted row and the label's own basis preserved, where the user
+  types the digits printed in front of them.
+
+- A declared serving basis no longer rescues a **demonstrated** ambiguity. A serving sentence the
+  label printed says which quantity a figure is measured per; it says nothing about where its decimal
+  point is. Lone separatorless values under a declared serving — the Korean sauce's
+  `6 g / 18 g serving` — are unaffected and still offered.
+
+### Fixed — test contracts, not behaviour (2026-09-04)
+
+- Four real-image OCR cases asserted `CandidateProvenance.FromRow`, which **no production code
+  constructs any more** — the tabular path emits `FromDeclaration`. They were failing on a type name
+  while the carbohydrate values they exist to protect were still correct. Migrated to accept either,
+  and **strengthened**: the source rows must now also name no child nutrient, checked against the
+  parser's own child vocabulary. `FromRow` proved that implicitly by carrying one row; a declaration
+  may span several, so it has to be stated.
+
 ### Fixed — the seventh phone session (2026-09-02)
 
 The sixth session's scale safety held on the device: the truffle label never displayed or offered
