@@ -344,9 +344,16 @@
          means different things per 100 g and per 100 ml. Takes the unit from the basis chips below
          so the label and the selection can never disagree. -->
     <string name="manual_carbs">Carbs per 100 %1$s</string>
+    <!-- Shown instead of manual_carbs when a scanned figure arrived with no basis the app could
+         establish (§5, startup-hardening pass) — there is no unit to name yet. -->
+    <string name="manual_carbs_unresolved">Carbs (choose a unit below)</string>
     <string name="manual_basis">Measured per</string>
     <string name="manual_basis_g">100 g</string>
     <string name="manual_basis_ml">100 ml</string>
+    <!-- Shown only while state.basis is null (§5, startup-hardening pass): the label printed a
+         number with nothing to say what it was measured per, so Save stays disabled until the user
+         picks one with the package in hand. -->
+    <string name="manual_basis_unresolved">The label didn\'t say what this is measured per. Choose g or ml to continue.</string>
     <string name="manual_package">Package size (optional)</string>
     <string name="manual_barcode">Barcode</string>
     <string name="manual_save">Save product</string>
@@ -547,6 +554,7 @@
     <string name="ocr_detected_value_no_basis">%1$s g</string>
     <string name="ocr_basis_unknown_prompt">This number was read, but not what it\'s measured per. Check the package and enter it yourself.</string>
     <string name="ocr_basis_unknown_correct">Enter it myself</string>
+    <string name="label_handoff_failed">The scan result couldn\'t be read back. Nothing was compared — scan again if you\'d like to check the package.</string>
     <string name="ocr_confirm">Confirm</string>
     <string name="ocr_correct">Correct</string>
     <string name="ocr_use">Use %1$s</string>

@@ -59,6 +59,26 @@ private const val KEY_DETECTED_CARBS = "detected_carbs"
 private const val KEY_DETECTED_BASIS = "detected_basis"
 
 /**
+ * Parses a label reading carried through the saved-state handoff (§12), or null on any malformed
+ * input.
+ *
+ * Both halves must parse. The basis in particular is never allowed to default to grams (§5,
+ * startup-hardening pass): `onUseValue` on the writing side always supplies a real [NutritionBasis],
+ * so a missing, blank or unrecognised [basisText] here means the round trip corrupted it — a
+ * malformed restore, not a normal path — and this is the same "never guess the denominator" rule the
+ * OCR basis-unknown card enforces on the reading side. `entries.firstOrNull` rather than `.valueOf`,
+ * which would crash the whole screen on exactly the corrupted input this guards against.
+ *
+ * Extracted as a pure top-level function (rather than left inline in the `LaunchedEffect`) so the
+ * parsing rule is JVM-testable without a Compose harness.
+ */
+internal fun parseDetectedLabelReading(carbsText: String?, basisText: String?): Pair<BigDecimal, NutritionBasis>? {
+    val carbs = carbsText?.toBigDecimalOrNull() ?: return null
+    val basis = basisText?.let { text -> NutritionBasis.entries.firstOrNull { it.name == text } } ?: return null
+    return carbs to basis
+}
+
+/**
  * Rebuilds a pending portion from its navigation arguments (correction pass §2).
  *
  * Returns null unless the arguments describe one complete, valid conversion. A half-parsed portion
@@ -185,12 +205,12 @@ fun JustTheCarbsNavHost(
     settings: AppSettings,
     navController: NavHostController = rememberNavController(),
 ) {
-    // Evaluated once, at NavHost's first composition. `settings` starts at AppSettings()'s default
-    // (hasSeenOnboarding = false) until the real DataStore value arrives via
-    // collectAsStateWithLifecycle in MainActivity, so a returning user can in principle see one
-    // frame of Onboarding before the true value loads. Not worth fixing here — DataStore reads are
-    // near-instant, and startDestination not re-evaluating on a later `settings` change is fine
-    // because completing onboarding navigates explicitly rather than relying on a recomposition.
+    // Evaluated once, at NavHost's first composition. By the time this composable exists at all,
+    // `settings` is guaranteed to be the real first DataStore value — MainActivity holds the splash
+    // screen and renders nothing but a neutral background (StartupState.Loading) until then, so a
+    // returning user's start destination is never decided from AppSettings()'s synthetic default.
+    // startDestination not re-evaluating on a later `settings` change is fine because completing
+    // onboarding navigates explicitly rather than relying on a recomposition.
     val startDestination = if (settings.hasSeenOnboarding) Routes.HOME else Routes.ONBOARDING
 
     NavHost(navController = navController, startDestination = startDestination) {
@@ -200,6 +220,12 @@ fun JustTheCarbsNavHost(
                 factory = factory { OnboardingViewModel(container.settingsRepository) },
             )
             val slideIndex by viewModel.slideIndex.collectAsStateWithLifecycle()
+            val coroutineScope = rememberCoroutineScope()
+            // Guards against a rapid double tap starting two navigation attempts. The ViewModel's
+            // own mutex already makes the DataStore write itself idempotent; this is the separate
+            // UI-layer guarantee that "completed once, navigated once" holds even when the second
+            // tap lands before the first coroutine has resumed.
+            var completing by remember { mutableStateOf(false) }
 
             OnboardingScreen(
                 slideIndex = slideIndex,
@@ -207,9 +233,14 @@ fun JustTheCarbsNavHost(
                 onSkip = viewModel::skip,
                 onSlideChanged = viewModel::showSlide,
                 onGetStarted = {
-                    viewModel.complete()
-                    navController.navigate(Routes.HOME) {
-                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    if (!completing) {
+                        completing = true
+                        coroutineScope.launch {
+                            viewModel.complete()
+                            navController.navigate(Routes.HOME) {
+                                popUpTo(Routes.ONBOARDING) { inclusive = true }
+                            }
+                        }
                     }
                 },
             )
@@ -301,13 +332,17 @@ fun JustTheCarbsNavHost(
             val detectedCarbs by savedState.getStateFlow<String?>(KEY_DETECTED_CARBS, null)
                 .collectAsStateWithLifecycle()
             LaunchedEffect(detectedCarbs) {
-                val carbs = detectedCarbs ?: return@LaunchedEffect
-                val basis = savedState.get<String>(KEY_DETECTED_BASIS)
-                    ?.let(NutritionBasis::valueOf)
-                    ?: NutritionBasis.PER_100_G
+                if (detectedCarbs == null) return@LaunchedEffect
+                val basisText = savedState.get<String>(KEY_DETECTED_BASIS)
                 savedState.remove<String>(KEY_DETECTED_CARBS)
                 savedState.remove<String>(KEY_DETECTED_BASIS)
-                viewModel.onLabelDetected(BigDecimal(carbs), basis)
+
+                val reading = parseDetectedLabelReading(detectedCarbs, basisText)
+                if (reading != null) {
+                    viewModel.onLabelDetected(reading.first, reading.second)
+                } else {
+                    viewModel.reportLabelHandoffFailure()
+                }
             }
 
             ProductScreen(
@@ -379,6 +414,7 @@ fun JustTheCarbsNavHost(
                 },
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
                 onConfirmLabelMatch = viewModel::confirmLabelMatch,
+                onDismissLabelHandoffFailure = viewModel::dismissLabelHandoffFailure,
                 onUseDetectedLabelValue = viewModel::useDetectedLabelValue,
                 onEditDetectedLabelValue = { detected ->
                     // "Edit detected value" hands the reading to manual entry pre-filled, so the
@@ -642,8 +678,8 @@ fun JustTheCarbsNavHost(
              * (`resolveSyntheticJavaPropertyAccessorCall`, on the enum's synthetic `name` accessor).
              * The behaviour is identical either way; only lint could tell the two apart.
              */
-            fun openManualEntryWith(carbs: BigDecimal, basis: NutritionBasis) {
-                val route = Routes.manual(barcode, carbs.toPlainString(), basis.name)
+            fun openManualEntryWith(carbs: BigDecimal, basis: NutritionBasis?) {
+                val route = Routes.manual(barcode, carbs.toPlainString(), basis?.name.orEmpty())
                 navController.navigate(route) {
                     popUpTo(Routes.LABEL_SCAN) { inclusive = true }
                 }

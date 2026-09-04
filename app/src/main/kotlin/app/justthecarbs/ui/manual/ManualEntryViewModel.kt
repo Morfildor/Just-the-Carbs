@@ -35,7 +35,16 @@ data class ManualEntryUiState(
     val barcode: String = "",
     val name: String = "",
     val carbsPer100: String = "",
-    val basis: NutritionBasis = NutritionBasis.PER_100_G,
+    /**
+     * Null means genuinely unresolved, never "grams by default" (§5, startup-hardening pass).
+     *
+     * Reached when a scanned figure arrives with no basis the parser could establish — the label
+     * printed a number with nothing to say what it was measured per. Defaulting to
+     * [NutritionBasis.PER_100_G] here would silently pick a denominator the app never read, which
+     * is exactly the "grams of what?" guess this app must never make on the user's behalf. Ordinary
+     * manual entry (nothing carried in) still starts on grams — see [ManualEntryViewModel.start].
+     */
+    val basis: NutritionBasis? = NutritionBasis.PER_100_G,
     val packageAmount: String = "",
     val nameError: Boolean = false,
     val carbsError: CarbsError? = null,
@@ -70,7 +79,7 @@ data class ManualEntryUiState(
     val saving: Boolean = false,
 ) {
     val canSave: Boolean
-        get() = !saving && name.isNotBlank() && PortionParser.parse(carbsPer100) != null
+        get() = !saving && name.isNotBlank() && basis != null && PortionParser.parse(carbsPer100) != null
 }
 
 /**
@@ -93,6 +102,12 @@ class ManualEntryViewModel(
      * it and the next scan resolves locally (§26). [ocrCarbs] and [ocrBasis] arrive from a label
      * reading the user has already confirmed (§29) — they are a starting point, still editable,
      * never a value that has been accepted on the user's behalf.
+     *
+     * The basis defaults to grams only for ordinary entry — [ocrCarbs] blank, nothing carried in.
+     * The moment a figure IS being carried in, a basis the parser could not resolve stays `null`
+     * rather than silently becoming grams (§5, startup-hardening pass): [ocrCarbs] non-blank with
+     * an unparsable [ocrBasis] is precisely the case a scanned reading with no established
+     * denominator produces, and defaulting there would guess a unit the label never stated.
      */
     fun start(
         barcode: String?,
@@ -101,12 +116,16 @@ class ManualEntryViewModel(
         pendingPortionUnit: PendingPortionUnit? = null,
     ) {
         if (_state.value.name.isNotEmpty() || _state.value.carbsPer100.isNotEmpty()) return
+        val parsedBasis = NutritionBasis.entries.firstOrNull { basis -> basis.name == ocrBasis }
         _state.update {
             it.copy(
                 barcode = barcode.orEmpty(),
                 carbsPer100 = ocrCarbs,
-                basis = NutritionBasis.entries.firstOrNull { basis -> basis.name == ocrBasis }
-                    ?: it.basis,
+                basis = when {
+                    parsedBasis != null -> parsedBasis
+                    ocrCarbs.isBlank() -> it.basis
+                    else -> null
+                },
                 pendingPortionUnit = pendingPortionUnit,
             )
         }
@@ -143,9 +162,14 @@ class ManualEntryViewModel(
             _state.update { it.copy(carbsError = CarbsError.MALFORMED) }
             return
         }
+        // Guarded by canSave, which already requires a non-null basis — but save() must never
+        // trust the button stayed disabled, since it is also the entry point for this ViewModel's
+        // own tests. A null basis here means "the label never said what this figure is measured
+        // per", and there is no value this app may write in its place.
+        val basis = current.basis ?: return
         // The same ceiling remote data has to clear. A hand-typed 482 is a slipped decimal point,
         // and accepting it would produce a tenfold-wrong result with total confidence (§13).
-        if (NutritionValueValidator.validateCarbsPer100(carbs.toDouble(), current.basis) == null) {
+        if (NutritionValueValidator.validateCarbsPer100(carbs.toDouble(), basis) == null) {
             _state.update { it.copy(carbsError = CarbsError.OUT_OF_RANGE) }
             return
         }
@@ -158,7 +182,7 @@ class ManualEntryViewModel(
             barcode = key,
             name = current.name.trim(),
             carbsPer100 = carbs,
-            basis = current.basis,
+            basis = basis,
             dataSource = ProductDataOrigin.MANUAL,
             packageAmount = PortionParser.parse(current.packageAmount),
         )

@@ -107,6 +107,17 @@ data class ProductUiState(
      */
     val labelVerdict: LabelVerdict? = null,
     /**
+     * A label reading was handed back from the scanner with no recognizable basis, so it was
+     * discarded rather than compared (§5, startup-hardening pass).
+     *
+     * The scanner's own OCR safety rule already refuses to guess `/100 g` for an unresolved basis;
+     * this is that same refusal reaching the comparison hand-off, where a corrupt or unparsable
+     * saved-state value must not silently become a comparison against nothing, nor default to
+     * grams. Said out loud rather than swallowed, same as [quickSaveFailed] — a discard with no
+     * message is indistinguishable from the tap having done nothing.
+     */
+    val labelHandoffFailed: Boolean = false,
+    /**
      * Portions this product is usually eaten in (§13). Empty until a pattern exists, which is most
      * of the time — a shortcut offered after one use would turn "I once weighed 63 g" into a
      * standing recommendation.
@@ -861,6 +872,15 @@ class ProductViewModel(
             )
         }
     }
+
+    /** The next edit/dismissal clears it, same rule as every other one-attempt notice on screen. */
+    fun dismissLabelHandoffFailure() = _state.update { it.copy(labelHandoffFailed = false) }
+
+    /**
+     * A label reading arrived from the scanner with an unparsable value or an unrecognised basis
+     * (§5, startup-hardening pass) — discarded rather than guessed, with a recoverable notice.
+     */
+    fun reportLabelHandoffFailure() = _state.update { it.copy(labelHandoffFailed = true) }
 
     /**
      * The user confirmed the package agrees with the value already in use (§12).

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -185,6 +186,7 @@ fun ProductScreen(
     onUseDetectedLabelValue: (BigDecimal) -> Unit = {},
     onEditDetectedLabelValue: (BigDecimal) -> Unit = {},
     onDismissLabelVerdict: () -> Unit = {},
+    onDismissLabelHandoffFailure: () -> Unit = {},
     onSelectUsualPortion: (PortionUsage) -> Unit = {},
     /** Open or close the *Save product* form. Only reachable on an unsaved quick calculation. */
     onShowSaveQuickCalculation: (Boolean) -> Unit = {},
@@ -221,6 +223,22 @@ fun ProductScreen(
             saving = state.savingQuickCalculation,
             onSave = onSaveQuickCalculation,
             onDismiss = { onShowSaveQuickCalculation(false) },
+        )
+    }
+
+    // A label reading was handed back with an unresolved basis or an unparsable value (§5) and was
+    // discarded rather than guessed. Said out loud rather than silently swallowed — nothing else on
+    // screen changes, so without this the tap that started the comparison would look like it did
+    // nothing at all.
+    if (state.labelHandoffFailed) {
+        AlertDialog(
+            onDismissRequest = onDismissLabelHandoffFailure,
+            confirmButton = {
+                TextButton(onClick = onDismissLabelHandoffFailure) {
+                    Text(stringResource(R.string.ocr_confirm))
+                }
+            },
+            text = { Text(stringResource(R.string.label_handoff_failed)) },
         )
     }
 

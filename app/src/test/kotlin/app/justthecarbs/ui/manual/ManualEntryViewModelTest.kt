@@ -525,4 +525,129 @@ class ManualEntryViewModelTest {
             BigDecimal("35").compareTo((conversion as PortionConversion.WeightBased).amountPerUnit),
         )
     }
+
+    // --- §5, startup-hardening pass: the basis must never silently default to grams when a
+    // scanned figure carries no established denominator. ---
+
+    @Test
+    fun `an unresolved OCR basis blocks save until a chip is chosen`() = runTest(dispatcher) {
+        val journal = Journal()
+        val viewModel = ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal)))
+
+        // ocrCarbs is non-blank (a figure genuinely arrived) but ocrBasis fails to parse — exactly
+        // what CandidateChoice's unknown-basis branch and the QUICK route's malformed-basis fallback
+        // both produce.
+        viewModel.start(barcode, ocrCarbs = "48", ocrBasis = "")
+
+        assertNull("basis must stay unresolved, never default to grams", viewModel.state.value.basis)
+        viewModel.onNameChanged("Hagelslag")
+
+        assertFalse("Save must stay disabled with no basis chosen", viewModel.state.value.canSave)
+    }
+
+    @Test
+    fun `selecting a basis chip after an unresolved OCR reading enables save`() = runTest(dispatcher) {
+        val journal = Journal()
+        val local = FakeLocal(journal)
+        val viewModel = ManualEntryViewModel(repositoryOf(local, FakeUnits(journal)))
+        viewModel.start(barcode, ocrCarbs = "48", ocrBasis = "")
+        viewModel.onNameChanged("Hagelslag")
+        assertFalse(viewModel.state.value.canSave)
+
+        viewModel.onBasisChanged(NutritionBasis.PER_100_G)
+
+        assertTrue("choosing a basis is what unblocks save", viewModel.state.value.canSave)
+
+        viewModel.save()
+        advanceUntilIdle()
+
+        assertEquals(NutritionBasis.PER_100_G, local.stored[barcode]?.basis)
+    }
+
+    @Test
+    fun `a known OCR basis preselects the matching chip and allows save immediately`() =
+        runTest(dispatcher) {
+            val journal = Journal()
+            val viewModel = ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal)))
+
+            viewModel.start(barcode, ocrCarbs = "48", ocrBasis = NutritionBasis.PER_100_ML.name)
+
+            assertEquals(NutritionBasis.PER_100_ML, viewModel.state.value.basis)
+            viewModel.onNameChanged("Coconut milk")
+            assertTrue("a resolved OCR basis needs no further choice", viewModel.state.value.canSave)
+        }
+
+    @Test
+    fun `ordinary Home entry with no OCR context still starts on grams`() = runTest(dispatcher) {
+        // The unchanged path: plain manual entry (nothing carried in) must keep defaulting to
+        // grams, exactly as it always has — only the OCR-unresolved case must refuse to default.
+        val journal = Journal()
+        val viewModel = ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal)))
+
+        viewModel.start(barcode)
+
+        assertEquals(NutritionBasis.PER_100_G, viewModel.state.value.basis)
+    }
+
+    @Test
+    fun `a blank saved-state basis with no carried carbs still defaults to grams`() = runTest(dispatcher) {
+        // editManuallyRoute can carry a blank basis too (an unresolved reading's *Edit* path), but
+        // with no carbs figure alongside it there is nothing an OCR value could be silently
+        // mislabeled as — this is the ordinary "start typing from scratch" case, not the hazard §5
+        // closes.
+        val journal = Journal()
+        val viewModel = ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal)))
+
+        viewModel.start(barcode, ocrCarbs = "", ocrBasis = "")
+
+        assertEquals(NutritionBasis.PER_100_G, viewModel.state.value.basis)
+    }
+
+    @Test
+    fun `an invalid saved-state basis with carried carbs never becomes grams`() = runTest(dispatcher) {
+        // A malformed or unrecognised basis string must be treated identically to a blank one —
+        // never parsed loosely, never defaulted.
+        val journal = Journal()
+        val viewModel = ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal)))
+
+        viewModel.start(barcode, ocrCarbs = "48", ocrBasis = "not-a-real-basis")
+
+        assertNull(viewModel.state.value.basis)
+    }
+
+    @Test
+    fun `an unresolved basis is preserved across a simulated process recreation`() = runTest(dispatcher) {
+        // start() is idempotent once name or carbs are non-empty (it is the recreation guard), so
+        // calling it again with the same arguments — as LaunchedEffect(barcode, carbs, basis, ...)
+        // does after a configuration change — must not resurrect a default basis the first call
+        // correctly refused to set.
+        val journal = Journal()
+        val viewModel = ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal)))
+
+        viewModel.start(barcode, ocrCarbs = "48", ocrBasis = "")
+        assertNull(viewModel.state.value.basis)
+
+        viewModel.start(barcode, ocrCarbs = "48", ocrBasis = "")
+
+        assertNull("re-entering start() must not resurrect a default", viewModel.state.value.basis)
+    }
+
+    @Test
+    fun `save is a no-op when the basis is unresolved even if called directly`() = runTest(dispatcher) {
+        // canSave is the UI's guard, but save() itself must not trust the button stayed disabled —
+        // it is reachable directly from a test or from a future caller. Nothing may be written.
+        val journal = Journal()
+        val local = FakeLocal(journal)
+        val units = FakeUnits(journal)
+        val viewModel = ManualEntryViewModel(repositoryOf(local, units))
+        viewModel.start(barcode, ocrCarbs = "48", ocrBasis = "")
+        viewModel.onNameChanged("Hagelslag")
+
+        viewModel.save()
+        advanceUntilIdle()
+
+        assertTrue("no product may be written with an unresolved basis", local.stored.isEmpty())
+        assertTrue(units.stored.isEmpty())
+        assertNull(viewModel.state.value.savedBarcode)
+    }
 }

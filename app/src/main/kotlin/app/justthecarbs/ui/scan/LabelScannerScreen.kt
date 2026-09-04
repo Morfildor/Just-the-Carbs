@@ -1,10 +1,6 @@
 package app.justthecarbs.ui.scan
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.util.Size
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -174,8 +170,13 @@ fun LabelScannerScreen(
      * to a blank field makes them re-read the package the app just photographed. Defaults to
      * [onEditManually] so a caller that has nowhere to put a pre-filled value degrades to the
      * previous behaviour rather than losing the action.
+     *
+     * The basis is nullable and that is load-bearing (§5, startup-hardening pass): a candidate whose
+     * basis was never established must carry `null` all the way to manual entry, never a pre-selected
+     * `PER_100_G` standing in for "unknown". A pre-selected chip looks exactly like a value the app
+     * actually placed, and the whole point of this path is that it did not.
      */
-    onCorrectValue: (BigDecimal, NutritionBasis) -> Unit = { _, basis -> onEditManually(basis) },
+    onCorrectValue: (BigDecimal, NutritionBasis?) -> Unit = { _, basis -> onEditManually(basis) },
     /**
      * Persists the accepted portion, returning true only once it is genuinely on disk.
      *
@@ -191,23 +192,14 @@ fun LabelScannerScreen(
      */
     onCarryPendingPortionUnit: ((PortionUnitKind, PortionConversion) -> Unit)? = null,
 ) {
-    val context = LocalContext.current
-    var hasPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var permissionRequested by remember { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        hasPermission = granted
-        permissionRequested = true
-    }
-
-    LaunchedEffect(Unit) { if (!hasPermission) launcher.launch(Manifest.permission.CAMERA) }
+    // §6, startup-hardening pass: the same shared five-state gate ScannerScreen uses. Previously
+    // this screen carried its own copy of the granted/not-granted-plus-requested tracking, with the
+    // identical dead end once a request had been answered — no way back to the system dialog for a
+    // "not this time" denial, and no way to Settings for a "never ask me again" one.
+    val permission = rememberCameraPermissionController()
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        if (hasPermission) {
+        if (permission.state == CameraPermissionState.Granted) {
             LabelCamera(
                 onUseValue = onUseValue,
                 onEditManually = onEditManually,
@@ -217,11 +209,12 @@ fun LabelScannerScreen(
                 onCarryPendingPortionUnit = onCarryPendingPortionUnit,
             )
         } else {
-            LabelPermissionRationale(
-                showAllow = !permissionRequested,
-                onAllow = { launcher.launch(Manifest.permission.CAMERA) },
+            CameraPermissionRationale(
+                state = permission.state,
+                onAllow = permission::request,
+                onOpenSettings = permission::openSettings,
                 // No camera, so nothing has been read and no basis can have been established.
-                onEditManually = { onEditManually(null) },
+                onEnterManually = { onEditManually(null) },
                 onClose = onClose,
             )
         }
@@ -232,7 +225,7 @@ fun LabelScannerScreen(
 private fun LabelCamera(
     onUseValue: (BigDecimal, NutritionBasis) -> Unit,
     onEditManually: (NutritionBasis?) -> Unit,
-    onCorrectValue: (BigDecimal, NutritionBasis) -> Unit,
+    onCorrectValue: (BigDecimal, NutritionBasis?) -> Unit,
     onClose: () -> Unit,
     onSavePortionUnit: (suspend (PortionUnitKind, PortionConversion) -> Boolean)? = null,
     onCarryPendingPortionUnit: ((PortionUnitKind, PortionConversion) -> Unit)? = null,
@@ -411,7 +404,12 @@ private fun LabelCamera(
                     // Retained, not acted on. Nothing downstream reads this until AFTER a deliberate
                     // capture, and even then only through EvidenceResolver, which never lets a live
                     // frame resolve a scan by itself.
-                    liveEvidence.record(result, System.currentTimeMillis())
+                    //
+                    // Stamped with the session this frame belongs to (§9, startup-hardening pass) —
+                    // captureSession is already bumped on dispose, retake and every new capture, so a
+                    // frame recorded for an abandoned attempt can never be read back as corroborating
+                    // a later one, even if it is still inside the consensus window when read.
+                    liveEvidence.record(result, System.currentTimeMillis(), captureSession.get())
                 }
             },
             onFraming = { estimate -> mainExecutor.execute { framing = estimate } },
@@ -583,7 +581,13 @@ private fun LabelCamera(
                     passA = captured,
                     region = region,
                     bitmap = captured.bitmap,
-                    liveEvidence = liveEvidence.asEvidence(System.currentTimeMillis()),
+                    // Bound to `session` — captured above, before this coroutine switches off Main —
+                    // rather than re-reading `captureSession.get()` here (§9, startup-hardening
+                    // pass): this recognition is answering for the capture that started this
+                    // session, so only live frames stamped with that same id may corroborate it, not
+                    // whichever session happens to be current by the time this IO-dispatcher read
+                    // runs.
+                    liveEvidence = liveEvidence.asEvidence(System.currentTimeMillis(), session),
                 )
             }
 
@@ -1653,7 +1657,7 @@ private fun ProposalCard(
     onEdit: () -> Unit,
     onRetry: () -> Unit,
     /** Opens manual entry pre-filled with the detected figure (§3 "Correct"). */
-    onCorrect: (BigDecimal, NutritionBasis) -> Unit,
+    onCorrect: (BigDecimal, NutritionBasis?) -> Unit,
     /** The typed descriptor and its per-serving carbohydrate figure, when the label named one. */
     savablePortion: Pair<ServingDescriptor, BigDecimal>? = null,
     onSavePortionUnit: (PortionUnitKind, PortionConversion) -> Unit = { _, _ -> },
@@ -1759,7 +1763,7 @@ private fun SavePortionUnitAction(
 private fun AmbiguousCard(
     candidates: List<CarbCandidate>,
     onUse: (BigDecimal, NutritionBasis) -> Unit,
-    onCorrect: (BigDecimal, NutritionBasis) -> Unit,
+    onCorrect: (BigDecimal, NutritionBasis?) -> Unit,
     onCapture: () -> Unit,
     onEdit: () -> Unit,
     onRetry: () -> Unit,
@@ -1825,7 +1829,7 @@ private fun CandidateChoice(
      * only route out of a value whose basis the parser could not establish. [showCorrectPair]
      * controls whether it *also* appears next to Confirm on a candidate whose basis is known.
      */
-    onCorrect: (BigDecimal, NutritionBasis) -> Unit,
+    onCorrect: (BigDecimal, NutritionBasis?) -> Unit,
     /**
      * Whether a basis-known candidate shows Correct beside Confirm.
      *
@@ -1887,10 +1891,10 @@ private fun CandidateChoice(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Button(
-            // PER_100_G pre-selects the chip manual entry opens on; it is not a reading. The user
-            // lands on a screen that names the unit and lets them change it, with the package in
-            // hand — the opposite of committing a basis from a scanner card.
-            onClick = { onCorrect(candidate.value, NutritionBasis.PER_100_G) },
+            // Null, genuinely — not a pre-selected PER_100_G standing in for "unknown". Manual entry
+            // shows neither basis chip selected and disables Save until the user picks one with the
+            // package in hand, which is the whole point of this path: nothing here is a reading.
+            onClick = { onCorrect(candidate.value, null) },
             shape = RoundedCornerShape(Space.buttonRadius),
             modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
         ) { Text(stringResource(R.string.ocr_basis_unknown_correct)) }
@@ -1987,54 +1991,6 @@ private fun LabelScrimIconButton(
             .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
             .semantics { contentDescription = description },
     ) { Icon(icon, contentDescription = null, tint = Color.White) }
-}
-
-@Composable
-private fun LabelPermissionRationale(
-    showAllow: Boolean,
-    onAllow: () -> Unit,
-    onEditManually: () -> Unit,
-    onClose: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .padding(Space.screenEdge),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = stringResource(R.string.permission_title),
-            style = MaterialTheme.typography.titleLarge,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(Space.s))
-        Text(
-            text = stringResource(R.string.permission_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(Space.l))
-        if (showAllow) {
-            Button(
-                onClick = onAllow,
-                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
-                shape = RoundedCornerShape(Space.buttonRadius),
-            ) { Text(stringResource(R.string.permission_allow)) }
-            Spacer(Modifier.height(Space.s))
-        }
-        Button(
-            onClick = onEditManually,
-            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
-            shape = RoundedCornerShape(Space.buttonRadius),
-        ) { Text(stringResource(R.string.permission_manual)) }
-        TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
-            Text(stringResource(R.string.action_close))
-        }
-    }
 }
 
 private enum class CaptureState { IDLE, CAPTURING, PROCESSING }

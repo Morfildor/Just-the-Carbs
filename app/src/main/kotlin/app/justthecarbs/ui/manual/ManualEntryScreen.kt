@@ -111,8 +111,15 @@ fun ManualEntryScreen(
                     onValueChange = onCarbsChanged,
                     // Names the unit the value is measured in, tracking the basis chips below — the
                     // same number means different things per 100 g and per 100 ml, and this is the
-                    // one field where that ambiguity has a numeric consequence.
-                    label = { Text(stringResource(R.string.manual_carbs, state.basis.unitLabel)) },
+                    // one field where that ambiguity has a numeric consequence. A null basis (§5,
+                    // startup-hardening pass) has no unit to name yet, so the label asks plainly
+                    // rather than guessing one to print.
+                    label = {
+                        Text(
+                            state.basis?.let { basis -> stringResource(R.string.manual_carbs, basis.unitLabel) }
+                                ?: stringResource(R.string.manual_carbs_unresolved),
+                        )
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = state.carbsError != null,
@@ -142,6 +149,10 @@ fun ManualEntryScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
                         // The basis is an explicit choice, never inferred from the number typed. It
                         // decides the unit the portion is locked to, and the app never converts (§17).
+                        // Neither chip is selected when `state.basis` is null — that null is a real
+                        // state (§5, startup-hardening pass), not a loading gap, so showing one chip
+                        // pre-selected here would be exactly the silent default this screen exists to
+                        // refuse.
                         FilterChip(
                             selected = state.basis == NutritionBasis.PER_100_G,
                             onClick = { onBasisChanged(NutritionBasis.PER_100_G) },
@@ -153,6 +164,14 @@ fun ManualEntryScreen(
                             onClick = { onBasisChanged(NutritionBasis.PER_100_ML) },
                             label = { Text(stringResource(R.string.manual_basis_ml)) },
                             modifier = Modifier.height(Space.minTouchTarget),
+                        )
+                    }
+                    if (state.basis == null) {
+                        Spacer(Modifier.height(Space.s))
+                        Text(
+                            text = stringResource(R.string.manual_basis_unresolved),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
