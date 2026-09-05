@@ -152,18 +152,19 @@ class EvidencePipelineProductionTest {
         var advanced = 0
         fixtures.forEach { name ->
             val result = resolve(name)
-            val mayAdvance = AutomaticScanAdvance.mayAdvance(result.outcome)
-            if (mayAdvance) advanced++
+            val decision = ScanDecisionEngine.decide(result.evidence, automatic = true)
+            val advances = decision is ScanDecision.AutoAccept
+            if (advances) advanced++
 
             println(
                 "FAST-PATH $name -> ${result.outcome::class.simpleName} " +
                     "value=${resolvedValue(result.outcome)?.stripTrailingZeros()?.toPlainString()} " +
-                    "advance=$mayAdvance",
+                    "advance=$advances",
             )
 
-            // The safety claim, asserted per fixture: advancing implies a confidently resolved
-            // reading carrying a basis. Anything else must have gone to the crop screen.
-            if (mayAdvance) {
+            // The safety claim, asserted per fixture: advancing implies a verified confident
+            // reading carrying a basis. Only AutoAccept should advance through the fast path.
+            if (advances) {
                 val resolved = result.outcome as EvidenceResolver.Outcome.Resolved
                 val confident = resolved.reading as? LabelReading.Confident
                 assertTrue("$name advanced without a Confident reading", confident != null)
