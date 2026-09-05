@@ -318,18 +318,24 @@ class SixthSessionRegressionTest {
     }
 
     /**
-     * `41g` stays confirmable when only *views of one photograph* agree, too.
+     * `41g` is withheld from one-tap confirmation when only *views of one photograph* agree — reached
+     * one step later, through focused entry, with the photograph and basis preserved.
      *
-     * The companion to the case above, added 2026-09-04. Demoting same-frame agreement below
-     * automatic advancement must not also demote it below *proposal*: the good capture's whole point
-     * is that a correct lone integer keeps reaching the user, and on a real device the two agreeing
-     * views are usually all there is.
+     * The companion to the case above, added 2026-09-04 and **reversed 2026-09-05**. Same-frame
+     * agreement cannot see a missing decimal separator any more than a single run can, because both
+     * inherit the same pixels — the arithmetic [ScaleInvarianceTest] measures. This class's own
+     * introduction records that the Hellmann's `13` case (`docs/Scan Evidence new structure/
+     * 20260904-113950-065`) reaches the user through exactly this door: same-photograph agreement
+     * across recognition runs, `route = NONE`. The 2026-09-05 evidence-reliability plan states the
+     * rule directly: "Unsupported decimal scale from a single physical observation must never
+     * prefill a value for one-tap acceptance."
      *
-     * The difference from the case above is the tap, not the number — see
-     * [SameFrameProposalEligibilityTest].
+     * `41` is not lost — [AutomaticScanAdvance.presentation] still routes an ineligible confident
+     * reading with an established basis to `Presentation.Recover`, which keeps the photograph and
+     * opens focused entry rather than confirming a digit that same-frame agreement cannot vouch for.
      */
     @Test
-    fun `a lone integer agreed by views of one photograph is still confirmable`() {
+    fun `a lone integer agreed only by views of one photograph is withheld from confirmation`() {
         val document = OcrDocument(
             width = 1000,
             height = 1000,
@@ -351,8 +357,8 @@ class SixthSessionRegressionTest {
             AutomaticVerification.Route.NONE,
             verdict.route,
         )
-        assertTrue(
-            "but the value must still reach the user for confirmation",
+        assertFalse(
+            "same-photograph agreement alone must not make an Unsupported-scale value confirmable",
             AutomaticScanAdvance.mayConfirm(EvidenceResolver.resolve(evidence), verdict, document),
         )
     }

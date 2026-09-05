@@ -337,7 +337,7 @@ class ScaleInvarianceTest {
     }
 
     /**
-     * **The `41` control, end to end: it still reaches the user, now as a one-tap confirmation.**
+     * **The `41` control, end to end: it still reaches the user, now through focused entry.**
      *
      * `20260902-131357-353` reads `41g` — integer-like, no separator, and correct.
      *
@@ -354,20 +354,30 @@ class ScaleInvarianceTest {
      * every other case in this class measures. The brief lists that state as a release blocker:
      * *"0 cross-run agreement bypassing unresolved absolute scale"*.
      *
-     * ## The rule has NOT become "reject every integer"
+     * ## Reversed again (2026-09-05): same-observation agreement no longer buys the one-tap card
      *
-     * That was the objection the previous reasoning existed to answer, and it is still answered —
-     * by showing the figure rather than by advancing on it. `41 g / 100 ml` appears immediately on
-     * the frozen photograph with its row highlighted, one tap from the calculator. It is not sent to
-     * recovery, not withheld, and not retyped.
+     * The intervening pass (a fourteenth-session KDoc, since superseded) let same-photograph view
+     * agreement (`route = NONE`, `viewsAgree = true`) still put `41` behind a one-tap
+     * `CONFIRM_ON_CAPTURE` card, on the ground that a correct reading should not cost the user an
+     * extra screen. That is exactly the door the documented Hellmann's `1,3 -> 13` case reaches the
+     * user through: the same evidence shape (`route = NONE`, `viewsAgree = true`) is indistinguishable
+     * from this one, so a rule permissive enough to keep `41` on the confirmation card is also
+     * permissive enough to put `13` there. The 2026-09-05 evidence-reliability plan closes that gap
+     * directly: "Unsupported decimal scale from a single physical observation must never prefill a
+     * value for one-tap acceptance. Blank focused entry is the correct outcome."
      *
-     * **Manual-QA rows 29.12 and 30.18 are affected in exactly that way and no other**: the figure
-     * still reaches the user, one tap later. Row 30.18's wording ("still *reaches*") already
-     * describes the new behaviour; row 29.12 says "auto-advances" and is narrowed. Both rows are
-     * unticked, so no hardware-verified behaviour is contradicted — see `docs/manual-qa.md` §33.
+     * `41` is not withheld or retyped from nothing — [ScanPresentationDecision.Action.RECOVERY] keeps
+     * the frozen photograph and opens focused entry with the basis preserved
+     * ([FocusedAmountEntry]), one screen further than the one-tap card but still short of a blank
+     * manual-entry screen.
+     *
+     * **Manual-QA row 29.12 ("auto-advances") remains narrowed as before; row 30.18 ("still
+     * *reaches*") still holds, one screen further than it did between the thirteenth and this pass.**
+     * Both rows are unticked, so no hardware-verified behaviour is contradicted — see
+     * `docs/manual-qa.md` §33.
      */
     @Test
-    fun `the separatorless 41 control still reaches the user as a confirmation`() {
+    fun `the separatorless 41 control reaches the user through focused entry, not a one-tap confirmation`() {
         val document = OcrDocument(
             width = 1000,
             height = 1000,
@@ -389,13 +399,18 @@ class ScaleInvarianceTest {
             ScaleAmbiguity.check(document, confidentCandidate(document))
                 is ScaleAmbiguity.Verdict.Unsupported,
         )
+        assertTrue(
+            "precondition: this evidence is same-observation agreement, route = NONE — the exact " +
+                "shape the Hellmann's 1,3 -> 13 case reaches the user through",
+            verification.route == AutomaticVerification.Route.NONE && verification.viewsAgree,
+        )
         assertEquals(
-            "manual-qa 29.12 / 30.18: the genuine high-carbohydrate integer must still be SHOWN, " +
-                "immediately and on the photograph — not sent to recovery and not retyped",
-            ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE,
+            "same-photograph agreement alone must not prefill 41 for one-tap acceptance; it still " +
+                "reaches the user, one screen further, through focused entry on the frozen photograph",
+            ScanPresentationDecision.Action.RECOVERY,
             ScanPresentationDecision.decide(outcome, verification, document, automatic = true),
         )
-        // And the figure the confirmation carries is the one that was read, unaltered.
+        // The value the parser read is unaltered by the routing change.
         assertEquals(
             BigDecimal("41.0"),
             AutomaticScanAdvance.confidentReading(outcome)?.candidate?.value,

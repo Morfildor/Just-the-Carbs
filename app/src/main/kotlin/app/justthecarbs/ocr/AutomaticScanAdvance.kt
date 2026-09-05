@@ -271,12 +271,30 @@ internal object AutomaticScanAdvance {
             // nowhere in any recognition of that capture, so the correct value is simply absent and
             // only a different photograph can supply it.
             //
-            // Trading two correct readings for one is the wrong direction, and the wrong proposal is
-            // already behind a confirmation tap on the frozen photograph rather than advancing. So the
-            // scale question stays answerable by same-frame agreement, and the mayonnaise is recorded
-            // as a known remaining wrong proposal instead of being papered over. The route that
-            // actually fixes it is a second physical observation.
-            corroborationSettlesScale = true,
+            // ## Reversed (2026-09-05): same-frame agreement no longer settles this question
+            //
+            // The paragraph above recorded that restricting this flag "costs more than it saves",
+            // trading `57`/`35` (pushed to recovery) against `13` (a wrong one-tap proposal). That
+            // measurement is unchanged and is kept above for the record, but the trade itself is no
+            // longer accepted: a wrong figure prefilled for one-tap acceptance on a dosing input is
+            // not an acceptable cost for keeping two correct figures one screen closer, and the
+            // 2026-09-05 evidence-reliability plan states the rule directly — "Unsupported decimal
+            // scale from a single physical observation must never prefill a value for one-tap
+            // acceptance. Blank focused entry is the correct outcome; digit repair or a prefilled
+            // guess is not."
+            //
+            // `57` and `35` are not lost, only slowed: [presentation] still routes an ineligible
+            // confident reading with an established basis to [Presentation.Recover], which keeps the
+            // photograph and opens focused entry with the basis preserved — exactly the path this
+            // file already uses for the peanut butter's `11 g` and the truffle's `89`. What changes is
+            // that a same-observation agreement, which cannot see a missing decimal separator any
+            // more than a single run can, no longer buys the one-tap shortcut past that screen.
+            //
+            // `Route.CROSS_COLUMN` and `Route.DISTINCT_OCR_AGREEMENT` are unaffected: both are
+            // evidence from outside this physical observation — the label's own other rows, or a
+            // genuinely separate photograph (Task 4's real `PhysicalObservationId`) — and neither
+            // shares the pixels that lost the separator in the first place.
+            corroborationSettlesScale = verification.route != AutomaticVerification.Route.NONE,
         )
     }
 
