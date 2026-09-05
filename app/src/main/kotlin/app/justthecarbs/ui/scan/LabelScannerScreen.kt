@@ -1,5 +1,6 @@
 package app.justthecarbs.ui.scan
 
+import android.os.SystemClock
 import android.util.Size
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -73,6 +74,7 @@ import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.ServingDescriptor
+import app.justthecarbs.ocr.CaptureEvidenceCoordinator
 import app.justthecarbs.ocr.CarbCandidate
 import app.justthecarbs.ocr.CarbFailureDiagnosis
 import app.justthecarbs.ocr.AutomaticScanAdvance
@@ -85,7 +87,9 @@ import app.justthecarbs.ocr.LabelAnalyzer
 import app.justthecarbs.ocr.LabelReading
 import app.justthecarbs.ocr.LiveEvidenceBuffer
 import app.justthecarbs.ocr.NormalizedRegion
+import app.justthecarbs.ocr.NutritionParseReport
 import app.justthecarbs.ocr.PassAResult
+import app.justthecarbs.ocr.RecognitionEvidence
 import app.justthecarbs.ocr.ScaleAmbiguity
 import app.justthecarbs.ocr.ScanEvidenceRecorder
 import app.justthecarbs.ocr.ScanPresentationDecision
@@ -356,14 +360,41 @@ private fun LabelCamera(
      */
     val liveEvidence = remember { LiveEvidenceBuffer() }
     /**
-     * Identifies the current capture attempt.
+     * The two capture identities, kept apart.
      *
-     * Recognition of an 8 MP still takes seconds, during which the user can tap Retake. Without this
-     * the earlier capture's result would arrive afterwards and replace the newer one — a race that is
-     * invisible in testing because it needs a human to be impatient at the wrong moment. Every
-     * asynchronous result is checked against the session it belongs to and dropped if it is stale.
+     * This replaces a single `captureSession` `AtomicLong` that answered two different questions with
+     * one number, and therefore had to bump on a schedule that was right for one of them and wrong
+     * for the other:
+     *
+     * - **Work generation** — "is this in-flight async callback still current?" Bumps on every new
+     *   capture attempt, so a still-recognition result from an abandoned attempt cannot land.
+     *   Recognition of an 8 MP still takes seconds, during which the user can tap Retake; without
+     *   this the earlier capture's result would arrive afterwards and replace the newer one.
+     * - **Aim epoch** — "which pre-shutter live-camera stream does this frame belong to?" Must NOT
+     *   bump on a shutter press, because live frames recorded while framing the shot are necessarily
+     *   recorded *before* the tap and belong to the same aim as the still that tap produces.
+     *
+     * The old counter bumped at the top of [captureLabel], so every pre-shutter frame carried the
+     * pre-tap value while the later evidence read filtered on the post-tap one — excluding all of
+     * them. See [CaptureEvidenceCoordinator]'s KDoc.
      */
-    val captureSession = remember { java.util.concurrent.atomic.AtomicLong(0L) }
+    val coordinator = remember { CaptureEvidenceCoordinator() }
+    /**
+     * What the live camera had agreed on at the instant the shutter fired, frozen there.
+     *
+     * Read by [readSelectedTable] instead of re-querying [liveEvidence]. A fresh query cannot work:
+     * the still pipeline is measured at 477–2458 ms on real hardware and [LiveEvidenceBuffer]'s
+     * consensus window is 1500 ms, so by the time there is a still reading to corroborate, valid
+     * pre-shutter evidence has usually expired — and the manual *Read table* path can be minutes
+     * later still, while the user drags a crop rectangle.
+     *
+     * Using this snapshot from a late crop confirmation is correct rather than stale: it says what
+     * the camera saw as *this photograph* was taken, which is exactly the evidence that should
+     * corroborate a still recognised from that same shutter press, however long the user then takes.
+     */
+    var frozenLiveSnapshot by remember {
+        mutableStateOf<CaptureEvidenceCoordinator.LiveEvidenceSnapshot?>(null)
+    }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var torchAvailable by remember { mutableStateOf(false) }
@@ -405,11 +436,16 @@ private fun LabelCamera(
                     // capture, and even then only through EvidenceResolver, which never lets a live
                     // frame resolve a scan by itself.
                     //
-                    // Stamped with the session this frame belongs to (§9, startup-hardening pass) —
-                    // captureSession is already bumped on dispose, retake and every new capture, so a
-                    // frame recorded for an abandoned attempt can never be read back as corroborating
-                    // a later one, even if it is still inside the consensus window when read.
-                    liveEvidence.record(result, System.currentTimeMillis(), captureSession.get())
+                    // Stamped with the AIM EPOCH, not a per-capture counter. The epoch bumps only on
+                    // dispose and retake — a genuinely new aim — so a frame recorded while the user
+                    // was framing this shot still belongs to it after the shutter fires. Stamping
+                    // with a counter that bumps at the shutter is what excluded every pre-shutter
+                    // frame from the evidence read that followed.
+                    //
+                    // elapsedRealtime, never currentTimeMillis: LiveEvidenceBuffer's window and
+                    // freezeAtShutter's age arithmetic both require one monotonic clock, and a
+                    // wall-clock adjustment must not be able to make an old frame look fresh.
+                    liveEvidence.record(result, SystemClock.elapsedRealtime(), coordinator.aimEpoch)
                 }
             },
             onFraming = { estimate -> mainExecutor.execute { framing = estimate } },
@@ -426,8 +462,17 @@ private fun LabelCamera(
     DisposableEffect(Unit) {
         onDispose {
             disposed.set(true)
-            // Invalidates in-flight recognition so a result cannot arrive after the screen is gone.
-            captureSession.incrementAndGet()
+            // BOTH counters, and the pairing is deliberate rather than tidy.
+            //
+            // Leaving the screen ends the aim, so no frame recorded under it may corroborate a
+            // capture taken after the user returns. It also ends any in-flight recognition, which is
+            // what the single `captureSession.incrementAndGet()` here used to do on its own — so
+            // bumping only the aim epoch would silently drop that guarantee and let a result arrive
+            // after the screen is gone. Splitting one counter into two means every site that
+            // previously bumped it has to say which of the two questions it was answering; dispose
+            // answers both.
+            coordinator.beginNewAim()
+            coordinator.beginNewWork()
             cameraProvider.getAndSet(null)?.unbindAll()
             analyzer.close()
             pendingCapture.getAndSet(null)?.delete()
@@ -445,9 +490,16 @@ private fun LabelCamera(
     }
 
     fun resumeLive() {
-        // Bumping the session first is what makes this a cancellation and not merely a reset: any
-        // recognition still in flight will now find its id stale and discard its own result.
-        captureSession.incrementAndGet()
+        // Both, first, and for two separate reasons.
+        //
+        // Bumping the WORK generation is what makes this a cancellation and not merely a reset: any
+        // recognition still in flight will now find its generation stale and discard its own result.
+        // Bumping the AIM epoch is the new half — a retake is the definition of a genuinely new aim,
+        // so live frames recorded while framing the abandoned shot must not be able to corroborate
+        // the next one. (`liveEvidence.clear()` below drops them anyway; the epoch bump is what makes
+        // that structural rather than dependent on the clear happening.)
+        coordinator.beginNewAim()
+        coordinator.beginNewWork()
         pendingCrop?.recycle()
         pendingCrop = null
         // Belongs to the capture being abandoned or replaced. Left set, a Retake would drop back to
@@ -463,6 +515,11 @@ private fun LabelCamera(
         // and leaving it set would let a new capture's first Read table be skipped as an
         // "unchanged" crop of a photograph that no longer exists (1.0.3 P2).
         lastRecognisedRegion = null
+        // The frozen live evidence belongs to the shutter press being abandoned. Left set, the next
+        // capture's resolution would be corroborated by what the camera saw before a *different*
+        // photograph — the exact cross-capture contamination the aim epoch exists to prevent, arriving
+        // through a field instead of through the buffer.
+        frozenLiveSnapshot = null
         reading = null
         liveReadiness = null
         framing = null
@@ -567,7 +624,16 @@ private fun LabelCamera(
             return
         }
 
-        val session = captureSession.get()
+        // Read on Main, before the coroutine below switches off it, so the guard downstream asks
+        // about the attempt that started this resolution rather than whichever attempt happens to be
+        // current by the time the IO-dispatcher work finishes.
+        //
+        // Both call sites reach here — the automatic post-capture pass and the user's *Read table*
+        // tap after confirming a crop — and both are answering for the capture that is currently
+        // frozen on screen, which is the capture the current work generation belongs to.
+        val workGeneration = coordinator.workGeneration
+        // Taken at the shutter, not now. See the field's KDoc and the comment at the call below.
+        val snapshotAtShutter = frozenLiveSnapshot
         readingTable = true
         lastRecognisedRegion = region
 
@@ -581,19 +647,38 @@ private fun LabelCamera(
                     passA = captured,
                     region = region,
                     bitmap = captured.bitmap,
-                    // Bound to `session` — captured above, before this coroutine switches off Main —
-                    // rather than re-reading `captureSession.get()` here (§9, startup-hardening
-                    // pass): this recognition is answering for the capture that started this
-                    // session, so only live frames stamped with that same id may corroborate it, not
-                    // whichever session happens to be current by the time this IO-dispatcher read
-                    // runs.
-                    liveEvidence = liveEvidence.asEvidence(System.currentTimeMillis(), session),
+                    // The FROZEN snapshot taken at shutter time — never a fresh query of the live
+                    // buffer, which is what this line used to do.
+                    //
+                    // A fresh query here is structurally unable to succeed on the common path. The
+                    // still pipeline is measured at 477–2458 ms on real hardware and
+                    // LiveEvidenceBuffer's consensus window is 1500 ms, so by the moment there is a
+                    // still reading to corroborate, the frames that would have corroborated it have
+                    // usually aged out — and on the *Read table* path the user may have been
+                    // dragging a crop rectangle for far longer than that. Reading the mutable buffer
+                    // from this background coroutine also raced the analyzer's frame callback
+                    // writing to it.
+                    //
+                    // Constructed exactly as LiveEvidenceBuffer.asEvidence constructs it (same
+                    // source, same report shape, no document — live frames are transient and the
+                    // buffer deliberately retains no geometry), just from a value captured at the
+                    // shutter instead of from a query issued seconds later.
+                    liveEvidence = snapshotAtShutter?.candidate?.let { candidate ->
+                        RecognitionEvidence(
+                            source = EvidenceSource.LIVE_STABLE_FRAME,
+                            report = NutritionParseReport(
+                                LabelReading.Confident(candidate),
+                                emptyList(),
+                            ),
+                            document = null,
+                        )
+                    },
                 )
             }
 
             // The same stale-result guard the capture path uses: a Retake during a second recognition
             // pass must not have its answer arrive afterwards and replace the new capture's.
-            if (session != captureSession.get()) return@launch
+            if (!coordinator.isCurrentWork(workGeneration)) return@launch
 
             OcrDiagnosticsLogger.selectedTable(
                 outcome = result.filtered.outcome.name,
@@ -919,8 +1004,13 @@ private fun LabelCamera(
         }
     }
 
-    fun takePictureNow(capture: ImageCapture, file: File) {
-        val session = captureSession.get()
+    /**
+     * @param workGeneration the value [CaptureEvidenceCoordinator.beginNewWork] returned for *this*
+     *   attempt, threaded down from [captureLabel] rather than re-read here. Re-reading it would
+     *   defeat the guard entirely: it would always compare equal to itself, so a result from an
+     *   abandoned attempt would pass the very check meant to discard it.
+     */
+    fun takePictureNow(capture: ImageCapture, file: File, workGeneration: Long) {
         val options = ImageCapture.OutputFileOptions.Builder(file).build()
         // Image acquisition — shutter press to JPEG on disk — is the one stage of the scan that
         // happens entirely outside `analyzeStill`, so `ScanTrace` cannot see it and the device
@@ -946,12 +1036,16 @@ private fun LabelCamera(
                     // Recognition starts immediately and runs while the user is looking at the frozen
                     // photo and adjusting the rectangle, so the "Read table" tap costs only a
                     // re-parse of elements already in memory rather than a second ML Kit pass.
-                    analyzer.analyzeStillRetaining(context, file, session) { result ->
+                    // `PassAResult.sessionId` is an opaque echo — whatever is handed in here comes
+                    // back untouched, and its documented purpose is exactly this guard. So the work
+                    // generation is what belongs in it; it is NOT a third identity of its own.
+                    analyzer.analyzeStillRetaining(context, file, workGeneration) { result ->
                         pendingCapture.compareAndSet(file, null)
                         mainExecutor.execute {
-                            // The stale-result guard. A Retake bumps the session, so a result from
-                            // the abandoned capture is released rather than shown.
-                            if (result.sessionId != captureSession.get()) {
+                            // The stale-result guard. A Retake bumps the work generation, so a result
+                            // from the abandoned capture is released rather than shown. `sessionId`
+                            // is this attempt's own generation, echoed back by the analyzer.
+                            if (!coordinator.isCurrentWork(result.sessionId)) {
                                 result.recycle()
                                 return@execute
                             }
@@ -1009,7 +1103,7 @@ private fun LabelCamera(
                     pendingCapture.compareAndSet(file, null)
                     file.delete()
                     mainExecutor.execute {
-                        if (session != captureSession.get()) return@execute
+                        if (!coordinator.isCurrentWork(workGeneration)) return@execute
                         captureState = CaptureState.IDLE
                         // The file was just deleted, so any reference to it must go with it.
                         capturedPreview = null
@@ -1037,12 +1131,16 @@ private fun LabelCamera(
      * [FOCUS_TIMEOUT_MS] elapses — whichever is first, exactly once, guarded by an
      * `AtomicBoolean`. A missed focus costs a slightly softer photograph; a hung shutter costs the
      * feature.
+     *
+     * @param workGeneration this attempt's own work generation, carried through to
+     *   [takePictureNow] so every cancellation check downstream asks about the attempt that started
+     *   here rather than re-reading whatever is current when the callback eventually runs.
      */
-    fun focusThenCapture(capture: ImageCapture, file: File) {
+    fun focusThenCapture(capture: ImageCapture, file: File, workGeneration: Long) {
         val cameraControl = camera?.cameraControl
         val region = scanRegion.get()
         if (cameraControl == null || region == null) {
-            takePictureNow(capture, file)
+            takePictureNow(capture, file, workGeneration)
             return
         }
 
@@ -1065,7 +1163,7 @@ private fun LabelCamera(
             // for a demonstrated crash. The session guard cannot cover this case: it is read inside
             // the capture callback, which on this path never runs.
             if (disposed.get()) return
-            if (fired.compareAndSet(false, true)) takePictureNow(capture, file)
+            if (fired.compareAndSet(false, true)) takePictureNow(capture, file, workGeneration)
         }
 
         val focusResult = runCatching {
@@ -1126,8 +1224,22 @@ private fun LabelCamera(
                 reading = LabelReading.NotFound
                 return
             }
-        // A new attempt invalidates anything still in flight from the previous one.
-        captureSession.incrementAndGet()
+        // FREEZE FIRST. This is the fix, and the ordering is the whole of it.
+        //
+        // Nothing above this line has touched the camera or any capture state — the two branches
+        // that precede it abort the attempt outright — so this is the first thing a committed
+        // shutter press does. It must stay first: `analyzer.pause()` below stops new frames landing,
+        // and every millisecond between the tap and this call is a millisecond of the 1500 ms
+        // consensus window spent, on a still pipeline measured at 477–2458 ms.
+        //
+        // The freeze reads the CURRENT aim epoch, which has deliberately not moved — the frames it
+        // is about to capture were recorded while the user was framing *this* shot. Under the old
+        // single counter this line's predecessor incremented before any read, so those frames were
+        // stamped with one value and read back under another, and none of them ever qualified.
+        frozenLiveSnapshot = coordinator.freezeAtShutter(liveEvidence, SystemClock.elapsedRealtime())
+        // Only now: a new attempt invalidates anything still in flight from the previous one. The
+        // aim epoch is NOT bumped here — a shutter press does not start a new aim, it ends one.
+        val workGeneration = coordinator.beginNewWork()
         pendingCrop?.recycle()
         pendingCrop = null
         // Belongs to the capture being abandoned or replaced. Left set, a Retake would drop back to
@@ -1152,7 +1264,7 @@ private fun LabelCamera(
         reading = null
         captureState = CaptureState.CAPTURING
         pendingCapture.set(file)
-        focusThenCapture(capture, file)
+        focusThenCapture(capture, file, workGeneration)
     }
 
     if (cameraFailed) {
