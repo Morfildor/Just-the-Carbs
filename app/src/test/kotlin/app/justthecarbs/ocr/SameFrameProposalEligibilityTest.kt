@@ -29,10 +29,21 @@ import java.math.BigDecimal
  * observation. But they can still disagree about a *single misread digit* arising from tokenisation
  * or row association, and their agreeing is real evidence against that far commoner failure.
  *
- * So the ordering is: same-frame agreement is enough to put a number on screen behind a confirmation
+ * So the ordering was: same-frame agreement is enough to put a number on screen behind a confirmation
  * tap; only an independent observation, or the label's own structure, is enough to remove the tap.
- * That also serves the product goal directly — fewest interactions consistent with a defensible
- * value — since the alternative to a one-tap confirmation here is recovery, which costs far more.
+ *
+ * **Corrected 2026-09-05.** That ordering is what let the Hellmann's `1,3 -> 13` misread reach a
+ * one-tap `CONFIRM_ON_CAPTURE` card: `route = NONE` with `viewsAgree = true` is indistinguishable
+ * from the `57`/`35` cases this file models, so a rule permissive enough to keep those on the card
+ * admits `13` identically. `AutomaticScanAdvance.eligibility` now asks
+ * `ReadingEligibility.evaluate(..., corroborationSettlesScale = verification.route !=
+ * AutomaticVerification.Route.NONE)`, so same-frame agreement alone no longer earns the one-tap
+ * card for an [ScaleAmbiguity.Verdict.Unsupported] reading — see `ScaleInvarianceTest`'s `41` case
+ * and `SixthSessionRegressionTest`'s "withheld from confirmation" case for the caller-level pinning.
+ * The tests below still hold at the [ReadingEligibility.evaluate] level: `corroborated = true` with
+ * the default `corroborationSettlesScale = true` still reports `Eligible`, which is what makes
+ * `corroborationSettlesScale` worth having as its own parameter rather than folding `corroborated`
+ * into one boolean. What changed is which value the automatic path's one caller now passes for it.
  */
 class SameFrameProposalEligibilityTest {
 

@@ -639,6 +639,7 @@
     <string name="onboarding_body_3" tools:ignore="MissingTranslation">Just the carbs. Nothing else on screen competes with it.</string>
     <string name="onboarding_next" tools:ignore="MissingTranslation">Next</string>
     <string name="onboarding_get_started" tools:ignore="MissingTranslation">Get started</string>
+    <string name="onboarding_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>
 
     <!-- Generic -->
     <string name="action_done">Done</string>

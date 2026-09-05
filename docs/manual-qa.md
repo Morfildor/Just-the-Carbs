@@ -2144,4 +2144,36 @@ cannot exercise the real capture/permission/OCR flow end to end. In particular:
 | 35.11 | Scan a label, retake mid-recognition several times in quick succession: no crash, no `ConcurrentModificationException` in logcat, no reading from an abandoned attempt appearing on the new capture | ☐ |
 | 35.12 | Cold and warm timing for a normal label scan is unchanged from the standing figures (no regression from the `synchronized` guards) | ☐ |
 
+## §36 — OCR evidence lifecycle gate (2026-09-05 pass)
+
+Everything below requires a physical device; none of it can be verified on the `carbscan` emulator,
+whose virtual camera cannot exercise the pre-shutter live-evidence path meaningfully.
+
+- [ ] 36.1 Scan a label with the camera held steady on the table for ~1 second before tapping
+      capture. Confirm (via `adb logcat` diagnostics, if evidence export is enabled in debug) that
+      the frozen live snapshot at shutter time reports a non-zero observation count.
+- [ ] 36.2 Repeat 36.1 but deliberately move the phone away from the table in the instant before
+      tapping the shutter (camera sees a different scene at the moment of the tap). Confirm the
+      frozen snapshot reflects what was seen immediately before the tap, not an even earlier stable
+      reading — i.e. confirm the suffix-consensus rule actually invalidates on a recent
+      disagreement rather than reporting a stale earlier agreement.
+- [ ] 36.3 Retake (tap Retake/Retry) after a first capture, then scan a *different* product. Confirm
+      the second scan's result is never influenced by the first product's live evidence (aim-epoch
+      isolation).
+- [ ] 36.4 Reproduce the documented Hellmann's `1,3 g / 100 ml` case (or an equivalent
+      separatorless-integer misread) on a physical device. Confirm the app never offers `13` (or
+      the equivalent misread digit run) for one-tap confirmation. Confirm it instead reaches
+      focused entry with the frozen photograph, the row highlighted, and the basis preserved.
+- [ ] 36.5 Confirm the four documented canary labels (sondey, kinder, yoghurt, stokbrood) still
+      auto-advance correctly on a physical device after this pass, and that grated cheese, witte
+      kaas, the jar, and the lid all still correctly refuse (per the existing
+      `EvidencePipelineProductionTest` table in CLAUDE.md's "OCR quick calculation" section).
+- [ ] 36.6 Deny camera permission temporarily, retry, grant it, and confirm the scanner recovers.
+      Deny permanently, open Settings, grant it there, return to the app, and confirm the
+      `ON_RESUME` recheck picks up the grant without requiring the screen to be closed and reopened.
+- [ ] 36.7 Force a `SettingsRepository` write failure during onboarding (if a debug hook exists for
+      this; otherwise this row stays open pending a way to simulate it on-device) and confirm the
+      *Get started* button re-enables with a visible error, and that tapping it again after fixing
+      the underlying condition successfully navigates to Home.
+
 **Result:** ____________________ **Date:** ____________

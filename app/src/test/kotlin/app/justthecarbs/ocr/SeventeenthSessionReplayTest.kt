@@ -49,13 +49,26 @@ class SeventeenthSessionReplayTest {
     }
 
     /**
-     * Every correct figure the device showed must still be shown, and with the same basis.
+     * Every correct figure the device showed must still be shown, and with the same basis — with one
+     * named, deliberate exception.
      *
-     * The device offered a correct value on 14 captures. That count may grow and must never shrink:
-     * the standing instruction is that a pass may stand still but may never regress.
+     * The device offered a correct value on 14 captures. That count may grow and must never shrink
+     * except for the one capture below, whose value moves one screen further rather than
+     * disappearing: the standing instruction is that a pass may stand still but may never regress.
+     *
+     * ## The one deliberate exception: `20260904-134428-088`
+     *
+     * That capture's `80` reached its `CONFIRM_ON_CAPTURE` **only** via same-observation agreement
+     * (`route = NONE`, `viewsAgree = true`) — the identical evidence shape the sixteenth/fifteenth
+     * sessions' Hellmann's `1,3 -> 13` case reaches the user through. The 2026-09-05
+     * evidence-reliability plan's global constraint states the rule directly: "Unsupported decimal
+     * scale from a single physical observation must never prefill a value for one-tap acceptance."
+     *
+     * `80` is not lost — it now routes to [ScanPresentationDecision.Action.RECOVERY], which keeps the
+     * frozen photograph, one screen further than the one-tap card. See the dedicated test below.
      */
     @Test
-    fun `no correct reading the device showed is lost`() {
+    fun `no correct reading the device showed is lost, except the named same-observation exception`() {
         val results = SeventeenthSessionReplay.replayAll()
 
         val deviceShowedCorrect = SeventeenthSessionCorpus.captures.filter { capture ->
@@ -65,19 +78,48 @@ class SeventeenthSessionReplayTest {
         }
         assertEquals(14, deviceShowedCorrect.size)
 
-        deviceShowedCorrect.forEach { capture ->
-            val result = results.single { it.capture.bundle == capture.bundle }
-            assertEquals(
-                "${capture.bundle} lost its correct reading",
-                0,
-                result.offeredValue?.compareTo(capture.printedCarbs!!) ?: -1,
-            )
-            assertEquals(
-                "${capture.bundle} changed the basis it offers",
-                capture.printedBasis,
-                result.offeredBasis,
-            )
-        }
+        deviceShowedCorrect
+            .filter { it.bundle != SAME_OBSERVATION_SCALE_EXCEPTION }
+            .forEach { capture ->
+                val result = results.single { it.capture.bundle == capture.bundle }
+                assertEquals(
+                    "${capture.bundle} lost its correct reading",
+                    0,
+                    result.offeredValue?.compareTo(capture.printedCarbs!!) ?: -1,
+                )
+                assertEquals(
+                    "${capture.bundle} changed the basis it offers",
+                    capture.printedBasis,
+                    result.offeredBasis,
+                )
+            }
+    }
+
+    /**
+     * The named exception, asserted on its own so a change to its evidence shape or its routing
+     * reads as "the rice-flour capture changed" rather than silently passing through the filter
+     * above.
+     *
+     * `80` is withheld from one-tap confirmation because same-observation agreement cannot see a
+     * missing decimal separator any more than a single recognition run can — both inherit the same
+     * pixels. It still reaches the user through [ScanPresentationDecision.Action.RECOVERY], which
+     * keeps the frozen photograph, rather than being lost.
+     */
+    @Test
+    fun `the named same-observation exception is withheld from confirmation but not lost`() {
+        val result = replay("134428-088")
+
+        assertEquals(
+            "precondition: this capture's only corroboration is same-observation agreement",
+            AutomaticVerification.Route.NONE,
+            result.verification.route,
+        )
+        assertTrue("precondition: same-observation views did agree", result.verification.viewsAgree)
+        assertEquals(
+            "80 must not be prefilled for one-tap acceptance on same-observation agreement alone",
+            ScanPresentationDecision.Action.RECOVERY,
+            result.action,
+        )
     }
 
     /**
@@ -235,5 +277,14 @@ class SeventeenthSessionReplayTest {
                     result.offeredValue.compareTo(BigDecimal("13")) != 0,
             )
         }
+    }
+
+    private companion object {
+        /**
+         * See `no correct reading the device showed is lost, except the named same-observation
+         * exception` and the dedicated test below for why this one capture is named rather than
+         * silently passing.
+         */
+        const val SAME_OBSERVATION_SCALE_EXCEPTION = "20260904-134428-088"
     }
 }

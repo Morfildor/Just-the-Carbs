@@ -52,6 +52,7 @@ class StrategyBInvocationTest {
         passA = passA(document),
         region = region,
         bitmap = null,
+        stillObservationId = PhysicalObservationId("test-fixture"),
         liveEvidence = null,
         recogniseRegion = recorder.asLambda(),
     )
@@ -224,6 +225,7 @@ class StrategyBInvocationTest {
             passA = passA(document),
             region = region,
             bitmap = null,
+            stillObservationId = PhysicalObservationId("test-fixture"),
             liveEvidence = disagreeing,
             recogniseRegion = recorder.asLambda(),
         )

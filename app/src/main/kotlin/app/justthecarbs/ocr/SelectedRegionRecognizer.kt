@@ -51,6 +51,7 @@ object SelectedRegionRecognizer {
     fun recognise(
         source: Bitmap?,
         region: NormalizedRegion?,
+        observationId: PhysicalObservationId,
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
     ): RecognitionEvidence? {
         if (source == null || source.isRecycled) return null
@@ -119,6 +120,7 @@ object SelectedRegionRecognizer {
                 // comparing it against Pass A's boxes, needs this to translate with. Carried rather
                 // than left for the caller to re-derive: see [RecognitionEvidence.crop].
                 crop = crop,
+                physicalObservation = observationId,
             )
         } catch (error: Exception) {
             // A second opinion is a bonus, never a dependency: any failure here must leave the

@@ -219,24 +219,24 @@ class LiveEvidenceBufferTest {
         // Retake's abandoned in-flight recognition) recorded three agreeing frames under session 1.
         // Session 2 is the capture actually being evaluated and must see none of them.
         val buffer = LiveEvidenceBuffer()
-        buffer.record(confident("61.9"), 1000, sessionId = 1L)
-        buffer.record(confident("61.9"), 1100, sessionId = 1L)
-        buffer.record(confident("61.9"), 1200, sessionId = 1L)
+        buffer.record(confident("61.9"), 1000, aimEpoch = 1L)
+        buffer.record(confident("61.9"), 1100, aimEpoch = 1L)
+        buffer.record(confident("61.9"), 1200, aimEpoch = 1L)
 
         assertNull(
             "session 1's frames must not corroborate session 2",
-            buffer.stableConsensus(nowMs = 1250, sessionId = 2L),
+            buffer.stableConsensus(nowMs = 1250, aimEpoch = 2L),
         )
     }
 
     @Test
     fun `frames recorded under the requested session still reach consensus`() {
         val buffer = LiveEvidenceBuffer()
-        buffer.record(confident("61.9"), 1000, sessionId = 7L)
-        buffer.record(confident("61.9"), 1100, sessionId = 7L)
-        buffer.record(confident("61.9"), 1200, sessionId = 7L)
+        buffer.record(confident("61.9"), 1000, aimEpoch = 7L)
+        buffer.record(confident("61.9"), 1100, aimEpoch = 7L)
+        buffer.record(confident("61.9"), 1200, aimEpoch = 7L)
 
-        val consensus = buffer.stableConsensus(nowMs = 1250, sessionId = 7L)
+        val consensus = buffer.stableConsensus(nowMs = 1250, aimEpoch = 7L)
 
         assertNotNull(consensus)
         assertEquals(0, consensus!!.value.compareTo(BigDecimal("61.9")))
@@ -247,37 +247,37 @@ class LiveEvidenceBufferTest {
         // MIN_AGREEING_FRAMES is 3. Session scoping must reduce the pool available to the current
         // session rather than merely relabel it — a stale-session frame cannot pad out the count.
         val buffer = LiveEvidenceBuffer()
-        buffer.record(confident("61.9"), 900, sessionId = 1L)
-        buffer.record(confident("61.9"), 1000, sessionId = 2L)
-        buffer.record(confident("61.9"), 1100, sessionId = 2L)
+        buffer.record(confident("61.9"), 900, aimEpoch = 1L)
+        buffer.record(confident("61.9"), 1000, aimEpoch = 2L)
+        buffer.record(confident("61.9"), 1100, aimEpoch = 2L)
 
-        assertNull(buffer.stableConsensus(nowMs = 1150, sessionId = 2L))
+        assertNull(buffer.stableConsensus(nowMs = 1150, aimEpoch = 2L))
     }
 
     @Test
     fun `asEvidence is also session-scoped`() {
         val buffer = LiveEvidenceBuffer()
-        buffer.record(confident("61.9"), 1000, sessionId = 1L)
-        buffer.record(confident("61.9"), 1100, sessionId = 1L)
-        buffer.record(confident("61.9"), 1200, sessionId = 1L)
+        buffer.record(confident("61.9"), 1000, aimEpoch = 1L)
+        buffer.record(confident("61.9"), 1100, aimEpoch = 1L)
+        buffer.record(confident("61.9"), 1200, aimEpoch = 1L)
 
         assertNull(
             "asEvidence must apply the same session filter as stableConsensus",
-            buffer.asEvidence(nowMs = 1250, sessionId = 2L),
+            buffer.asEvidence(nowMs = 1250, aimEpoch = 2L),
         )
-        assertNotNull(buffer.asEvidence(nowMs = 1250, sessionId = 1L))
+        assertNotNull(buffer.asEvidence(nowMs = 1250, aimEpoch = 1L))
     }
 
     @Test
     fun `clearing does not need a session id and forgets every session`() {
         val buffer = LiveEvidenceBuffer()
-        buffer.record(confident("61.9"), 1000, sessionId = 1L)
-        buffer.record(confident("61.9"), 1100, sessionId = 2L)
+        buffer.record(confident("61.9"), 1000, aimEpoch = 1L)
+        buffer.record(confident("61.9"), 1100, aimEpoch = 2L)
 
         buffer.clear()
 
-        assertNull(buffer.stableConsensus(nowMs = 1150, sessionId = 1L))
-        assertNull(buffer.stableConsensus(nowMs = 1150, sessionId = 2L))
+        assertNull(buffer.stableConsensus(nowMs = 1150, aimEpoch = 1L))
+        assertNull(buffer.stableConsensus(nowMs = 1150, aimEpoch = 2L))
         assertTrue(buffer.snapshot().isEmpty())
     }
 
@@ -310,7 +310,7 @@ class LiveEvidenceBufferTest {
                         buffer.record(
                             confident("61.9"),
                             timestampMs = (writerIndex * iterationsPerWriter + i).toLong(),
-                            sessionId = writerIndex.toLong(),
+                            aimEpoch = writerIndex.toLong(),
                         )
                     }
                 } catch (t: Throwable) {
@@ -326,7 +326,7 @@ class LiveEvidenceBufferTest {
             try {
                 startLatch.await()
                 repeat(iterationsPerWriter) {
-                    buffer.stableConsensus(nowMs = Long.MAX_VALUE, sessionId = 0L)
+                    buffer.stableConsensus(nowMs = Long.MAX_VALUE, aimEpoch = 0L)
                     buffer.snapshot()
                 }
             } catch (t: Throwable) {
@@ -392,18 +392,94 @@ class LiveEvidenceBufferTest {
     @Test
     fun `a record queued immediately after a snapshot is read does not corrupt that snapshot`() {
         val buffer = LiveEvidenceBuffer()
-        buffer.record(confident("61.9"), 1000, sessionId = 1L)
-        buffer.record(confident("61.9"), 1100, sessionId = 1L)
-        buffer.record(confident("61.9"), 1200, sessionId = 1L)
+        buffer.record(confident("61.9"), 1000, aimEpoch = 1L)
+        buffer.record(confident("61.9"), 1100, aimEpoch = 1L)
+        buffer.record(confident("61.9"), 1200, aimEpoch = 1L)
 
         val snapshotBefore = buffer.snapshot()
         assertEquals(3, snapshotBefore.size)
 
         // Simulates a frame callback landing right after the snapshot was taken.
-        buffer.record(confident("61.9"), 1300, sessionId = 1L)
+        buffer.record(confident("61.9"), 1300, aimEpoch = 1L)
 
         // The earlier snapshot is an immutable List — it must be unaffected by the later write.
         assertEquals("the snapshot already taken must not grow", 3, snapshotBefore.size)
         assertEquals(4, buffer.snapshot().size)
     }
+
+    // --- Contiguous-suffix consensus (this task): a recent disagreement or non-confident reading
+    // must invalidate an older agreeing run, and NotFound/Ambiguous observations must now be stored
+    // so the suffix rule can see them at all. ---
+
+    @Test fun `a recent NotFound after three agreeing confident frames invalidates consensus`() {
+        val buffer = LiveEvidenceBuffer()
+        val candidate = confidentCandidate(BigDecimal("46"), NutritionBasis.PER_100_G)
+        buffer.record(LabelReading.Confident(candidate), 1000L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(candidate), 1100L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(candidate), 1200L, aimEpoch = 7L)
+        buffer.record(LabelReading.NotFound, 1300L, aimEpoch = 7L)
+
+        assertEquals(null, buffer.stableConsensus(nowMs = 1300L, aimEpoch = 7L))
+    }
+
+    @Test fun `a recent conflicting confident frame invalidates consensus even with an older agreeing run`() {
+        val buffer = LiveEvidenceBuffer()
+        val agreed = confidentCandidate(BigDecimal("46"), NutritionBasis.PER_100_G)
+        val different = confidentCandidate(BigDecimal("12"), NutritionBasis.PER_100_G)
+        buffer.record(LabelReading.Confident(agreed), 1000L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(agreed), 1100L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(agreed), 1200L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(different), 1250L, aimEpoch = 7L)
+
+        assertEquals(null, buffer.stableConsensus(nowMs = 1250L, aimEpoch = 7L))
+    }
+
+    @Test fun `an ambiguous frame containing a competing candidate invalidates consensus`() {
+        val buffer = LiveEvidenceBuffer()
+        val agreed = confidentCandidate(BigDecimal("46"), NutritionBasis.PER_100_G)
+        val competing = confidentCandidate(BigDecimal("64"), NutritionBasis.PER_100_G)
+        buffer.record(LabelReading.Confident(agreed), 1000L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(agreed), 1100L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(agreed), 1200L, aimEpoch = 7L)
+        buffer.record(LabelReading.Ambiguous(listOf(agreed, competing)), 1250L, aimEpoch = 7L)
+
+        assertEquals(null, buffer.stableConsensus(nowMs = 1250L, aimEpoch = 7L))
+    }
+
+    @Test fun `only the final five observations from the aim epoch are considered`() {
+        val buffer = LiveEvidenceBuffer()
+        val old = confidentCandidate(BigDecimal("99"), NutritionBasis.PER_100_G)
+        val recent = confidentCandidate(BigDecimal("46"), NutritionBasis.PER_100_G)
+        // Six old disagreeing observations, then three recent agreeing ones — the old ones must
+        // not be visible to the suffix rule at all, so their disagreement cannot suppress the
+        // recent agreement.
+        repeat(6) { i -> buffer.record(LabelReading.Confident(old.copy(value = old.value + BigDecimal(i))), 1000L + i, aimEpoch = 7L) }
+        buffer.record(LabelReading.Confident(recent), 1900L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(recent), 1950L, aimEpoch = 7L)
+        buffer.record(LabelReading.Confident(recent), 2000L, aimEpoch = 7L)
+
+        val consensus = buffer.stableConsensus(nowMs = 2000L, aimEpoch = 7L)
+        assertEquals(0, consensus?.value?.compareTo(BigDecimal("46")))
+    }
+
+    @Test fun `the sessionId parameter is now named aimEpoch and an epoch-6 frame cannot corroborate epoch 7`() {
+        val buffer = LiveEvidenceBuffer()
+        val candidate = confidentCandidate(BigDecimal("46"), NutritionBasis.PER_100_G)
+        buffer.record(LabelReading.Confident(candidate), 1000L, aimEpoch = 6L)
+        buffer.record(LabelReading.Confident(candidate), 1100L, aimEpoch = 6L)
+        buffer.record(LabelReading.Confident(candidate), 1200L, aimEpoch = 6L)
+
+        assertEquals(null, buffer.stableConsensus(nowMs = 1200L, aimEpoch = 7L))
+    }
 }
+
+private fun confidentCandidate(value: BigDecimal, basis: NutritionBasis): CarbCandidate = CarbCandidate(
+    sourceLine = "test",
+    label = "test",
+    value = value,
+    basis = basis,
+    score = 100,
+    geometry = OcrBox(0, 0, 10, 10),
+    evidence = emptyList(),
+    column = null,
+)

@@ -104,12 +104,14 @@ class StrategyBProvenanceTest {
             passA = passAResult,
             region = NormalizedRegion(0.1, 0.1, 0.9, 0.9),
             bitmap = null,
+            stillObservationId = PhysicalObservationId("test-fixture"),
             recogniseRegion = { _, _ ->
                 RecognitionEvidence(
                     source = EvidenceSource.SELECTED_REGION_OCR,
                     report = report(strategyBDocument),
                     document = strategyBDocument,
                     crop = crop,
+                    physicalObservation = PhysicalObservationId("test-fixture"),
                 )
             },
         )

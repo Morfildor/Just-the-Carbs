@@ -30,11 +30,15 @@ import org.junit.Test
  * unchanged by multiplying every recognised value by ten cannot establish absolute decimal scale.**
  * When a separator is missing from the ink, every view agrees on the wrong scale perfectly.
  *
- * ## The mechanism exists; the automatic path does not currently use it
+ * ## The mechanism exists, and the automatic path now DOES use it (reversed 2026-09-05)
  *
  * [ReadingEligibility.evaluate] takes `corroborationSettlesScale` so a caller *can* say its
- * corroboration is scale-blind, and the cases below pin that behaviour. The automatic path passes
- * `true`, and that is a **measured** decision rather than an oversight.
+ * corroboration is scale-blind, and the cases below pin that behaviour. **Corrected 2026-09-05:**
+ * this KDoc previously stated that the automatic path passes `true` unconditionally, as a measured
+ * decision. `AutomaticScanAdvance.eligibility` now computes it from the real verification route
+ * (`verification.route != AutomaticVerification.Route.NONE`), so same-observation agreement alone
+ * (`route = NONE`) yields `false` here exactly as the case below models — the caller finally asks
+ * the question this file's own tests were written to answer.
  *
  * All three separatorless integers in the 21-capture corpus are [ScaleAmbiguity.Verdict.Unsupported]
  * for the identical reason — no paired value inside the carbohydrate clause — so nothing distinguishes
@@ -46,14 +50,21 @@ import org.junit.Test
  * | `114311-968` | `35 g`  | `35g.` | yes |
  * | `113950-065` | `1,3 g` | `13g`  | no  |
  *
- * Passing `false` hid `57` and `35` — two correct readings pushed into recovery — to suppress one
- * wrong proposal that no rule could have repaired: `1,3` appears in **no** recognition of that
- * capture, so the correct value is absent from the evidence entirely and only a different photograph
- * can supply it. Two correct readings for one is the wrong trade, and the wrong proposal is already
- * behind a confirmation tap rather than advancing.
+ * **The trade below was previously accepted and is now rejected.** Passing `false` hides `57` and
+ * `35` from the one-tap confirmation card — two correct readings pushed one screen further, into
+ * recovery/focused entry — to close the one wrong proposal that no content-based rule can repair:
+ * `1,3` appears in **no** recognition of that capture, so the correct value is absent from the
+ * evidence entirely and only a different photograph (or the label's own structure) can supply it.
+ * The 2026-09-05 evidence-reliability plan's global constraint states why the trade reverses:
+ * "Unsupported decimal scale from a single physical observation must never prefill a value for
+ * one-tap acceptance" — a rule permissive enough to keep `57`/`35` on the card is, by the identical
+ * evidence shape, permissive enough to put `13` there too. `57` and `35` are not lost, only slowed:
+ * see `FifteenthSessionReplayTest`/`SeventeenthSessionReplayTest`'s named same-observation
+ * exceptions.
  *
- * The route that actually closes it is a second physical observation, which is why the parameter is
- * kept and pinned rather than deleted.
+ * The route that actually restores the one-tap card for these two is a second physical observation
+ * (`Route.DISTINCT_OCR_AGREEMENT`) or the label's own structure (`Route.CROSS_COLUMN`), which is why
+ * the parameter is kept and pinned rather than deleted.
  *
  * ## What this deliberately does not do
  *

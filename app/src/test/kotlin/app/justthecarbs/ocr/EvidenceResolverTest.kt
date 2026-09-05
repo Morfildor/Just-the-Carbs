@@ -358,4 +358,90 @@ class EvidenceResolverTest {
         assertTrue(forward is EvidenceResolver.Outcome.Conflicted)
         assertTrue(backward is EvidenceResolver.Outcome.Conflicted)
     }
+
+    // ---- ConflictAdjudication wiring -------------------------------------------------------------
+
+    /**
+     * Reuses the same fixture shape as [ConflictAdjudicationTest]'s first case -- a table whose other
+     * rows (energie/vet/eiwit) establish a serving-to-per-100 ratio of ~0.3125, so a candidate row
+     * matching it is [CrossColumnRatioCheck.Verdict.Consistent] and one wildly off it (a 10x-scale
+     * misread) is [CrossColumnRatioCheck.Verdict.Conflicting]. See that class for why the two header
+     * phrases must be far apart and why the other rows' magnitudes are arranged the way they are.
+     */
+    private fun tableWithRatio(rowValue: String, otherColumnValue: String) = OcrDocument(
+        width = 1000,
+        height = 1000,
+        elements = listOf(
+            OcrElement("Per", OcrBox(150, 0, 190, 20), blockId = -1, lineId = 0),
+            OcrElement("100", OcrBox(200, 0, 250, 20), blockId = -1, lineId = 0),
+            OcrElement("g", OcrBox(255, 0, 270, 20), blockId = -1, lineId = 0),
+            OcrElement("Per", OcrBox(400, 0, 440, 20), blockId = -1, lineId = 1),
+            OcrElement("serving", OcrBox(445, 0, 500, 20), blockId = -1, lineId = 1),
+            OcrElement("Energie", OcrBox(0, 30, 100, 60), blockId = 0, lineId = 0),
+            OcrElement("432", OcrBox(200, 30, 250, 60), blockId = 0, lineId = 0),
+            OcrElement("135", OcrBox(450, 30, 500, 60), blockId = 0, lineId = 0),
+            OcrElement("Vet", OcrBox(0, 70, 100, 100), blockId = 1, lineId = 0),
+            OcrElement("11", OcrBox(200, 70, 250, 100), blockId = 1, lineId = 0),
+            OcrElement("3.4", OcrBox(450, 70, 500, 100), blockId = 1, lineId = 0),
+            OcrElement("Eiwit", OcrBox(0, 110, 100, 140), blockId = 2, lineId = 0),
+            OcrElement("2.8", OcrBox(200, 110, 250, 140), blockId = 2, lineId = 0),
+            OcrElement("0.9", OcrBox(450, 110, 500, 140), blockId = 2, lineId = 0),
+            OcrElement("Koolhydraten", OcrBox(0, 150, 100, 180), blockId = 3, lineId = 0),
+            OcrElement(rowValue, OcrBox(200, 150, 250, 180), blockId = 3, lineId = 0),
+            OcrElement(otherColumnValue, OcrBox(450, 150, 500, 180), blockId = 3, lineId = 0),
+        ),
+    )
+
+    private fun candidateOn(value: String) = CarbCandidate(
+        sourceLine = "Koolhydraten $value g",
+        label = "Koolhydraten",
+        value = BigDecimal(value),
+        basis = NutritionBasis.PER_100_G,
+        score = 120,
+        geometry = OcrBox(200, 150, 250, 180),
+        evidence = emptyList(),
+    )
+
+    private fun evidenceOn(source: EvidenceSource, value: String, document: OcrDocument) = RecognitionEvidence(
+        source = source,
+        report = NutritionParseReport(LabelReading.Confident(candidateOn(value)), emptyList()),
+        document = document,
+    )
+
+    /**
+     * The wiring this class exists to prove: [EvidenceResolver.resolve] previously refused ALL
+     * confident disagreement uniformly, via [Outcome.Conflicted]. It must now consult
+     * [ConflictAdjudication] first, exactly as [ConflictAdjudicationTest] proves that class does in
+     * isolation -- this test proves the resolver actually calls it.
+     *
+     * A candidate reading 12/100g whose own table's ratio contradicts it, against a competing 72/100g
+     * reading whose table supports it, must not resolve to [Outcome.Conflicted]. Because the surviving
+     * group here is a single recognition run (no second, distinct run agreeing with it -- it survived
+     * by table structure, not by corroboration), the conservative outcome is [Outcome.NeedsVerification]
+     * rather than [Outcome.Resolved], per the same reasoning [EvidenceResolver] already applies to an
+     * uncorroborated lone reading elsewhere in this file (RULE 4).
+     */
+    @Test
+    fun `EvidenceResolver resolves a conflict when one group is structurally contradicted by its own table`() {
+        val contradicted = evidenceOn(
+            EvidenceSource.FULL_FRAME_PASS_A,
+            "12",
+            tableWithRatio(rowValue = "12", otherColumnValue = "37.5"),
+        )
+        val supported = evidenceOn(
+            EvidenceSource.SELECTED_REGION_OCR,
+            "72",
+            tableWithRatio(rowValue = "72", otherColumnValue = "22.5"),
+        )
+
+        val outcome = EvidenceResolver.resolve(listOf(contradicted, supported))
+
+        assertTrue(
+            "expected the structurally supported group to win rather than a bare refusal, got $outcome",
+            outcome !is EvidenceResolver.Outcome.Conflicted,
+        )
+        val proposal = outcome as? EvidenceResolver.Outcome.NeedsVerification
+            ?: throw AssertionError("expected NeedsVerification (single uncorroborated run), got $outcome")
+        assertEquals(0, proposal.reading.candidate.value.compareTo(BigDecimal("72")))
+    }
 }

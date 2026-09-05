@@ -139,6 +139,22 @@ value class PhysicalObservationId(val value: String) {
          * [RecognitionEvidence.physicalObservation] for why this is the safe default.
          */
         val UNKNOWN = PhysicalObservationId("UNKNOWN")
+
+        /**
+         * The id shared by every recognition derived from one quality still capture: the whole
+         * frame, the filtered/cropped re-parse, and a Strategy B re-recognition of the same JPEG.
+         * All of these read the same ink, so they are one physical observation whatever transform
+         * or recognizer call produced them.
+         */
+        fun forStill(captureId: String): PhysicalObservationId = PhysicalObservationId("still:$captureId")
+
+        /**
+         * The id for a frozen pre-shutter live-evidence snapshot. Distinct from the still it may
+         * corroborate, because it represents genuinely different sensor frames captured before the
+         * shutter fired -- not a re-processing of the same pixels.
+         */
+        fun forLiveSnapshot(aimEpoch: Long, snapshotId: String): PhysicalObservationId =
+            PhysicalObservationId("live:$aimEpoch:$snapshotId")
     }
 }
 

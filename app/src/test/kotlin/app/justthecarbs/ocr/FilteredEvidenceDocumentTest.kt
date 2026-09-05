@@ -81,6 +81,7 @@ class FilteredEvidenceDocumentTest {
             ),
             region = upperTable,
             bitmap = null,
+            stillObservationId = PhysicalObservationId("test-fixture"),
             // Strategy B is irrelevant here and is disabled, so this measures Strategy A alone.
             recogniseRegion = { _, _ -> null },
         )
@@ -172,6 +173,7 @@ class FilteredEvidenceDocumentTest {
             ),
             region = NormalizedRegion(0.0, 0.0, 1.0, 1.0),
             bitmap = null,
+            stillObservationId = PhysicalObservationId("test-fixture"),
             recogniseRegion = { _, _ -> null },
         )
 

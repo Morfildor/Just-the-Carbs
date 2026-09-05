@@ -147,6 +147,44 @@ against §44 §7.1: no health claim, no mention of diabetes, no medical wording.
 Nutrition label scanning gets a major upgrade: faster, safer readings with better support for multi-column, serving-based and American-style labels. Good scans now go straight to a quick calculation, while uncertain values ask only for what’s missing. You can also save a quick calculation as a product for later. Plus smoother recovery, better row tapping and many reliability fixes.
 ```
 
+### Fixed — OCR evidence lifecycle (2026-09-05)
+
+Live pre-shutter camera evidence was being recorded under one identity and queried under another,
+so it was almost never actually available to corroborate a still capture -- not because of a wiring
+slip between two call sites, but because a single counter (`captureSession`) was used both to
+identify "which pre-shutter aim does this frame belong to" and "is this async work still current",
+and those two questions need different bump timing. `CaptureEvidenceCoordinator` separates them.
+Live evidence is now frozen atomically at the moment the shutter fires, before any other
+shutter-handling side effect runs, so OCR latency (measured 477-2458ms on real hardware) can no
+longer expire evidence that was genuinely present when the user pressed the shutter.
+
+Every camera-derived recognition (`FULL_FRAME_PASS_A`, `FILTERED_PASS_A`, `SELECTED_REGION_OCR`) now
+carries a real `PhysicalObservationId` identifying which physical photograph it came from, instead
+of defaulting to `UNKNOWN` -- closing the gap that made the independent-observation verification
+route (`DISTINCT_OCR_AGREEMENT`) structurally unreachable in production.
+
+Closed the one path by which same-photograph recognition-run agreement (never a second physical
+observation) could make an `Unsupported`-scale value confirmable with one tap
+(`AutomaticScanAdvance.eligibility` was unconditionally telling `ReadingEligibility` that
+corroboration settled decimal scale, regardless of what kind of corroboration was actually present).
+The value is not blocked -- it still reaches the user through focused entry on the frozen
+photograph with the stated basis preserved, exactly as before for the already-documented `41g`/`11g`
+integer cases.
+
+`EvidenceResolver` can now resolve a disagreement between two confident candidates when one is
+explicitly, structurally contradicted by its own document's cross-column ratios and the other is
+positively verified by the same check -- never by confidence, magnitude, or source order. A
+disagreement where neither or both candidates are uncheckable still refuses exactly as before.
+
+Fixed onboarding: a `SettingsRepository.setHasSeenOnboarding` write failure previously left the
+*Get started* button permanently disabled with no error shown and no way to retry, because the
+UI-layer double-tap guard was set `true` before the write and never reset on failure.
+`OnboardingViewModel` now exposes an observable `Idle`/`Saving`/`Failed`/`Saved` state; navigation
+happens only on `Saved`, and `Failed` shows a retryable message.
+
+Nothing about the calculation, schema, migrations, the §10 lookup priority, barcode detection, or
+any OCR *recognition* rule changed. No confidence threshold moved and no parser rule was relaxed.
+
 ### Fixed — the eighteenth session (2026-09-04)
 
 A separatorless **pair** of values demonstrates that a common rescaling is equally consistent with

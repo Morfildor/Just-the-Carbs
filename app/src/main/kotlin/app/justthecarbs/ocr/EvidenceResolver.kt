@@ -1,5 +1,7 @@
 package app.justthecarbs.ocr
 
+import java.math.BigDecimal
+
 /**
  * Combines several recognition passes into one outcome, favouring agreement and refusing conflict.
  *
@@ -197,8 +199,52 @@ object EvidenceResolver {
         }
 
         if (groups.size > 1) {
-            // RULE 2. Two passes claim different things. At least one is wrong; nothing here can tell
-            // which, and picking either is precisely how a confident-wrong reaches the user.
+            // RULE 2, with an exception carved out by [ConflictAdjudication]. Two passes claiming
+            // different things is normally a refusal outright — nothing here can tell which is
+            // wrong, and picking either is precisely how a confident-wrong reaches the user.
+            //
+            // But "nothing can tell which" is not always true. Each group's OWN nutrition table can
+            // structurally contradict it — see [CrossColumnRatioCheck] — and when one group's table
+            // explicitly contradicts it while a competing group's table explicitly supports it, that
+            // is evidence available to the app, not a guess about plausibility, confidence, magnitude
+            // or source order. [ConflictAdjudication] is the only place that evidence is consulted;
+            // everything else about RULE 2 is unchanged, including refusing outright when neither
+            // group's table can be checked at all, or when a supported group merely faces an
+            // uncheckable one rather than a contradicted one.
+            val byValueAndBasis = groups.associate { group ->
+                (group.first().value ?: BigDecimal.ZERO) to group.first().basis to group
+            }
+            val adjudication = ConflictAdjudication.adjudicate(byValueAndBasis)
+            if (adjudication is ConflictAdjudication.AdjudicationResult.SingleSupported) {
+                val surviving = adjudication.evidence
+
+                // Same corroboration test RULE 1 applies to an ordinary agreeing group: two DISTINCT
+                // recognition runs is real independent evidence and resolves confidently. A group
+                // that survived adjudication by table structure alone, with no second run agreeing,
+                // has not been corroborated in that sense — it was defended, not confirmed by a
+                // second opinion — so it is conservatively proposed for verification rather than
+                // resolved outright. This mirrors RULE 4's stance on a lone re-recognition: being
+                // right about a decimal scale contradiction is not the same claim as two independent
+                // passes reading the same characters.
+                if (surviving.map { it.source.recognitionRun }.distinct().size >= 2) {
+                    val best = surviving.maxByOrNull { it.document?.elements?.size ?: 0 } ?: surviving.first()
+                    return Outcome.Resolved(
+                        reading = best.reading,
+                        report = best.report,
+                        agreeingSources = surviving.map { it.source },
+                        winningEvidence = best,
+                    )
+                }
+
+                val lone = surviving.maxByOrNull { it.document?.elements?.size ?: 0 } ?: surviving.first()
+                return Outcome.NeedsVerification(
+                    reading = lone.reading as LabelReading.Confident,
+                    report = lone.report,
+                    source = lone.source,
+                    winningEvidence = lone,
+                )
+            }
+
             return Outcome.Conflicted(
                 values = groups.map { group ->
                     val v = group.first().value?.stripTrailingZeros()?.toPlainString() ?: "?"

@@ -11,11 +11,20 @@ import kotlinx.coroutines.sync.withLock
 /** First-launch carousel state: which of the 3 slides is showing, and marking it seen on exit. */
 class OnboardingViewModel(private val settingsRepository: SettingsRepository) : ViewModel() {
 
+    sealed interface CompletionState {
+        data object Idle : CompletionState
+        data object Saving : CompletionState
+        data class Failed(val message: String) : CompletionState
+        data object Saved : CompletionState
+    }
+
     private val _slideIndex = MutableStateFlow(0)
     val slideIndex: StateFlow<Int> = _slideIndex.asStateFlow()
 
+    private val _completionState = MutableStateFlow<CompletionState>(CompletionState.Idle)
+    val completionState: StateFlow<CompletionState> = _completionState.asStateFlow()
+
     private val completeMutex = Mutex()
-    private var completed = false
 
     fun next() {
         _slideIndex.value = (_slideIndex.value + 1).coerceAtMost(LAST_SLIDE)
@@ -37,20 +46,28 @@ class OnboardingViewModel(private val settingsRepository: SettingsRepository) : 
     }
 
     /**
-     * Persists `hasSeenOnboarding = true` and returns once the write has landed, so a caller can
-     * navigate only after completion is durable.
+     * Persists `hasSeenOnboarding = true` and updates [completionState] to reflect the outcome.
      *
-     * A [Mutex] rather than a bare boolean check: two callers racing (a rapid double tap on *Get
-     * started*) must not both start a DataStore edit, and the second caller must still get back a
-     * `return` that means "the write has happened" rather than "someone else started it". The
-     * mutex makes the second caller wait for the first's edit to finish rather than short-circuit
-     * past it.
+     * A [Mutex] guards against two callers racing (a rapid double tap on *Get started*) starting
+     * two DataStore edits. Unlike the previous design, a repository failure now sets
+     * [CompletionState.Failed] rather than leaving the caller's own local "in progress" flag stuck
+     * true forever -- the caller observes this state and re-enables its own UI on Failed. A retry
+     * (calling [complete] again after a Failed state) is a normal, supported second attempt: the
+     * mutex does not remember the previous failure, only whether a write is currently in flight or
+     * has already durably succeeded.
      */
     suspend fun complete() {
         completeMutex.withLock {
-            if (completed) return
-            settingsRepository.setHasSeenOnboarding(true)
-            completed = true
+            if (_completionState.value is CompletionState.Saved) return
+            _completionState.value = CompletionState.Saving
+            try {
+                settingsRepository.setHasSeenOnboarding(true)
+                _completionState.value = CompletionState.Saved
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _completionState.value = CompletionState.Failed(e.message ?: "Could not save")
+            }
         }
     }
 
