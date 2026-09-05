@@ -3,7 +3,8 @@ package app.justthecarbs.ocr
 import java.math.BigDecimal
 
 /**
- * A bounded history of pre-shutter live interpretations (spec §5, §9).
+ * A bounded history of pre-shutter live interpretations (spec §5, §9), scoped by aim epoch rather
+ * than by a single conflated session counter.
  *
  * ## The failure this exists to fix
  *
@@ -26,14 +27,26 @@ import java.math.BigDecimal
  * buffer offers arrives through [EvidenceResolver], which never lets a lone live frame resolve a
  * scan — it can only corroborate a still reading or be proposed for explicit verification.
  *
- * ## Why consensus rather than "the last good frame"
+ * ## Aim epoch, not "session"
  *
- * A single frame that happened to interpret is exactly the unstable signal the capture-first change
- * removed from the answer path. Requiring several *recent, agreeing* frames means the retained value
- * is one the camera saw repeatedly while the user was aiming — which is the property that makes it
- * worth anything at all.
+ * The parameter previously named `sessionId` is renamed [Observation.aimEpoch] to make the call site
+ * self-documenting: it identifies which pre-shutter live-camera stream an observation belongs to,
+ * and it must be supplied by [CaptureEvidenceCoordinator.aimEpoch] — which does NOT change on a
+ * shutter press — never by a per-capture work-generation counter. See
+ * [CaptureEvidenceCoordinator]'s KDoc for why conflating the two excluded almost all pre-shutter
+ * evidence in the previous design.
  *
- * ## Concurrency and session binding (§9, startup-hardening pass)
+ * ## Contiguous-suffix consensus, not "any 3 agreeing in the window"
+ *
+ * The previous rule filtered the whole time window to confident observations and required 3 to
+ * agree, which let three *old* agreeing frames remain "stable" even if the camera had since moved
+ * to an ambiguous or conflicting reading. Consensus must reflect what the camera was seeing *right
+ * before the shutter*, so a recent disagreement or non-confident reading must invalidate an older
+ * agreeing run: see [stableConsensus]. This is also why [LabelReading.NotFound] and
+ * [LabelReading.Ambiguous] are now stored by [record] (previously `NotFound` was dropped there) —
+ * the suffix rule needs to see a *recent* non-confident reading in order to be invalidated by it.
+ *
+ * ## Concurrency (§9, startup-hardening pass)
  *
  * [record] is called from the analyzer's frame callback (marshalled onto the main thread by its
  * caller) on essentially every analysed frame; [clear] is called from Compose on retake and on
@@ -46,15 +59,6 @@ import java.math.BigDecimal
  * that touches [observations] closes that: cheap (record/clear/read are all short, uncontended almost
  * always — a live frame every 30-100 ms against one still-recognition read per capture) and correct
  * regardless of which thread calls what.
- *
- * Synchronization alone is not enough, though: it stops the deque from corrupting itself, but it does
- * nothing to stop a frame from a *different* scan — a different package the user swept the camera
- * past, or a recognition still in flight after a Retake — from silently corroborating the capture
- * being evaluated now. [record] now takes the [sessionId] the frame belongs to (the caller's own
- * generation counter — see `LabelScannerScreen.captureSession`, already bumped on dispose, retake and
- * every new capture), and [stableConsensus]/[asEvidence] only ever consider observations whose
- * `sessionId` matches the one being asked about. A live frame from session 3 can never corroborate
- * session 4's still capture, even if it is still inside [windowMs] when read.
  */
 class LiveEvidenceBuffer(
     /**
@@ -77,76 +81,130 @@ class LiveEvidenceBuffer(
 ) {
 
     /**
-     * One live interpretation, when it happened, and which capture session it belongs to.
+     * One live interpretation, when it happened, and which aim epoch it belongs to.
      *
-     * [sessionId] defaults to 0 so every pre-existing caller and test — none of which knows or cares
-     * about session scoping — keeps behaving exactly as before: a buffer used with the default id on
-     * every call is equivalent to the pre-§9 buffer, one undivided stream of observations.
+     * [reading] may now be [LabelReading.NotFound] or [LabelReading.Ambiguous] — both are stored
+     * (previously `NotFound` was dropped at [record]) because the suffix-consensus rule in
+     * [stableConsensus] needs to see a *recent* non-confident reading to invalidate an older
+     * agreeing run, which it cannot do if that reading was never recorded at all.
+     *
+     * [aimEpoch] defaults to 0 so every pre-existing caller and test keeps behaving exactly as
+     * before when it does not care about epoch scoping.
      */
     data class Observation(
         val reading: LabelReading,
         val timestampMs: Long,
-        val sessionId: Long = 0L,
+        val aimEpoch: Long = 0L,
     )
 
-    // Guarded by `lock` — see the class KDoc's "Concurrency and session binding" section. A plain
-    // ArrayDeque has no thread-safety of its own, and this buffer is genuinely written from the main
-    // thread (record/clear) and read from a background dispatcher (stableConsensus/asEvidence,
-    // called from inside `withContext(Dispatchers.IO)` in LabelScannerScreen) — not a hypothetical.
+    // Guarded by `lock` — see the class KDoc's "Concurrency" section. A plain ArrayDeque has no
+    // thread-safety of its own, and this buffer is genuinely written from the main thread
+    // (record/clear) and read from a background dispatcher (stableConsensus/asEvidence, called from
+    // inside `withContext(Dispatchers.IO)` in LabelScannerScreen) — not a hypothetical.
     private val lock = Any()
     private val observations = ArrayDeque<Observation>()
 
     /**
-     * Records a live-frame interpretation. Cheap; called on every analysed frame.
+     * Records a live-frame interpretation, including NotFound and Ambiguous. Cheap; called on every
+     * analysed frame.
      *
-     * [sessionId] is the caller's own generation counter for the current capture attempt (see the
-     * class KDoc) — stamped on the observation so a later read for a *different* session can never
-     * count this frame toward its consensus, however recent it is.
+     * [timestampMs] MUST be monotonic elapsed time (`SystemClock.elapsedRealtime()` on Android),
+     * never wall-clock time — a wall-clock adjustment (NTP sync, timezone/DST change) must not be
+     * able to make an old observation appear fresh or a fresh one appear stale.
+     * [CaptureEvidenceCoordinator.freezeAtShutter] and every production caller must use the same
+     * clock source.
+     *
+     * [aimEpoch] is the caller's own [CaptureEvidenceCoordinator.aimEpoch] for the current live
+     * stream (see the class KDoc) — stamped on the observation so a later read for a *different*
+     * aim epoch can never count this frame toward its consensus, however recent it is.
      */
-    fun record(reading: LabelReading, timestampMs: Long, sessionId: Long = 0L) {
-        // NotFound carries no evidence and would only dilute the window.
-        if (reading is LabelReading.NotFound) return
+    fun record(reading: LabelReading, timestampMs: Long, aimEpoch: Long = 0L) {
         synchronized(lock) {
-            observations.addLast(Observation(reading, timestampMs, sessionId))
+            observations.addLast(Observation(reading, timestampMs, aimEpoch))
             while (observations.size > capacity) observations.removeFirst()
         }
     }
 
-    /** Forgets everything. Called on retake and on leaving the screen, so state cannot cross sessions. */
+    /** Forgets everything. Called on retake and on leaving the screen, so state cannot cross aims. */
     fun clear() = synchronized(lock) { observations.clear() }
 
     /** Snapshot for the evidence bundle; ordering is oldest-first. */
     fun snapshot(): List<Observation> = synchronized(lock) { observations.toList() }
 
     /**
-     * The value a stable majority of recent frames from [sessionId] agreed on, or null.
+     * The value the most recent contiguous run of observations from [aimEpoch] agreed on, or null.
      *
-     * Requires [MIN_AGREEING_FRAMES] confident observations inside [windowMs] that agree on both
-     * value and basis, **and** were recorded under the same [sessionId] being asked about — a frame
-     * from an abandoned or different capture attempt cannot corroborate this one, however recent.
-     * Comparison is numeric (`compareTo`), because `BigDecimal.equals` is scale-sensitive and would
-     * treat `5` and `5.0` as disagreement.
+     * [nowMs] MUST use the same monotonic clock source as [record]'s `timestampMs` — see that
+     * method's KDoc.
      *
-     * Returns null when frames disagreed — a camera that saw two different values while being aimed
-     * has demonstrated instability, which is a reason to stay quiet rather than to pick one.
+     * Examines at most the final [MAX_SUFFIX_LENGTH] observations recorded under [aimEpoch] (older
+     * ones, however they read, cannot suppress or supply consensus — a disagreement that fell off
+     * the back of that window cannot invalidate a run that has since re-stabilised). Within that
+     * suffix, walking backward from the newest observation:
+     *
+     * - the newest observation must be inside [windowMs] of [nowMs];
+     * - **the newest observation in the suffix must itself be a [LabelReading.Confident]** — a
+     *   `NotFound` or an [LabelReading.Ambiguous] as the very latest thing the camera saw means the
+     *   most recent view is not confident, and that must not be papered over by an older agreeing
+     *   run, however long;
+     * - walking further backward, a [LabelReading.Confident] observation joins the run if it
+     *   agrees on value and basis with the newest one (numeric `compareTo`, since
+     *   `BigDecimal.equals` is scale-sensitive); a disagreeing one ends the run;
+     * - at most one older non-confident observation (`NotFound`, or an `Ambiguous` naming only the
+     *   agreed value) is tolerated in between agreeing confident observations, and the walk
+     *   continues past it looking for more agreement further back; a *second* such observation, or
+     *   an `Ambiguous` naming a value other than the agreed one anywhere in the suffix, ends the run
+     *   (and, for a competing `Ambiguous`, refuses consensus outright rather than merely stopping
+     *   the walk — an ambiguity naming the agreed value's competitor is evidence the camera saw
+     *   something else, wherever in the suffix it falls).
+     *
+     * The run is accepted only if it contains at least [MIN_AGREEING_FRAMES] confident, agreeing
+     * observations.
      */
-    fun stableConsensus(nowMs: Long, sessionId: Long = 0L): CarbCandidate? {
-        val recent = synchronized(lock) { observations.toList() }
-            .filter { it.sessionId == sessionId && nowMs - it.timestampMs <= windowMs }
-            .mapNotNull { (it.reading as? LabelReading.Confident)?.candidate }
-        if (recent.size < MIN_AGREEING_FRAMES) return null
+    fun stableConsensus(nowMs: Long, aimEpoch: Long = 0L): CarbCandidate? {
+        val suffix = synchronized(lock) { observations.toList() }
+            .filter { it.aimEpoch == aimEpoch }
+            .takeLast(MAX_SUFFIX_LENGTH)
+        if (suffix.isEmpty()) return null
+        if (nowMs - suffix.last().timestampMs > windowMs) return null
 
-        val first = recent.first()
-        val allAgree = recent.all { candidate ->
-            candidate.basis != null &&
-                candidate.basis == first.basis &&
-                candidate.value.compareTo(first.value) == 0
+        // The most recent observation must itself be a confident reading — a trailing NotFound or
+        // Ambiguous means the camera's latest view is not confident, however good an older run was.
+        val agreedValue = (suffix.last().reading as? LabelReading.Confident)?.candidate ?: return null
+
+        var agreeingCount = 1
+        var toleratedNonConfident = 0
+
+        for (obs in suffix.dropLast(1).asReversed()) {
+            val confidentCandidate = (obs.reading as? LabelReading.Confident)?.candidate
+            if (confidentCandidate != null) {
+                val agrees = confidentCandidate.basis != null &&
+                    confidentCandidate.basis == agreedValue.basis &&
+                    confidentCandidate.value.compareTo(agreedValue.value) == 0
+                if (!agrees) break
+                agreeingCount++
+                continue
+            }
+
+            // Non-confident (Ambiguous or NotFound), older than the newest confident observation.
+            val ambiguous = obs.reading as? LabelReading.Ambiguous
+            if (ambiguous != null) {
+                val competes = ambiguous.candidates.any { it.value.compareTo(agreedValue.value) != 0 }
+                if (competes) return null
+            }
+            if (toleratedNonConfident >= 1) break
+            toleratedNonConfident++
         }
-        return if (allAgree) first else null
+
+        if (agreeingCount < MIN_AGREEING_FRAMES) return null
+        return agreedValue
     }
 
     /**
      * Consensus wrapped as resolver evidence, or null.
+     *
+     * [nowMs] MUST use the same monotonic clock source as [record]'s `timestampMs` — see that
+     * method's KDoc.
      *
      * [documentFor] supplies the document the winning candidate came from when one is available; it
      * is optional because live frames are transient and the buffer deliberately does not retain
@@ -154,10 +212,10 @@ class LiveEvidenceBuffer(
      */
     fun asEvidence(
         nowMs: Long,
-        sessionId: Long = 0L,
+        aimEpoch: Long = 0L,
         documentFor: (CarbCandidate) -> OcrDocument? = { null },
     ): RecognitionEvidence? {
-        val candidate = stableConsensus(nowMs, sessionId) ?: return null
+        val candidate = stableConsensus(nowMs, aimEpoch) ?: return null
         return RecognitionEvidence(
             source = EvidenceSource.LIVE_STABLE_FRAME,
             report = NutritionParseReport(LabelReading.Confident(candidate), emptyList()),
@@ -185,5 +243,8 @@ class LiveEvidenceBuffer(
          * inconsistent behaviour that nobody could reason about from the UI.
          */
         const val MIN_AGREEING_FRAMES = 3
+
+        /** At most the final 5 observations from one aim epoch are examined for consensus. */
+        const val MAX_SUFFIX_LENGTH = 5
     }
 }

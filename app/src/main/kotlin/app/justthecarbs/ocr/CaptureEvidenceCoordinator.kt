@@ -37,4 +37,48 @@ class CaptureEvidenceCoordinator {
 
     /** True iff [generation] is still the current work generation. */
     fun isCurrentWork(generation: Long): Boolean = generation == workGenerationCounter.get()
+
+    /**
+     * One frozen answer to "what did the live camera see, right before the shutter fired?" — taken
+     * atomically, before any other shutter-handling side effect (work-generation bump, analyzer
+     * pause, autofocus, image capture) runs.
+     *
+     * Freezing here rather than reading the buffer later is what stops OCR latency from silently
+     * expiring valid evidence: the review measured 477-2458ms for the still pipeline on real
+     * hardware, comfortably longer than [LiveEvidenceBuffer]'s 1500ms window, so a query issued
+     * after the still pipeline completes can find nothing left even when the camera saw a stable
+     * reading seconds ago relative to when it actually mattered — the shutter press.
+     */
+    data class LiveEvidenceSnapshot(
+        val aimEpoch: Long,
+        val candidate: CarbCandidate?,
+        val newestFrameAgeMs: Long?,
+        val observationCount: Int,
+        val rejectionReason: String?,
+    )
+
+    /**
+     * [nowElapsed] MUST be the same monotonic clock source (`SystemClock.elapsedRealtime()` on
+     * Android) used to record every observation in [buffer] — see [LiveEvidenceBuffer.record]'s
+     * KDoc. A wall-clock read here would silently corrupt every age/window comparison against
+     * observations timestamped with elapsed time.
+     */
+    fun freezeAtShutter(buffer: LiveEvidenceBuffer, nowElapsed: Long): LiveEvidenceSnapshot {
+        val epoch = aimEpoch
+        val snapshotList = buffer.snapshot().filter { it.aimEpoch == epoch }
+        val candidate = buffer.stableConsensus(nowElapsed, epoch)
+        val newestAge = snapshotList.maxOfOrNull { it.timestampMs }?.let { nowElapsed - it }
+        val rejection = when {
+            snapshotList.isEmpty() -> "no observations recorded for this aim epoch"
+            candidate == null -> "recent observations did not reach stable agreement"
+            else -> null
+        }
+        return LiveEvidenceSnapshot(
+            aimEpoch = epoch,
+            candidate = candidate,
+            newestFrameAgeMs = newestAge,
+            observationCount = snapshotList.size,
+            rejectionReason = rejection,
+        )
+    }
 }

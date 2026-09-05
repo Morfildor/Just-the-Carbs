@@ -1,10 +1,23 @@
 package app.justthecarbs.ocr
 
+import app.justthecarbs.domain.NutritionBasis
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
+import java.math.BigDecimal
 
 class CaptureEvidenceCoordinatorTest {
+
+    private fun confidentCandidate(value: BigDecimal, basis: NutritionBasis): CarbCandidate = CarbCandidate(
+        sourceLine = "test",
+        label = "test",
+        value = value,
+        basis = basis,
+        score = 100,
+        geometry = OcrBox(0, 0, 10, 10),
+        evidence = emptyList(),
+        column = null,
+    )
 
     @Test fun `beginNewWork bumps workGeneration but not aimEpoch`() {
         val coordinator = CaptureEvidenceCoordinator()
@@ -47,5 +60,29 @@ class CaptureEvidenceCoordinatorTest {
 
         assertNotEquals(gen1, gen2)
         assertEquals("two shutter presses under the same aim must not move the aim epoch", aim, coordinator.aimEpoch)
+    }
+
+    @Test fun `freezeAtShutter uses the same clock value passed to it, not a fresh wall-clock read`() {
+        val buffer = LiveEvidenceBuffer()
+        val candidate = confidentCandidate(BigDecimal("46"), NutritionBasis.PER_100_G)
+        val coordinator = CaptureEvidenceCoordinator()
+        buffer.record(LabelReading.Confident(candidate), timestampMs = 1000L, aimEpoch = coordinator.aimEpoch)
+        buffer.record(LabelReading.Confident(candidate), timestampMs = 1100L, aimEpoch = coordinator.aimEpoch)
+        buffer.record(LabelReading.Confident(candidate), timestampMs = 1200L, aimEpoch = coordinator.aimEpoch)
+
+        val snapshot = coordinator.freezeAtShutter(buffer, nowElapsed = 1250L)
+
+        assertEquals(0, snapshot.candidate?.value?.compareTo(BigDecimal("46")))
+        assertEquals(3, snapshot.observationCount)
+    }
+
+    @Test fun `freezeAtShutter reports a rejection reason when nothing is available`() {
+        val buffer = LiveEvidenceBuffer()
+        val coordinator = CaptureEvidenceCoordinator()
+
+        val snapshot = coordinator.freezeAtShutter(buffer, nowElapsed = 1000L)
+
+        assertEquals(null, snapshot.candidate)
+        assertEquals("no observations recorded for this aim epoch", snapshot.rejectionReason)
     }
 }
