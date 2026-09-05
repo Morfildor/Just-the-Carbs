@@ -221,28 +221,30 @@ fun JustTheCarbsNavHost(
             )
             val slideIndex by viewModel.slideIndex.collectAsStateWithLifecycle()
             val coroutineScope = rememberCoroutineScope()
-            // Guards against a rapid double tap starting two navigation attempts. The ViewModel's
-            // own mutex already makes the DataStore write itself idempotent; this is the separate
-            // UI-layer guarantee that "completed once, navigated once" holds even when the second
-            // tap lands before the first coroutine has resumed.
-            var completing by remember { mutableStateOf(false) }
+            val completionState by viewModel.completionState.collectAsStateWithLifecycle()
+
+            LaunchedEffect(completionState) {
+                if (completionState is OnboardingViewModel.CompletionState.Saved) {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                }
+            }
 
             OnboardingScreen(
                 slideIndex = slideIndex,
                 onNext = viewModel::next,
                 onSkip = viewModel::skip,
                 onSlideChanged = viewModel::showSlide,
+                // Disabled only while a write is genuinely in flight -- Idle and Failed both allow a
+                // tap (Failed is a retry, not a re-disable), so a DataStore failure can no longer
+                // leave this button permanently unusable.
                 onGetStarted = {
-                    if (!completing) {
-                        completing = true
-                        coroutineScope.launch {
-                            viewModel.complete()
-                            navController.navigate(Routes.HOME) {
-                                popUpTo(Routes.ONBOARDING) { inclusive = true }
-                            }
-                        }
+                    if (completionState !is OnboardingViewModel.CompletionState.Saving) {
+                        coroutineScope.launch { viewModel.complete() }
                     }
                 },
+                completionError = (completionState as? OnboardingViewModel.CompletionState.Failed)?.message,
             )
         }
 

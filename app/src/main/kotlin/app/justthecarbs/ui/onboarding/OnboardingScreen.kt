@@ -37,7 +37,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,6 +74,7 @@ fun OnboardingScreen(
     onSkip: () -> Unit,
     onGetStarted: () -> Unit,
     onSlideChanged: (Int) -> Unit = {},
+    completionError: String? = null,
 ) {
     val last = slideIndex == SLIDES.lastIndex
 
@@ -220,6 +225,24 @@ fun OnboardingScreen(
                     Text(
                         text = stringResource(if (last) R.string.onboarding_get_started else R.string.onboarding_next),
                         style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+
+                // A failed save is said out loud, the same way `manual_error_save` and
+                // `quick_save_failed` are elsewhere in this app: a static, friendly message rather
+                // than the raw exception text, positioned directly beneath the button that failed
+                // so the explanation is where the user is already looking. Only reachable on the
+                // last slide, where `onGetStarted` is the button's action -- `completionError` stays
+                // null on every earlier slide because `onNext` never touches the repository.
+                if (last && completionError != null) {
+                    Text(
+                        text = stringResource(R.string.onboarding_completion_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (slideIndex == 1) MaterialTheme.colorScheme.error else Color.White,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
             }
