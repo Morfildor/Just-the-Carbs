@@ -92,9 +92,10 @@ internal object SelectedTableResolution {
         passA: PassAResult,
         region: NormalizedRegion,
         bitmap: Bitmap?,
+        stillObservationId: PhysicalObservationId,
         liveEvidence: RecognitionEvidence? = null,
         recogniseRegion: (Bitmap?, NormalizedRegion) -> RecognitionEvidence? = { bmp, rgn ->
-            SelectedRegionRecognizer.recognise(bmp, rgn)
+            SelectedRegionRecognizer.recognise(bmp, rgn, stillObservationId)
         },
     ): Result {
         val started = System.nanoTime()
@@ -105,6 +106,7 @@ internal object SelectedTableResolution {
             source = EvidenceSource.FULL_FRAME_PASS_A,
             report = passA.report,
             document = passA.document,
+            physicalObservation = stillObservationId,
         )
         evidence += wholeFrame
 
@@ -120,6 +122,7 @@ internal object SelectedTableResolution {
                 // `evidence.document` was handed elements the user's rectangle had excluded. A row
                 // the user cropped away is not evidence about the row they cropped to.
                 document = filtered.document ?: passA.document,
+                physicalObservation = stillObservationId,
             )
         }
 

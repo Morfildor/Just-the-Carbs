@@ -89,6 +89,7 @@ import app.justthecarbs.ocr.LiveEvidenceBuffer
 import app.justthecarbs.ocr.NormalizedRegion
 import app.justthecarbs.ocr.NutritionParseReport
 import app.justthecarbs.ocr.PassAResult
+import app.justthecarbs.ocr.PhysicalObservationId
 import app.justthecarbs.ocr.RecognitionEvidence
 import app.justthecarbs.ocr.ScaleAmbiguity
 import app.justthecarbs.ocr.ScanEvidenceRecorder
@@ -634,6 +635,15 @@ private fun LabelCamera(
         val workGeneration = coordinator.workGeneration
         // Taken at the shutter, not now. See the field's KDoc and the comment at the call below.
         val snapshotAtShutter = frozenLiveSnapshot
+        // The temp file created for this shutter press is already a stable, unique per-attempt
+        // identifier (`captureLabel` names it `justthecarbs-label-<unique>.jpg`). `capturedPreview`
+        // is set to that same file at `onImageSaved` and cleared exactly when `pendingCrop` is, so it
+        // is non-null for the whole lifetime `readSelectedTable` can be called in — from the
+        // automatic post-capture pass through however long the user spends dragging a crop
+        // rectangle before *Read table*. Both call sites therefore agree on one still id per capture.
+        val stillObservationId = PhysicalObservationId.forStill(
+            capturedPreview?.name ?: "unknown-capture",
+        )
         readingTable = true
         lastRecognisedRegion = region
 
@@ -647,6 +657,7 @@ private fun LabelCamera(
                     passA = captured,
                     region = region,
                     bitmap = captured.bitmap,
+                    stillObservationId = stillObservationId,
                     // The FROZEN snapshot taken at shutter time — never a fresh query of the live
                     // buffer, which is what this line used to do.
                     //
@@ -663,6 +674,10 @@ private fun LabelCamera(
                     // source, same report shape, no document — live frames are transient and the
                     // buffer deliberately retains no geometry), just from a value captured at the
                     // shutter instead of from a query issued seconds later.
+                    //
+                    // Stamped as a LIVE snapshot, distinct from the still it may corroborate: these
+                    // are genuinely different sensor frames captured before the shutter fired, not a
+                    // re-processing of the same pixels the still evidence carries.
                     liveEvidence = snapshotAtShutter?.candidate?.let { candidate ->
                         RecognitionEvidence(
                             source = EvidenceSource.LIVE_STABLE_FRAME,
@@ -671,6 +686,10 @@ private fun LabelCamera(
                                 emptyList(),
                             ),
                             document = null,
+                            physicalObservation = PhysicalObservationId.forLiveSnapshot(
+                                coordinator.aimEpoch,
+                                capturedPreview?.name ?: "unknown-capture",
+                            ),
                         )
                     },
                 )

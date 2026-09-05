@@ -58,7 +58,13 @@ class EvidencePipelineProductionTest {
                 evidence = null,
                 recognitionMs = 0,
             )
-            SelectedTableResolution.resolve(passA, region, bitmap, live)
+            SelectedTableResolution.resolve(
+                passA = passA,
+                region = region,
+                bitmap = bitmap,
+                stillObservationId = PhysicalObservationId.forStill(name),
+                liveEvidence = live,
+            )
         } finally {
             bitmap.recycle()
         }
