@@ -75,7 +75,7 @@ sealed interface CameraPermissionState {
 }
 
 /**
- * Derives the five-state model from what the platform reports right now.
+ * Derives the four-state model from what the platform reports right now.
  *
  * Pure and Android-framework-free (no `Activity` parameter) so it is plain-JVM-testable — this
  * codebase does not use Robolectric, and the state-selection logic is exactly the part worth
@@ -83,7 +83,7 @@ sealed interface CameraPermissionState {
  * [android.app.Activity.shouldShowRequestPermissionRationale]'s answer, read by the caller; this
  * function only combines it with what has happened on this screen visit.
  *
- * Not exposed as its own state case: "returning from Settings" is not a sixth value the render
+ * Not exposed as its own state case: "returning from Settings" is not a fifth value the render
  * layer needs to know about, it is simply the moment [Lifecycle.Event.ON_RESUME] triggers a recheck
  * that may move [CameraPermissionState] from [CameraPermissionState.PermanentlyDenied] to
  * [CameraPermissionState.Granted] — the two states already say everything the screen needs.
