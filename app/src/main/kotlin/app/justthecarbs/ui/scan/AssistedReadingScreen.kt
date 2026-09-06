@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -25,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -40,9 +44,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
@@ -50,9 +58,11 @@ import app.justthecarbs.domain.CarbBasis
 import app.justthecarbs.domain.CarbPlausibility
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.ResultFormatter
+import app.justthecarbs.ocr.CorrectionFieldState
 import app.justthecarbs.ocr.CropSelectionGeometry
 import app.justthecarbs.ocr.DisputedCandidates
 import app.justthecarbs.ocr.FocusedAmountEntry
+import app.justthecarbs.ocr.OcrBox
 import app.justthecarbs.ocr.OcrDocument
 import app.justthecarbs.ocr.RecoveryCandidates
 import app.justthecarbs.ocr.StatedBasis
@@ -63,6 +73,9 @@ import java.math.BigDecimal
 const val ASSIST_OVERLAY_TAG = "assist_overlay"
 const val ASSIST_MANUAL_FIELD_TAG = "assist_manual_field"
 const val ASSIST_FOCUSED_FIELD_TAG = "assist_focused_field"
+const val ASSIST_CORRECTION_FIELD_TAG = "assist_correction_field"
+const val ASSIST_CORRECTION_SUBMIT_TAG = "assist_correction_submit"
+const val ASSIST_CORRECTION_HIGHLIGHT_TAG = "assist_correction_highlight"
 
 /**
  * What the assisted fallback is working with.
@@ -121,6 +134,39 @@ data class AssistState(
      * It changes no rule and reads no value — it selects the first screen.
      */
     val startOnFocusedEntry: Boolean = false,
+    /**
+     * Open directly on correcting a **known** row/basis whose displayed figure the user just
+     * rejected — never the generic "tap the row / choose / type it in" menu.
+     *
+     * ## Why this exists (UX-reduction pass)
+     *
+     * Before a rejection landed here, the app already knew this is the total-carbohydrate reading,
+     * its basis, its row geometry, the displayed (wrong) value and the frozen photograph — it read
+     * all of that to build the very proposal the user just declined. Falling back to generic
+     * [AssistState] threw all of it away and made the user re-identify the row from scratch, tap
+     * their way through a menu, or worse, land in full manual product entry with a blank basis
+     * picker for a basis the app already knew.
+     *
+     * Set only from a rejection of [VerificationScreen] (either [VerificationScreenMode.OcrProposal]
+     * or [VerificationScreenMode.ScaleUnresolved]) — never from a fresh automatic-attempt failure,
+     * where no specific value was ever shown to reject.
+     */
+    val correctionTarget: CorrectionTarget? = null,
+)
+
+/**
+ * Everything [AssistStep.CorrectingKnownAmount] needs to let the user fix a rejected figure without
+ * re-establishing the row or basis it was already read from.
+ *
+ * [rejectedValue]/[basis] are the figure and basis the user just declined — [basis] is fixed for the
+ * whole step (task §6: "no basis picker"), and [rejectedValue] is what [CorrectionFieldState] compares
+ * a typed correction against so an unedited resubmission cannot be mistaken for a correction.
+ */
+data class CorrectionTarget(
+    val rejectedValue: BigDecimal,
+    val basis: NutritionBasis,
+    val rowText: String,
+    val rowInSourceSpace: OcrBox,
 )
 
 /** Which step of the assisted flow the user is on. */
@@ -155,6 +201,18 @@ private sealed interface AssistStep {
      * Someone who genuinely wants to supply both halves uses [TypingValue], which is still offered.
      */
     data object TypingFocusedAmount : AssistStep
+
+    /**
+     * Correcting a figure the user just rejected on [VerificationScreen] — the row, basis, row
+     * geometry and rejected value are all already known (task §5/§6).
+     *
+     * Distinct from [TypingFocusedAmount], which is reached when the app never had a value to
+     * propose in the first place (it read the row and basis but the *digits* were unreadable). Here
+     * the app DID propose digits and the user said they were wrong, so the initial field content is
+     * the rejected value itself — selected for immediate replacement, never resubmittable unchanged
+     * (see [app.justthecarbs.ocr.CorrectionFieldState]).
+     */
+    data object CorrectingKnownAmount : AssistStep
 }
 
 /**
@@ -378,18 +436,30 @@ fun AssistedReadingScreen(
     onRetake: () -> Unit,
     onClose: () -> Unit,
 ) {
-    // The first screen. [AssistState.startOnFocusedEntry] is set only when the caller has already
-    // established, through [FocusedAmountEntry.of], that the row and exactly one per-100 basis
-    // exist — so the menu of ways forward would be offering choices about questions already
-    // answered. `remember` with no key: this selects the *initial* step, and the user's own
-    // navigation within the screen must not be undone by a recomposition.
+    // The first screen. [AssistState.correctionTarget] takes priority over
+    // [AssistState.startOnFocusedEntry]: both mean the row and basis are already known, but a
+    // correction target additionally carries a specific rejected VALUE, which is the stronger claim
+    // — the app proposed digits and the user said they were wrong, so there is even less to ask than
+    // in the focused-entry case, where the app never had digits to propose at all.
+    // `remember` with no key: this selects the *initial* step, and the user's own navigation within
+    // the screen must not be undone by a recomposition.
     var step by remember {
         mutableStateOf<AssistStep>(
-            if (state.startOnFocusedEntry) AssistStep.TypingFocusedAmount else AssistStep.Choosing,
+            when {
+                state.correctionTarget != null -> AssistStep.CorrectingKnownAmount
+                state.startOnFocusedEntry -> AssistStep.TypingFocusedAmount
+                else -> AssistStep.Choosing
+            },
         )
     }
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
     var typed by remember { mutableStateOf("") }
+    // Pre-filled with the rejected value so the user sees exactly what they are correcting, but
+    // tracked separately from whether it has actually been EDITED — see CorrectionFieldState, which
+    // is what stops an unedited resubmission being treated as though the rejection never happened.
+    var correctionTyped by remember(state.correctionTarget) {
+        mutableStateOf(state.correctionTarget?.rejectedValue?.let { ResultFormatter.quantity(it) } ?: "")
+    }
     var rowCandidates by remember { mutableStateOf<List<RecoveryCandidates.Candidate>>(emptyList()) }
     var tappedRowText by remember { mutableStateOf<String?>(null) }
     var tappedChildRow by remember { mutableStateOf(false) }
@@ -475,6 +545,7 @@ fun AssistedReadingScreen(
                         AssistStep.PickingLabelled -> R.string.assist_choose_title
                         AssistStep.TypingValue -> R.string.assist_type_title
                         AssistStep.TypingFocusedAmount -> R.string.assist_focused_title
+                        AssistStep.CorrectingKnownAmount -> R.string.assist_correct_title
                         AssistStep.Choosing -> R.string.assist_title
                     },
                 ),
@@ -488,6 +559,7 @@ fun AssistedReadingScreen(
                         AssistStep.PickingLabelled -> R.string.assist_choose_body
                         AssistStep.TypingValue -> R.string.assist_type_body
                         AssistStep.TypingFocusedAmount -> R.string.assist_focused_body
+                        AssistStep.CorrectingKnownAmount -> R.string.assist_correct_body
                         AssistStep.Choosing -> when {
                             // Ordered most specific first. An unchanged crop is a precise statement
                             // about what the user just did and beats the generic advice.
@@ -625,6 +697,30 @@ fun AssistedReadingScreen(
                             style = Stroke(width = 4f),
                         )
                     }
+                }
+            }
+
+            // A static highlight of the already-known row, for the correction step. Never tappable
+            // — there is nothing left to tap for; the row is established and only the digits need
+            // fixing — so this is a plain overlay, not a `pointerInput` surface.
+            val correctionTarget = state.correctionTarget
+            if (displayed.width > 0f && displayed.height > 0f &&
+                step == AssistStep.CorrectingKnownAmount && correctionTarget != null
+            ) {
+                val scale = displayed.width / bitmap.width
+                Canvas(modifier = Modifier.fillMaxSize().testTag(ASSIST_CORRECTION_HIGHLIGHT_TAG)) {
+                    drawRect(
+                        color = Color(0xFF4C8DF6),
+                        topLeft = Offset(
+                            displayed.left + correctionTarget.rowInSourceSpace.left * scale,
+                            displayed.top + correctionTarget.rowInSourceSpace.top * scale,
+                        ),
+                        size = Size(
+                            correctionTarget.rowInSourceSpace.width * scale,
+                            correctionTarget.rowInSourceSpace.height * scale,
+                        ),
+                        style = Stroke(width = 4f),
+                    )
                 }
             }
         }
@@ -850,6 +946,115 @@ fun AssistedReadingScreen(
                             onClick = { step = AssistStep.Choosing },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(stringResource(R.string.action_back)) }
+                    }
+                }
+
+                AssistStep.CorrectingKnownAmount -> {
+                    val target = state.correctionTarget
+                    // Unreachable without a target — the only path here is a rejection carrying one.
+                    // Same defensive shape as TypingFocusedAmount above, for the same reason: a
+                    // future caller adding another route must not be able to reach a screen that
+                    // claims a row/basis it does not have.
+                    if (target == null) {
+                        step = AssistStep.Choosing
+                    } else {
+                        val focusManager = LocalFocusManager.current
+                        val focusRequester = remember { FocusRequester() }
+                        var fieldValue by remember {
+                            mutableStateOf(
+                                TextFieldValue(
+                                    text = correctionTyped,
+                                    selection = TextRange(0, correctionTyped.length),
+                                ),
+                            )
+                        }
+                        // Auto-focus and select-all fire once, on entering this step — not on every
+                        // recomposition, which would fight the user's own caret placement mid-edit.
+                        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+                        fun trySubmit() {
+                            CorrectionFieldState.submittableAmount(
+                                typed = fieldValue.text,
+                                rejectedValue = target.rejectedValue,
+                                basis = target.basis,
+                            )?.let { amount ->
+                                focusManager.clearFocus()
+                                onUseValue(amount, target.basis)
+                            }
+                        }
+
+                        Text(
+                            text = stringResource(R.string.assist_correct_row, target.rowText.trim()),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        val submittable = CorrectionFieldState.submittableAmount(
+                            typed = fieldValue.text,
+                            rejectedValue = target.rejectedValue,
+                            basis = target.basis,
+                        )
+                        OutlinedTextField(
+                            value = fieldValue,
+                            onValueChange = { input ->
+                                if (input.text.length <= 6 &&
+                                    input.text.all { it.isDigit() || it == '.' || it == ',' }
+                                ) {
+                                    fieldValue = input
+                                    correctionTyped = input.text
+                                }
+                            },
+                            label = { Text(stringResource(R.string.assist_correct_label, target.basis.unitLabel)) },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Done,
+                            ),
+                            // The same submit function the visible button calls below — task §6's
+                            // explicit requirement that keyboard and button paths never carry two
+                            // copies of validation.
+                            keyboardActions = KeyboardActions(onDone = { trySubmit() }),
+                            singleLine = true,
+                            isError = fieldValue.text.isNotBlank() && submittable == null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                                .testTag(ASSIST_CORRECTION_FIELD_TAG),
+                        )
+                        if (fieldValue.text.isNotBlank() && submittable == null) {
+                            Text(
+                                text = stringResource(R.string.assist_value_implausible),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        // Kept as a visible, always-present action for accessibility and
+                        // discoverability (task §6) even though IME Done already submits — disabled
+                        // rather than hidden while nothing submittable exists, so TalkBack and a
+                        // pointer user both see the same control in the same place regardless of
+                        // input method.
+                        Button(
+                            onClick = ::trySubmit,
+                            enabled = submittable != null,
+                            shape = RoundedCornerShape(Space.buttonRadius),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(Space.primaryButtonHeight)
+                                .testTag(ASSIST_CORRECTION_SUBMIT_TAG),
+                        ) {
+                            Text(
+                                if (submittable != null) {
+                                    stringResource(
+                                        R.string.assist_focused_confirm,
+                                        ResultFormatter.quantity(submittable),
+                                        target.basis.unitLabel,
+                                    )
+                                } else {
+                                    stringResource(R.string.assist_focused_title)
+                                },
+                            )
+                        }
+                        TextButton(onClick = onRetake, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.crop_retake))
+                        }
                     }
                 }
 

@@ -1493,13 +1493,34 @@ private fun LabelCamera(
                     verification = null
                     onUseValue(value, basis)
                 },
-                // Rejecting is not a failure: the user is still on the photo and still in the task,
-                // so it hands straight to the assisted path rather than dropping them out.
+                // Rejecting is not a failure: the user is still on the photo and still in the task.
+                //
+                // ## Direct correction, not the generic assisted menu (UX-reduction pass)
+                //
+                // The app already knows everything this proposal was built from: it is the
+                // total-carbohydrate reading, its basis, its row geometry and the displayed (now
+                // rejected) value. Throwing that away and reopening generic AssistState made the
+                // user re-identify the row from a "tap the row / choose / type it in" menu for a row
+                // the app had already located and highlighted a moment ago. A correctionTarget
+                // carries exactly that provenance into AssistedReadingScreen's
+                // AssistStep.CorrectingKnownAmount, which asks only for the digits.
+                //
+                // basis defaults to PER_100_G only as a non-null constructor requirement satisfied
+                // by candidate.basis's own non-null-when-Confident invariant (LabelReading.Confident
+                // requires a non-null basis) — the `?:` never actually fires in practice for this
+                // reading type, and is not a guess the app is making.
                 onReject = {
                     verification = null
+                    val candidate = proposal.reading.candidate
                     assisting = AssistState(
                         document = frozen.document,
                         disputed = disputedCandidates,
+                        correctionTarget = CorrectionTarget(
+                            rejectedValue = candidate.value,
+                            basis = candidate.basis ?: NutritionBasis.PER_100_G,
+                            rowText = candidate.sourceLine,
+                            rowInSourceSpace = proposal.winningEvidence?.sourceSpaceGeometry ?: candidate.geometry,
+                        ),
                     )
                 },
                 onRetake = ::resumeLive,
@@ -1521,12 +1542,21 @@ private fun LabelCamera(
                     onUseValue(value, basis)
                 },
                 // Rejecting behaves exactly as it does for an ordinary proposal: still on the photo,
-                // still in the task, handed to the assisted path rather than dropped out.
+                // still in the task, handed to direct correction of the already-known row/basis
+                // rather than the generic assisted menu — see the ordinary-proposal branch above for
+                // the full reasoning. Here the value/basis/row/geometry are already assembled on
+                // `scaleProposal` itself, so no extraction from a candidate is needed.
                 onReject = {
                     scaleUnresolvedProposal = null
                     assisting = AssistState(
                         document = frozen.document,
                         disputed = disputedCandidates,
+                        correctionTarget = CorrectionTarget(
+                            rejectedValue = scaleProposal.value,
+                            basis = scaleProposal.basis,
+                            rowText = scaleProposal.candidate.rowText,
+                            rowInSourceSpace = scaleProposal.rowInSourceSpace,
+                        ),
                     )
                 },
                 onRetake = ::resumeLive,

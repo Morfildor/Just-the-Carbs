@@ -86,11 +86,13 @@ internal object ConfirmationEligibility {
      * Whether [reading]'s candidate — refused by [ReadingEligibility] for insufficient scale
      * evidence — may still be offered for explicit visual confirmation against [document].
      *
-     * Locates the reading's own cell inside [RecoveryCandidates.of]'s output for [document], which is
-     * what applies every structural exclusion above identically to how the recovery screen already
-     * applies them. A candidate absent from that list was excluded by one of those rules — child row,
-     * wrong clause, missing unit, column ownership, cross-column contradiction, or a distinct-run
-     * dispute — and is refused here for the same reason, never re-admitted.
+     * Locates the reading's own cell *spatially* — never by value+basis alone, see
+     * [spatiallyBelongsToSpan] — inside [RecoveryCandidates.ofIncludingScaleRefusals]'s output for
+     * [document], which is what applies every structural exclusion above identically to how the
+     * recovery screen already applies them. A candidate absent from that list was excluded by one of
+     * those rules — child row, wrong clause, missing unit, column ownership, cross-column
+     * contradiction, or a distinct-run dispute — and is refused here for the same reason, never
+     * re-admitted.
      *
      * [disputed] must be the same [DisputedCandidates] the resolver produced for this evidence set, so
      * a value one recognition run contradicted cannot be shown for confirmation just because it also
@@ -110,7 +112,18 @@ internal object ConfirmationEligibility {
         // scale verdict itself is re-stated here so a caller cannot accidentally offer confirmation
         // for a reading whose refusal came from something other than scale.
         when (scale) {
-            is ScaleAmbiguity.Verdict.Established -> Unit // Already eligible upstream; unreachable here.
+            // Fail-closed on the object's own stated contract: an ESTABLISHED scale is already
+            // ReadingEligibility-eligible through the ordinary presentation path
+            // (AutomaticScanAdvance.Presentation.ConfirmOnCapture / Advance), so it must never enter
+            // the special scale-unresolved admission path this object exists for. In production this
+            // branch is unreachable — ScanPresentationDecision only calls [evaluate] from
+            // AutomaticScanAdvance.Presentation.Recover, which itself never occurs for an Established
+            // scale — but the object's own KDoc promises "the only thing this relaxes is Unsupported
+            // and Ambiguous", and an implementation that let Established fall through to the same
+            // admission was a widening bug waiting for a future caller to trigger it. See
+            // ConfirmationEligibilityScaleContractTest.
+            is ScaleAmbiguity.Verdict.Established ->
+                return Verdict.Refused("an established scale is already eligible upstream; this object never re-admits it")
             is ScaleAmbiguity.Verdict.Unsupported -> Unit
             is ScaleAmbiguity.Verdict.Ambiguous -> Unit
             null -> return Verdict.Refused("no scale question was ever asked — no candidate or no document")
@@ -135,22 +148,50 @@ internal object ConfirmationEligibility {
         // candidate refused for scale, which is precisely the population this function is asked
         // about.
         //
-        // Matched by value and basis rather than by exact box equality: [CarbCandidate.geometry] can
-        // be a recovered clause's *span* over several elements (see [MergedTotalRowRecovery] and
-        // [ScaleAmbiguity]'s own `candidateElement` for the identical reason it does not use box
-        // equality either), while [RecoveryCandidates.Candidate.box] is always one row element's own
-        // box. A span and the single element carrying its accepted number legitimately differ.
-        val located = RecoveryCandidates.ofIncludingScaleRefusals(document, disputed)
-            .firstOrNull {
-                it.reading.amount.compareTo(candidate.value) == 0 &&
-                    perHundredBasis(it.reading.basis) == candidate.basis
+        // ## Matched by SPATIAL IDENTITY, never by value+basis alone
+        //
+        // [RecoveryCandidates] deliberately permits distinct candidates sharing one reading at
+        // different boxes — a duplicated nutrition panel, a repeated declaration, a multilingual
+        // duplicate, or an equivalent layout can genuinely contain two `40 g / 100 g` cells at
+        // different places on the label. A value+basis lookup cannot tell those apart, so it could
+        // silently highlight a *different* row than the one [reading.candidate] was actually read
+        // from — showing the user the wrong cell on the enlarged close-up while claiming it is the
+        // one the app read.
+        //
+        // The match is instead spatial, reusing the same shape [ScaleAmbiguity.candidateElement]
+        // already uses for the identical reason: [CarbCandidate.geometry] can be a recovered clause's
+        // *span* over several elements (see [MergedTotalRowRecovery]), while
+        // [RecoveryCandidates.Candidate.box] is always one row element's own box — so a spatial match
+        // must be containment/overlap against the span, never exact box equality, which a span and
+        // its own accepted element legitimately fail.
+        val candidatesInSpan = RecoveryCandidates.ofIncludingScaleRefusals(document, disputed).filter {
+            spatiallyBelongsToSpan(it.box, candidate.geometry)
+        }
+
+        // Disambiguate a span containing more than one value cell (e.g. a paired sibling the scale
+        // check itself considered) by the accepted number, exactly as [ScaleAmbiguity.candidateElement]
+        // does — never by list/source order, which is an arbitrary tiebreaker over candidates the
+        // rest of this function has already established are genuinely distinct spatial matches.
+        val located = when (candidatesInSpan.size) {
+            0 -> null
+            1 -> candidatesInSpan.single()
+            else -> {
+                val byValue = candidatesInSpan.filter { it.reading.amount.compareTo(candidate.value) == 0 }
+                byValue.singleOrNull()
             }
+        }
 
         if (located == null) {
             return Verdict.Refused(
-                "the candidate does not appear among the label's own structurally-admissible " +
-                    "readings — excluded as a child row, wrong clause, missing unit, unowned column, " +
-                    "a cross-column contradiction, or a distinct recognition run's dispute",
+                if (candidatesInSpan.size > 1) {
+                    "more than one structurally-admissible reading occupies the candidate's own " +
+                        "geometry and none is distinguishable by its accepted value — refusing rather " +
+                        "than guessing which row to highlight"
+                } else {
+                    "the candidate does not appear among the label's own structurally-admissible " +
+                        "readings — excluded as a child row, wrong clause, missing unit, unowned column, " +
+                        "a cross-column contradiction, or a distinct recognition run's dispute"
+                },
             )
         }
 
@@ -189,4 +230,25 @@ internal object ConfirmationEligibility {
 
     /** The [NutritionBasis] behind a [CarbBasis.PerHundred], or null for a declared-serving basis. */
     fun perHundredBasis(basis: CarbBasis): NutritionBasis? = (basis as? CarbBasis.PerHundred)?.basis
+
+    /**
+     * Whether [box] is the same cell [span] was read from — containment first, tolerant overlap as a
+     * fallback, exact equality never required.
+     *
+     * Mirrors [ScaleAmbiguity.candidateElement]'s own criteria rather than inventing a second
+     * geometric rule that could drift from it: a full match when [box] sits entirely inside [span]
+     * (the ordinary case — [span] IS the element, or is a wider recovered clause containing it), and
+     * a substantial vertical-overlap fallback for the case a span's edges do not land pixel-exact on
+     * an element's own box (rounding from a recovered-clause union, say). Horizontal overlap is not
+     * required for the fallback: [span] can be a clause that ends before [box]'s right edge when the
+     * clause boundary itself was computed slightly differently than the element boundary, and the
+     * vertical band is what actually identifies "the same printed row/cell", not the horizontal one.
+     */
+    private fun spatiallyBelongsToSpan(box: OcrBox, span: OcrBox): Boolean {
+        val contained = box.left >= span.left && box.right <= span.right &&
+            box.top >= span.top && box.bottom <= span.bottom
+        if (contained) return true
+        return box.verticalOverlapRatio(span) > 0.5 &&
+            box.left < span.right && box.right > span.left
+    }
 }

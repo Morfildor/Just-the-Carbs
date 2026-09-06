@@ -531,6 +531,16 @@
     <string name="assist_focused_prompt">Type the carbohydrate figure printed under 100 %1$s.</string>
     <string name="assist_focused_confirm">Use %1$s g / 100 %2$s</string>
     <!--
+      Direct correction of a rejected proposal (UX-reduction pass). Reached from rejecting an
+      ordinary VerificationScreen proposal or a ScaleUnresolved reading — the row, basis and row
+      geometry are all already established (that is exactly what was shown before the rejection), so
+      only the digits are asked for, with no re-identification of the row and no basis picker.
+    -->
+    <string name="assist_correct_title">Fix the figure</string>
+    <string name="assist_correct_body">The row and its unit are correct. Type the number printed on the label.</string>
+    <string name="assist_correct_row">From: %1$s</string>
+    <string name="assist_correct_label">Carbs per 100 %1$s</string>
+    <!--
       A figure whose basis the label never stated and which therefore cannot be converted. Shown as
       what it is rather than being offered under a guessed per-100 basis.
     -->
