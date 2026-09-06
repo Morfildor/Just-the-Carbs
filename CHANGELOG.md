@@ -128,6 +128,58 @@ files). Lint 0 errors, 23 warnings (unchanged baseline). The connected OCR corpu
 worktree control — zero regressions from this pass; none of the changes touch OCR recognition or
 parsing code. `docs/manual-qa.md` §35 is the gate — nothing here has been seen on physical hardware.
 
+### Fixed — OCR scan evidence review, 23-capture corpus (2026-09-06, NOT YET committed to main)
+
+A device session (`docs/Scan evidence 06-09/`, a Samsung phone, 23 captures across 13 products) found
+one release-blocking safety defect and one unnecessary-friction defect, both fixed and verified by
+replaying the real evidence through the real production decision path. No OCR recognition, parsing,
+row/column classification, or calculation rule changed — every fix is in the evidence-adjudication
+layer (`AutomaticVerification`, `ScaleAmbiguity`, `ReadingEligibility`, `ScanPresentationDecision`).
+
+- **`DISTINCT_OCR_AGREEMENT` could no longer settle absolute decimal scale on its own.** A red Lidl
+  label printing `7,2 g/100g` was read as `12` by both a live pre-shutter frame and a native-resolution
+  re-crop — two genuinely distinct physical observations, agreeing on the same systematic misread of
+  the same damaged glyph. The app treated that agreement as sufficient to skip the value confirmation
+  entirely (`CONFIRM_ON_CAPTURE`). Measured: two independent *observations* of the same optical defect
+  are not two independent pieces of evidence about the *digits*. Only
+  `AutomaticVerification.Route.CROSS_COLUMN` (the label's own other nutrient rows — evidence of a
+  genuinely different kind) may now settle an `Unsupported` scale verdict; `DISTINCT_OCR_AGREEMENT`
+  remains real verification (it still blocks a *conflicting* reading and still earns a proposal) but
+  no longer settles scale alone. The cost, stated plainly: a small number of genuinely correct
+  integers (previously confirmed via distinct-run agreement alone, e.g. `41g`) now cost one confirmed
+  keystroke via focused entry rather than a bare tap — never discarded, never delayed past the
+  frozen-photograph screen.
+- **A US-style linear Nutrition Facts panel with no per-100 column fell to the crop-confirmation
+  screen even when the recovery screen already had a fully-resolved answer.** `RecoveryCandidates`
+  (via `ServingDeclaration`) already recognises `Serv. size: 1Tbsp (18 g)` + `Total Carb. 6 g` as
+  `6 g / 18 g serving`, normalizing to `33.3 g/100g` — but `ScanPresentationDecision`'s automatic-veto
+  fallback checked only `FocusedAmountEntry` (per-100-column shapes) before giving up to the crop
+  screen, where that already-resolved answer was never shown. It now also checks
+  `RecoveryCandidates.of(document)` before falling back, routing to the recovery screen instead.
+- **Added a bounded, targeted native-resolution reread** (`TargetedRereadRegion`,
+  `TargetedRereadTrigger`, wired into `SelectedTableResolution.resolve` via a new
+  `EvidenceSource.TARGETED_REREAD`), tried at most once per capture attempt, only when a
+  total-carbohydrate row and basis are already located but the digits are still in doubt (a
+  scale-ambiguous/unsupported value, or a value declined for a corrupted unit glyph). The region
+  always includes the resolved per-100 header band — never narrower than "header through value" — per
+  the documented sondey/kinder lesson that a tighter crop can remove the very header a value needs to
+  be placed under. Reuses `SelectedRegionRecognizer`'s exact bitmap-lifecycle/timeout/ownership
+  mechanics (new `evidenceSource` parameter, defaulted so every existing caller is unaffected).
+  **Deliberately shares the still capture's own `PhysicalObservationId` and `RecognitionRun`** — it is
+  one more parse of the photograph already in hand, never a claim of independent physical
+  corroboration, so it cannot itself manufacture a `DISTINCT_OCR_AGREEMENT`.
+
+Verified: JVM full suite **1802/1802** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 187 XML
+files — up from 1783 at the start of this pass). Lint exit 0, 23 warnings (unchanged baseline). Debug
+APK and instrumented sources both build/compile. All 23 captures replayed through the real
+`SelectedTableResolution`/`ScanPresentationDecision` path with faithfully-derived geometry fixtures
+(`tools/derive-session-fixtures.py`, element counts matching every bundle's own declared count
+exactly): 2 of 23 actions changed (the two fixes above), 21 unchanged — zero collateral regressions
+across the corpus. **Not done in this pass**: the connected OCR corpus and the changed screens were
+not re-run on hardware or the emulator's virtual camera (which cannot exercise real recognition);
+`docs/manual-qa.md` needs a new dated gate for this pass. Not yet committed to `main` — on a review
+branch pending merge.
+
 ## 1.0.3 (versionCode 4) — RELEASED 2026-09-04, closed testing
 
 Opened 2026-08-29, built from committed `7cbf78d` and **accepted by Play onto the closed track on

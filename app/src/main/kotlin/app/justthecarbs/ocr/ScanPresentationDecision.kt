@@ -125,11 +125,34 @@ internal object ScanPresentationDecision {
             // something to propose proposes it, and this is the fallback's fallback. Asked of the
             // same `document` the veto just judged, so the two cannot be looking at different
             // recognitions.
-            return if (FocusedAmountEntry.of(document) != null) {
-                Action.FOCUSED_AMOUNT_ENTRY
-            } else {
-                Action.CROP_FALLBACK
-            }
+            if (FocusedAmountEntry.of(document) != null) return Action.FOCUSED_AMOUNT_ENTRY
+
+            // ## The basis-complete recovery gap (nineteenth session, 2026-09-06)
+            //
+            // `FocusedAmountEntry.of` requires a *resolved per-100 column* — it has nothing to say
+            // about a US-style linear panel, which has no columns at all and states its basis as a
+            // printed serving sentence instead (`ServingDeclaration`). `RecoveryCandidates.of`
+            // already resolves that shape (it is what a tap on the recovery screen has always
+            // offered), but nothing consulted it here: a label whose only basis is a declared
+            // serving fell straight to [Action.CROP_FALLBACK], and the crop screen — not the
+            // recovery screen — is what the scanner opens. `RecoveryCandidates`'s already-correct
+            // answer was never shown.
+            //
+            // Measured on `docs/Scan evidence 06-09/20260906-123544-918`, a Sempio Korean sauce US
+            // Nutrition Facts panel: the main pipeline reports `BASIS_MISSING` (no per-100 column
+            // exists to resolve), while `RecoveryCandidates.of` — consulting the same
+            // `ServingDeclaration` — already resolves `6 g / 18 g serving`, normalizing to
+            // `33.3 g/100g`. Routing to `Action.RECOVERY` here is what lets the assisted screen show
+            // that already-resolved candidate instead of sending the user to drag a crop rectangle
+            // that cannot fix a basis question a rectangle never answered.
+            //
+            // Reads no new value and relaxes no rule: [RecoveryCandidates] applies every suppression
+            // it always has (unit accompaniment, cross-column contradiction, scale eligibility,
+            // disputed-candidate exclusion) before a candidate reaches this list, so an empty list
+            // here still falls through to [Action.CROP_FALLBACK] exactly as before.
+            if (RecoveryCandidates.of(document).isNotEmpty()) return Action.RECOVERY
+
+            return Action.CROP_FALLBACK
         }
 
         return when (AutomaticScanAdvance.presentation(outcome, verification, document, automatic)) {

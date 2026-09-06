@@ -290,11 +290,33 @@ internal object AutomaticScanAdvance {
             // that a same-observation agreement, which cannot see a missing decimal separator any
             // more than a single run can, no longer buys the one-tap shortcut past that screen.
             //
-            // `Route.CROSS_COLUMN` and `Route.DISTINCT_OCR_AGREEMENT` are unaffected: both are
-            // evidence from outside this physical observation — the label's own other rows, or a
-            // genuinely separate photograph (Task 4's real `PhysicalObservationId`) — and neither
-            // shares the pixels that lost the separator in the first place.
-            corroborationSettlesScale = verification.route != AutomaticVerification.Route.NONE,
+            // ## `Route.DISTINCT_OCR_AGREEMENT` is ALSO excluded (nineteenth session, 2026-09-06)
+            //
+            // This previously read `verification.route != AutomaticVerification.Route.NONE`, on the
+            // documented reasoning that a genuinely separate photograph "does not share the pixels
+            // that lost the separator in the first place". That reasoning assumed the failure is
+            // always *per-recognition* noise — and measured on a physical device, it is not always
+            // true.
+            //
+            // `docs/Scan evidence 06-09/20260906-123352-975`: a red Lidl label printing `7,2 g /
+            // 100 g`. `LIVE_STABLE_FRAME` (a genuinely distinct pre-shutter sensor frame) and
+            // `SELECTED_REGION_OCR` (a fresh native-resolution recognition of the still) both read
+            // `12.0/PER_100_G` — DISTINCT_OCR_AGREEMENT, by the book. Both observations recognise the
+            // *same printed glyph* the same wrong way, because the ambiguity is in the ink itself (a
+            // `7,` prefix that reads as fused/absent under this glyph's specific damage) rather than
+            // in one recognition run's transient noise. Two independent *runs* of the same optical
+            // defect are not two independent *pieces of evidence about the digits* — they are one
+            // observation of a damaged glyph, counted twice.
+            //
+            // Only [AutomaticVerification.Route.CROSS_COLUMN] settles [ScaleAmbiguity
+            // .Verdict.Unsupported] now. It alone is evidence of a genuinely different *kind*: the
+            // label's *other* nutrient rows and their own printed ratios, which a damaged carbohydrate
+            // glyph cannot also have corrupted. `DISTINCT_OCR_AGREEMENT` remains real evidence against
+            // a single-run tokenisation slip — [AutomaticVerification.Verdict.mayAdvanceAutomatically]
+            // and [AutomaticVerification.Verdict.mayBeProposed] both still treat it as verification —
+            // it is simply no longer sufficient, on its own, to answer the *scale* question a
+            // structurally clean but decimal-less token leaves open.
+            corroborationSettlesScale = verification.route == AutomaticVerification.Route.CROSS_COLUMN,
         )
     }
 

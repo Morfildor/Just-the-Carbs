@@ -309,13 +309,32 @@ class SixthSessionRegressionTest {
      * unchanged, and two runs of one recognizer over the same pixels repeat it. So the truffle is
      * now refused **however** it was verified, and that is asserted below.
      *
-     * The original intent — a verified integer must not become collateral damage — is retained on
-     * `20260902-131357-353`'s actual shape: `41g`, integer-like, **lone**, with no sibling on its row
-     * to share a rescale with. That verdict is `Unsupported`, not `Ambiguous`, so corroboration still
-     * admits it and the good capture still behaves as it did.
+     * The original intent — a verified integer must not become collateral damage — held on
+     * `20260902-131357-353`'s actual shape (`41g`, integer-like, **lone**, no sibling to share a
+     * rescale with) through the eighteenth session: that verdict is `Unsupported`, not `Ambiguous`,
+     * so it is never hard-refused, and `DISTINCT_OCR_AGREEMENT` used to be treated as settling its
+     * scale for one-tap confirmation.
+     *
+     * ## Corrected (nineteenth session, 2026-09-06)
+     *
+     * `docs/Scan evidence 06-09/20260906-123352-975` measured the opposite: a red Lidl label printing
+     * `7,2 g/100g`, where `LIVE_STABLE_FRAME` and `SELECTED_REGION_OCR` — two genuinely distinct
+     * [PhysicalObservationId]s — both read `12.0`. **Two independent observations agreeing is not
+     * proof against a systematic misread**: both observations recognised the same damaged glyph the
+     * same way, because the ambiguity lives in the printed ink, not in one recognition run's noise.
+     * `DISTINCT_OCR_AGREEMENT` alone can no longer settle [ScaleAmbiguity.Verdict.Unsupported] — only
+     * [AutomaticVerification.Route.CROSS_COLUMN] (the label's *other* rows, a different kind of
+     * evidence a damaged carbohydrate glyph cannot also have corrupted) may. See
+     * [AutomaticScanAdvance.eligibility]'s `corroborationSettlesScale`.
+     *
+     * `41` is not lost: it moves from `CONFIRM_ON_CAPTURE` to `Presentation.Recover`, exactly the path
+     * same-frame agreement already took — the photograph is kept, the row highlighted and the basis
+     * preserved, and the user supplies the digits they can read. This is the intentional cost the
+     * pass accepts in exchange for closing the red-label defect: a correct, corroborated integer now
+     * costs one confirmed keystroke rather than zero.
      */
     @Test
-    fun `a verified lone integer is never made ambiguous`() {
+    fun `a lone integer verified only by distinct-run agreement is no longer auto-confirmable`() {
         val document = OcrDocument(
             width = 1000,
             height = 1000,
@@ -333,9 +352,19 @@ class SixthSessionRegressionTest {
             ScaleAmbiguity.check(document, confidentCandidate(document))
                 is ScaleAmbiguity.Verdict.Unsupported,
         )
-        assertTrue(
-            "a verified lone integer must still be confirmable",
+        assertFalse(
+            "distinct-run agreement alone must not settle Unsupported scale for confirmation",
             AutomaticScanAdvance.mayConfirm(EvidenceResolver.resolve(evidence), verdict, document),
+        )
+        assertEquals(
+            "the reading must still route to Recover, keeping the photograph and basis",
+            AutomaticScanAdvance.Presentation.Recover,
+            AutomaticScanAdvance.presentation(
+                EvidenceResolver.resolve(evidence),
+                verdict,
+                document,
+                automatic = true,
+            ),
         )
     }
 
@@ -343,14 +372,11 @@ class SixthSessionRegressionTest {
      * `41g` is withheld from one-tap confirmation when only *views of one photograph* agree — reached
      * one step later, through focused entry, with the photograph and basis preserved.
      *
-     * The companion to the case above, added 2026-09-04 and **reversed 2026-09-05**. Same-frame
-     * agreement cannot see a missing decimal separator any more than a single run can, because both
-     * inherit the same pixels — the arithmetic [ScaleInvarianceTest] measures. This class's own
-     * introduction records that the Hellmann's `13` case (`docs/Scan Evidence new structure/
-     * 20260904-113950-065`) reaches the user through exactly this door: same-photograph agreement
-     * across recognition runs, `route = NONE`. The 2026-09-05 evidence-reliability plan states the
-     * rule directly: "Unsupported decimal scale from a single physical observation must never
-     * prefill a value for one-tap acceptance."
+     * Same-frame agreement cannot see a missing decimal separator any more than a single run can,
+     * because both inherit the same pixels — the arithmetic [ScaleInvarianceTest] measures. This
+     * class's own introduction records that the Hellmann's `13` case (`docs/Scan Evidence new
+     * structure/20260904-113950-065`) reaches the user through exactly this door: same-photograph
+     * agreement across recognition runs, `route = NONE`.
      *
      * `41` is not lost — [AutomaticScanAdvance.presentation] still routes an ineligible confident
      * reading with an established basis to `Presentation.Recover`, which keeps the photograph and

@@ -46,6 +46,25 @@ enum class EvidenceSource {
      * something.
      */
     SECOND_OBSERVATION_PASS,
+
+    /**
+     * A second, narrower native-resolution re-read of the row(s) [SELECTED_REGION_OCR] left
+     * inconclusive — a corrupted unit glyph, a scale-ambiguous pair, or a digit fused with debris.
+     *
+     * ## This is NOT independent physical corroboration
+     *
+     * It reads the same JPEG [SELECTED_REGION_OCR] already read, just a tighter crop of it, so it
+     * **must** carry the still capture's own [PhysicalObservationId] ([PhysicalObservationId
+     * .forStill]) — never a fresh id. Two views of one photograph share every optical defect that
+     * produced the original ambiguity, which is exactly the lesson `docs/Scan evidence 06-09/
+     * 20260906-123352-975` measured for [SELECTED_REGION_OCR] and [LIVE_STABLE_FRAME] agreeing on
+     * the same wrong digits. A targeted reread's agreement with an earlier pass is real evidence
+     * against ordinary recognition noise (a different crop can genuinely read a glyph the first
+     * crop's surrounding clutter defeated); it is not evidence about absolute decimal scale, and
+     * [recognitionRun] therefore returns the same [RecognitionRun.SELECTED_REGION] as
+     * [SELECTED_REGION_OCR] — one more parse of the same run family, not a new one.
+     */
+    TARGETED_REREAD,
     ;
 
     /**
@@ -64,7 +83,11 @@ enum class EvidenceSource {
     val recognitionRun: RecognitionRun
         get() = when (this) {
             FULL_FRAME_PASS_A, FILTERED_PASS_A -> RecognitionRun.PASS_A
-            SELECTED_REGION_OCR -> RecognitionRun.SELECTED_REGION
+            // Deliberately the SAME run as SELECTED_REGION_OCR — see TARGETED_REREAD's own KDoc.
+            // It reads the same photograph's pixels, just a tighter crop, and must not be countable
+            // as a second independent recognition run for AutomaticVerification's
+            // DISTINCT_OCR_AGREEMENT route.
+            SELECTED_REGION_OCR, TARGETED_REREAD -> RecognitionRun.SELECTED_REGION
             LIVE_STABLE_FRAME -> RecognitionRun.LIVE
             SECOND_OBSERVATION_PASS -> RecognitionRun.SECOND_OBSERVATION
         }

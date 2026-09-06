@@ -35,11 +35,22 @@ import java.math.BigDecimal
  * **Corrected 2026-09-05.** That ordering is what let the Hellmann's `1,3 -> 13` misread reach a
  * one-tap `CONFIRM_ON_CAPTURE` card: `route = NONE` with `viewsAgree = true` is indistinguishable
  * from the `57`/`35` cases this file models, so a rule permissive enough to keep those on the card
- * admits `13` identically. `AutomaticScanAdvance.eligibility` now asks
+ * admits `13` identically. `AutomaticScanAdvance.eligibility` asked
  * `ReadingEligibility.evaluate(..., corroborationSettlesScale = verification.route !=
  * AutomaticVerification.Route.NONE)`, so same-frame agreement alone no longer earns the one-tap
  * card for an [ScaleAmbiguity.Verdict.Unsupported] reading — see `ScaleInvarianceTest`'s `41` case
  * and `SixthSessionRegressionTest`'s "withheld from confirmation" case for the caller-level pinning.
+ *
+ * **Narrowed further (nineteenth session, 2026-09-06).** `docs/Scan evidence 06-09/
+ * 20260906-123352-975` measured that `DISTINCT_OCR_AGREEMENT` — two genuinely *distinct* physical
+ * observations, not merely two views of one frame — can ALSO repeat the same systematic misread, so
+ * it must not settle `Unsupported` scale either. `corroborationSettlesScale` is now
+ * `verification.route == AutomaticVerification.Route.CROSS_COLUMN`, the narrowest condition that
+ * still lets the label's own *other* rows (a kind of evidence a damaged carbohydrate glyph cannot
+ * also have corrupted) settle it. Same-frame agreement and cross-run agreement are now treated
+ * identically for this question: both remain proposal-grade (`mayBeProposed`) but neither
+ * scale-settling on their own.
+ *
  * The tests below still hold at the [ReadingEligibility.evaluate] level: `corroborated = true` with
  * the default `corroborationSettlesScale = true` still reports `Eligible`, which is what makes
  * `corroborationSettlesScale` worth having as its own parameter rather than folding `corroborated`

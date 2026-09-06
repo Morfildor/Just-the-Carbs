@@ -53,6 +53,16 @@ object SelectedRegionRecognizer {
         region: NormalizedRegion?,
         observationId: PhysicalObservationId,
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+        /**
+         * Which [EvidenceSource] to tag the result with.
+         *
+         * Defaults to [EvidenceSource.SELECTED_REGION_OCR] so every existing caller is unaffected.
+         * [TargetedRereadRecognizer] passes [EvidenceSource.TARGETED_REREAD] for a second, narrower
+         * pass over the same bitmap — same crop-and-recognise mechanics, same bitmap-ownership and
+         * timeout guarantees, different evidence label because it answers a different question (a
+         * targeted second look, not the user's own confirmed rectangle).
+         */
+        evidenceSource: EvidenceSource = EvidenceSource.SELECTED_REGION_OCR,
     ): RecognitionEvidence? {
         if (source == null || source.isRecycled) return null
         val crop = SelectedRegionCrop.toPixels(region, source.width, source.height) ?: return null
@@ -107,10 +117,11 @@ object SelectedRegionRecognizer {
                 MlKitOcrMapper.toDocument(text, crop.width, crop.height)
             }
             val report = trace.time("parse") { NutritionTableParser.parseWithDiagnostics(document) }
-            OcrDiagnosticsLogger.timing("strategy-B ${trace.summary()}")
+            val label = if (evidenceSource == EvidenceSource.TARGETED_REREAD) "targeted-reread" else "strategy-B"
+            OcrDiagnosticsLogger.timing("$label ${trace.summary()}")
 
             return RecognitionEvidence(
-                source = EvidenceSource.SELECTED_REGION_OCR,
+                source = evidenceSource,
                 report = report,
                 document = document,
                 elapsedMs = (System.nanoTime() - started) / 1_000_000,

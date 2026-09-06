@@ -78,7 +78,8 @@ class EighthSessionRegressionTest {
     }
 
     /**
-     * Requirement 10 — the rule must not become "reject every integer".
+     * Requirement 10 — the rule must not become "reject every integer", in the sense that still
+     * holds: a genuinely correct integer is never discarded, only slowed to one confirmed keystroke.
      *
      * ## The fixture changed, and why (tenth pass)
      *
@@ -89,37 +90,45 @@ class EighthSessionRegressionTest {
      * red label now has its own controls (`the 12 reading is never …` above, and the tenth pass's
      * recovery guard); it must not simultaneously be the fixture proving integers are fine.
      *
-     * The intent is retained on a **genuinely safe** integer: a single-column drink printing a whole
-     * number with no sibling to rescale against. Its scale verdict is `Unsupported` — the same shape
-     * the red label produces — so corroboration is still what admits it, and the "reject every
-     * integer" regression this case exists to catch is still caught.
+     * ## Corrected again (nineteenth session, 2026-09-06)
+     *
+     * The intent used to be retained by asserting a "genuinely safe" single-column integer — one with
+     * no sibling to rescale against — was still `mayConfirm` on `DISTINCT_OCR_AGREEMENT` alone.
+     * `docs/Scan evidence 06-09/20260906-123352-975` measured that this "genuinely safe" shape is
+     * exactly what the red label ALSO has: a lone separatorless value, `Unsupported`, verified by two
+     * distinct physical observations that read the same damaged glyph the same way. There is no
+     * shape-level test that distinguishes a real `41` from a corrupted `72→12`; only the label's own
+     * *other* rows ([AutomaticVerification.Route.CROSS_COLUMN]) are evidence of a different kind that
+     * a damaged carbohydrate glyph cannot also have corrupted.
+     *
+     * So `DISTINCT_OCR_AGREEMENT` alone no longer settles `Unsupported` scale for **either** showing
+     * or skipping the confirmation. Requirement 10 now means: the figure is not discarded — it still
+     * reaches the user immediately through [AutomaticScanAdvance.Presentation.Recover], on the frozen
+     * photograph with the row highlighted and the basis preserved, one confirmed keystroke from the
+     * calculator rather than zero.
      */
     @Test
-    fun `a separatorless reading that a distinct run agrees with is still usable`() {
+    fun `a separatorless reading verified only by distinct-run agreement still reaches the user via Recover`() {
         val document = singleColumnIntegerDrink()
         val outcome = resolvedOutcome(document)
         assertTrue(
             "precondition: the scale must be unsupported, or this measures a different rule",
             ScaleAmbiguity.check(document, candidateOf(document)) is ScaleAmbiguity.Verdict.Unsupported,
         )
-        assertTrue(
-            "independent verification must still be sufficient to SHOW it",
+        assertFalse(
+            "distinct-run agreement alone must not settle Unsupported scale for confirmation either",
             AutomaticScanAdvance.mayConfirm(outcome, verifiedByDistinctRun, document),
         )
-        // ## And no longer sufficient to skip the confirmation (thirteenth pass)
-        //
-        // This line asserted `mayAdvanceVerified` until the thirteenth session measured
-        // `20260904-081421-421` advancing automatically with `scale evidence: UNSUPPORTED` in its
-        // own bundle. Corroboration is scale-invariant — both routes report identical verdicts on a
-        // label and its ×10 twin — so it is strong evidence against a single misread digit and no
-        // evidence at all that `41` is not a collapsed `4,1`.
-        //
-        // Requirement 10 is unchanged and still enforced by the assertion above: the rule has **not**
-        // become "reject every integer". The figure is shown immediately, on the frozen photograph,
-        // one tap from the calculator. What it may no longer do is bypass that tap.
         assertFalse(
             "a scale-invariant route may not authorise skipping the confirmation",
             AutomaticScanAdvance.mayAdvanceVerified(outcome, verifiedByDistinctRun, document),
+        )
+        // Requirement 10's surviving half: the figure is not lost. It reaches the user through the
+        // fast, photograph-preserving Recover path — never a blank refusal.
+        assertEquals(
+            "the figure must still reach the user via Recover, not be discarded",
+            AutomaticScanAdvance.Presentation.Recover,
+            AutomaticScanAdvance.presentation(outcome, verifiedByDistinctRun, document, automatic = true),
         )
     }
 

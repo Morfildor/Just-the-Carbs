@@ -97,6 +97,24 @@ internal object SelectedTableResolution {
         recogniseRegion: (Bitmap?, NormalizedRegion) -> RecognitionEvidence? = { bmp, rgn ->
             SelectedRegionRecognizer.recognise(bmp, rgn, stillObservationId)
         },
+        /**
+         * Runs one bounded, targeted native-resolution reread of [rgn] — a narrower region than
+         * [region] itself, computed by [TargetedRereadTrigger] around the row that is still in
+         * doubt. Injectable for the same reason [recogniseRegion] is: a JVM test drives this without
+         * an Android bitmap or a real ML Kit recognizer.
+         *
+         * **Must tag its result with [EvidenceSource.TARGETED_REREAD] and [stillObservationId]** — it
+         * reads the same photograph, not a new physical observation. See
+         * [EvidenceSource.TARGETED_REREAD]'s own KDoc.
+         */
+        recogniseTargetedReread: (Bitmap?, NormalizedRegion) -> RecognitionEvidence? = { bmp, rgn ->
+            SelectedRegionRecognizer.recognise(
+                bmp,
+                rgn,
+                stillObservationId,
+                evidenceSource = EvidenceSource.TARGETED_REREAD,
+            )
+        },
     ): Result {
         val started = System.nanoTime()
         val evidence = mutableListOf<RecognitionEvidence>()
@@ -188,8 +206,39 @@ internal object SelectedTableResolution {
             }
         }
 
+        var outcome = EvidenceResolver.resolve(evidence)
+
+        // ## The bounded targeted reread (nineteenth session, 2026-09-06)
+        //
+        // Attempted at most once, and only after Strategy A and Strategy B have both already run —
+        // never as a substitute for either. It targets the row [TargetedRereadTrigger] finds still
+        // in doubt (a scale-ambiguous or unit-rejected value on an otherwise-located declaration),
+        // using [Result.filtered]'s document -- the SAME document [outcome] was resolved from, so the
+        // row geometry the trigger measures is the row geometry that actually produced the ambiguity.
+        //
+        // The region always includes the resolved per-100 header band (or the panel's own top edge,
+        // absent one) — see [TargetedRereadRegion]'s own KDoc for why a narrower crop risks exactly
+        // the sondey/kinder regression [ScanRegionMapper] warns against.
+        //
+        // Tagged [EvidenceSource.TARGETED_REREAD] with the STILL's own [stillObservationId] — it is
+        // one more parse of the photograph already in hand, never a claim of independent physical
+        // corroboration. See [EvidenceSource.TARGETED_REREAD].
+        val rereadTarget = TargetedRereadTrigger.targetFor(filtered.document, filtered.report)
+        if (rereadTarget != null) {
+            val targetDocument = filtered.document
+            val rereadRegion = targetDocument
+                ?.let { TargetedRereadTrigger.regionFor(it, rereadTarget) }
+            if (rereadRegion != null) {
+                val reread = recogniseTargetedReread(bitmap, rereadRegion)
+                if (reread != null) {
+                    evidence += reread
+                    outcome = EvidenceResolver.resolve(evidence)
+                }
+            }
+        }
+
         return Result(
-            outcome = EvidenceResolver.resolve(evidence),
+            outcome = outcome,
             evidence = evidence,
             filtered = filtered,
             elapsedMs = (System.nanoTime() - started) / 1_000_000,
