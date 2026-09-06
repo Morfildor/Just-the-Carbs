@@ -77,3 +77,10 @@ __pycache__/
 
 # Brainstorming visual companion working files (local only)
 .superpowers/
+
+# Kotlin compiler daemon/build-tools-API working state (errors/, sessions/), not source.
+.kotlin/
+
+# Local code-review working notes and their captured build/lint/test logs. Investigation artifacts,
+# not part of the shipped app or its documented history.
+.audits/
