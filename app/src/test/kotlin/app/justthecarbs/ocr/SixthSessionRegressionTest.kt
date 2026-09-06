@@ -80,6 +80,28 @@ class SixthSessionRegressionTest {
         )
     }
 
+    @Test fun `an agreeing crop must not erase a dispute between the full and filtered readings`() {
+        val full = confidentEvidence(EvidenceSource.FULL_FRAME_PASS_A, separatedDrink("8,9 g"))
+        val filtered = confidentEvidence(EvidenceSource.FILTERED_PASS_A, separatedDrink("6,2 g"))
+        val crop = confidentEvidence(EvidenceSource.SELECTED_REGION_OCR, separatedDrink("6,2 g"))
+        for (items in listOf(listOf(full, filtered, crop), listOf(crop, filtered, full))) {
+            val disputes = DisputedCandidates.of(items)
+            assertTrue(disputes.disputes(BigDecimal("8.9"), NutritionBasis.PER_100_ML))
+            assertTrue(disputes.disputes(BigDecimal("6.2"), NutritionBasis.PER_100_ML))
+            assertTrue(RecoveryCandidates.of(separatedDrink("8,9 g"), disputes).none {
+                it.reading.amount.compareTo(BigDecimal("8.9")) == 0
+            })
+        }
+    }
+
+    @Test fun `same-run disagreement alone remains outside the cross-run dispute rule`() {
+        val disputes = DisputedCandidates.of(listOf(
+            confidentEvidence(EvidenceSource.FULL_FRAME_PASS_A, separatedDrink("8,9 g")),
+            confidentEvidence(EvidenceSource.FILTERED_PASS_A, separatedDrink("6,2 g")),
+        ))
+        assertTrue(disputes.isEmpty)
+    }
+
     // ---------------------------------------------------------------- 131511: the conflict
 
     @Test

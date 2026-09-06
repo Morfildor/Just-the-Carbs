@@ -8,6 +8,41 @@ import java.math.BigDecimal
 
 class ScanDecisionEngineTest {
 
+    @Test fun `a live-only reading cannot borrow decimal evidence from the still document`() {
+        val failedStill = evidence(EvidenceSource.FULL_FRAME_PASS_A, null)
+        val live = evidence(EvidenceSource.LIVE_STABLE_FRAME, "53.5").copy(document = null)
+        val result = ScanDecisionEngine.decide(listOf(failedStill, live), automatic = true)
+        assertTrue("the live candidate has no document establishing its scale: $result", result is ScanDecision.Crop || result is ScanDecision.FocusedEntry)
+    }
+
+    @Test fun `a live-only winner never borrows an unrelated evidence item's document`() {
+        // The live frame is the sole confident reading (the still found nothing), but the still's
+        // failed attempt still carries its OWN document. The old fallback,
+        // `evidence.firstOrNull { it.document != null }?.document`, ignored which evidence actually
+        // won and would have substituted this unrelated still document for the live winner's scale
+        // check -- exactly the crop-local/wrong-coordinate-space hazard RecognitionEvidence's own
+        // documentation warns about. The winner has no document of its own, so none may be borrowed.
+        val failedStillWithADocument = evidence(EvidenceSource.FULL_FRAME_PASS_A, null)
+        val liveWinner = evidence(EvidenceSource.LIVE_STABLE_FRAME, "53.5").copy(document = null)
+        val result = ScanDecisionEngine.decide(listOf(failedStillWithADocument, liveWinner), automatic = true)
+        assertTrue(
+            "a live-only winner with no document must never resolve as if it had one: $result",
+            result is ScanDecision.Crop || result is ScanDecision.FocusedEntry,
+        )
+        assertTrue(result !is ScanDecision.AutoAccept && result !is ScanDecision.Confirm)
+    }
+
+    @Test fun `crop-only decimal is evaluated in its own document in either evidence order`() {
+        val failedFullFrame = evidence(EvidenceSource.FULL_FRAME_PASS_A, null).copy(
+            document = OcrDocument(1000, 1000, emptyList()),
+        )
+        val crop = evidence(EvidenceSource.SELECTED_REGION_OCR, "53.5")
+        for (items in listOf(listOf(failedFullFrame, crop), listOf(crop, failedFullFrame))) {
+            val result = ScanDecisionEngine.decide(items, automatic = true)
+            assertTrue("the crop establishes its own decimal: $result", result is ScanDecision.Confirm)
+        }
+    }
+
     // Verified fixture helpers, reused verbatim from EvidenceResolverTest.kt (this repo's own
     // existing pattern for constructing CarbCandidate / OcrDocument / RecognitionEvidence for
     // resolver-level tests) -- do not invent a different construction style.

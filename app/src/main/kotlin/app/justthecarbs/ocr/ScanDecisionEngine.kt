@@ -12,7 +12,13 @@ object ScanDecisionEngine {
 
     fun decide(evidence: List<RecognitionEvidence>, automatic: Boolean): ScanDecision {
         val outcome = EvidenceResolver.resolve(evidence)
-        val document = evidence.firstOrNull { it.document != null }?.document
+        // The winning pass's own document, and no other. A live-only winner has no retained
+        // document, and an unrelated evidence item's document is a different recognition's
+        // coordinate space -- substituting it would let ScaleAmbiguity/FocusedAmountEntry reason
+        // about a candidate's geometry against a document that never produced it. Falling through
+        // to null degrades safely: every downstream consumer null-checks and refuses (Crop), it
+        // never invents a scale or column association from borrowed coordinates.
+        val document = outcome.winningEvidence?.document
         val verification = AutomaticVerification.verify(evidence)
 
         // A conflict is terminal and must never be dressed up as a proposal or confirmation.

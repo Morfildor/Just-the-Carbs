@@ -370,7 +370,34 @@ internal object NutrientRowSegments {
                 if (text.isEmpty()) continue
 
                 val kind = kindOfTerm(text) ?: continue
-                val box = span.drop(1).fold(span.first().box) { acc, e -> acc.union(e.box) }
+                // Matching a name inside a span must not make the preceding nutrient's number
+                // part of that name ("ren 6,4 g, koolhydraten"). Keep the existing child/merged-row
+                // rules, but start the total clause at the shortest suffix that still names it.
+                //
+                // Scoped to TOTAL_CARBOHYDRATE only, deliberately. Widening this to also trim
+                // CARBOHYDRATE_CHILD spans was tried and measured against `ProseActivationGateTest`:
+                // it changes which span length the greedy walk resolves earlier in the same row,
+                // which made a one-row prose declaration ("Voedingswaarde per 100 g: koolhydraten
+                // 46 g, waarvan suikers 1,0 g") wrongly satisfy `segmentsOf`'s linear-declaration
+                // shape instead of correctly falling through to the prose reader -- a `FromDeclaration`
+                // answer where `FromProseSpan` is the correct one. The interaction between this trim
+                // and the walk's span-length selection is not well enough understood to widen safely
+                // without a full corpus re-run; the analogous child-row absorption hazard this would
+                // have closed is real but unmeasured today (no fixture in this repo's corpus
+                // reproduces it), so it is left as a known, narrower-scoped gap rather than risking
+                // this regression again.
+                var nameStart = 0
+                if (kind == NutritionRowKind.TOTAL_CARBOHYDRATE) {
+                    while (nameStart + 1 < span.size) {
+                        val suffix = NutritionTerminology.normalize(
+                            span.subList(nameStart + 1, span.size).joinToString(" ") { it.text },
+                        )
+                        if (kindOfTerm(suffix) != kind) break
+                        nameStart++
+                    }
+                }
+                val named = span.subList(nameStart, span.size)
+                val box = named.drop(1).fold(named.first().box) { acc, e -> acc.union(e.box) }
                 found += Term(kind, text, box)
                 index += length
                 matched = true

@@ -66,7 +66,7 @@ class CaptureEvidenceCoordinator {
     fun freezeAtShutter(buffer: LiveEvidenceBuffer, nowElapsed: Long): LiveEvidenceSnapshot {
         val epoch = aimEpoch
         val snapshotList = buffer.snapshot().filter { it.aimEpoch == epoch }
-        val candidate = buffer.stableConsensus(nowElapsed, epoch)
+        val candidate = buffer.stableConsensus(snapshotList, nowElapsed, epoch)
         val newestAge = snapshotList.maxOfOrNull { it.timestampMs }?.let { nowElapsed - it }
         val rejection = when {
             snapshotList.isEmpty() -> "no observations recorded for this aim epoch"

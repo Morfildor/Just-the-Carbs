@@ -161,12 +161,16 @@ class LiveEvidenceBuffer(
      * The run is accepted only if it contains at least [MIN_AGREEING_FRAMES] confident, agreeing
      * observations.
      */
-    fun stableConsensus(nowMs: Long, aimEpoch: Long = 0L): CarbCandidate? {
-        val suffix = synchronized(lock) { observations.toList() }
+    fun stableConsensus(nowMs: Long, aimEpoch: Long = 0L): CarbCandidate? =
+        stableConsensus(snapshot(), nowMs, aimEpoch)
+
+    /** Evaluate exactly the observations frozen by the caller, including shutter diagnostics. */
+    internal fun stableConsensus(snapshot: List<Observation>, nowMs: Long, aimEpoch: Long): CarbCandidate? {
+        val suffix = snapshot
             .filter { it.aimEpoch == aimEpoch }
             .takeLast(MAX_SUFFIX_LENGTH)
         if (suffix.isEmpty()) return null
-        if (nowMs - suffix.last().timestampMs > windowMs) return null
+        if (nowMs - suffix.last().timestampMs !in 0..windowMs) return null
 
         // The most recent observation must itself be a confident reading — a trailing NotFound or
         // Ambiguous means the camera's latest view is not confident, however good an older run was.
@@ -176,6 +180,7 @@ class LiveEvidenceBuffer(
         var toleratedNonConfident = 0
 
         for (obs in suffix.dropLast(1).asReversed()) {
+            if (nowMs - obs.timestampMs !in 0..windowMs) break
             val confidentCandidate = (obs.reading as? LabelReading.Confident)?.candidate
             if (confidentCandidate != null) {
                 val agrees = confidentCandidate.basis != null &&
@@ -189,7 +194,10 @@ class LiveEvidenceBuffer(
             // Non-confident (Ambiguous or NotFound), older than the newest confident observation.
             val ambiguous = obs.reading as? LabelReading.Ambiguous
             if (ambiguous != null) {
-                val competes = ambiguous.candidates.any { it.value.compareTo(agreedValue.value) != 0 }
+                val competes = ambiguous.candidates.any {
+                    it.value.compareTo(agreedValue.value) != 0 ||
+                        it.basis == null || it.basis != agreedValue.basis
+                }
                 if (competes) return null
             }
             if (toleratedNonConfident >= 1) break

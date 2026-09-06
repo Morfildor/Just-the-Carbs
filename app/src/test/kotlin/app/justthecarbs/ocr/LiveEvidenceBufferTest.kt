@@ -22,6 +22,43 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class LiveEvidenceBufferTest {
 
+    @Test fun `shutter consensus uses the frozen observations even if the buffer changes`() {
+        val buffer = LiveEvidenceBuffer()
+        repeat(3) { buffer.record(confident("61.9"), 1000L + it * 50) }
+        val frozen = buffer.snapshot()
+        buffer.record(LabelReading.NotFound, 1200)
+        assertNotNull(buffer.stableConsensus(frozen, nowMs = 1250, aimEpoch = 0))
+        assertNull(buffer.stableConsensus(nowMs = 1250))
+        assertEquals(3, frozen.size)
+    }
+
+    @Test fun `fresh frame cannot revive expired agreeing observations`() {
+        val buffer = LiveEvidenceBuffer()
+        buffer.record(confident("61.9"), 1000)
+        buffer.record(confident("61.9"), 1100)
+        buffer.record(confident("61.9"), 5000)
+        assertNull(buffer.stableConsensus(nowMs = 5050))
+    }
+
+    @Test fun `frames after the shutter cannot supply shutter consensus`() {
+        val buffer = LiveEvidenceBuffer()
+        buffer.record(confident("61.9"), 1000)
+        buffer.record(confident("61.9"), 1100)
+        buffer.record(confident("61.9"), 1200)
+        assertNull(buffer.stableConsensus(nowMs = 1150))
+    }
+
+    @Test fun `an older ambiguity on basis still competes with the agreed value`() {
+        val buffer = LiveEvidenceBuffer()
+        buffer.record(confident("61.9"), 1000)
+        buffer.record(LabelReading.Ambiguous(listOf(
+            candidate("61.9"), candidate("61.9", NutritionBasis.PER_100_ML),
+        )), 1050)
+        buffer.record(confident("61.9"), 1100)
+        buffer.record(confident("61.9"), 1200)
+        assertNull(buffer.stableConsensus(nowMs = 1250))
+    }
+
     private fun candidate(value: String, basis: NutritionBasis? = NutritionBasis.PER_100_G) =
         CarbCandidate(
             sourceLine = "Koolhydraten $value g",

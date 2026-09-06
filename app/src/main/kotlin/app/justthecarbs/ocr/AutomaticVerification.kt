@@ -176,24 +176,26 @@ internal object AutomaticVerification {
         // A contradiction from any of them is final and returns immediately: a table refuting the
         // reading is not overruled by another view of the same table failing to reach three pairs.
         var structuralGap: Verdict? = null
-        confident
-            .sortedByDescending { it.document?.elements?.size ?: 0 }
-            .forEach { candidate ->
-                val document = candidate.document ?: return@forEach
-                val structural = verify(document, candidate.report)
-                if (structural.mayAdvanceAutomatically) {
-                    return structural.copy(viewsAgree = viewsAgree)
-                }
-                // A *contradiction* is final: a second recognition agreeing with a reading the label
-                // itself refutes does not rescue it, it means both runs made the same mistake. Only
-                // the "could not answer" case falls through to the optical route.
-                //
-                // `viewsAgree` is deliberately NOT carried here: when the table refutes the row, the
-                // fact that two views read it the same way is what a repeated misread looks like, so
-                // it must not become a reason to propose the figure anyway.
-                if (structural.candidateRatio != null) return structural
-                if (structuralGap == null) structuralGap = structural
+        var structuralSupport: Verdict? = null
+        for (candidate in confident.sortedByDescending { it.document?.elements?.size ?: 0 }) {
+            val document = candidate.document ?: continue
+            val structural = verify(document, candidate.report)
+            if (structural.mayAdvanceAutomatically) {
+                if (structuralSupport == null) structuralSupport = structural
+                continue
             }
+            // A *contradiction* is final: a second recognition agreeing with a reading the label
+            // itself refutes does not rescue it, it means both runs made the same mistake. Only
+            // the "could not answer" case falls through to the optical route.
+            //
+            // `viewsAgree` is deliberately NOT carried here: when the table refutes the row, the
+            // fact that two views read it the same way is what a repeated misread looks like, so
+            // it must not become a reason to propose the figure anyway.
+            if (structural.candidateRatio != null) return structural
+            if (structuralGap == null) structuralGap = structural
+        }
+        // Every document must get a chance to veto; the richest document is not necessarily right.
+        structuralSupport?.let { return it.copy(viewsAgree = viewsAgree) }
 
         // Independence is a property of the photograph, not of the recognizer invocation.
         //
@@ -205,7 +207,8 @@ internal object AutomaticVerification {
         //
         // See [PhysicalObservationId]. Everything derived from one capture — crop, rotation, upscale,
         // contrast — shares its id, so only a genuinely separate photograph reaches this route.
-        val distinctObservations = confident.map { it.physicalObservation }.distinct()
+        val distinctObservations = confident.map { it.physicalObservation }
+            .filter { it != PhysicalObservationId.UNKNOWN }.distinct()
         if (distinctObservations.size >= 2) {
             return Verdict(Route.DISTINCT_OCR_AGREEMENT, viewsAgree = viewsAgree)
         }
@@ -235,8 +238,8 @@ internal object AutomaticVerification {
                 // on a capture where two runs demonstrably happened.
                 if (runs.size >= 2) {
                     append(
-                        "all ${runs.size} recognition runs read one physical observation " +
-                            "(${distinctObservations.single().value}); views of the same photograph " +
+                        "${runs.size} recognition runs establish fewer than two known physical observations " +
+                            "(${distinctObservations.joinToString { it.value }.ifEmpty { "UNKNOWN" }}); views of the same photograph " +
                             "share its optical defects and cannot corroborate each other",
                     )
                 } else {

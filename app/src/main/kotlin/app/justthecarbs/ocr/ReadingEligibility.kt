@@ -196,7 +196,7 @@ object ReadingEligibility {
         // Agreement is still admitted for a scale that is *not* in question — the `Established` branch
         // above already returned, and a declared serving basis is handled below — so this narrows the
         // rule to the one question correlated views cannot answer.
-        if (corroborated && (corroborationSettlesScale || scale !is ScaleAmbiguity.Verdict.Unsupported)) {
+        if (corroborated && corroborationSettlesScale) {
             return Verdict.Eligible("corroborated by evidence outside this recognition run")
         }
 

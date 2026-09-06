@@ -431,22 +431,18 @@ private fun LabelCamera(
     val analyzer = remember {
         LabelAnalyzer(
             onReading = { result ->
+                val epoch = coordinator.aimEpoch
                 mainExecutor.execute {
-                    liveReadiness = result
-                    // Retained, not acted on. Nothing downstream reads this until AFTER a deliberate
-                    // capture, and even then only through EvidenceResolver, which never lets a live
-                    // frame resolve a scan by itself.
-                    //
-                    // Stamped with the AIM EPOCH, not a per-capture counter. The epoch bumps only on
-                    // dispose and retake — a genuinely new aim — so a frame recorded while the user
-                    // was framing this shot still belongs to it after the shutter fires. Stamping
-                    // with a counter that bumps at the shutter is what excluded every pre-shutter
-                    // frame from the evidence read that followed.
-                    //
-                    // elapsedRealtime, never currentTimeMillis: LiveEvidenceBuffer's window and
-                    // freezeAtShutter's age arithmetic both require one monotonic clock, and a
-                    // wall-clock adjustment must not be able to make an old frame look fresh.
-                    liveEvidence.record(result, SystemClock.elapsedRealtime(), coordinator.aimEpoch)
+                    if (!disposed.get() && epoch == coordinator.aimEpoch) liveReadiness = result
+                }
+            },
+            aimEpoch = { coordinator.aimEpoch },
+            onObservation = { observation ->
+                // Record raw frames on the parse thread. The buffer is synchronized, so neither
+                // UI filtering nor a queued main-thread callback can hide a recent disagreement
+                // or relabel an old frame with the next aim's identity or a fresh timestamp.
+                if (!disposed.get() && observation.aimEpoch == coordinator.aimEpoch) {
+                    liveEvidence.record(observation.reading, observation.timestampMs, observation.aimEpoch)
                 }
             },
             onFraming = { estimate -> mainExecutor.execute { framing = estimate } },
@@ -687,8 +683,8 @@ private fun LabelCamera(
                             ),
                             document = null,
                             physicalObservation = PhysicalObservationId.forLiveSnapshot(
-                                coordinator.aimEpoch,
-                                capturedPreview?.name ?: "unknown-capture",
+                                snapshotAtShutter.aimEpoch,
+                                stillObservationId.value,
                             ),
                         )
                     },
@@ -746,9 +742,10 @@ private fun LabelCamera(
             // moving the document they are compared against would break every stage. Translation
             // happens once, at the presentation boundary below.
             //
-            // Falls back to the capture's own document when no pass carried one, which is the
-            // previous behaviour for every outcome that has no reading to attribute.
-            val evaluationDocument = result.outcome.winningEvidence?.document ?: captured.document
+            // Only unattributed outcomes may fall back. A live-only winner has no retained
+            // document; the still's unrelated coordinates cannot establish that winner's scale.
+            val winner = result.outcome.winningEvidence
+            val evaluationDocument = if (winner != null) winner.document else captured.document
 
             // Whether the evidence establishes this reading's absolute decimal scale.
             //

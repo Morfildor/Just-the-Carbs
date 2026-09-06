@@ -102,26 +102,21 @@ data class DisputedCandidates(
         fun of(evidence: List<RecognitionEvidence>): DisputedCandidates {
             val confident = evidence.filter { it.isConfident }
             if (confident.isEmpty()) return NONE
+            if (confident.all { it.fullyAgreesWith(confident.first()) }) return NONE
+            if (confident.map { it.source.recognitionRun }.distinct().size < 2) return NONE
 
-            // Distinct claims, keyed by what is actually asserted rather than by which pass said it.
+            // Retain each run's claim: deduplicating values first can erase the second run.
             val claims = mutableListOf<Entry>()
             confident.forEach { candidate ->
                 val value = candidate.value ?: return@forEach
                 val already = claims.any {
-                    it.value.compareTo(value) == 0 && it.basis == candidate.basis
+                    it.value.compareTo(value) == 0 && it.basis == candidate.basis &&
+                        it.run == candidate.source.recognitionRun
                 }
                 if (!already) {
                     claims += Entry(value, candidate.basis, candidate.source.recognitionRun)
                 }
             }
-
-            // One claim is agreement (or a single opinion), never a dispute.
-            if (claims.size < 2) return NONE
-
-            // Two claims from the *same* run would be one recognition contradicting itself, which
-            // the parser resolves as an ambiguity rather than a conflict. Only cross-run
-            // disagreement reaches here.
-            if (claims.map { it.run }.distinct().size < 2) return NONE
 
             return DisputedCandidates(claims)
         }

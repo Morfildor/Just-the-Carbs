@@ -81,6 +81,25 @@ class PhysicalObservationProvenanceTest {
     private val frameA = PhysicalObservationId("FRAME_A")
     private val frameB = PhysicalObservationId("FRAME_B")
 
+    @Test fun `an unknown observation cannot corroborate a known photograph`() {
+        val known = evidence(EvidenceSource.FULL_FRAME_PASS_A, "0.59", frameA)
+        val unknown = evidence(EvidenceSource.SELECTED_REGION_OCR, "0.59", PhysicalObservationId.UNKNOWN)
+        for (items in listOf(listOf(known, unknown), listOf(unknown, known))) {
+            val verdict = AutomaticVerification.verify(items)
+            assertEquals(AutomaticVerification.Route.NONE, verdict.route)
+            assertTrue("same-image views may still support a proposal", verdict.viewsAgree)
+        }
+    }
+
+    @Test fun `unknown evidence does not hide agreement between two known photographs`() {
+        val verdict = AutomaticVerification.verify(listOf(
+            evidence(EvidenceSource.FULL_FRAME_PASS_A, "0.5", frameA),
+            evidence(EvidenceSource.SECOND_OBSERVATION_PASS, "0.5", frameB),
+            evidence(EvidenceSource.SELECTED_REGION_OCR, "0.5", PhysicalObservationId.UNKNOWN),
+        ))
+        assertEquals(AutomaticVerification.Route.DISTINCT_OCR_AGREEMENT, verdict.route)
+    }
+
     // ============================================ same physical observation cannot self-corroborate
 
     /**

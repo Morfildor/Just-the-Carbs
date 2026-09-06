@@ -16,6 +16,16 @@ import org.junit.Test
  */
 class ReadingEligibilityTest {
 
+    @Test fun `missing scale evidence cannot be settled by same-image agreement`() {
+        val verdict = ReadingEligibility.evaluate(
+            scale = null,
+            basis = app.justthecarbs.domain.CarbBasis.PerHundred(app.justthecarbs.domain.NutritionBasis.PER_100_G),
+            corroborated = true,
+            corroborationSettlesScale = false,
+        )
+        org.junit.Assert.assertFalse(verdict.isEligible)
+    }
+
     @Test fun `Unsupported scale corroborated only by same-photograph view agreement is refused, not shown`() {
         // Reproduces the documented Hellmann's case: 1.3 g/100ml printed, every view of one
         // photograph reads 13g. Same-photograph agreement (agreesAcrossViews) must NOT be

@@ -29,6 +29,9 @@ class LabelAnalyzer(
      * to a no-op so every existing construction site is unaffected.
      */
     private val onFraming: (TextResolutionGuidance.Estimate) -> Unit = {},
+    /** Every raw interpretation, before UI stability filtering, stamped when analysis starts. */
+    private val onObservation: (LiveEvidenceBuffer.Observation) -> Unit = {},
+    private val aimEpoch: () -> Long = { 0L },
 ) : ImageAnalysis.Analyzer {
 
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -121,8 +124,10 @@ class LabelAnalyzer(
     }
 
     fun resume() {
-        stability.reset()
-        paused = false
+        synchronized(stability) {
+            stability.reset()
+            paused = false
+        }
     }
 
     @OptIn(ExperimentalGetImage::class)
@@ -140,6 +145,8 @@ class LabelAnalyzer(
         }
 
         val started = System.nanoTime()
+        val frameTimeMs = android.os.SystemClock.elapsedRealtime()
+        val frameEpoch = aimEpoch()
         val input = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         // ## Why the listeners are guarded rather than merely attached
         //
@@ -152,7 +159,7 @@ class LabelAnalyzer(
         // proxy is closed here instead. `close()` is idempotent on an `ImageProxy`, so the normal
         // case (no rejection) is unaffected by the fallback existing.
         runCatching {
-            attachAnalysisListeners(recognizer.process(input), imageProxy, started)
+            attachAnalysisListeners(recognizer.process(input), imageProxy, started, frameTimeMs, frameEpoch)
         }.onFailure {
             // The executor is gone; nobody else will release this frame.
             inFlight.set(false)
@@ -165,6 +172,8 @@ class LabelAnalyzer(
         task: com.google.android.gms.tasks.Task<Text>,
         imageProxy: ImageProxy,
         started: Long,
+        frameTimeMs: Long,
+        frameEpoch: Long,
     ) {
         task
             // [parseExecutor], not the implicit main-thread overload. The block below maps every
@@ -203,10 +212,8 @@ class LabelAnalyzer(
                 onFraming(TextResolutionGuidance.estimate(document))
 
                 val report = parse(document, started)
-                // Still consulted, and still tracked, so a pause landing mid-parse behaves exactly
-                // as before: the tracker sees the frame, the UI does not.
-                val toSurface = stability.onFrame(report.reading, System.nanoTime())
-                if (!paused && toSurface != null) onReading(toSurface)
+                // Record raw evidence before UI filtering, unless this frame's aim has ended.
+                publishLiveReading(report.reading, frameTimeMs, frameEpoch)
             }
             .addOnFailureListener(parseExecutor) { OcrDiagnosticsLogger.failure("Live OCR failed", it) }
             // Also on the parse thread, and this one is ordering-critical rather than cost-driven:
@@ -220,6 +227,20 @@ class LabelAnalyzer(
                 imageProxy.close()
                 startPendingStillIfPossible()
             }
+    }
+
+    /** Raw evidence and UI readiness have different delivery rules; neither may cross a retake. */
+    internal fun publishLiveReading(reading: LabelReading, frameTimeMs: Long, frameEpoch: Long) {
+        if (paused || closed.get() || frameEpoch != aimEpoch()) return
+        onObservation(LiveEvidenceBuffer.Observation(reading, frameTimeMs, frameEpoch))
+        // Only stability's own read-modify-write needs the lock, to serialize against resume()'s
+        // reset() on the main thread. The staleness checks and the caller-supplied callbacks above
+        // and below touch no shared mutable state of stability's, so holding the lock across them
+        // would only ever narrow to a single-threaded rendezvous with resume() for no reason --
+        // widening the window in which a paused/disposed frame's callback could interleave with a
+        // fresh aim's reset() without changing what either one observes.
+        val toSurface = synchronized(stability) { stability.onFrame(reading, System.nanoTime()) }
+        if (!paused && frameEpoch == aimEpoch() && toSurface != null) onReading(toSurface)
     }
 
     /**

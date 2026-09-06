@@ -8,6 +8,25 @@ import java.math.BigDecimal
 
 class ConflictAdjudicationTest {
 
+    @Test fun `a group with both support and contradiction cannot be eliminated by source order`() {
+        val contradicted = evidenceGroup("12", tableWithRatio("12", "37.5"))
+        val supportedSameValue = evidenceGroup("12", tableWithRatio("12", "3.75"))
+        val alternative = evidenceGroup("72", tableWithRatio("72", "22.5"))
+        for (group in listOf(contradicted + supportedSameValue, supportedSameValue + contradicted)) {
+            val result = EvidenceResolver.resolve(group + alternative)
+            assertTrue("internally disputed evidence must remain conflicted: $result", result is EvidenceResolver.Outcome.Conflicted)
+        }
+    }
+
+    @Test fun `structural contradiction vetoes automatic verification regardless of evidence order`() {
+        val supported = evidenceGroup("12", tableWithRatio("12", "3.75"))
+        val contradicted = evidenceGroup("12", tableWithRatio("12", "37.5"))
+        for (items in listOf(supported + contradicted, contradicted + supported)) {
+            val verdict = AutomaticVerification.verify(items)
+            assertEquals("contradiction must not be hidden by an earlier supporting document", AutomaticVerification.Route.NONE, verdict.route)
+        }
+    }
+
     // Reused verbatim from EvidenceResolverTest.kt's verified fixture pattern (see Task 6's
     // ScanDecisionEngineTest for the same helpers) -- CarbCandidate/OcrDocument/RecognitionEvidence
     // construction must match this repo's existing style exactly.
@@ -126,6 +145,27 @@ class ConflictAdjudicationTest {
             "a supported candidate does not automatically defeat one that simply cannot be checked",
             result is ConflictAdjudication.AdjudicationResult.StillConflicted,
         )
+    }
+
+    @Test fun `a group mixing an uncheckable item with a contradicted one still loses to a clean supported group`() {
+        // The uncheckable item has no document at all (e.g. a live-stable-frame candidate), so it
+        // contributes no verdict; the OTHER item in the same group is explicitly contradicted by its
+        // own table. That is not "supported vs uncheckable" (which must stay a conflict) -- it is
+        // "contradicted vs uncheckable", which must resolve as contradicted, not silently escape both
+        // the Conflicting and Consistent buckets and slip past the "still disputed" filter.
+        val contradictedItem = evidenceGroup("12", tableWithRatio("12", "37.5")).single()
+        val uncheckableItem = contradictedItem.copy(document = null)
+        val contradicted = listOf(uncheckableItem, contradictedItem)
+        val supported = evidenceGroup("72", tableWithRatio("72", "22.5"))
+        val groups = mapOf(
+            (BigDecimal("12") to NutritionBasis.PER_100_G as NutritionBasis?) to contradicted,
+            (BigDecimal("72") to NutritionBasis.PER_100_G as NutritionBasis?) to supported,
+        )
+
+        val result = ConflictAdjudication.adjudicate(groups)
+
+        assertTrue("expected SingleSupported(72), got $result", result is ConflictAdjudication.AdjudicationResult.SingleSupported)
+        assertEquals(supported, (result as ConflictAdjudication.AdjudicationResult.SingleSupported).evidence)
     }
 
     @Test fun `adjudication is order-independent -- swapping map insertion order gives the same result`() {
