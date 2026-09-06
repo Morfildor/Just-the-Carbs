@@ -83,6 +83,91 @@ object SelectedRegionCrop {
     )
 
     /**
+     * Translates every element of a crop-local [document] into source-image coordinates, and resizes
+     * the document to the source bitmap's own dimensions.
+     *
+     * ## Why this exists
+     *
+     * A screen that shows the **full source photograph** — [app.justthecarbs.ui.scan
+     * .AssistedReadingScreen] and [app.justthecarbs.ui.scan.VerificationScreen] both always do —
+     * needs the document it hit-tests and draws highlights against to share that same coordinate
+     * space. Handing it a crop-local document (Strategy B's or a targeted reread's own recognition)
+     * unchanged would make every tap and every highlight wrong by exactly the crop's own offset: a
+     * tap the user placed on the printed carbohydrate row, translated to *crop-local* pixel
+     * coordinates by the screen's own full-bitmap-relative geometry math, would compare against
+     * *source-space* element boxes and miss.
+     *
+     * [toSourceSpace] already solves this for one candidate's box, at the one place a proposal is
+     * drawn. This is the same operation applied to every element of a whole document, for the case
+     * where the user is handed the document itself to tap and search within — recovery and focused
+     * entry, neither of which has a single candidate box to translate because the whole point of
+     * those screens is that no single candidate was safely produced yet.
+     *
+     * [sourceWidth]/[sourceHeight] are the full source bitmap's own pixel dimensions — the resulting
+     * document describes that whole bitmap, not merely the translated crop, because a screen showing
+     * the full photograph needs `document.width`/`document.height` to agree with the bitmap it is
+     * drawing (the same contract [OcrDocument]'s own KDoc states: "coordinates use the source image's
+     * pixel space").
+     *
+     * Returns [document] unchanged when [crop] is null, so a Pass A document — never cropped — is
+     * untouched.
+     */
+    fun documentToSourceSpace(
+        document: OcrDocument,
+        crop: PixelRect?,
+        sourceWidth: Int,
+        sourceHeight: Int,
+    ): OcrDocument {
+        if (crop == null) return document
+        return OcrDocument(
+            width = sourceWidth,
+            height = sourceHeight,
+            elements = document.elements.map { it.copy(box = toSourceSpace(it.box, crop)) },
+        )
+    }
+
+    /**
+     * Composes a [NormalizedRegion] expressed as fractions of [crop] (a document already cropped from
+     * the source bitmap) into a [NormalizedRegion] expressed as fractions of the full source bitmap —
+     * the inverse of [toPixels] followed by normalizing against the crop's own dimensions.
+     *
+     * ## Why this exists
+     *
+     * [app.justthecarbs.ocr.TargetedRereadRegion.of] computes a rereading region from *whichever*
+     * document produced the evidence being retargeted — see
+     * [app.justthecarbs.ocr.TargetedRereadTrigger]. When that document is [EvidenceSource
+     * .SELECTED_REGION_OCR]'s own crop-local recognition, the resulting region is normalized against
+     * the **crop's** width and height, not the source bitmap's. Passing that region straight to
+     * [SelectedRegionRecognizer.recognise] — which crops from the **full source bitmap** — would crop
+     * the wrong rectangle: a region meant to span the crop's own top 20%, say, would instead span the
+     * source bitmap's top 20%, landing on whatever happens to be there rather than on the row the
+     * trigger actually located.
+     *
+     * [sourceWidth]/[sourceHeight] are the full bitmap's own dimensions, needed because [crop] is
+     * expressed in pixels of that same bitmap and a [NormalizedRegion] is always relative to *some*
+     * frame — composing the two requires knowing what the outer frame is.
+     */
+    fun composeWithSourceCrop(
+        cropLocalRegion: NormalizedRegion,
+        crop: PixelRect,
+        sourceWidth: Int,
+        sourceHeight: Int,
+    ): NormalizedRegion? {
+        if (sourceWidth <= 0 || sourceHeight <= 0) return null
+        val left = (crop.left + cropLocalRegion.left * crop.width) / sourceWidth
+        val top = (crop.top + cropLocalRegion.top * crop.height) / sourceHeight
+        val right = (crop.left + cropLocalRegion.right * crop.width) / sourceWidth
+        val bottom = (crop.top + cropLocalRegion.bottom * crop.height) / sourceHeight
+        if (right <= left || bottom <= top) return null
+        return NormalizedRegion(
+            left = left.coerceIn(0.0, 1.0),
+            top = top.coerceIn(0.0, 1.0),
+            right = right.coerceIn(0.0, 1.0),
+            bottom = bottom.coerceIn(0.0, 1.0),
+        )
+    }
+
+    /**
      * A selection at or above this fraction of both dimensions is treated as the whole frame.
      *
      * Not the same constant as [ElementRegionFilter]'s no-op threshold, though they are numerically

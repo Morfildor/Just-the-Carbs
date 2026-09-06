@@ -225,6 +225,9 @@ class ScanTransitionTest {
                 // Thirteenth pass. A capture whose row and basis are established but whose digits
                 // failed asks for the digits instead of for a rectangle it cannot improve.
                 ScanPresentationDecision.Action.FOCUSED_AMOUNT_ENTRY,
+                // Twentieth pass. A structurally sound, undisputed, plausible reading whose scale
+                // ReadingEligibility refused is offered for one explicit visual confirmation tap.
+                ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
             ),
             ScanPresentationDecision.Action.entries.toSet(),
         )

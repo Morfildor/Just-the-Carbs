@@ -375,9 +375,20 @@ class ScaleInvarianceTest {
      * *reaches*") still holds, one screen further than it did between the thirteenth and this pass.**
      * Both rows are unticked, so no hardware-verified behaviour is contradicted — see
      * `docs/manual-qa.md` §33.
+     *
+     * ## Widened again (twentieth session): reaches CONFIRM_UNVERIFIED, one screen closer again
+     *
+     * `41` is a genuinely correct reading with nothing structurally wrong about it — the row, clause,
+     * unit and column are all established and undisputed, and only the decimal scale is unresolved.
+     * [ConfirmationEligibility] admits it for an EXPLICIT visual-confirmation screen (the frozen
+     * photograph, an enlarged close-up, one primary action) rather than blank focused-entry typing —
+     * task §6's own instruction: "correct integers reaching confirmation without keyboard input."
+     * This is not a return to the one-tap `CONFIRM_ON_CAPTURE` this test's history already rejected
+     * twice: `CONFIRM_UNVERIFIED` still requires the user's own explicit comparison before the value
+     * is used, which is asserted directly below.
      */
     @Test
-    fun `the separatorless 41 control reaches the user through focused entry, not a one-tap confirmation`() {
+    fun `the separatorless 41 control reaches the user through explicit confirmation, not a one-tap shortcut`() {
         val document = OcrDocument(
             width = 1000,
             height = 1000,
@@ -404,11 +415,17 @@ class ScaleInvarianceTest {
                 "shape the Hellmann's 1,3 -> 13 case reaches the user through",
             verification.route == AutomaticVerification.Route.NONE && verification.viewsAgree,
         )
+        val decision = ScanPresentationDecision.decide(outcome, verification, document, automatic = true)
         assertEquals(
-            "same-photograph agreement alone must not prefill 41 for one-tap acceptance; it still " +
-                "reaches the user, one screen further, through focused entry on the frozen photograph",
-            ScanPresentationDecision.Action.RECOVERY,
-            ScanPresentationDecision.decide(outcome, verification, document, automatic = true),
+            "same-photograph agreement alone must not prefill 41 for a ONE-TAP acceptance; it " +
+                "reaches an explicit visual-confirmation screen instead",
+            ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
+            decision,
+        )
+        assertTrue(
+            "must never be a one-tap shortcut past the user's own comparison",
+            decision != ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE &&
+                decision != ScanPresentationDecision.Action.AUTO_ADVANCE,
         )
         // The value the parser read is unaltered by the routing change.
         assertEquals(

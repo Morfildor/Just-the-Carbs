@@ -78,6 +78,37 @@ object RecoveryCandidates {
     fun of(
         document: OcrDocument?,
         disputed: DisputedCandidates = DisputedCandidates.NONE,
+    ): List<Candidate> = of(document, disputed, requireScaleEligibility = true)
+
+    /**
+     * Every structurally-admissible candidate in [document] — child-row exclusion, clause bounds,
+     * unit accompaniment, column ownership, cross-column contradiction and distinct-run dispute all
+     * still applied identically — but WITHOUT the final [ReadingEligibility] scale gate [of] applies.
+     *
+     * ## Why this exists
+     *
+     * [ConfirmationEligibility] asks a narrower question than [of] does: whether a candidate
+     * [ReadingEligibility] refused *for insufficient/ambiguous decimal-scale evidence specifically*
+     * may still be shown for **explicit visual confirmation**. Since [of]'s own final check already
+     * removes every scale-refused candidate, [ConfirmationEligibility] cannot locate one inside [of]'s
+     * output — the population it needs to search is exactly the one [of] excludes. This function is
+     * that population: everything [of] would offer, plus everything [of] withholds for scale reasons
+     * alone, so [ConfirmationEligibility] can apply its own (correctly re-derived) scale question to
+     * exactly the same structurally-vetted candidates rather than building a second, parallel
+     * candidate-construction path that could drift from this one.
+     *
+     * Never exposed to a UI surface directly — only [ConfirmationEligibility] calls this, and it
+     * re-applies the scale question itself before anything reaches [ScanPresentationDecision].
+     */
+    internal fun ofIncludingScaleRefusals(
+        document: OcrDocument?,
+        disputed: DisputedCandidates = DisputedCandidates.NONE,
+    ): List<Candidate> = of(document, disputed, requireScaleEligibility = false)
+
+    private fun of(
+        document: OcrDocument?,
+        disputed: DisputedCandidates,
+        requireScaleEligibility: Boolean,
     ): List<Candidate> {
         if (document == null || document.elements.isEmpty()) return emptyList()
         return NutritionDocumentModel.build(document).panels.flatMap { panel ->
@@ -86,7 +117,7 @@ object RecoveryCandidates {
                 .filter { it.kind == NutritionRowKind.TOTAL_CARBOHYDRATE }
                 .flatMap { declaration ->
                     declaration.sourceRows.flatMap { row ->
-                        candidatesOn(row, panel.rows, panel.columns, localDocument, disputed)
+                        candidatesOn(row, panel.rows, panel.columns, localDocument, disputed, requireScaleEligibility = requireScaleEligibility)
                     }
                 }
         }.distinctBy { candidate -> candidate.box to candidate.reading }
@@ -505,6 +536,8 @@ object RecoveryCandidates {
         document: OcrDocument,
         disputed: DisputedCandidates = DisputedCandidates.NONE,
         tappedX: Int? = null,
+        /** See [ofIncludingScaleRefusals] for why a caller would ever pass `false`. */
+        requireScaleEligibility: Boolean = true,
     ): List<Candidate> {
         // A child row supplies nothing, whatever the user tapped. This is the same unconditional
         // exclusion [RowClassifier] applies in the automatic path, and it must hold identically here
@@ -615,7 +648,7 @@ object RecoveryCandidates {
             // a serving the label printed, the red label's is a per-hundred the app inferred. That
             // distinction lives in [ReadingEligibility], which both surfaces now consult, so they
             // cannot disagree about the same candidate.
-            if (!ReadingEligibility.evaluate(document, candidate).isEligible) {
+            if (requireScaleEligibility && !ReadingEligibility.evaluate(document, candidate).isEligible) {
                 return@mapIndexedNotNull null
             }
 

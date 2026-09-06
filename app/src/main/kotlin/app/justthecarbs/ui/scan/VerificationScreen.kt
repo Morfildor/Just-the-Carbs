@@ -58,6 +58,34 @@ const val VERIFY_PHOTO_TAG = "verify_photo"
 const val VERIFY_ZOOM_TAG = "verify_zoom"
 
 /**
+ * Which question this screen is asking, for copy only — never for what a confirmation tap means to
+ * the rest of the app.
+ *
+ * ## Why this exists rather than a `verified: Boolean`
+ *
+ * Neither branch this screen serves is independently OCR-verified in the sense
+ * [AutomaticVerification] uses the word: an [OcrProposal] may be a single uncorroborated recognition
+ * run exactly as before, and a [ScaleUnresolved] reading is, by construction, one
+ * [ReadingEligibility] already refused for insufficient decimal-scale evidence. A boolean named
+ * `verified` would misstate the first case as true and would invite a future caller to read the
+ * second as "confirmed, therefore verified" — which is precisely the conflation the task that added
+ * this mode was written to prevent. Neither case ever sets or implies
+ * [app.justthecarbs.domain.BasisProvenance.DECLARED] became verified OCR output; only the user's own
+ * tap on [onConfirm] is ever recorded, and it is recorded as a **user confirmation**, never as an OCR
+ * verification status change.
+ */
+enum class VerificationScreenMode {
+    /** An [EvidenceResolver.Outcome.NeedsVerification] proposal: one pass read this, unconfirmed. */
+    OcrProposal,
+
+    /**
+     * [ConfirmationEligibility] admitted this reading despite [ReadingEligibility] refusing it for
+     * insufficient/ambiguous decimal-scale evidence. Every other exclusion still applied identically.
+     */
+    ScaleUnresolved,
+}
+
+/**
  * A value one recognition pass found that nothing else corroborated (spec §8).
  *
  * ## Why this state exists rather than "Confident" or "NotFound"
@@ -104,21 +132,44 @@ fun VerificationScreen(
     onRetake: () -> Unit,
 ) {
     val candidate = proposal.reading.candidate
-    val basis = candidate.basis ?: NutritionBasis.PER_100_G
+    VerificationScreen(
+        bitmap = bitmap,
+        value = candidate.value,
+        basis = candidate.basis ?: NutritionBasis.PER_100_G,
+        rowText = candidate.sourceLine,
+        // See the primitive overload's own KDoc for why this translation must happen exactly once,
+        // here, rather than at each call site.
+        rowInSourceSpace = proposal.winningEvidence?.sourceSpaceGeometry ?: candidate.geometry,
+        mode = VerificationScreenMode.OcrProposal,
+        onConfirm = onConfirm,
+        onReject = onReject,
+        onRetake = onRetake,
+    )
+}
 
-    // **The one translation boundary for this screen.**
-    //
-    // `candidate.geometry` is measured in the coordinate space of the pass that produced it. For
-    // Pass A that is the source image and nothing moves. For Strategy B it is the *crop*, whose
-    // origin is somewhere inside the photograph — so drawing it directly, as this screen used to,
-    // put the highlight and the close-up short by the crop's own offset, pointing at the wrong part
-    // of the very photograph the user is being asked to check the number against.
-    //
-    // [RecognitionEvidence.sourceSpaceGeometry] applies [SelectedRegionCrop.toSourceSpace] exactly
-    // once and returns the box unchanged when there is no crop, so Pass A is untouched. Falling back
-    // to the raw geometry keeps a proposal that carries no evidence rendering exactly as before.
-    val rowInSourceSpace = proposal.winningEvidence?.sourceSpaceGeometry ?: candidate.geometry
-
+/**
+ * The primitive form of [VerificationScreen], taking the figure's parts directly rather than an
+ * [EvidenceResolver.Outcome.NeedsVerification] — what a [ScanPresentationDecision.Action
+ * .CONFIRM_UNVERIFIED] reading needs, since it is never wrapped in that outcome type (it is a
+ * [ConfirmationEligibility] admission, and [ReadingEligibility] already refused it once).
+ *
+ * [rowInSourceSpace] must already be translated into the bitmap's own coordinate space — see
+ * [RecognitionEvidence.sourceSpaceGeometry] — since this overload has no evidence object of its own
+ * to translate from and must not silently assume the caller passed source-space geometry by
+ * forgetting to translate it.
+ */
+@Composable
+fun VerificationScreen(
+    bitmap: Bitmap,
+    value: BigDecimal,
+    basis: NutritionBasis,
+    rowText: String,
+    rowInSourceSpace: OcrBox,
+    mode: VerificationScreenMode,
+    onConfirm: (BigDecimal, NutritionBasis) -> Unit,
+    onReject: () -> Unit,
+    onRetake: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -132,12 +183,22 @@ fun VerificationScreen(
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
             Text(
-                text = stringResource(R.string.verify_found_title),
+                text = stringResource(
+                    when (mode) {
+                        VerificationScreenMode.OcrProposal -> R.string.verify_found_title
+                        VerificationScreenMode.ScaleUnresolved -> R.string.verify_scale_title
+                    },
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
             )
             Text(
-                text = stringResource(R.string.verify_found_body),
+                text = stringResource(
+                    when (mode) {
+                        VerificationScreenMode.OcrProposal -> R.string.verify_found_body
+                        VerificationScreenMode.ScaleUnresolved -> R.string.verify_scale_body
+                    },
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.75f),
             )
@@ -211,7 +272,7 @@ fun VerificationScreen(
             Text(
                 text = stringResource(
                     R.string.verify_found_value,
-                    candidate.value.stripTrailingZeros().toPlainString(),
+                    value.stripTrailingZeros().toPlainString(),
                     basis.unitLabel,
                 ),
                 style = MaterialTheme.typography.headlineSmall,
@@ -219,15 +280,24 @@ fun VerificationScreen(
             )
             // Where on the label this came from. States the app's claim in the label's own words.
             Text(
-                text = stringResource(R.string.verify_found_row, candidate.sourceLine.trim()),
+                text = stringResource(R.string.verify_found_row, rowText.trim()),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.75f),
             )
             Button(
-                onClick = { onConfirm(candidate.value, basis) },
+                onClick = { onConfirm(value, basis) },
                 shape = RoundedCornerShape(Space.buttonRadius),
                 modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight).testTag(VERIFY_CONFIRM_TAG),
-            ) { Text(stringResource(R.string.verify_found_confirm)) }
+            ) {
+                Text(
+                    stringResource(
+                        when (mode) {
+                            VerificationScreenMode.OcrProposal -> R.string.verify_found_confirm
+                            VerificationScreenMode.ScaleUnresolved -> R.string.verify_scale_confirm
+                        },
+                    ),
+                )
+            }
             OutlinedButton(
                 onClick = onReject,
                 shape = RoundedCornerShape(Space.buttonRadius),

@@ -23,13 +23,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
@@ -106,7 +119,7 @@ fun ManualEntryScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                OutlinedTextField(
+                CarbsField(
                     value = state.carbsPer100,
                     onValueChange = onCarbsChanged,
                     // Names the unit the value is measured in, tracking the basis chips below — the
@@ -120,8 +133,6 @@ fun ManualEntryScreen(
                                 ?: stringResource(R.string.manual_carbs_unresolved),
                         )
                     },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = state.carbsError != null,
                     supportingText = state.carbsError?.let { error ->
                         {
@@ -135,8 +146,6 @@ fun ManualEntryScreen(
                             )
                         }
                     },
-                    shape = RoundedCornerShape(Space.buttonRadius),
-                    modifier = Modifier.fillMaxWidth(),
                 )
 
                 Column {
@@ -224,4 +233,70 @@ fun ManualEntryScreen(
             }
         }
     }
+}
+
+/**
+ * The carbohydrate amount field, with the [PortionField][app.justthecarbs.ui.product.PortionField]/
+ * [CountField][app.justthecarbs.ui.product.CountField] auto-focus-and-select-all treatment applied
+ * when this screen was reached with a value already carried in from a scan (task §3/§5: "editing an
+ * eligible proposal should preserve and select its amount, focus the keyboard").
+ *
+ * ## Why this is gated on the value being non-blank at FIRST composition, not on every recomposition
+ *
+ * `remember { value.isNotBlank() }` captures whether a figure arrived pre-filled, once, the moment
+ * this composable enters the tree. Re-evaluating `value.isNotBlank()` on every recomposition would
+ * re-arm the effect (and re-select the text) on every keystroke once the user starts typing over a
+ * carried-in value that happened to become blank and non-blank again — this field only ever wants to
+ * claim focus and select **the value the screen opened with**, exactly once.
+ *
+ * Ordinary manual entry (no scan behind it) opens with a blank field, so `startedWithValue` is false
+ * and neither the focus request nor the select-all fires — this field's behaviour there is unchanged.
+ */
+@Composable
+private fun CarbsField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: @Composable () -> Unit,
+    isError: Boolean,
+    supportingText: (@Composable () -> Unit)?,
+) {
+    val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
+    val startedWithValue = remember { value.isNotBlank() }
+    var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    if (fieldValue.text != value) {
+        fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
+    }
+    var hasFocus by remember { mutableStateOf(false) }
+
+    if (startedWithValue) {
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    }
+
+    OutlinedTextField(
+        value = fieldValue,
+        onValueChange = {
+            fieldValue = it
+            onValueChange(it.text)
+        },
+        label = label,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        isError = isError,
+        supportingText = supportingText,
+        shape = RoundedCornerShape(Space.buttonRadius),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester)
+            .onFocusChanged { focus ->
+                // Only on the transition into focus, and only for a value that arrived pre-filled —
+                // ordinary manual entry starts blank, where select-all is meaningless. Re-selecting on
+                // every focused recomposition would fight the user's own caret placement mid-edit.
+                if (startedWithValue && focus.isFocused && !hasFocus) {
+                    fieldValue = fieldValue.copy(selection = TextRange(0, fieldValue.text.length))
+                }
+                hasFocus = focus.isFocused
+            },
+    )
 }

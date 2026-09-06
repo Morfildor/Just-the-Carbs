@@ -48,6 +48,14 @@ class FourteenthSessionWithheldTraceTest {
         assertEquals(ScanPresentationDecision.Action.AUTO_ADVANCE, result.action)
     }
 
+    /**
+     * Twentieth session: now reaches [ScanPresentationDecision.Action.CONFIRM_UNVERIFIED] rather
+     * than blank `RECOVERY` typing. `57` is a genuinely correct, structurally sound integer whose
+     * only open question is decimal scale, which is exactly the case [ConfirmationEligibility]
+     * exists to surface for an explicit look rather than a forced retype (task §6). `offeredValue`
+     * stays null: `CONFIRM_UNVERIFIED` is deliberately excluded from `presentsValue`/`offeredValue`,
+     * so this is not a relaxation of "never auto-accept" — it is still not a one-tap value.
+     */
     @Test
     fun `094841 keeps correct integer fifty seven behind unresolved scale`() {
         val result = replay("094841-512")
@@ -55,7 +63,7 @@ class FourteenthSessionWithheldTraceTest {
         assertTrue(result.outcome is EvidenceResolver.Outcome.Resolved)
         assertEquals(CarbFailureReason.SCALE_UNRESOLVED, result.failureReason)
         assertNull(result.offeredValue)
-        assertEquals(ScanPresentationDecision.Action.RECOVERY, result.action)
+        assertEquals(ScanPresentationDecision.Action.CONFIRM_UNVERIFIED, result.action)
     }
 
     @Test

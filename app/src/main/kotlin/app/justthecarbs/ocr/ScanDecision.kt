@@ -24,6 +24,14 @@ sealed interface ScanDecision {
     /** A confident, scale-established reading, not yet independently verified -- one tap confirms it. */
     data class Confirm(val value: BigDecimal, val basis: NutritionBasis, val rowText: String) : ScanDecision
 
+    /**
+     * A structurally sound, undisputed, plausible reading whose decimal scale is unresolved --
+     * offered for an EXPLICIT visual comparison against the photograph, never a one-tap shortcut. See
+     * [ConfirmationEligibility] and [ScanPresentationDecision.Action.CONFIRM_UNVERIFIED].
+     */
+    data class ConfirmUnverified(val value: BigDecimal, val basis: NutritionBasis, val rowText: String) :
+        ScanDecision
+
     /** The row and basis are known; the digits are not safe to prefill. Amount starts blank. */
     data class FocusedEntry(val basis: NutritionBasis, val rowText: String) : ScanDecision
 

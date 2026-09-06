@@ -769,6 +769,23 @@ fun AssistedReadingScreen(
                                 ),
                             )
                         }
+                    } else if (fruitlessTap) {
+                        // A fruitless tap with no `focusedTarget` means the row is not established
+                        // through a resolved per-100 column (a declared-serving or linear-panel
+                        // shape, say) -- so there is no fixed basis to preserve, and the previous
+                        // behaviour left the user with nothing but "Back". Full manual entry is the
+                        // one screen that still applies here: the user supplies both the amount and
+                        // the basis, exactly as the ordinary "Type it in" path already does.
+                        Text(
+                            text = stringResource(R.string.assist_row_unclear),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Button(
+                            onClick = { step = AssistStep.TypingValue },
+                            shape = RoundedCornerShape(Space.buttonRadius),
+                            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                        ) { Text(stringResource(R.string.assist_type_it)) }
                     }
                     TextButton(onClick = { step = AssistStep.Choosing }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.action_back))

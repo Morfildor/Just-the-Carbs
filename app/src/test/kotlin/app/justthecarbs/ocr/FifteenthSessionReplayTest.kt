@@ -134,8 +134,12 @@ class FifteenthSessionReplayTest {
      *
      * `57` is withheld from one-tap confirmation because same-observation agreement cannot see a
      * missing decimal separator any more than a single recognition run can — both inherit the same
-     * pixels. It still reaches the user through [ScanPresentationDecision.Action.RECOVERY], which
-     * keeps the frozen photograph, rather than being lost.
+     * pixels. It still reaches the user through [ScanPresentationDecision.Action.CONFIRM_UNVERIFIED]
+     * (twentieth session; previously `RECOVERY`), which keeps the frozen photograph and requires an
+     * EXPLICIT visual-comparison tap before the value is used — never a one-tap shortcut. `57` is a
+     * genuinely correct reading (task §6: avoid forced typing solely because a value is an integer),
+     * so surfacing it for an explicit look rather than forcing a blind retype is the intended
+     * improvement, not a relaxation of the "never auto-accept" rule this test's name still states.
      */
     @Test
     fun `the named same-observation exception is withheld from confirmation but not lost`() {
@@ -148,12 +152,14 @@ class FifteenthSessionReplayTest {
         )
         assertTrue("precondition: same-observation views did agree", result.verification.viewsAgree)
         assertEquals(
-            "57 must not be prefilled for one-tap acceptance on same-observation agreement alone",
-            ScanPresentationDecision.Action.RECOVERY,
+            "57 must not be prefilled for one-tap acceptance on same-observation agreement alone -- " +
+                "it now reaches an EXPLICIT confirmation screen instead of blank recovery typing",
+            ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
             result.action,
         )
         assertFalse(
-            "RECOVERY is not a presenting action -- the value is one screen further, not on screen yet",
+            "CONFIRM_UNVERIFIED is not a one-tap presenting action -- it requires the user's own " +
+                "explicit comparison against the photograph before the value is used",
             result.presentsValue,
         )
     }

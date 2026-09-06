@@ -304,10 +304,18 @@ class StrategyBProvenanceTest {
             winner.document,
             automatic = true,
         )
+        // Twentieth session: an unsupported-scale reading with an otherwise sound row/clause/unit/
+        // column now reaches an EXPLICIT visual-confirmation screen (CONFIRM_UNVERIFIED), never a
+        // one-tap shortcut -- whichever pass read it. See ConfirmationEligibility.
         assertEquals(
-            "an unsupported scale routes to focused entry, whichever pass read it",
-            ScanPresentationDecision.Action.RECOVERY,
+            "an unsupported scale routes to explicit confirmation, whichever pass read it",
+            ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
             action,
+        )
+        assertTrue(
+            "must never be a one-tap shortcut past the user's own comparison",
+            action != ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE &&
+                action != ScanPresentationDecision.Action.AUTO_ADVANCE,
         )
     }
 }

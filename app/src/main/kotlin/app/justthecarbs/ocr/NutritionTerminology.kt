@@ -245,6 +245,18 @@ object NutritionTerminology {
     /** See [normalizedTerms]. Comfortably above the ~400 terms every caller in this repo supplies. */
     private const val MAX_CACHED_TERMS = 4096
 
+    /**
+     * Test-only: clears both term caches, so a test measuring "cold parse fills the cache, warm
+     * parse hits it" (e.g. `SeventhSessionParseCostTest`) is deterministic regardless of what other
+     * tests ran earlier in the same JVM fork and happened to fill or overflow-clear these caches
+     * first. Production code never calls this — the caches are meant to live for the process's whole
+     * lifetime, which is exactly what makes them order-sensitive from a test's point of view.
+     */
+    internal fun resetCachesForTesting() {
+        normalizedTerms.clear()
+        termWordLists.clear()
+    }
+
     internal fun normalize(text: String): String {
         if (ParserWorkCounters.enabled) ParserWorkCounters.normalizeCalls++
         return Normalizer.normalize(text, Normalizer.Form.NFD)

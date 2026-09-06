@@ -64,11 +64,26 @@ internal object TargetedRereadTrigger {
                 val verdict = ScaleAmbiguity.check(document, reading.candidate)
                 verdict is ScaleAmbiguity.Verdict.Ambiguous || verdict is ScaleAmbiguity.Verdict.Unsupported
             }
-            // A structurally-located row with no confident value at all — the unit-rejection shape.
-            LabelReading.NotFound -> report.failureReason == CarbFailureReason.CARB_VALUE_MISSING
-            // A genuine ambiguity between different candidates is not "digits in doubt on one row" —
-            // a reread of one row cannot resolve a disagreement about which row is the real one.
-            is LabelReading.Ambiguous -> false
+            // A structurally-located row with no confident value at all. Widened beyond the original
+            // unit-rejection shape (CARB_VALUE_MISSING) to the two other failure reasons that can
+            // still name a single, locatable declaration: BASIS_MISSING (the header/column was
+            // damaged, not the value — a tighter native-resolution look at the header band the region
+            // already includes can recover it) and DECLARATION_FRAGMENTED (the row reconstruction
+            // itself was uncertain, which a fresh recognition of a narrower crop can sometimes settle
+            // by producing different row boundaries). Both still require the single-declaration guard
+            // above to have already passed, so neither widens what counts as a defensible target.
+            LabelReading.NotFound -> report.failureReason == CarbFailureReason.CARB_VALUE_MISSING ||
+                report.failureReason == CarbFailureReason.BASIS_MISSING ||
+                report.failureReason == CarbFailureReason.DECLARATION_FRAGMENTED
+            // Worth rereading only when every candidate is a reading of the SAME printed cell
+            // disagreeing about its value or scale (e.g. `0.5` vs `0.59` from the same clause) —
+            // never when the candidates come from genuinely different rows or clauses, where a
+            // reread of one location cannot resolve a disagreement about which location is the real
+            // one. Same clause is required, not merely overlapping geometry: two candidates that
+            // share a row but sit in different nutrient clauses (a merged carbohydrate/sugars row)
+            // are not the same question a narrower reread could settle.
+            is LabelReading.Ambiguous -> reading.candidates.size >= 2 &&
+                reading.candidates.map { it.sourceLine }.distinct().size == 1
         }
         if (!worthRereading) return null
 

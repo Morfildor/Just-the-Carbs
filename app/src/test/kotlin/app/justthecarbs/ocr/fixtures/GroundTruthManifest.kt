@@ -37,11 +37,19 @@ object GroundTruthManifest {
         // Hellmann's bottle, docs/Scan Evidence new structure/20260904-113950-065: prints
         // "1,3 g / 100 ml"; every recognition view reads "13g". This is the case Task 4 exists to
         // close: 13 must never be prefilled for one-tap acceptance.
+        //
+        // CONFIRM_UNVERIFIED added to the allowed set (twentieth session): the task's own explicit
+        // policy boundary states that a reading indistinguishable from a legitimate integer "may
+        // appear only in the clearly unverified visual-confirmation state" — never auto-accepted,
+        // never one-tap. [FifteenthSessionReplay.Result.offeredValue] stays null for
+        // CONFIRM_UNVERIFIED (it is deliberately excluded from `presents`, alongside AUTO_ADVANCE/
+        // CONFIRM_ON_CAPTURE/CONFIRM), so `forbiddenDisplayedValues` below is unaffected: `13` is
+        // still never counted as an app-asserted, prefilled value under any action.
         GroundTruthCase(
             captureId = "20260904-113950-065",
             printedCarbValue = BigDecimal("1.3"),
             printedBasis = NutritionBasis.PER_100_ML,
-            allowedFinalActions = setOf("RECOVERY", "FOCUSED_AMOUNT_ENTRY"),
+            allowedFinalActions = setOf("RECOVERY", "FOCUSED_AMOUNT_ENTRY", "CONFIRM_UNVERIFIED"),
             forbiddenDisplayedValues = setOf(BigDecimal("13"), BigDecimal("13.0")),
         ),
     )

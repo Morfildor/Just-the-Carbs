@@ -100,10 +100,12 @@ class SeventeenthSessionReplayTest {
      * reads as "the rice-flour capture changed" rather than silently passing through the filter
      * above.
      *
-     * `80` is withheld from one-tap confirmation because same-observation agreement cannot see a
+     * `80` is withheld from ONE-TAP confirmation because same-observation agreement cannot see a
      * missing decimal separator any more than a single recognition run can — both inherit the same
-     * pixels. It still reaches the user through [ScanPresentationDecision.Action.RECOVERY], which
-     * keeps the frozen photograph, rather than being lost.
+     * pixels. Twentieth session: it now reaches [ScanPresentationDecision.Action.CONFIRM_UNVERIFIED]
+     * (an explicit visual-confirmation screen), rather than blank `RECOVERY` typing — task §6's own
+     * "avoid forced typing solely because a value is an integer." Never a one-tap shortcut, asserted
+     * explicitly below.
      */
     @Test
     fun `the named same-observation exception is withheld from confirmation but not lost`() {
@@ -116,9 +118,15 @@ class SeventeenthSessionReplayTest {
         )
         assertTrue("precondition: same-observation views did agree", result.verification.viewsAgree)
         assertEquals(
-            "80 must not be prefilled for one-tap acceptance on same-observation agreement alone",
-            ScanPresentationDecision.Action.RECOVERY,
+            "80 must not be prefilled for a ONE-TAP acceptance on same-observation agreement alone " +
+                "-- it reaches an explicit visual-confirmation screen instead",
+            ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
             result.action,
+        )
+        assertTrue(
+            "must never be a one-tap shortcut past the user's own comparison",
+            result.action != ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE &&
+                result.action != ScanPresentationDecision.Action.AUTO_ADVANCE,
         )
     }
 

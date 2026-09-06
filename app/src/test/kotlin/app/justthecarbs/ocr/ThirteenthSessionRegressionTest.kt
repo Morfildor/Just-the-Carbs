@@ -115,9 +115,10 @@ class ThirteenthSessionRegressionTest {
     }
 
     /**
-     * A capture whose row and basis are known asks for the digits, never for a crop.
+     * A capture whose row and basis are known asks for the digits (or an explicit visual
+     * comparison), never for a crop.
      *
-     * ## Two actions satisfy this, and the distinction is real
+     * ## Three actions satisfy this, and the distinction is real
      *
      * * [ScanPresentationDecision.Action.FOCUSED_AMOUNT_ENTRY] — nothing was read. The screen opens
      *   straight on the amount field.
@@ -126,8 +127,12 @@ class ThirteenthSessionRegressionTest {
      *   `scaleAmbiguous`, and `AssistedReadingScreen` promotes the focused-entry offer above every
      *   other route when that flag is set), while still keeping the tap and type-it-in paths for a
      *   user who wants them.
+     * * [ScanPresentationDecision.Action.CONFIRM_UNVERIFIED] (twentieth session) — a figure was read,
+     *   is structurally sound and undisputed, and only its scale is unestablished.
+     *   [ConfirmationEligibility] offers it for one explicit visual comparison against the frozen
+     *   photograph rather than blank retyping.
      *
-     * What must **not** happen in either case is [ScanPresentationDecision.Action.CROP_FALLBACK],
+     * What must **not** happen in any case is [ScanPresentationDecision.Action.CROP_FALLBACK],
      * which asks the user to adjust a rectangle over a row the app has already located.
      */
     @Test
@@ -139,7 +144,8 @@ class ThirteenthSessionRegressionTest {
                     "${r.capture.bundle} has an established row and basis but was sent to " +
                         "${r.action}; the rectangle is not the user's lever here",
                     r.action == ScanPresentationDecision.Action.FOCUSED_AMOUNT_ENTRY ||
-                        r.action == ScanPresentationDecision.Action.RECOVERY,
+                        r.action == ScanPresentationDecision.Action.RECOVERY ||
+                        r.action == ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
                 )
             }
     }

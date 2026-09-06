@@ -94,6 +94,13 @@ internal object SelectedTableResolution {
         bitmap: Bitmap?,
         stillObservationId: PhysicalObservationId,
         liveEvidence: RecognitionEvidence? = null,
+        /**
+         * The capture-scoped reread budget — see [TargetedRereadBudget]'s own KDoc for why this must
+         * be owned by the caller rather than reset on every call. Defaults to a fresh budget so every
+         * existing caller that has not been updated to share one across crop retries still behaves
+         * safely (bounded to that one call), rather than failing to compile.
+         */
+        rereadBudget: TargetedRereadBudget = TargetedRereadBudget(),
         recogniseRegion: (Bitmap?, NormalizedRegion) -> RecognitionEvidence? = { bmp, rgn ->
             SelectedRegionRecognizer.recognise(bmp, rgn, stillObservationId)
         },
@@ -208,28 +215,79 @@ internal object SelectedTableResolution {
 
         var outcome = EvidenceResolver.resolve(evidence)
 
-        // ## The bounded targeted reread (nineteenth session, 2026-09-06)
+        // ## The bounded targeted reread (nineteenth session, corrected in the twentieth)
         //
-        // Attempted at most once, and only after Strategy A and Strategy B have both already run —
-        // never as a substitute for either. It targets the row [TargetedRereadTrigger] finds still
-        // in doubt (a scale-ambiguous or unit-rejected value on an otherwise-located declaration),
-        // using [Result.filtered]'s document -- the SAME document [outcome] was resolved from, so the
-        // row geometry the trigger measures is the row geometry that actually produced the ambiguity.
+        // Attempted only after Strategy A and Strategy B have both already run — never as a
+        // substitute for either — and only when [outcome], evaluated from EVERY pass gathered so
+        // far, still leaves something worth resolving. The nineteenth-session version retargeted
+        // from [Result.filtered] (Strategy A) unconditionally, so a reading Strategy B had already
+        // settled (scale established, or independently verified and ready to advance) still spent a
+        // reread it could not improve, and — the sharper defect — a Strategy-B-only scale-ambiguous
+        // reading could never be retargeted at all, because the trigger was never asked about the
+        // pass that actually produced the ambiguity.
         //
-        // The region always includes the resolved per-100 header band (or the panel's own top edge,
-        // absent one) — see [TargetedRereadRegion]'s own KDoc for why a narrower crop risks exactly
-        // the sondey/kinder regression [ScanRegionMapper] warns against.
-        //
-        // Tagged [EvidenceSource.TARGETED_REREAD] with the STILL's own [stillObservationId] — it is
-        // one more parse of the photograph already in hand, never a claim of independent physical
-        // corroboration. See [EvidenceSource.TARGETED_REREAD].
-        val rereadTarget = TargetedRereadTrigger.targetFor(filtered.document, filtered.report)
-        if (rereadTarget != null) {
-            val targetDocument = filtered.document
-            val rereadRegion = targetDocument
-                ?.let { TargetedRereadTrigger.regionFor(it, rereadTarget) }
-            if (rereadRegion != null) {
-                val reread = recogniseTargetedReread(bitmap, rereadRegion)
+        // First: does the current outcome already qualify for its intended next action? An outcome
+        // ready to [AutomaticScanAdvance.mayAdvanceVerified] or already offerable via
+        // [AutomaticScanAdvance.mayConfirm] has nothing left for a reread to improve — spending one
+        // anyway would cost real wall-clock time on a dosing input for no possible benefit. Only when
+        // neither holds is there a "remaining uncertainty" worth investigating.
+        val automaticVerification = AutomaticVerification.verify(evidence)
+        val winningDocument = outcome.winningEvidence?.document
+        val alreadyQualifies = winningDocument != null && (
+            AutomaticScanAdvance.mayAdvanceVerified(outcome, automaticVerification, winningDocument) ||
+                AutomaticScanAdvance.mayConfirm(outcome, automaticVerification, winningDocument)
+            )
+
+        if (!alreadyQualifies) {
+            // Retarget from the winning pass's own document/report when one exists — the pass that
+            // actually produced the outcome being retargeted. A null [EvidenceResolver.Outcome
+            // .winningEvidence] (an Unresolved ambiguity, or Nothing) has no single winner to prefer,
+            // so every gathered pass with a document is inspected for a defensible target instead,
+            // richest first, mirroring [EvidenceResolver]'s own "richest report" tie-break.
+            val winner = outcome.winningEvidence
+            val candidates = if (winner != null) {
+                listOf(winner)
+            } else {
+                evidence.filter { it.document != null }.sortedByDescending { it.document?.elements?.size ?: 0 }
+            }
+
+            val targeted = candidates.firstNotNullOfOrNull { source ->
+                val doc = source.document ?: return@firstNotNullOfOrNull null
+                val target = TargetedRereadTrigger.targetFor(doc, source.report) ?: return@firstNotNullOfOrNull null
+                val localRegion = TargetedRereadTrigger.regionFor(doc, target) ?: return@firstNotNullOfOrNull null
+
+                // The region [TargetedRereadTrigger] computed is normalized against [doc]'s own
+                // dimensions, which for a SELECTED_REGION_OCR/TARGETED_REREAD winner is the CROP's
+                // dimensions, not the source bitmap's — [SelectedRegionRecognizer.recognise] crops
+                // from the full source bitmap, so a crop-local region must be composed with [source
+                // .crop] first. Pass A and its filtered view carry no crop (already full-frame), so
+                // the region is used unchanged for them and no bitmap is needed at all for THIS step
+                // — a null [bitmap] (every JVM test; Strategy B already degrades identically when it
+                // is null) only prevents the reread from actually *running* later, never from being
+                // targeted. [bitmap]'s own pixel dimensions are used, rather than any document's,
+                // because they are what recognition will actually crop from — the same source
+                // [SelectedRegionCrop.toPixels] already measures against.
+                val crop = source.crop
+                if (crop == null) {
+                    localRegion
+                } else {
+                    val sourceBitmap = bitmap
+                    if (sourceBitmap == null || sourceBitmap.isRecycled) {
+                        return@firstNotNullOfOrNull null
+                    }
+                    SelectedRegionCrop.composeWithSourceCrop(
+                        cropLocalRegion = localRegion,
+                        crop = crop,
+                        sourceWidth = sourceBitmap.width,
+                        sourceHeight = sourceBitmap.height,
+                    )
+                }
+            }
+
+            if (targeted != null && rereadBudget.mayAttempt(targeted)) {
+                val rereadStarted = System.nanoTime()
+                val reread = recogniseTargetedReread(bitmap, targeted)
+                rereadBudget.record(targeted, (System.nanoTime() - rereadStarted) / 1_000_000)
                 if (reread != null) {
                     evidence += reread
                     outcome = EvidenceResolver.resolve(evidence)

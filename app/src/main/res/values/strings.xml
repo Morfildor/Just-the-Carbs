@@ -523,6 +523,10 @@
     <string name="assist_focused_title">Enter the carbohydrate figure</string>
     <string name="assist_focused_body">The row was found, but the number was not clear enough to read.</string>
     <string name="assist_focused_offer">Carbohydrate row found, but the number wasn\'t clear.</string>
+    <!-- The tapped row is not the total-carbohydrate row with an established per-100 column (a
+         declared-serving or linear-panel label, or a row the app could not place at all), so there
+         is no fixed basis to preserve. Full manual entry is offered instead of a dead end. -->
+    <string name="assist_row_unclear">That row didn\'t give a clear reading. Type the figure printed on the label instead.</string>
     <string name="assist_focused_action">Enter the value printed under 100 %1$s</string>
     <string name="assist_focused_prompt">Type the carbohydrate figure printed under 100 %1$s.</string>
     <string name="assist_focused_confirm">Use %1$s g / 100 %2$s</string>
@@ -544,6 +548,12 @@
     <string name="verify_found_row">From: %1$s</string>
     <string name="verify_found_zoom_description">Close-up of the row this figure was read from</string>
     <string name="verify_found_photo_description">The photograph this figure was read from, with the row outlined</string>
+    <!-- ConfirmationEligibility: the row, clause, unit and column are all established; only the
+         reading's decimal scale is unresolved. Distinct wording from verify_found_* because the
+         open question is different — the row is not in doubt here, only the digits' scale is. -->
+    <string name="verify_scale_title">Check this matches the label</string>
+    <string name="verify_scale_body">The row and its unit are correct, but the exact figure needs your eyes. Compare it with the package before using it.</string>
+    <string name="verify_scale_confirm">Correct — calculate</string>
     <string name="conflict_title">Two different readings</string>
     <string name="conflict_body">The photo was read more than once and the results disagreed (%1$s), so nothing is being guessed. Point at the right figure instead.</string>
     <string name="conflict_assist">Point at the figure</string>

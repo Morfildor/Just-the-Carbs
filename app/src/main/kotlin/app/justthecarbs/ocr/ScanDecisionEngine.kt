@@ -53,6 +53,19 @@ object ScanDecisionEngine {
                     ScanDecision.Confirm(confident.candidate.value, basis, confident.candidate.sourceLine)
                 }
             }
+            ScanPresentationDecision.Action.CONFIRM_UNVERIFIED -> {
+                val candidate = ScanPresentationDecision.confirmationCandidateFor(
+                    outcome,
+                    document,
+                    DisputedCandidates.of(evidence),
+                )
+                val basisEnum = candidate?.reading?.basis?.let { ConfirmationEligibility.perHundredBasis(it) }
+                if (candidate == null || basisEnum == null) {
+                    ScanDecision.Crop
+                } else {
+                    ScanDecision.ConfirmUnverified(candidate.reading.amount, basisEnum, candidate.rowText)
+                }
+            }
             ScanPresentationDecision.Action.RECOVERY -> {
                 val target = FocusedAmountEntry.of(document)
                 if (target != null) {

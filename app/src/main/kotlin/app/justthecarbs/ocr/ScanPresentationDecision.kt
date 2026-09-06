@@ -64,6 +64,30 @@ internal object ScanPresentationDecision {
         CROP_FALLBACK,
 
         /**
+         * A structurally-sound reading whose absolute decimal scale [ReadingEligibility] refused —
+         * but whose row, clause, unit and column ownership all check out, is undisputed by any other
+         * recognition run, and is physically plausible. Offered for **explicit visual confirmation**
+         * only: the frozen photograph and an enlarged close-up of the printed row, beside the figure,
+         * with one primary action the user must press. Never a one-tap [CONFIRM_ON_CAPTURE] and never
+         * [AUTO_ADVANCE] — see [ConfirmationEligibility], which is the only thing that can produce
+         * this action and never widens [ReadingEligibility] itself.
+         *
+         * ## Why this is a distinct action from [CONFIRM_ON_CAPTURE], and must stay one
+         *
+         * [CONFIRM_ON_CAPTURE] readings are not necessarily independently OCR-verified either — see
+         * [AutomaticScanAdvance.mayConfirm]'s own KDoc, which explicitly allows an unverified single
+         * recognition through when the scale is [ScaleAmbiguity.Verdict.Established]. What separates
+         * the two actions is not "verified vs. unverified": it is *what kind of evidence gap* the user
+         * is being asked to close. `CONFIRM_ON_CAPTURE` means the digits are trustworthy and nothing
+         * *outside this run* has corroborated them yet. `CONFIRM_UNVERIFIED` means the digits
+         * themselves have an unresolved decimal-scale question and the user must look at the printed
+         * row to settle it. Both stay presented next to the photograph; the copy the UI shows differs
+         * to reflect which question is actually open, and the app must never record either state as
+         * OCR-verified — only the user's own tap does that, and only for the reading it was shown.
+         */
+        CONFIRM_UNVERIFIED,
+
+        /**
          * The carbohydrate row and its basis were both established; only the digits failed.
          *
          * ## Why this is not [CROP_FALLBACK] (thirteenth session)
@@ -150,7 +174,34 @@ internal object ScanPresentationDecision {
             // it always has (unit accompaniment, cross-column contradiction, scale eligibility,
             // disputed-candidate exclusion) before a candidate reaches this list, so an empty list
             // here still falls through to [Action.CROP_FALLBACK] exactly as before.
-            if (RecoveryCandidates.of(document).isNotEmpty()) return Action.RECOVERY
+            val recoveryCandidates = RecoveryCandidates.of(document)
+            if (recoveryCandidates.isNotEmpty()) {
+                // ## A single already-resolved declared-serving reading opens confirmation directly
+                //
+                // The Korean-sauce shape: `RecoveryCandidates` has already resolved a basis-complete
+                // reading — the label itself declared a serving and stated the figure per it — and
+                // [ReadingEligibility] already admits it (a declared basis is [ReadingEligibility
+                // .Verdict.Eligible] by construction; see its own KDoc's "the label declared the
+                // serving this figure is measured per" branch). There is exactly one honest answer
+                // here, not a menu of ways to look for one, so it is shown the same way a
+                // [Action.CONFIRM_UNVERIFIED] reading is: the frozen photograph, an enlarged
+                // close-up, one primary action. Never a shortcut past that tap — the user still
+                // presses "Correct — calculate" before anything is used.
+                //
+                // Restricted to exactly one candidate that both normalizes AND is `ReadingEligibility`
+                // -eligible: two candidates is a genuine choice the app must not make silently, and a
+                // candidate [ReadingEligibility] itself would refuse (an inferred per-hundred basis
+                // reaching this list some other way) must not bypass the menu that would otherwise
+                // apply every other suppression rule identically.
+                // `document` is non-null here: `RecoveryCandidates.of` returns empty for a null
+                // document, and this branch is only reached when it returned something.
+                val resolvedSingle = recoveryCandidates.singleOrNull {
+                    it.reading.normalizedToPerHundred() != null &&
+                        ReadingEligibility.evaluate(document!!, it).isEligible
+                }
+                if (resolvedSingle != null) return Action.CONFIRM_UNVERIFIED
+                return Action.RECOVERY
+            }
 
             return Action.CROP_FALLBACK
         }
@@ -158,9 +209,14 @@ internal object ScanPresentationDecision {
         return when (AutomaticScanAdvance.presentation(outcome, verification, document, automatic)) {
             AutomaticScanAdvance.Presentation.Advance -> Action.AUTO_ADVANCE
             AutomaticScanAdvance.Presentation.ConfirmOnCapture -> Action.CONFIRM_ON_CAPTURE
-            // The digits themselves are not trustworthy enough to propose. The photograph is kept
-            // and the user is asked for the number, with the basis the label stated preserved.
-            AutomaticScanAdvance.Presentation.Recover -> Action.RECOVERY
+            // The digits themselves are not trustworthy enough to propose for a one-tap confirmation
+            // — but a structurally sound, undisputed, plausible reading may still be worth an
+            // EXPLICIT visual comparison against the photograph, never a shortcut past it. See
+            // [ConfirmationEligibility]; a null verdict there (no document, or the scale question was
+            // never asked) falls through to the same [Action.RECOVERY] this branch always returned.
+            AutomaticScanAdvance.Presentation.Recover -> confirmationCandidateFor(outcome, document)
+                ?.let { Action.CONFIRM_UNVERIFIED }
+                ?: Action.RECOVERY
             // Not a confident reading: an ambiguity, a conflict, or nothing at all. Through a
             // confirmed crop these keep their existing screens, which the caller selects from the
             // outcome type; none of them is a proposal.
@@ -168,6 +224,44 @@ internal object ScanPresentationDecision {
                 is EvidenceResolver.Outcome.Nothing -> Action.RECOVERY
                 else -> Action.CONFIRM
             }
+        }
+    }
+
+    /**
+     * The [RecoveryCandidates.Candidate] backing [Action.CONFIRM_UNVERIFIED], or null when
+     * [outcome]/[document] do not qualify.
+     *
+     * Exposed as its own function — rather than folded into [decide]'s return value — because
+     * [decide] returns a bare [Action] and dozens of existing call sites and tests compare it by
+     * equality; widening the return type would touch all of them for no safety benefit. A caller that
+     * receives [Action.CONFIRM_UNVERIFIED] calls this with the identical arguments to retrieve the
+     * candidate to render, exactly as [FocusedAmountEntry.of] is already called a second time for
+     * [Action.FOCUSED_AMOUNT_ENTRY].
+     *
+     * [DisputedCandidates.of] is recomputed from [outcome]'s own evidence where available; a caller
+     * holding the richer evidence list (as the scanner composable does) should prefer passing that
+     * dispute set directly via the [disputed] parameter to avoid recomputation, but recomputing here
+     * keeps this function correct for a caller that only has the resolved outcome.
+     */
+    fun confirmationCandidateFor(
+        outcome: EvidenceResolver.Outcome,
+        document: OcrDocument?,
+        disputed: DisputedCandidates = DisputedCandidates.NONE,
+    ): RecoveryCandidates.Candidate? {
+        val confident = AutomaticScanAdvance.confidentReading(outcome)
+        if (confident != null) {
+            val scale = AutomaticScanAdvance.scaleVerdict(outcome, document)
+            val verdict = ConfirmationEligibility.evaluate(document, confident, scale, disputed)
+            (verdict as? ConfirmationEligibility.Verdict.Eligible)?.candidate?.let { return it }
+        }
+
+        // No automatic-path candidate at all — the single-resolved-declared-serving shape `decide`
+        // itself checks (a US linear panel with no per-100 column, whose basis the label declared
+        // rather than the app inferring). Re-asked with the identical predicate so the two can never
+        // return `CONFIRM_UNVERIFIED` and then find nothing to render.
+        if (document == null) return null
+        return RecoveryCandidates.of(document, disputed).singleOrNull {
+            it.reading.normalizedToPerHundred() != null && ReadingEligibility.evaluate(document, it).isEligible
         }
     }
 
@@ -187,6 +281,7 @@ internal object ScanPresentationDecision {
         // All of these still have a question for the user, and every one of those questions is
         // about the photograph.
         Action.CONFIRM_ON_CAPTURE -> false
+        Action.CONFIRM_UNVERIFIED -> false
         Action.CONFIRM -> false
         Action.RECOVERY -> false
         Action.CROP_FALLBACK -> false

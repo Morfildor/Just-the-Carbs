@@ -119,7 +119,12 @@ internal object CarbFailureDiagnosis {
         action: ScanPresentationDecision.Action,
     ): CarbFailureReason? = when {
         outcome is EvidenceResolver.Outcome.Conflicted -> CarbFailureReason.OCR_CONFLICT
-        action == ScanPresentationDecision.Action.RECOVERY &&
+        // CONFIRM_UNVERIFIED (twentieth session) is the same underlying diagnosis as RECOVERY here:
+        // a reading whose only open question is decimal scale. It differs from RECOVERY only in
+        // *how* that question is put to the user (an explicit visual comparison rather than blank
+        // typing) — see ConfirmationEligibility — never in what the diagnosis was.
+        (action == ScanPresentationDecision.Action.RECOVERY ||
+            action == ScanPresentationDecision.Action.CONFIRM_UNVERIFIED) &&
             scaleVerdict != null && scaleVerdict !is ScaleAmbiguity.Verdict.Established ->
             CarbFailureReason.SCALE_UNRESOLVED
         else -> report.failureReason

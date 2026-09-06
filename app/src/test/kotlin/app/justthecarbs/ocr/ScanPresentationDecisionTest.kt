@@ -94,23 +94,30 @@ class ScanPresentationDecisionTest {
     /**
      * The red label's `12`: confident, uncorroborated, and its scale unsupported.
      *
-     * It reaches the user as a *question for the digits*, never as a figure to confirm.
+     * Twentieth session: it now reaches [ScanPresentationDecision.Action.CONFIRM_UNVERIFIED] rather
+     * than blank `RECOVERY` typing — the row, clause, unit and column are all structurally sound and
+     * undisputed, and [ConfirmationEligibility] offers it for one EXPLICIT visual comparison against
+     * the photograph. It is never a one-tap shortcut: `CONFIRM_ON_CAPTURE` and `AUTO_ADVANCE` stay
+     * unreachable, asserted explicitly below.
      */
     @Test
-    fun `an unsupported-scale reading recovers rather than confirming`() {
+    fun `an unsupported-scale reading reaches explicit confirmation rather than a one-tap shortcut`() {
         val document = EighthSessionFixtures.redLabelTwelve()
         val ev = listOf(
             evidence(EvidenceSource.FULL_FRAME_PASS_A, document),
             evidence(EvidenceSource.FILTERED_PASS_A, document),
         )
-        assertEquals(
-            ScanPresentationDecision.Action.RECOVERY,
-            ScanPresentationDecision.decide(
-                EvidenceResolver.resolve(ev),
-                AutomaticVerification.verify(ev),
-                document,
-                automatic = true,
-            ),
+        val decision = ScanPresentationDecision.decide(
+            EvidenceResolver.resolve(ev),
+            AutomaticVerification.verify(ev),
+            document,
+            automatic = true,
+        )
+        assertEquals(ScanPresentationDecision.Action.CONFIRM_UNVERIFIED, decision)
+        assertTrue(
+            "must never be a one-tap shortcut past the user's own comparison",
+            decision != ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE &&
+                decision != ScanPresentationDecision.Action.AUTO_ADVANCE,
         )
     }
 
@@ -226,10 +233,11 @@ class ScanPresentationDecisionTest {
                 ScanPresentationDecision.releasesCapture(action),
             )
         }
-        // Six since the thirteenth pass added FOCUSED_AMOUNT_ENTRY, which keeps the photograph —
-        // the digits are read off it. The count is asserted so a new action has to be considered
-        // here rather than silently inheriting a terminal/non-terminal answer.
-        assertEquals(6, ScanPresentationDecision.Action.entries.size)
+        // Seven since the twentieth pass added CONFIRM_UNVERIFIED, which also keeps the photograph —
+        // it is an explicit visual comparison, never a shortcut past one. The count is asserted so a
+        // new action has to be considered here rather than silently inheriting a terminal/non-terminal
+        // answer.
+        assertEquals(7, ScanPresentationDecision.Action.entries.size)
     }
 
     /**

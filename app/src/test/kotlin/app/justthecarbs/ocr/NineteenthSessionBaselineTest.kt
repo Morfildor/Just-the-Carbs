@@ -130,26 +130,47 @@ class NineteenthSessionBaselineTest {
             automatic = true,
         )
 
-        // THE FIX: the wrong value no longer reaches a one-tap confirmation. It still reaches the
-        // user, via RECOVERY (Presentation.Recover) -- the photograph, the highlighted row and the
-        // basis are preserved, and the user must type the digits rather than confirm a misread one.
+        // THE FIX (nineteenth session): the wrong value no longer reaches a ONE-TAP confirmation.
+        //
+        // Twentieth session, superseding this comment's original RECOVERY expectation: it now
+        // reaches CONFIRM_UNVERIFIED -- an EXPLICIT visual-confirmation screen (the frozen
+        // photograph, an enlarged close-up of the printed row, one primary action the user must
+        // press) -- rather than blank RECOVERY typing. This is exactly the task's own named
+        // "Important policy boundary": "known wrong 12/13 readings must never advance automatically
+        // or appear as verified. Where available evidence cannot distinguish such a misread from a
+        // legitimate integer, it may appear only in the clearly unverified visual-confirmation
+        // state." The wrong 12 is shown ONLY for the user to compare against the package and reject
+        // -- never accepted without that look, and never a one-tap shortcut. What the nineteenth
+        // session's fix actually guarantees -- CONFIRM_ON_CAPTURE and AUTO_ADVANCE are both
+        // unreachable here -- is asserted explicitly below and remains true.
         assertEquals(
             "distinct-run agreement alone must no longer promote an Unsupported-scale reading to " +
-                "a one-tap confirmation",
-            ScanPresentationDecision.Action.RECOVERY,
+                "a ONE-TAP confirmation -- it may only reach an explicit visual-confirmation screen",
+            ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
             decision,
+        )
+        assertTrue(
+            "must never be a one-tap shortcut past the user's own comparison",
+            decision != ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE &&
+                decision != ScanPresentationDecision.Action.AUTO_ADVANCE,
         )
     }
 
     /**
      * `20260906-123650-430` / `-123657-089` — the protein bar, correctly read as `40.0/PER_100_G`
      * (ground truth, confirmed against the photograph) and independently verified by
-     * [AutomaticVerification.Route.CROSS_COLUMN] with 9 supporting rows, but withheld to RECOVERY
-     * because [ScaleAmbiguity] demonstrates the `40`/`10` pair could be a uniform rescaling.
+     * [AutomaticVerification.Route.CROSS_COLUMN] with 9 supporting rows, but withheld from ONE-TAP
+     * confirmation because [ScaleAmbiguity] demonstrates the `40`/`10` pair could be a uniform
+     * rescaling.
      *
      * This is the correct and conservative behaviour per the architecture's own stated rule — a
-     * cross-column ratio is scale-invariant and cannot rule out a uniform ×10 error — and this test
-     * pins it as a baseline **cost**, not a bug to silently "fix" by trusting the ratio.
+     * cross-column ratio is scale-invariant and cannot rule out a uniform ×10 error. Twentieth
+     * session: it now reaches [ScanPresentationDecision.Action.CONFIRM_UNVERIFIED] rather than
+     * `RECOVERY` — task §6 names this exact shape ("correct 40/100 g, 10/25 g; avoid forced typing
+     * solely because both are integers"). The cost this test originally pinned (a correct,
+     * strongly-verified reading reaching only blank typing) is what the twentieth session's change
+     * removes; the safety property (never a one-tap shortcut past the user's own comparison) is
+     * unchanged and asserted explicitly below.
      */
     @Test
     fun `baseline - protein bar 123650 is correctly withheld despite strong corroboration`() {
@@ -195,9 +216,16 @@ class NineteenthSessionBaselineTest {
         )
 
         assertEquals(
-            "a demonstrated pair ambiguity is withheld even under strong cross-column support",
-            ScanPresentationDecision.Action.RECOVERY,
+            "a demonstrated pair ambiguity is withheld from ONE-TAP confirmation even under strong " +
+                "cross-column support, but now reaches an explicit visual-confirmation screen " +
+                "instead of blank recovery typing",
+            ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
             decision,
+        )
+        assertTrue(
+            "must never be a one-tap shortcut past the user's own comparison",
+            decision != ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE &&
+                decision != ScanPresentationDecision.Action.AUTO_ADVANCE,
         )
     }
 }

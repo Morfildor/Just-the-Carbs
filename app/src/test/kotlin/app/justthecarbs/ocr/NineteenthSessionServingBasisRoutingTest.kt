@@ -22,11 +22,21 @@ import org.junit.Test
  * the recovery screen where [RecoveryCandidates]'s already-resolved answer would actually render.
  * A rectangle cannot fix a basis question a rectangle never answered, so the crop screen is the
  * wrong fallback whenever recovery already has something to offer.
+ *
+ * ## Superseded by the twentieth session: routes to CONFIRM_UNVERIFIED, not RECOVERY
+ *
+ * This capture is exactly the shape task §5 names by name ("already resolved declared-serving
+ * readings, such as `6 g / 18 g serving`, should open confirmation directly"): `RecoveryCandidates`
+ * has already fully resolved ONE basis-complete, `ReadingEligibility`-eligible reading, so there is
+ * nothing left to choose between — showing a menu ("tap the row" / "type it in" / this button) for a
+ * question the app has already answered is exactly the friction §2's explicit-confirmation state
+ * exists to remove. [ScanPresentationDecision.Action.RECOVERY] is still the fallback whenever
+ * recovery has more than one candidate, or a candidate that does not normalize.
  */
 class NineteenthSessionServingBasisRoutingTest {
 
     @Test
-    fun `the Korean sauce US panel routes to RECOVERY, not CROP_FALLBACK`() {
+    fun `the Korean sauce US panel routes to CONFIRM_UNVERIFIED, not CROP_FALLBACK`() {
         val document = NineteenthSessionFixtures.koreanSauce123544()
         val report = NutritionTableInterpreter.interpret(document)
 
@@ -70,11 +80,20 @@ class NineteenthSessionServingBasisRoutingTest {
         )
 
         assertEquals(
-            "a panel with no per-100 column but a resolvable declared-serving candidate must route " +
-                "to RECOVERY, where that candidate is shown, not to CROP_FALLBACK",
-            ScanPresentationDecision.Action.RECOVERY,
+            "a panel with no per-100 column but exactly one resolvable declared-serving candidate " +
+                "must open explicit confirmation directly, not CROP_FALLBACK and not the RECOVERY menu",
+            ScanPresentationDecision.Action.CONFIRM_UNVERIFIED,
             decision,
         )
+
+        // The candidate the confirmation screen would actually render, normalizing to the printed
+        // 33.3 g/100g figure — proving `confirmationCandidateFor` and `decide` agree about what
+        // qualifies, which is what a caller relies on never to diverge (see its own KDoc).
+        val candidate = ScanPresentationDecision.confirmationCandidateFor(outcome, document)
+        assertTrue("confirmationCandidateFor must resolve the same candidate decide() found", candidate != null)
+        val normalized = candidate!!.reading.normalizedToPerHundred()
+        assertTrue("the declared-serving reading must normalize to per-100", normalized != null)
+        assertEquals(0, normalized!!.amount.setScale(1, java.math.RoundingMode.HALF_UP).compareTo(java.math.BigDecimal("33.3")))
     }
 
     /**

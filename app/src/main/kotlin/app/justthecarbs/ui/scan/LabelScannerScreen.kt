@@ -79,23 +79,29 @@ import app.justthecarbs.ocr.CarbCandidate
 import app.justthecarbs.ocr.CarbFailureDiagnosis
 import app.justthecarbs.ocr.AutomaticScanAdvance
 import app.justthecarbs.ocr.AutomaticVerification
+import app.justthecarbs.ocr.ConfirmationEligibility
 import app.justthecarbs.ocr.CropChange
 import app.justthecarbs.ocr.DisputedCandidates
 import app.justthecarbs.ocr.EvidenceResolver
 import app.justthecarbs.ocr.EvidenceSource
+import app.justthecarbs.ocr.FocusedAmountEntry
 import app.justthecarbs.ocr.LabelAnalyzer
 import app.justthecarbs.ocr.LabelReading
 import app.justthecarbs.ocr.LiveEvidenceBuffer
 import app.justthecarbs.ocr.NormalizedRegion
 import app.justthecarbs.ocr.NutritionParseReport
+import app.justthecarbs.ocr.OcrBox
 import app.justthecarbs.ocr.PassAResult
 import app.justthecarbs.ocr.PhysicalObservationId
 import app.justthecarbs.ocr.RecognitionEvidence
+import app.justthecarbs.ocr.RecoveryCandidates
 import app.justthecarbs.ocr.ScaleAmbiguity
 import app.justthecarbs.ocr.ScanEvidenceRecorder
 import app.justthecarbs.ocr.ScanPresentationDecision
 import app.justthecarbs.ocr.ScanRegionMapper
+import app.justthecarbs.ocr.SelectedRegionCrop
 import app.justthecarbs.ocr.SelectedTableResolution
+import app.justthecarbs.ocr.TargetedRereadBudget
 import app.justthecarbs.ocr.StatedBasis
 import app.justthecarbs.ocr.ServingCarbCandidate
 import app.justthecarbs.ocr.TextResolutionGuidance
@@ -147,6 +153,28 @@ sealed interface PortionSaveState {
      */
     data object PendingProductCreation : PortionSaveState
 }
+
+/**
+ * A [ConfirmationEligibility]-admitted reading, carrying everything [VerificationScreen] needs to
+ * render its [VerificationScreenMode.ScaleUnresolved] state.
+ *
+ * [value]/[basis] are the reading's own **normalized-to-per-100** amount and basis — never
+ * `candidate.reading.amount`/`candidate.reading.basis` directly, because a declared-serving
+ * candidate (task §5: "already resolved declared-serving readings … should open confirmation
+ * directly") states its figure per a quantity that is not 100, and this screen — like every other
+ * confirmation and the calculator beyond it — always shows and stores a per-100 figure. See
+ * [app.justthecarbs.domain.CarbReading.normalizedToPerHundred].
+ *
+ * [rowInSourceSpace] is translated exactly once, at construction — see
+ * [RecognitionEvidence.sourceSpaceGeometry] — never re-derived at the render site, for the same
+ * reason [proposalFor] carries `winningEvidence` across for the ordinary [VerificationScreen] case.
+ */
+private data class ScaleUnresolvedProposal(
+    val candidate: RecoveryCandidates.Candidate,
+    val value: BigDecimal,
+    val basis: NutritionBasis,
+    val rowInSourceSpace: OcrBox,
+)
 
 /** Nutrition-table OCR camera. It proposes values; it never commits one without a tap. */
 @Composable
@@ -326,6 +354,17 @@ private fun LabelCamera(
      */
     var lastRecognisedRegion by remember { mutableStateOf<NormalizedRegion?>(null) }
     /**
+     * The targeted-reread budget for the capture currently frozen on screen (§4).
+     *
+     * Shared, not reset, across every [SelectedTableResolution.resolve] call this capture makes —
+     * the automatic post-capture attempt and every crop the user subsequently confirms — because
+     * `resolve` itself is otherwise stateless per call and cannot see how many rereads a *previous*
+     * call for the same photograph already spent. A plain `remember` (not `rememberSaveable` or
+     * anything crop-keyed) is deliberate: it is capture-scoped state, replaced wholesale by
+     * [resumeLive] exactly like [lastRecognisedRegion] and [PhysicalObservationId] already are.
+     */
+    var rereadBudget by remember { mutableStateOf(TargetedRereadBudget()) }
+    /**
      * A value one pass found that nothing corroborated (§8).
      *
      * Shown on the frozen photograph as "check this against the label", never as a settled answer.
@@ -333,6 +372,19 @@ private fun LabelCamera(
      * uncorroborated reading may be proposed but must not decide.
      */
     var verification by remember { mutableStateOf<EvidenceResolver.Outcome.NeedsVerification?>(null) }
+    /**
+     * A [ConfirmationEligibility]-admitted reading: the row, clause, unit and column are all
+     * established and undisputed, and only the decimal scale is unresolved (task §2B).
+     *
+     * Shown on [VerificationScreen] exactly like [verification], with
+     * [VerificationScreenMode.ScaleUnresolved] driving different copy — never a one-tap
+     * [ScanPresentationDecision.Action.CONFIRM_ON_CAPTURE] and never [ScanPresentationDecision
+     * .Action.AUTO_ADVANCE]. A tap on its primary action is recorded as the user's own confirmation,
+     * never as OCR verification: nothing here sets or implies an OCR-verified status.
+     */
+    var scaleUnresolvedProposal by remember {
+        mutableStateOf<ScaleUnresolvedProposal?>(null)
+    }
     /** Two passes disagreed. The app must not choose; it says so and offers the assisted path. */
     var conflicted by remember { mutableStateOf<EvidenceResolver.Outcome.Conflicted?>(null) }
     /**
@@ -512,6 +564,8 @@ private fun LabelCamera(
         // and leaving it set would let a new capture's first Read table be skipped as an
         // "unchanged" crop of a photograph that no longer exists (1.0.3 P2).
         lastRecognisedRegion = null
+        // A new capture must never spend a reread budget the *previous* photograph earned or used.
+        rereadBudget = TargetedRereadBudget()
         // The frozen live evidence belongs to the shutter press being abandoned. Left set, the next
         // capture's resolution would be corroborated by what the camera saw before a *different*
         // photograph — the exact cross-capture contamination the aim epoch exists to prevent, arriving
@@ -526,6 +580,7 @@ private fun LabelCamera(
         // Every derived state from the abandoned capture goes with it (§25 session/race). Leaving any
         // of these set would let a previous package's proposal appear over a new capture.
         verification = null
+        scaleUnresolvedProposal = null
         conflicted = null
         assisting = null
         // A dispute belongs to the capture that produced it. Carrying it into the next one would
@@ -654,6 +709,7 @@ private fun LabelCamera(
                     region = region,
                     bitmap = captured.bitmap,
                     stillObservationId = stillObservationId,
+                    rereadBudget = rereadBudget,
                     // The FROZEN snapshot taken at shutter time — never a fresh query of the live
                     // buffer, which is what this line used to do.
                     //
@@ -747,6 +803,43 @@ private fun LabelCamera(
             val winner = result.outcome.winningEvidence
             val evaluationDocument = if (winner != null) winner.document else captured.document
 
+            // **The document a presentation screen shows the user, translated into the coordinate
+            // space the frozen PHOTOGRAPH actually occupies.**
+            //
+            // [AssistedReadingScreen] and [VerificationScreen] both always show the full source
+            // bitmap, never a crop — so a document handed to them must describe that same bitmap.
+            // Before this, [Action.RECOVERY] and the `Outcome.Nothing` branch below both built
+            // `AssistState(document = captured.document)` unconditionally: Pass A's document, even
+            // when Strategy B or a targeted reread had produced a *richer* recognition (recovering a
+            // row Pass A's whole-frame pass could not read, or resolving a column Pass A missed). The
+            // richer evidence existed and was simply discarded at the hand-off to the UI.
+            //
+            // [evaluationDocument] is preferred when it exists and is richer at reading a
+            // total-carbohydrate declaration than Pass A's own — measured by whether
+            // [FocusedAmountEntry.of] or [RecoveryCandidates.of] finds something in it that Pass A's
+            // document does not, so a winning pass that recognised LESS than Pass A (a narrow
+            // targeted reread that only saw part of a row) cannot regress recovery. Translated to
+            // source space via [SelectedRegionCrop.documentToSourceSpace] when it carries a crop
+            // origin, so every downstream tap and highlight is measured against the same bitmap the
+            // screen actually draws.
+            val presentationDocument = run {
+                val passADocument = captured.document
+                if (evaluationDocument == null || evaluationDocument === passADocument) {
+                    passADocument
+                } else {
+                    val translated = SelectedRegionCrop.documentToSourceSpace(
+                        evaluationDocument,
+                        winner?.crop,
+                        sourceWidth = passADocument?.width ?: evaluationDocument.width,
+                        sourceHeight = passADocument?.height ?: evaluationDocument.height,
+                    )
+                    val translatedIsRicher = passADocument == null ||
+                        (FocusedAmountEntry.of(translated) != null && FocusedAmountEntry.of(passADocument) == null) ||
+                        RecoveryCandidates.of(translated).size > RecoveryCandidates.of(passADocument).size
+                    if (translatedIsRicher) translated else passADocument
+                }
+            }
+
             // Whether the evidence establishes this reading's absolute decimal scale.
             //
             // Asked here, once, so the gate below and the evidence bundle read the same verdict.
@@ -813,7 +906,7 @@ private fun LabelCamera(
                     // measured it. The photograph is kept, because the digits are read off it.
                     OcrDiagnosticsLogger.timing("row and basis established; asking for the digits")
                     assisting = AssistState(
-                        document = captured.document,
+                        document = presentationDocument,
                         disputed = disputed,
                         startOnFocusedEntry = true,
                     )
@@ -866,6 +959,58 @@ private fun LabelCamera(
                     }
                 }
 
+                ScanPresentationDecision.Action.CONFIRM_UNVERIFIED -> {
+                    // The row, clause, unit and column ownership are all established and undisputed;
+                    // only the decimal scale is unresolved. [ScanPresentationDecision] only returns
+                    // this action when [ConfirmationEligibility] already located and admitted the
+                    // candidate, so the lookup here is expected to succeed — handled defensively
+                    // rather than asserted, so a future divergence between the two degrades to the
+                    // crop screen instead of crashing on a dosing-input screen.
+                    val candidate = ScanPresentationDecision.confirmationCandidateFor(
+                        result.outcome,
+                        evaluationDocument,
+                        disputed,
+                    )
+                    // Normalized to per-100, never `candidate.reading.amount`/`.basis` directly — a
+                    // declared-serving candidate (task §5's single-resolved-serving shape) states its
+                    // figure per a quantity other than 100, and every confirmation screen and the
+                    // calculator beyond it always shows and stores the per-100 form. For the ordinary
+                    // scale-unresolved shape the reading's own basis already IS per-100 (`Confirmation
+                    // Eligibility.evaluate`'s `LabelReading.Confident` overload requires it — see
+                    // `AutomaticScanAdvance.eligibility`'s "always PerHundred" note), so
+                    // `normalizedToPerHundred()` there returns the reading unchanged.
+                    val normalized = candidate?.reading?.normalizedToPerHundred()
+                    val basis = (normalized?.basis as? app.justthecarbs.domain.CarbBasis.PerHundred)?.basis
+                    if (candidate != null && normalized != null && basis != null) {
+                        OcrDiagnosticsLogger.timing(
+                            "explicit visual confirmation offered (scale ${scaleVerdict?.let { it::class.simpleName }})",
+                        )
+                        (result.outcome as? EvidenceResolver.Outcome.Resolved)?.let {
+                            servingCandidate = it.report.servingCandidate
+                        }
+                        // The same translation [proposalFor]'s caller relies on for
+                        // CONFIRM_ON_CAPTURE: `candidate.box` is measured in `evaluationDocument`'s
+                        // own space, which for a Strategy B winner is the *crop's* space, not the
+                        // source bitmap's. Untranslated, the highlight and close-up would be short by
+                        // the crop's own origin — pointing at the wrong part of the very photograph
+                        // the user is being asked to check the number against.
+                        val crop = result.outcome.winningEvidence?.crop
+                        scaleUnresolvedProposal = ScaleUnresolvedProposal(
+                            candidate = candidate,
+                            value = normalized.amount,
+                            basis = basis,
+                            rowInSourceSpace = crop
+                                ?.let { SelectedRegionCrop.toSourceSpace(candidate.box, it) }
+                                ?: candidate.box,
+                        )
+                    } else {
+                        autoAttempted = true
+                        OcrDiagnosticsLogger.timing(
+                            "explicit visual confirmation eligible but no basis — declined",
+                        )
+                    }
+                }
+
                 ScanPresentationDecision.Action.CONFIRM -> {
                     // Reached through a confirmed crop, where the user has already been asked a
                     // question. The outcome selects the screen; none of these is a proposal the
@@ -882,7 +1027,11 @@ private fun LabelCamera(
                         }
                         is EvidenceResolver.Outcome.NeedsVerification -> verification = outcome
                         EvidenceResolver.Outcome.Nothing -> assisting = AssistState(
-                            document = captured.document,
+                            // `Outcome.Nothing` carries no winning evidence of its own, so
+                            // `presentationDocument` resolves to Pass A's document here exactly as
+                            // `captured.document` did — this is a like-for-like rename, not a
+                            // behaviour change for this branch.
+                            document = presentationDocument,
                             ineffectiveSelection = result.selectionWasIneffective,
                             disputed = disputed,
                         )
@@ -894,12 +1043,17 @@ private fun LabelCamera(
                     // decimal scale — or nothing usable was read at all. Both keep the photograph:
                     // the user is being asked to read the number off it, with the basis the label
                     // stated preserved. Nothing is divided, shifted or repaired.
+                    //
+                    // `presentationDocument`, not `captured.document`: recovery must see whichever
+                    // pass actually located the total-carbohydrate row and resolved a column, even
+                    // when that pass was Strategy B or the targeted reread rather than Pass A — see
+                    // its own definition above for the measured-richer comparison this relies on.
                     val withheld = AutomaticScanAdvance.confidentReading(result.outcome) != null
                     if (withheld) {
                         OcrDiagnosticsLogger.timing("confirmation withheld (scale not established)")
                     }
                     assisting = AssistState(
-                        document = captured.document,
+                        document = presentationDocument,
                         ineffectiveSelection = !withheld && result.selectionWasIneffective,
                         disputed = disputed,
                         scaleAmbiguous = withheld,
@@ -1316,6 +1470,7 @@ private fun LabelCamera(
         val assist = assisting
         val proposal = verification
         val conflict = conflicted
+        val scaleProposal = scaleUnresolvedProposal
 
         when {
             assist != null -> AssistedReadingScreen(
@@ -1342,6 +1497,33 @@ private fun LabelCamera(
                 // so it hands straight to the assisted path rather than dropping them out.
                 onReject = {
                     verification = null
+                    assisting = AssistState(
+                        document = frozen.document,
+                        disputed = disputedCandidates,
+                    )
+                },
+                onRetake = ::resumeLive,
+            )
+
+            scaleProposal != null -> VerificationScreen(
+                bitmap = frozenBitmap,
+                value = scaleProposal.value,
+                basis = scaleProposal.basis,
+                rowText = scaleProposal.candidate.rowText,
+                rowInSourceSpace = scaleProposal.rowInSourceSpace,
+                mode = VerificationScreenMode.ScaleUnresolved,
+                onConfirm = { value, basis ->
+                    // The user's own tap is what makes this state terminal — never the reading
+                    // having been shown. Recorded as an ordinary accepted value, exactly like any
+                    // other confirmation; nothing here sets or implies OCR verification.
+                    releaseCapture(frozen)
+                    scaleUnresolvedProposal = null
+                    onUseValue(value, basis)
+                },
+                // Rejecting behaves exactly as it does for an ordinary proposal: still on the photo,
+                // still in the task, handed to the assisted path rather than dropped out.
+                onReject = {
+                    scaleUnresolvedProposal = null
                     assisting = AssistState(
                         document = frozen.document,
                         disputed = disputedCandidates,
