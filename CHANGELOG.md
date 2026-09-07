@@ -217,14 +217,54 @@ reaches a proposal or confirmation directly from the automatic attempt, for the 
 shapes each fix targets — no interaction was added anywhere, and the ordinary per-100 and
 already-correct declared-serving-confirmation paths are unchanged.
 
-Verified: JVM full suite **1874/1874** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 197 XML
-files — up from 1869 immediately before this pass's new test files). Lint exit 0, 23 warnings
-(unchanged baseline; 0 findings in any changed file). Debug APK and minified release APK both build
-from `clean`; R8 barriers re-checked on the release build — `CarbUnitAccompaniment` and
-`RecoveryCandidates` retained as real classes (answer-path logic, correctly not stripped),
-`ScanEvidenceRecorder`/`OcrDiagnosticsLogger` still correctly read `R8$$REMOVED$$CLASS$$` (unchanged
-by this pass). New instrumented test `VerificationScreenDeclaredServingTest` (4 cases) run on the
-`carbscan` emulator, 4/4 passing, counted from the JUnit XML rather than the console exit code.
+**A fifth fix, completing the approved scope: the crop screen's starting rectangle is now targeted,
+not generic, when `CROP_FALLBACK` is actually reached.** Previously every fallback opened on
+`ScanRegionMapper.expand(scanRegion)` — the user's own aim, widened by a fixed safety margin —
+regardless of how much structure the automatic attempt had already established before declining.
+New pure-Kotlin `AutoCropTargeting` (`ocr/`) retargets `cropSelection` at the `CROP_FALLBACK` branch
+using **only** what `NutritionDocumentModel` already derived from the same recognition that just
+declined: the resolved total-carbohydrate declaration's own bounds unioned with its resolved
+per-100/ml header band (the same "header through value" span `TargetedRereadRegion` already
+established is safe — cropping tighter risks the sondey/kinder regression `ScanRegionMapper`'s own
+KDoc records, where losing the header band made `ColumnClassifier` misclassify the per-100 column),
+padded by a height-relative fraction (`PADDING_FRACTION = 0.6`, deliberately more generous than a
+native-resolution reread's margin since this is a *starting point* for a screen the user can still
+drag) and clamped to the source image. When no single declaration can be targeted (a genuine
+cross-row ambiguity or conflict) it falls back to the owning, structurally-localized
+`NutritionPanel.bounds` — explicitly excluding the unlocalized whole-document fallback panel
+`NutritionDocumentModel` always returns for a non-empty document, which carries no positive
+evidence of a table at all and would not be a narrowing of anything. When neither exists, it returns
+null and the caller keeps exactly today's generic rectangle — proven by a fixture with unrelated
+prose and no nutrition structure. This builds no new table-localization architecture: every priority
+tier asks only what the existing panel/declaration/column model already established for *this*
+document, never re-runs recognition, and never touches acceptance, verification, scale, column,
+child-row, dispute or cross-column logic — those all still run unchanged on whatever the user
+ultimately confirms. The existing row+basis-known bypass straight to `FOCUSED_AMOUNT_ENTRY` (added
+in an earlier pass) already covers the "only digits failed" case and needed no change here, since it
+never reaches `CROP_FALLBACK` at all.
+
+Verified: JVM full suite **1883/1883** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 198 XML
+files — up from 1874, the 9 new `AutoCropTargetingTest` cases). Lint exit 0, 23 warnings (unchanged
+baseline; 0 findings in `AutoCropTargeting.kt` or the `LabelScannerScreen.kt` wiring). Debug APK
+builds from `clean`. New JVM coverage proves all four required shapes: declaration+header targeting
+(spans header through value, excludes prose well above/below, materially narrower on both axes),
+panel-bounds fallback (a genuine two-distinct-valued-declaration conflict, where the localized
+panel's own bounds are used and unrelated prose is still excluded), padding/clamping (a declaration
+hard against the image corner still clamps to `[0,1]` on every edge, and the padded bounds are
+proven strictly wider than the raw union rather than merely equal to it), and null→existing-default
+(no panel at all, an empty document, and a null document all return null; a declaration already
+spanning near the whole frame is also refused as "not a narrowing", mirroring
+`TargetedRereadRegion`'s identical guard).
+
+Full-suite result before this addition: JVM **1874/1874** (0 failures, 0 errors, 0 skipped,
+`--rerun-tasks`, 197 XML files — up from 1869 immediately before this pass's new test files). Lint
+exit 0, 23 warnings (unchanged baseline; 0 findings in any changed file). Debug APK and minified
+release APK both build from `clean`; R8 barriers re-checked on the release build —
+`CarbUnitAccompaniment` and `RecoveryCandidates` retained as real classes (answer-path logic,
+correctly not stripped), `ScanEvidenceRecorder`/`OcrDiagnosticsLogger` still correctly read
+`R8$$REMOVED$$CLASS$$` (unchanged by this pass). New instrumented test
+`VerificationScreenDeclaredServingTest` (4 cases) run on the `carbscan` emulator, 4/4 passing,
+counted from the JUnit XML rather than the console exit code.
 
 **Non-vacuous by construction, not merely asserted:** the fragment-join fixture
 (`20260907-164816-836`) was verified to read `NotFound` on the unmodified production code before this

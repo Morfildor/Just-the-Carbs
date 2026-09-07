@@ -77,6 +77,7 @@ import app.justthecarbs.domain.ServingDescriptor
 import app.justthecarbs.ocr.CaptureEvidenceCoordinator
 import app.justthecarbs.ocr.CarbCandidate
 import app.justthecarbs.ocr.CarbFailureDiagnosis
+import app.justthecarbs.ocr.AutoCropTargeting
 import app.justthecarbs.ocr.AutomaticScanAdvance
 import app.justthecarbs.ocr.AutomaticVerification
 import app.justthecarbs.ocr.ConfirmationEligibility
@@ -898,6 +899,18 @@ private fun LabelCamera(
                     OcrDiagnosticsLogger.timing(
                         "fast-path declined (${result.outcome::class.simpleName})",
                     )
+
+                    // Retarget the box the crop screen opens on, from whatever structure was already
+                    // established rather than the generic scan-guide expansion `cropSelection`
+                    // currently holds. This is never a second table-locator: it only reads what
+                    // NutritionDocumentModel already found for THIS document (a declaration and its
+                    // basis header, or failing that a panel's own bounds), and it never touches
+                    // whether the reading is accepted — see [AutoCropTargeting]. Left unchanged
+                    // (null) when nothing was established, so a capture with no structural evidence
+                    // at all still opens on today's rectangle.
+                    AutoCropTargeting.regionFor(presentationDocument)?.let { targeted ->
+                        cropSelection = targeted
+                    }
                 }
 
                 ScanPresentationDecision.Action.FOCUSED_AMOUNT_ENTRY -> {

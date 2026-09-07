@@ -2210,5 +2210,19 @@ the automated proxy — this section is only the parts a corpus of committed pho
       add reachability to an existing screen or reorder existing numbers on it; the release-blocking
       safety property ("wrong automatic values are effectively zero") must hold identically to
       before.
+- [ ] 37.6 Photograph a label with generous surrounding text (ingredients list well above the table,
+      a best-before/batch line well below, both clearly separated from the nutrition panel) so the
+      automatic attempt declines and the crop screen opens. Confirm the box it opens on is already
+      positioned over the nutrition table/declaration — materially narrower than the old full-guide
+      rectangle — rather than a generic wide box the user must first shrink before it is useful.
+      Dragging a corner should feel like an optional correction, not the normal first step.
+- [ ] 37.7 Repeat 37.6 with a label whose automatic attempt declines for a genuine conflict or
+      ambiguity between two different printed rows (not merely a single unreadable digit). Confirm
+      the crop screen still opens on a reasonable box — narrower than the full frame when a table was
+      structurally located at all — and never on an empty or degenerate rectangle.
+- [ ] 37.8 Photograph a label with no legible nutrition table at all (severe glare, wrong object,
+      or blank card) so the automatic attempt declines with nothing structurally located. Confirm
+      the crop screen falls back to exactly its previous behavior (the wide scan-guide rectangle),
+      not an empty or clipped one.
 
 **Result:** ____________________ **Date:** ____________
