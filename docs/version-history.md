@@ -55,16 +55,75 @@ reader, and the granularity gap is deliberate.
 
 ---
 
-## 1.0.4 (versionCode 5)
+## 1.0.5 (versionCode 6) — NOT YET UPLOADED
+
+Corrective release for the withdrawn `1.0.4` / `versionCode 5` below. Opened and built
+2026-09-07. **No production code change relative to `f890e9a`** — the version bump is the entire
+functional diff. Full detail (why no OCR/scale-safety port was needed, what was verified, why) is
+in `CHANGELOG.md`'s `1.0.5` section; this entry records only the build/artifact facts once they
+exist.
+
+Per this file's rule 1, a version is added here "when it is uploaded, not when it is built" — this
+entry is added ahead of that upload only because the artifact table and hashes below are needed for
+the physical-safety-retest handoff this release exists to gate. **Do not read the presence of this
+section as evidence of an upload.** It will be updated with the actual upload date once that
+happens, and is explicitly marked pending until then.
 
 | | |
 |---|---|
-| Track | **Closed testing** (uploaded 2026-09-07; pending Play's acceptance) |
+| Track | **Not uploaded — build and verification complete, awaiting physical safety retest** |
+| Built from | `264fa7b8dbeaf9d7e537ed579aab6d3908b8fe1f` on `main`, `clean` build |
+| AAB | `app-release.aab`, 35,925,241 bytes |
+| AAB SHA-256 | `40854973366ece208f42f8a1bd715a81249ab14d2b988a6cbc0a0b30c0e937f2` |
+| APK (for local device sideload/QA) | `app-release.apk`, 66,937,306 bytes |
+| APK SHA-256 | `c5f9c284b9732bebd436693d21ff6122984e171ce3d813be06488719d4fc42f3` |
+| Signer | `CN=Tunc Bilen, O=JustTheCarbs, OU=Release, C=NL, L=Haarlem`, SHA-256 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — the same key as `versionCode` 1, 2, 3, 4 and the withdrawn 5 |
+
+Verified directly from the built artifacts, not from configuration: `aapt2 dump xmltree` on the
+extracted manifest shows `package="app.justthecarbs"`, `versionCode=6`, `versionName="1.0.5"`,
+`minSdkVersion=26`, `targetSdkVersion=36`; no `android:debuggable` attribute (absent means false);
+`allowBackup="false"`; permissions unchanged (`CAMERA`, `INTERNET`, plus the transitive
+`ACCESS_NETWORK_STATE` already disclosed). R8 barriers unchanged from 1.0.4:
+`ScanEvidenceRecorder`/`OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`/
+`OcrDiagnosticsReport`/`ScanTrace` absent entirely; `UnitMarkerFilter`/`CandidateProvenance`/
+`CarbCandidate` retained as real classes. No leaked local filesystem paths in the compiled dex
+(scanned programmatically); no scan-evidence or secret files in the bundle beyond the same two
+routine third-party-library inclusions already documented for 1.0.4.
+
+JVM **1883/1883** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 198 XML files) — identical to
+the count before this version, since no production or test code changed. Lint **0 errors, 23
+warnings** (unchanged baseline). Debug APK, minified release APK and signed release AAB all build
+clean from `clean`.
+
+### NOT verified — the physical safety retest, which is the gate for this release
+
+**No physical device was used in this pass.** Everything above is JVM plus config/manifest/artifact
+inspection. The retest plan is below; this version must not be uploaded until it is run and its
+result recorded here.
+
+---
+
+## 1.0.4 (versionCode 5) — SUBMITTED, THEN WITHDRAWN — NOT RELEASED
+
+**Correction, 2026-09-07 (same day as upload).** This `versionCode` was uploaded and entered Google
+Play's closed-testing review, then the owner **stopped that review before Play completed it**,
+after discovering that the documentation commit recording this upload (`d7c594f`, since amended)
+accidentally contained unrelated private correspondence. **This version was never accepted or
+released by Play, and must not be described as such anywhere this entry is read.** Per Google's
+versioning rules, an update artifact must use a `versionCode` higher than any Play has seen —
+including a withdrawn one — so `versionCode 5` is retired outright; the corrective build is
+`1.0.5` / `versionCode 6`. Everything below this notice is the factual record of what was true
+**at the moment of upload**, kept per this file's append-only rule rather than deleted, and must be
+read together with this correction rather than in place of it.
+
+| | |
+|---|---|
+| Track | **Closed testing — submitted, review withdrawn before completion. Not released.** |
 | Uploaded | 2026-09-07 |
 | Built from | `f890e9a4bc373c3f87e382233d05fd204bc217cc` on `main`, `clean` build |
 | Artifact | `app-release.aab`, 35,925,236 bytes |
 | SHA-256 | `89448d7d00aff4ddca78ed11c272ab1d763d5a2a8aaabc8a7148fc3b4b682269` |
-| Upload key | `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — the same key as `versionCode` 1, 2, 3 and 4, which is what lets Play accept this as an update |
+| Upload key | `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — the same key as `versionCode` 1, 2, 3 and 4, which is what would have let Play accept this as an update had the review completed |
 
 Opened 2026-08-29 by a trust + feedback polish patch (Send Feedback, Rate the app in Settings, a
 crowd-sourced-data note beside the OCR provenance line), then carried the 2026-09-04/05 startup
@@ -123,7 +182,8 @@ pass's own changes) — not re-run specifically for this upload.
 are both still open. Recorded here so a tester report against this build can be read against what
 was actually known about it at upload time.
 
-### Play Store release notes (as uploaded)
+### Play Store release notes (drafted for this upload — review was withdrawn before Play published
+### anything, so this text never reached end users)
 
 336 characters against the 500 limit. See `CHANGELOG.md`'s `1.0.4` section for the full draft
 context and why the 23-capture-corpus fix is deliberately not mentioned here.

@@ -63,17 +63,94 @@ work after
 
 ## Unreleased
 
-Nothing yet. `1.0.4` / `versionCode 5` is open below; a documentation-only change opens nothing
+Nothing yet. `1.0.5` / `versionCode 6` is open below; a documentation-only change opens nothing
 further and lands directly under that heading.
 
-## 1.0.4 (versionCode 5) — 2026-09-04, open
+## 1.0.5 (versionCode 6) — 2026-09-07, open — NOT UPLOADED
 
-Opened by a small trust + feedback polish patch, requested after reviewing closed-beta tester
-feedback (`docs/Closed_beta_tester_feedback.pdf`). Deliberately surgical — no OCR, scanning,
+Emergency corrective release. `1.0.4` / `versionCode 5` (below) was **submitted to Google Play's
+closed testing review and then withdrawn/stopped before completion**, after the accidental
+inclusion of unrelated private correspondence was discovered in the repository's documentation
+history (`CHANGELOG.md`, in the commit that recorded the 1.0.4 upload). Google requires an update
+artifact to use a higher `versionCode` than one Play has already seen, even a withdrawn one — so
+1.0.4 / `versionCode 5` is retired outright and is **not** rebuilt or resubmitted. This version
+bumps to `versionCode 6` / `versionName 1.0.5` for that reason alone; it carries no other planned
+feature work of its own.
+
+**1.0.4 must not be described as released or accepted anywhere in this repository.** It was
+uploaded, then its review was stopped by the owner before Play completed it. See the corrected
+1.0.4 section below for what is and is not true about that build.
+
+### Investigation: the reported OCR scale-safety gap was checked and found already closed
+
+Before this version was built, an emergency-release brief asked for a specific safety policy to be
+ported from an older side-branch commit (`bf35ba9`) into the current scanner: `AutomaticVerification
+.Route.DISTINCT_OCR_AGREEMENT` (two distinct physical observations agreeing) must not, on its own,
+settle an otherwise-unestablished absolute decimal scale — the demonstrated failure being a red
+label printing `7,2 g / 100 g` read as `12` by two independent observations, both correctly agreeing
+with each other and both wrong.
+
+**No port was needed. Diffed directly against `bf35ba9`, `AutomaticScanAdvance.kt`,
+`AutomaticVerification.kt`, `ReadingEligibility.kt`, `ScaleAmbiguity.kt` and `FocusedAmountEntry.kt`
+are byte-identical to the commit that shipped in `1.0.3` / `versionCode 4` and carried forward into
+`f890e9a` unchanged.** `AutomaticScanAdvance.eligibility` already reads
+`corroborationSettlesScale = verification.route == AutomaticVerification.Route.CROSS_COLUMN` — the
+exact narrowing requested, present since the nineteenth session (2026-09-06), which is documented in
+`ReadingEligibility.kt`'s own KDoc and pinned by `NineteenthSessionBaselineTest`, which replays the
+actual `docs/Scan evidence 06-09/20260906-123352-975` device bundle end to end and asserts the
+misread `12.0`/`DISTINCT_OCR_AGREEMENT` state is genuinely reproduced before asserting the outcome
+is never a one-tap `CONFIRM_ON_CAPTURE` or `AUTO_ADVANCE`.
+
+`ScanPresentationDecision.kt` is the one file in that group that does differ from `bf35ba9` — but
+only additively. A later session (the "twentieth session" per in-repo commentary) added
+`Action.CONFIRM_UNVERIFIED`: an explicit visual-confirmation screen — the frozen photograph, an
+enlarged close-up of the printed row, one primary action the user must press — that a
+`DISTINCT_OCR_AGREEMENT`-only, scale-unsupported reading now routes to, in place of `bf35ba9`'s bare
+`Action.RECOVERY` (blank focused-entry typing). This is not a stricter policy than `RECOVERY`; it is
+intentionally **more usable** while preserving the identical safety boundary `RECOVERY` already
+enforced — no `AUTO_ADVANCE`, no ordinary `CONFIRM_ON_CAPTURE`, nothing prefilled, no digit repaired
+or repositioned — because `ReadingEligibility` itself, which is what actually decides eligibility,
+is unchanged. `ConfirmationEligibility.kt` (new since `bf35ba9`) is the supporting type and is
+documented as never widening `ReadingEligibility`.
+
+Verified by running (not merely reading) the regression scenarios the brief itself specified,
+against unmodified `main`, all pre-existing and none written for this pass:
+`NineteenthSessionBaselineTest` (2/2, the exact `7,2→12` device replay), `ReadingEligibilityTest`
+(4/4, including the explicit `CROSS_COLUMN`-still-settles positive control),
+`NineteenthSessionServingBasisRoutingTest` + `ThirdSessionRegressionTest` (2/2 + 21/21, the declared
+`6 g / 18 g serving` control), `ScaleInvarianceTest` (9/9), `SixthSessionRegressionTest` (19/19),
+`EighthSessionRegressionTest` (13/13), `SameFrameProposalEligibilityTest` (7/7). Full JVM suite
+**1883/1883** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 198 XML files) — identical to the
+count before this investigation, because zero production or test code was changed.
+
+**No OCR recognition, parsing, row/column classification, scale, verification, routing or
+calculation code was touched in this version.** The only change relative to `f890e9a` is the version
+bump and this documentation.
+
+### Play Store release notes (not yet finalized — pending physical safety retest)
+
+Deferred until the physical retest below is complete. `1.0.4`'s draft note (below) still accurately
+describes the user-visible surface carried forward into this version — nothing about it changed.
+
+---
+
+## 1.0.4 (versionCode 5) — submitted 2026-09-07, review WITHDRAWN before completion — NOT RELEASED
+
+**Do not describe this version as released or accepted.** It was uploaded to Google Play's closed
+testing track and entered review; the owner stopped that review before Play completed it, after
+discovering the accidental private-correspondence text described in `1.0.5`'s own section above.
+Per Google's versioning rules, `versionCode 5` cannot be reused even though the review never
+finished — the corrected artifact is `1.0.5` / `versionCode 6`, above. This section is kept,
+corrected rather than deleted, because the append-only rule this file already follows applies to
+withdrawn artifacts exactly as it does to shipped ones: it records what this `versionCode` actually
+was and is not silently erased by its own withdrawal.
+
+Opened 2026-09-04 by a small trust + feedback polish patch, requested after reviewing closed-beta
+tester feedback (`docs/Closed_beta_tester_feedback.pdf`). Deliberately surgical — no OCR, scanning,
 calculation, database or networking file was touched.
 
-### Play Store release notes (draft, uploaded 2026-09-07 — re-check against the final artifact
-### before treating this as published)
+### Play Store release notes (draft — never went to production; this versionCode was withdrawn
+### before Play's review completed)
 
 **Scoped to what is actually built into `f890e9a4bc373c3f87e382233d05fd204bc217cc`** — the trust
 + feedback additions above, the startup-hardening pass and the 2026-09-07 scanner optimization
