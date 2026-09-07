@@ -11,15 +11,17 @@
 
   THE 108dp VIEWPORT IS NOT THE VISIBLE AREA. A launcher masks an adaptive icon to a 72dp shape
   (circle, squircle, teardrop) centred at (54,54); only the inner 66dp circle survives every mask.
-  Geometry below is scaled so the body's furthest point sits at radius 33.00 — exactly on the 66dp
-  safe circle, with 3dp of clearance to the 36dp mask edge. A previous version painted to radius
-  46.8 and real launchers sliced it into red-and-white stripes.
+  Geometry below is scaled so the body's furthest point sits at radius 28.05 — inside the 66dp
+  safe circle with headroom to spare, on top of the 3dp clearance the safe circle already leaves
+  to the 36dp mask edge. A previous version painted to radius 46.8 and real launchers sliced it
+  into red-and-white stripes.
 
   Measured source geometry (px, in the 512 canvas), for anyone re-deriving this:
     body        x 114..398, y 97..392, corner radius 75
     split band  y 225..258, full width
     drip slots  width 33, centres x 190 / 256 / 322, bottoms y 337 / 372 / 303
-  Scale to the 108dp viewport is 0.18996, mark centred on (54,54).
+  Scale to the 108dp viewport is 0.18996, mark centred on (54,54), THEN a further 0.85 uniform
+  shrink around (54,54) (owner request, 2026-09-07) to pull the mark in from the safe-circle edge.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -35,39 +37,39 @@
         android:fillType="evenOdd"
         android:fillColor="@color/ic_launcher_mark"
         android:pathData="
-            M41.28,25.98
-            h25.44
-            a14.25,14.25 0 0 1 14.25,14.25
-            v27.54
-            a14.25,14.25 0 0 1 -14.25,14.25
-            h-25.44
-            a14.25,14.25 0 0 1 -14.25,-14.25
-            v-27.54
-            a14.25,14.25 0 0 1 14.25,-14.25
+            M43.19,30.18
+            h21.62
+            a12.11,12.11 0 0 1 12.11,12.11
+            v23.41
+            a12.11,12.11 0 0 1 -12.11,12.11
+            h-21.62
+            a12.11,12.11 0 0 1 -12.11,-12.11
+            v-23.41
+            a12.11,12.11 0 0 1 12.11,-12.11
             z
 
-            M27.03,50.30
-            h53.94
-            v6.26
-            h-53.94
+            M31.08,50.85
+            h45.85
+            v5.32
+            h-45.85
             z
 
-            M38.33,56.56
-            h6.26
-            v11.88
-            a3.13,3.13 0 0 1 -6.26,0
+            M40.68,56.18
+            h5.32
+            v10.10
+            a2.66,2.66 0 0 1 -5.32,0
             z
 
-            M50.87,56.56
-            h6.26
-            v18.53
-            a3.13,3.13 0 0 1 -6.26,0
+            M51.34,56.18
+            h5.32
+            v15.75
+            a2.66,2.66 0 0 1 -5.32,0
             z
 
-            M63.41,56.56
-            h6.26
-            v5.42
-            a3.13,3.13 0 0 1 -6.26,0
+            M62.00,56.18
+            h5.32
+            v4.61
+            a2.66,2.66 0 0 1 -5.32,0
             z" />
 
 </vector>
