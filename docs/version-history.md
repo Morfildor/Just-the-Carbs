@@ -55,29 +55,22 @@ reader, and the granularity gap is deliberate.
 
 ---
 
-## 1.0.5 (versionCode 6) — NOT YET UPLOADED
+## 1.0.5 (versionCode 6)
 
 Corrective release for the withdrawn `1.0.4` / `versionCode 5` below. Opened and built
 2026-09-07. **No production code change relative to `f890e9a`** — the version bump is the entire
 functional diff. Full detail (why no OCR/scale-safety port was needed, what was verified, why) is
-in `CHANGELOG.md`'s `1.0.5` section; this entry records only the build/artifact facts once they
-exist.
-
-Per this file's rule 1, a version is added here "when it is uploaded, not when it is built" — this
-entry is added ahead of that upload only because the artifact table and hashes below are needed for
-the physical-safety-retest handoff this release exists to gate. **Do not read the presence of this
-section as evidence of an upload.** It will be updated with the actual upload date once that
-happens, and is explicitly marked pending until then.
+in `CHANGELOG.md`'s `1.0.5` section; this entry records the build/artifact facts.
 
 | | |
 |---|---|
-| Track | **Not uploaded — build and verification complete, awaiting physical safety retest** |
-| Built from | `264fa7b8dbeaf9d7e537ed579aab6d3908b8fe1f` on `main`, `clean` build |
+| Track | **Closed testing — uploaded 2026-09-07; pending Play's review** |
+| Built from | `6f8ff63d11ce88bcf601d3ae298d96799555bc36` on `main`, `clean` build |
 | AAB | `app-release.aab`, 35,925,241 bytes |
 | AAB SHA-256 | `40854973366ece208f42f8a1bd715a81249ab14d2b988a6cbc0a0b30c0e937f2` |
-| APK (for local device sideload/QA) | `app-release.apk`, 66,937,306 bytes |
+| APK (used for the physical safety retest below) | `app-release.apk`, 66,937,306 bytes |
 | APK SHA-256 | `c5f9c284b9732bebd436693d21ff6122984e171ce3d813be06488719d4fc42f3` |
-| Signer | `CN=Tunc Bilen, O=JustTheCarbs, OU=Release, C=NL, L=Haarlem`, SHA-256 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — the same key as `versionCode` 1, 2, 3, 4 and the withdrawn 5 |
+| Signer | `CN=Tunc Bilen, O=JustTheCarbs, OU=Release, C=NL, L=Haarlem`, SHA-256 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — the same key as `versionCode` 1, 2, 3, 4 and the withdrawn 5, which is what lets Play accept this as an update |
 
 Verified directly from the built artifacts, not from configuration: `aapt2 dump xmltree` on the
 extracted manifest shows `package="app.justthecarbs"`, `versionCode=6`, `versionName="1.0.5"`,
@@ -95,11 +88,21 @@ the count before this version, since no production or test code changed. Lint **
 warnings** (unchanged baseline). Debug APK, minified release APK and signed release AAB all build
 clean from `clean`.
 
-### NOT verified — the physical safety retest, which is the gate for this release
+### Physical safety retest — PASSED (owner, 2026-09-07)
 
-**No physical device was used in this pass.** Everything above is JVM plus config/manifest/artifact
-inspection. The retest plan is below; this version must not be uploaded until it is run and its
-result recorded here.
+Run against the release APK above on physical hardware, before upload:
+
+1. **Red `7.2 → 12` label, 3–5 captures.** `12` did not auto-advance and did not reach ordinary
+   `CONFIRM_ON_CAPTURE`. Where `CONFIRM_UNVERIFIED` appeared (frozen photo + row close-up, the
+   suspected value shown for comparison), rejecting it opened the known-basis correction /
+   focused-entry screen with `/100 g` preserved, and `7.2` could be entered there.
+2. **Two known-good decimal labels.** Normal fast automatic/confirmation behavior, unchanged.
+3. **`6 g / 18 g serving`-style declared-serving label.** Confirmation and normalization both
+   correct, as before.
+4. **One weak/off-angle capture.** The automatic narrow crop-targeting rectangle
+   (`AutoCropTargeting`) still started sensibly positioned, not the old full-frame fallback.
+
+All four passed. Owner proceeded to upload this build to Google Play's closed testing track.
 
 ---
 

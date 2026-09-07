@@ -66,7 +66,7 @@ work after
 Nothing yet. `1.0.5` / `versionCode 6` is open below; a documentation-only change opens nothing
 further and lands directly under that heading.
 
-## 1.0.5 (versionCode 6) — 2026-09-07, open — NOT UPLOADED
+## 1.0.5 (versionCode 6) — uploaded 2026-09-07, closed testing — pending Play review
 
 Emergency corrective release. `1.0.4` / `versionCode 5` (below) was **submitted to Google Play's
 closed testing review and then withdrawn/stopped before completion**, after the accidental
@@ -127,10 +127,25 @@ count before this investigation, because zero production or test code was change
 calculation code was touched in this version.** The only change relative to `f890e9a` is the version
 bump and this documentation.
 
-### Play Store release notes (not yet finalized — pending physical safety retest)
+### Physical safety retest — PASSED (owner, 2026-09-07)
 
-Deferred until the physical retest below is complete. `1.0.4`'s draft note (below) still accurately
-describes the user-visible surface carried forward into this version — nothing about it changed.
+Run on physical hardware against the signed release APK before upload: the red `7,2 → 12` label
+(3–5 captures) never auto-advanced and never reached ordinary `CONFIRM_ON_CAPTURE`; where
+`CONFIRM_UNVERIFIED` appeared, rejecting the shown value opened the known-basis correction screen
+with `/100 g` preserved, where `7.2` could be entered; two known-good decimal labels kept their
+normal fast behavior; the declared-serving (`6 g / 18 g serving`) label confirmed and normalized
+correctly; a weak/off-angle capture still started the crop screen with the narrow automatic
+rectangle rather than the old full-frame fallback. All four cases passed. Full detail in
+`docs/version-history.md`'s `1.0.5` entry.
+
+### Play Store release notes (as uploaded)
+
+The user-visible surface is identical to `1.0.4`'s draft (below) — this version's only diff from
+`f890e9a` is the version bump, so the same note applies.
+
+```
+Nutrition label scanning is more reliable: fixed cases where a good reading was missed due to overlapping text or a label split across many lines. Fixed an issue where the app could briefly show the wrong screen on launch, and where camera permission had no way back after being denied. Added Send Feedback and Rate the app to Settings.
+```
 
 ---
 
