@@ -2177,3 +2177,38 @@ whose virtual camera cannot exercise the pre-shutter live-evidence path meaningf
       the underlying condition successfully navigates to Home.
 
 **Result:** ____________________ **Date:** ____________
+
+## §37 — Scanner optimization pass gate (2026-09-07)
+
+Everything below requires a physical device. Nothing in this pass touches OCR recognition or row/
+column classification, so the connected 39-test real-image corpus (`RealImageOcrTest` +
+`ProductionStillPipelineTest` + `SelectedTableProductionTest` + `EvidencePipelineProductionTest`) is
+the automated proxy — this section is only the parts a corpus of committed photographs cannot cover.
+
+- [ ] 37.1 Photograph a real multilingual or otherwise multi-row nutrition declaration on a package
+      (a label naming carbohydrate in several languages across separate printed lines, similar in
+      shape to `docs/scan-evidence (6).zip`'s `20260907-164816-836`). Confirm the app reads the
+      printed value on the first or second attempt, not only via a later crop/retry.
+- [ ] 37.2 Scan a US-style or otherwise declared-serving label (`Serv. size: … (X g)` printing a
+      figure per that serving, not per 100 g/ml) that reaches the explicit visual confirmation
+      screen. Confirm the PRINTED pair (e.g. "6 g per 18 g serving") is the primary line, and the
+      normalized per-100 figure appears only as smaller secondary text beneath it — never the
+      reverse, and never only the normalized figure with nothing printed to compare it against.
+- [ ] 37.3 Scan an ordinary per-100 label that reaches the scale-unresolved confirmation screen
+      (a structurally sound reading whose decimal scale needs a visual check). Confirm this screen
+      is unchanged from before — one line, no "Equivalent to" secondary text — since this pass added
+      the second line only for the declared-serving case.
+- [ ] 37.4 Scan a label with two nutrient values printed close together horizontally (a per-100 g
+      column beside a per-serving or reference-percent column) several times in a row. Confirm no
+      capture ever offers a value under the wrong basis, and confirm route variance between
+      identical-looking captures (crop vs. recovery vs. explicit confirmation) still corresponds to
+      a real difference in what was actually recognized each time — never a value being shown one
+      time and silently withheld the next for the exact same evidence.
+- [ ] 37.5 Repeat 30+ ordinary scans of clearly-printed labels across a few different real products.
+      Confirm no capture reaches a wrong carbohydrate value through any route (automatic advance,
+      one-tap confirmation, explicit visual confirmation, or recovery) — this pass's fixes only ever
+      add reachability to an existing screen or reorder existing numbers on it; the release-blocking
+      safety property ("wrong automatic values are effectively zero") must hold identically to
+      before.
+
+**Result:** ____________________ **Date:** ____________

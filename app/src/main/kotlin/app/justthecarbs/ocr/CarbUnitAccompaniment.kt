@@ -135,6 +135,25 @@ internal object CarbUnitAccompaniment {
      */
     private const val MAX_UNIT_GAP_IN_HEIGHTS = 1.2
 
+    /**
+     * How far a unit element's LEFT edge may sit inside the value's own box and still count as
+     * adjacency rather than overlap noise, as a fraction of the value's height.
+     *
+     * ML Kit's own bounding boxes are not exact — two neighbouring glyphs' boxes can overlap by a
+     * few pixels even when the characters themselves do not touch, purely from how the recognizer
+     * pads a box around a detected shape. A real capture pairing a value with its own trailing unit
+     * measured this at up to ~2 px against glyph heights in the 30-50 px range (about 0.05), well
+     * below any gap that could plausibly belong to a genuinely different token.
+     *
+     * This is deliberately small and is not a relaxation of the adjacency rule itself — see
+     * [isImmediatelyRightOf]'s center-ordering gate, which is what actually distinguishes "this
+     * unit's box merely touches the value's box" from "this is some other token entirely". Overlap
+     * tolerance alone, without that gate, would accept a unit sitting mostly or wholly to the
+     * value's left whenever the boxes happened to touch — exactly the corruption this rule exists to
+     * refuse.
+     */
+    private const val MAX_UNIT_OVERLAP_IN_HEIGHTS = 0.15
+
     /** Fraction of the value's height that must overlap vertically for a unit to be on its row. */
     private const val MIN_VERTICAL_OVERLAP = 0.5
 
@@ -171,17 +190,36 @@ internal object CarbUnitAccompaniment {
     /**
      * Whether [unit] sits immediately right of [value] on the same printed row.
      *
-     * Both halves are required. Reading order carries the meaning — a nutrition table prints
-     * `61,9 g`, never `g 61,9` — so a unit to the *left* is the previous column's trailing unit and
-     * accepting it would let one column's unit vouch for another column's number. The vertical
-     * overlap keeps a unit from the row above or below out.
+     * Two independent conditions are required, and neither alone is sufficient:
+     *
+     * 1. **Center ordering** — [unit]'s horizontal center must sit strictly to the right of
+     *    [value]'s. This is the categorical claim that carries reading order: a nutrition table
+     *    prints `61,9 g`, never `g 61,9`, so a unit whose center is not to the value's right is
+     *    either the previous column's trailing unit or an unrelated neighbouring token, and
+     *    accepting it would let one column's unit vouch for another column's number. Center
+     *    ordering, rather than edge ordering, is what makes a small overlap tolerable at all: two
+     *    boxes can overlap by a few pixels of OCR noise while their centers still agree on which
+     *    token is which.
+     * 2. **Bounded gap** — the horizontal distance between the boxes, which may be a small negative
+     *    number (a bounded overlap, [MAX_UNIT_OVERLAP_IN_HEIGHTS]) up to a generous positive one
+     *    ([MAX_UNIT_GAP_IN_HEIGHTS]). A gap more negative than the overlap bound means the boxes
+     *    overlap by more than adjacency noise can explain, which is what a unit that actually
+     *    belongs to a different, closely-set token looks like.
+     *
+     * The vertical overlap requirement keeps a unit from the row above or below out.
      */
     private fun isImmediatelyRightOf(value: OcrElement, unit: OcrElement): Boolean {
         val height = (value.box.bottom - value.box.top).toDouble()
         if (height <= 0.0) return false
 
+        val valueCenter = (value.box.left + value.box.right) / 2.0
+        val unitCenter = (unit.box.left + unit.box.right) / 2.0
+        if (unitCenter <= valueCenter) return false
+
         val gap = unit.box.left - value.box.right
-        if (gap < 0 || gap > height * MAX_UNIT_GAP_IN_HEIGHTS) return false
+        if (gap < -height * MAX_UNIT_OVERLAP_IN_HEIGHTS || gap > height * MAX_UNIT_GAP_IN_HEIGHTS) {
+            return false
+        }
 
         val overlap = minOf(value.box.bottom, unit.box.bottom) -
             maxOf(value.box.top, unit.box.top)

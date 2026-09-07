@@ -565,6 +565,15 @@
     <string name="verify_scale_title">Check this matches the label</string>
     <string name="verify_scale_body">The row and its unit are correct, but the exact figure needs your eyes. Compare it with the package before using it.</string>
     <string name="verify_scale_confirm">Correct — calculate</string>
+    <!-- A declared-serving reading ("6 g per 18 g serving") normalizes to a per-100 figure for
+         storage and calculation, but the LABEL prints the serving pair, not the normalized one — so
+         confirmation must show what the user can actually compare against the package. %1$s is the
+         printed amount (e.g. "6"), %2$s is the label's own basis text (e.g. "18 g serving"), already
+         formatted by CarbBasis.label. -->
+    <string name="verify_scale_printed_value">%1$s g per %2$s</string>
+    <!-- The normalized figure, shown as secondary context beneath the printed pair — never as the
+         primary claim, since it is not what is printed on the package. -->
+    <string name="verify_scale_normalized_value">Equivalent to %1$s g per 100 %2$s</string>
     <string name="conflict_title">Two different readings</string>
     <string name="conflict_body">The photo was read more than once and the results disagreed (%1$s), so nothing is being guessed. Point at the right figure instead.</string>
     <string name="conflict_assist">Point at the figure</string>

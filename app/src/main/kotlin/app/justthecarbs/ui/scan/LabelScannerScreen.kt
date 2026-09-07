@@ -1472,6 +1472,10 @@ private fun LabelCamera(
         val proposal = verification
         val conflict = conflicted
         val scaleProposal = scaleUnresolvedProposal
+        // The candidate's own basis, only when it is a declared-serving one — see the
+        // `printedAmount`/`printedBasisLabel` arguments below for why this matters.
+        val declaredServingBasis = scaleProposal?.candidate?.reading?.basis
+            ?.takeIf { ConfirmationEligibility.isDeclaredServing(it) }
 
         when {
             assist != null -> AssistedReadingScreen(
@@ -1534,6 +1538,15 @@ private fun LabelCamera(
                 rowText = scaleProposal.candidate.rowText,
                 rowInSourceSpace = scaleProposal.rowInSourceSpace,
                 mode = VerificationScreenMode.ScaleUnresolved,
+                // The candidate's OWN reading — never `scaleProposal.value`/`.basis`, which are
+                // already normalized to per-100 for storage. For a declared-serving basis the label
+                // prints a pair other than per-100 ("6 g per 18 g serving"), and that printed pair is
+                // what the user can actually check against the package — see
+                // [ConfirmationEligibility.isDeclaredServing] and [VerificationScreen]'s
+                // `printedAmount` parameter. Null for the ordinary per-100 case, where the screen's
+                // existing single-line display already shows what is printed.
+                printedAmount = declaredServingBasis?.let { scaleProposal.candidate.reading.amount },
+                printedBasisLabel = declaredServingBasis?.label,
                 onConfirm = { value, basis ->
                     // The user's own tap is what makes this state terminal — never the reading
                     // having been shown. Recorded as an ordinary accepted value, exactly like any

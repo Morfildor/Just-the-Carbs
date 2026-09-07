@@ -205,6 +205,60 @@ class CarbUnitAccompanimentTest {
     }
 
     // ---------------------------------------------------------------------------------------
+    // Bounded overlap: ML Kit box-edge noise, never a signal that the unit belongs elsewhere.
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * A value and its own trailing unit whose boxes overlap by a couple of pixels — the shape of
+     * ordinary box-edge noise from the recognizer, not two distinct tokens colliding. Center
+     * ordering still agrees the unit is to the value's right, so this must accompany.
+     */
+    @Test
+    fun `a value and unit with a small box overlap still accompany`() {
+        val value = element("6", 1161, 1600, 1223, 1650)
+        // Left edge 2 px inside the value's own right edge.
+        val unit = element("g", 1221, 1600, 1255, 1650)
+
+        assertTrue(CarbUnitAccompaniment.isAccompanied(value, listOf(value, unit)))
+    }
+
+    /**
+     * A large overlap is not adjacency noise, whatever direction the centers order in. Two boxes
+     * overlapping by most of the value's own height describes two tokens the recognizer placed on
+     * top of each other, not a value followed cleanly by its unit.
+     */
+    @Test
+    fun `a large box overlap does not accompany even with rightward center ordering`() {
+        val value = element("6", 1161, 1600, 1223, 1650)
+        // Left edge 40 px inside the value's box (height 50) — nearly the whole value, not noise.
+        val unit = element("g", 1183, 1600, 1220, 1650)
+        check((unit.box.left + unit.box.right) / 2 > (value.box.left + value.box.right) / 2) {
+            "fixture must keep the unit's center to the value's right"
+        }
+
+        assertFalse(CarbUnitAccompaniment.isAccompanied(value, listOf(value, unit)))
+    }
+
+    /**
+     * A unit box that overlaps the value on the left side — its own center still left of the
+     * value's — must be rejected by center ordering regardless of the overlap magnitude. This is
+     * the case the overlap tolerance must never accidentally admit: a "unit" that mostly sits atop
+     * or to the left of the value is the previous column's trailing glyph, not this cell's own.
+     */
+    @Test
+    fun `an overlapping unit whose center sits left of the value does not accompany`() {
+        val value = element("0.59", 922, 1823, 1012, 1894)
+        // Right edge inside the value's box, but its own center (895) is still left of the
+        // value's center (967).
+        val leftOverlapping = element("g", 869, 1823, 921, 1894)
+        check((leftOverlapping.box.left + leftOverlapping.box.right) / 2 < (value.box.left + value.box.right) / 2) {
+            "fixture must keep the unit's center left of the value's"
+        }
+
+        assertFalse(CarbUnitAccompaniment.isAccompanied(value, listOf(leftOverlapping, value)))
+    }
+
+    // ---------------------------------------------------------------------------------------
     // It refuses; it never repairs.
     // ---------------------------------------------------------------------------------------
 

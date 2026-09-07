@@ -82,8 +82,9 @@ object RecoveryCandidates {
 
     /**
      * Every structurally-admissible candidate in [document] — child-row exclusion, clause bounds,
-     * unit accompaniment, column ownership, cross-column contradiction and distinct-run dispute all
-     * still applied identically — but WITHOUT the final [ReadingEligibility] scale gate [of] applies.
+     * unit accompaniment, column ownership and distinct-run dispute all still applied identically —
+     * but WITHOUT the final [ReadingEligibility] scale gate [of] applies, and WITHOUT the
+     * *localized-panel* cross-column contradiction check.
      *
      * ## Why this exists
      *
@@ -97,18 +98,38 @@ object RecoveryCandidates {
      * exactly the same structurally-vetted candidates rather than building a second, parallel
      * candidate-construction path that could drift from this one.
      *
+     * ## Why the localized cross-column check is ALSO excluded here
+     *
+     * [contradicted] asks [CrossColumnRatioCheck] about [localDocument] — the panel [of] scoped this
+     * candidate to, which can hold measurably fewer supporting rows than the document
+     * [ConfirmationEligibility.evaluate] itself checks against (its own second, full-document
+     * check exists for exactly this reason — see its KDoc's Hellmann's-mayonnaise measurement, where
+     * a 188-element panel-scoped document reports `NotEnoughEvidence` while the full 325-element
+     * document correctly reports `Conflicting`). [contradicted] was previously unconditional here, so
+     * a candidate the *localized* panel happened to flag never survived long enough to reach
+     * [ConfirmationEligibility]'s own — deliberately more authoritative — full-document re-check at
+     * all: [evaluate] searches this function's output for a spatial match, and a candidate absent
+     * from it cannot be found regardless of what the full document would have said. The panel's
+     * narrower row count meant the very check [ConfirmationEligibility] exists to re-do with better
+     * evidence could permanently veto a candidate before that better evidence was ever consulted.
+     *
+     * [of] itself is unaffected: its own cross-column check stays exactly as it was, because the
+     * plain recovery screen has no second, richer check standing behind it to fall back on.
+     *
      * Never exposed to a UI surface directly — only [ConfirmationEligibility] calls this, and it
-     * re-applies the scale question itself before anything reaches [ScanPresentationDecision].
+     * re-applies both the scale question and its own full-document cross-column question itself
+     * before anything reaches [ScanPresentationDecision].
      */
     internal fun ofIncludingScaleRefusals(
         document: OcrDocument?,
         disputed: DisputedCandidates = DisputedCandidates.NONE,
-    ): List<Candidate> = of(document, disputed, requireScaleEligibility = false)
+    ): List<Candidate> = of(document, disputed, requireScaleEligibility = false, requireLocalCrossColumn = false)
 
     private fun of(
         document: OcrDocument?,
         disputed: DisputedCandidates,
         requireScaleEligibility: Boolean,
+        requireLocalCrossColumn: Boolean = true,
     ): List<Candidate> {
         if (document == null || document.elements.isEmpty()) return emptyList()
         return NutritionDocumentModel.build(document).panels.flatMap { panel ->
@@ -117,7 +138,15 @@ object RecoveryCandidates {
                 .filter { it.kind == NutritionRowKind.TOTAL_CARBOHYDRATE }
                 .flatMap { declaration ->
                     declaration.sourceRows.flatMap { row ->
-                        candidatesOn(row, panel.rows, panel.columns, localDocument, disputed, requireScaleEligibility = requireScaleEligibility)
+                        candidatesOn(
+                            row,
+                            panel.rows,
+                            panel.columns,
+                            localDocument,
+                            disputed,
+                            requireScaleEligibility = requireScaleEligibility,
+                            requireLocalCrossColumn = requireLocalCrossColumn,
+                        )
                     }
                 }
         }.distinctBy { candidate -> candidate.box to candidate.reading }
@@ -538,6 +567,8 @@ object RecoveryCandidates {
         tappedX: Int? = null,
         /** See [ofIncludingScaleRefusals] for why a caller would ever pass `false`. */
         requireScaleEligibility: Boolean = true,
+        /** See [ofIncludingScaleRefusals] for why a caller would ever pass `false`. */
+        requireLocalCrossColumn: Boolean = true,
     ): List<Candidate> {
         // A child row supplies nothing, whatever the user tapped. This is the same unconditional
         // exclusion [RowClassifier] applies in the automatic path, and it must hold identically here
@@ -609,7 +640,16 @@ object RecoveryCandidates {
             //
             // Only a genuine contradiction suppresses. "The table could not answer" is the ordinary
             // case on a single-column label and must never remove a legitimate choice.
-            if (contradicted(document, row, element, value)) return@mapIndexedNotNull null
+            //
+            // Skippable via [requireLocalCrossColumn] for exactly the same reason the scale gate is:
+            // [ConfirmationEligibility] re-asks this question itself against the FULL document, which
+            // can hold more supporting rows than [document] here (always the localized panel) — see
+            // [ofIncludingScaleRefusals]'s KDoc. Vetoing unconditionally here would let a narrower
+            // panel's false contradiction permanently block that richer, more authoritative recheck
+            // from ever running.
+            if (requireLocalCrossColumn && contradicted(document, row, element, value)) {
+                return@mapIndexedNotNull null
+            }
             val basis = basisFor(element, columns, document.width, servingBasis, row.elements)
                 ?: return@mapIndexedNotNull null
 

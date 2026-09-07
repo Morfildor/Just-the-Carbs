@@ -128,6 +128,129 @@ files). Lint 0 errors, 23 warnings (unchanged baseline). The connected OCR corpu
 worktree control — zero regressions from this pass; none of the changes touch OCR recognition or
 parsing code. `docs/manual-qa.md` §35 is the gate — nothing here has been seen on physical hardware.
 
+### Fixed — scanner optimization pass: interaction count, unit-box overlap, declaration fragments (2026-09-07)
+
+A 16-capture device session (`docs/scan-evidence (6).zip`, Samsung SM-S928B) was replayed
+deterministically against the real production decision path — every capture faithfully derived from
+its own `diagnostics.txt` (`SeptemberSeventhSessionFixtures`, element counts matching each bundle's
+own declared count exactly). Three defects fixed, one presentation gap closed, one routing question
+traced and left alone because the evidence behind it genuinely differs. No OCR recognition rule, row
+classification, column classification or calculation rule changed; every fix is either a bounded
+geometry tolerance, a structural row-join that reuses existing per-value gates unchanged, or a
+display-layer change over an unmodified `BigDecimal`.
+
+- **`CarbUnitAccompaniment` rejected a unit box that merely touched its value box.** `isImmediatelyRightOf`
+  treated any `gap < 0` between a value and its trailing unit as disqualifying, so ordinary ML Kit
+  box-edge noise (a unit's box overlapping the value's by a couple of pixels) declined an otherwise
+  clean reading. Replaced with two independent conditions: the unit's horizontal **center** must sit
+  strictly right of the value's (the categorical claim that carries reading order — a unit whose
+  center is not to the right is the previous column's trailing glyph or an unrelated token, whatever
+  the overlap), and the gap may be a small bounded negative number
+  (`MAX_UNIT_OVERLAP_IN_HEIGHTS = 0.15`, well below any deliberate token spacing) up to the existing
+  generous positive bound. A large overlap, or an overlap whose center still sits left of the value,
+  is still refused — pinned by dedicated fixtures alongside the existing real-device corpus in
+  `CarbUnitAccompanimentTest`, none of which changed verdict.
+- **A nine-language declaration fragmented across five physical rows read `NotFound` on the very
+  first attempt of the session**, despite every fact needed to read it (row, basis, value) being
+  present and legible in the recognized text: `Carbohydrate/ Kolhydrat/`, `Hilihydraatit/
+  Kohlenhydrate/`, `Koolhydraten/ Hidratos Glucides/` and `Weglowodany: de carbono/` — four separate
+  printed rows stating the carbohydrate name before the printed `58,9 g` even appears, on a fifth row
+  (`Of which 58,9 g des`, itself carrying reconstruction debris from the adjacent sugars clause).
+  `NutrientDeclarationBuilder`'s existing row-join capped a declaration at `MAX_DECLARATION_ROWS = 3`
+  rows regardless of whether any of them carried a value, so the walk stopped one row short of even
+  reaching the fifth. A separate, LOOSER cap (`MAX_NAME_ONLY_DECLARATION_ROWS = 6`) now applies only
+  while the declaration is still accumulating name-only rows — the instant any row carries a value,
+  the ordinary tighter cap governs every subsequent row exactly as before, so this can never let a
+  declaration absorb an unbounded run of genuinely separate, value-bearing declarations. A new
+  `isNutrientlessValueContinuation` predicate then admits the trailing value row itself, requiring
+  **all** of: the row names no nutrient of any kind — carbohydrate, child, or unrelated (fat,
+  protein, salt) — via the same `CarbohydrateTermAnchor.nutrientAnchors` check
+  `isValueOnlyContinuation` already trusts, which is what makes this safe: a row this rule can reach
+  could not have been `CARBOHYDRATE_CHILD` or named a different nutrient, because either would
+  already have classified it as something else; and exactly one aligned value cell, so a row with a
+  genuine column-ownership ambiguity (two ML Kit columns both claiming a number) is refused rather
+  than guessed. The recovered value still passes through every existing gate unchanged —
+  `CarbUnitAccompaniment`, column ownership, `CrossColumnRatioCheck`, plausibility and scale evidence
+  all run exactly as they would on any other declaration's value cell; this only decides which
+  physical row supplies the cell, never reads or accepts the number itself.
+- **A `RecoveryCandidates`-suppressed candidate could never reach `ConfirmationEligibility`'s own,
+  deliberately more authoritative, full-document cross-column re-check.** Traced from a routing
+  question (two captures of the same product, same demonstrated `46`/basis contradiction, one routed
+  to `RECOVERY` and the other to `CONFIRM_UNVERIFIED`) that turned out to be genuinely different
+  evidence per capture — different OCR reads of the sibling value (`129` vs `12`) satisfied two
+  different suppression rules (`contradicted()`'s localized-panel cross-column check vs.
+  `ScaleAmbiguity`'s pairing rule) — and is correctly left unforced: the two captures are not the
+  same evidence routed inconsistently, and no fix was made to make them agree. What the trace did
+  surface is a real, independent structural gap: `RecoveryCandidates.candidatesOn`'s localized-panel
+  cross-column veto (`contradicted()`) ran unconditionally, including inside
+  `ofIncludingScaleRefusals()` — the population `ConfirmationEligibility` searches specifically
+  because it re-asks the cross-column question against the FULL document, which can hold more
+  supporting rows than the localized panel (the existing Hellmann's-mayonnaise measurement already
+  documented in this codebase: a 188-element panel-scoped document reports `NotEnoughEvidence` while
+  the full 325-element document correctly reports `Conflicting`). A candidate the *narrower* panel
+  happened to flag never survived long enough to reach that richer, more authoritative re-check at
+  all. `ofIncludingScaleRefusals()` now also exempts the localized cross-column veto
+  (`requireLocalCrossColumn = false`); `RecoveryCandidates.of()` itself is unaffected — its own
+  cross-column check is unchanged, because the plain recovery screen has no richer check standing
+  behind it to fall back on. `ConfirmationEligibility`'s own full-document check still runs
+  unconditionally on everything that reaches it, so a genuinely contradicted candidate is still
+  refused — proven by a synthetic fixture (`RecoveryCandidatesLocalCrossColumnTest`) where the same
+  candidate is `Conflicting` against a 3-row document and `Consistent` against the same document plus
+  4 correcting rows, and `ConfirmationEligibility` correctly refuses the first and admits the second.
+- **A declared-serving confirmation showed only the normalized-for-storage figure, never the printed
+  pair.** A label stating `6 g carbohydrate / 18 g serving` normalizes internally to `33.3 g/100 g`
+  for storage and calculation — correct arithmetic, but `VerificationScreen`'s
+  `ScaleUnresolved` state showed only that normalized number, which is not printed anywhere on the
+  package and cannot be visually compared against it, on the one screen whose entire purpose is that
+  comparison. `CarbReading.derivedFrom` already existed specifically for this ("kept so the UI can
+  say '33.3 g carbs/100 g — from 6 g per 18 g serving'"), but nothing rendered it. `VerificationScreen`
+  gained two optional parameters (`printedAmount`, `printedBasisLabel`, both null by default, so
+  every other caller and the ordinary per-100 scale-unresolved case are unaffected) that, when a
+  declared-serving basis is present (`ConfirmationEligibility.isDeclaredServing`), render the printed
+  pair as the primary confirmation line and the normalized figure as clearly-labelled secondary
+  context beneath it. The internal `BigDecimal` this stores and calculates from is unchanged either
+  way — this is a display-only reordering of numbers already computed, never a rounding or repair.
+
+Interaction-count effect: the fragment-join and cross-column-recheck fixes each turn what was
+previously a `CROP_FALLBACK`/`RECOVERY` dead end (crop or generic recovery menu) into a route that
+reaches a proposal or confirmation directly from the automatic attempt, for the specific evidence
+shapes each fix targets — no interaction was added anywhere, and the ordinary per-100 and
+already-correct declared-serving-confirmation paths are unchanged.
+
+Verified: JVM full suite **1874/1874** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 197 XML
+files — up from 1869 immediately before this pass's new test files). Lint exit 0, 23 warnings
+(unchanged baseline; 0 findings in any changed file). Debug APK and minified release APK both build
+from `clean`; R8 barriers re-checked on the release build — `CarbUnitAccompaniment` and
+`RecoveryCandidates` retained as real classes (answer-path logic, correctly not stripped),
+`ScanEvidenceRecorder`/`OcrDiagnosticsLogger` still correctly read `R8$$REMOVED$$CLASS$$` (unchanged
+by this pass). New instrumented test `VerificationScreenDeclaredServingTest` (4 cases) run on the
+`carbscan` emulator, 4/4 passing, counted from the JUnit XML rather than the console exit code.
+
+**Non-vacuous by construction, not merely asserted:** the fragment-join fixture
+(`20260907-164816-836`) was verified to read `NotFound` on the unmodified production code before this
+change (temporarily reverted via `git stash`, re-run, restored) and `Confident 58.9/PER_100_G` after
+— the exact printed value. The remaining 15 of 16 captures were replayed through the real parser
+before and after this pass and produce byte-identical Pass-A-level outcomes, confirming zero
+collateral change outside the one targeted geometry.
+
+The connected 39-test real-image OCR corpus (`RealImageOcrTest` + `ProductionStillPipelineTest` +
+`SelectedTableProductionTest` + `EvidencePipelineProductionTest`) on the `carbscan` emulator shows
+**33/39 passing, 6 pre-existing failures — confirmed identical by exact name** against a
+`git worktree` control at clean `ebe6fe2`: `RealImageOcrTest.kinderReadsItsPerPieceRelationshipWhenRecognitionSupportsIt`,
+`RealImageOcrTest.theProseReaderIsNeverConsultedForAReadableTable`,
+`RealImageOcrTest.gratedCheeseReadsItsPerServingFigureButNotItsDescriptor`,
+`RealImageOcrTest.gratedCheeseReportsTheDigitRecognitionActuallyProduced`,
+`ProductionStillPipelineTest.kinderIsReadCorrectlyThroughTheProductionStillPath`,
+`ProductionStillPipelineTest.kinderStillReadsItsPerPieceRelationship` — same six on both sides, zero
+difference either direction. All six are the emulator's own ML Kit misreading the kinder/grated-cheese
+photographs (`Koolhydraten` → `nlhioonorate`, the digit-level grated-cheese non-determinism), a
+degradation CLAUDE.md already records as recurring on this emulator independent of any parser or OCR
+change — this pass touches neither. **Zero regressions**, measured, not assumed.
+
+No P2 latency instrumentation or evidence-diagnostics enrichment was attempted, per instruction.
+`docs/manual-qa.md` §37 is the remaining gate — nothing in this pass has been seen on physical
+hardware.
+
 ### Fixed — OCR scan evidence review, 23-capture corpus (2026-09-06, NOT YET committed to main)
 
 A device session (`docs/Scan evidence 06-09/`, a Samsung phone, 23 captures across 13 products) found

@@ -169,6 +169,24 @@ fun VerificationScreen(
     onConfirm: (BigDecimal, NutritionBasis) -> Unit,
     onReject: () -> Unit,
     onRetake: () -> Unit,
+    /**
+     * The label's OWN printed pair — amount and basis label exactly as printed ("6" / "18 g
+     * serving") — for a declared-serving reading whose [value]/[basis] here are already normalized
+     * to per-100 for storage.
+     *
+     * Null for every ordinary case, including an ordinary per-100 scale-unresolved reading, where
+     * [value]/[basis] already state what is printed and there is nothing separate to show. Non-null
+     * only when the reading came from [app.justthecarbs.domain.CarbBasis.PerQuantity] or
+     * [app.justthecarbs.domain.CarbBasis.PerUnknownServing] — see
+     * [app.justthecarbs.domain.CarbReading.derivedFrom]'s own KDoc, which states exactly this need:
+     * showing a computed figure as though the package had printed it is the confusion this exists to
+     * avoid. When present, this pair becomes the PRIMARY confirmation line — what the user can
+     * actually compare against the package — and [value]/[basis] are shown only as secondary,
+     * clearly-labelled context. The exact [BigDecimal] arithmetic behind [value] is unchanged either
+     * way; this parameter affects only which numbers this screen puts first.
+     */
+    printedAmount: BigDecimal? = null,
+    printedBasisLabel: String? = null,
 ) {
     Column(
         modifier = Modifier
@@ -269,15 +287,40 @@ fun VerificationScreen(
             modifier = Modifier.fillMaxWidth().padding(Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            Text(
-                text = stringResource(
-                    R.string.verify_found_value,
-                    value.stripTrailingZeros().toPlainString(),
-                    basis.unitLabel,
-                ),
-                style = MaterialTheme.typography.headlineSmall,
-                color = Color.White,
-            )
+            // A declared-serving reading: the PRINTED pair is what the user can compare against the
+            // package, so it is the primary line. The stored/calculated value is per-100 and appears
+            // only as clearly-labelled secondary context beneath it — never presented as though the
+            // package itself printed a per-100 figure. See [printedAmount]'s own KDoc.
+            if (printedAmount != null && printedBasisLabel != null) {
+                Text(
+                    text = stringResource(
+                        R.string.verify_scale_printed_value,
+                        printedAmount.stripTrailingZeros().toPlainString(),
+                        printedBasisLabel,
+                    ),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.verify_scale_normalized_value,
+                        value.stripTrailingZeros().toPlainString(),
+                        basis.unitLabel,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.75f),
+                )
+            } else {
+                Text(
+                    text = stringResource(
+                        R.string.verify_found_value,
+                        value.stripTrailingZeros().toPlainString(),
+                        basis.unitLabel,
+                    ),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White,
+                )
+            }
             // Where on the label this came from. States the app's claim in the label's own words.
             Text(
                 text = stringResource(R.string.verify_found_row, rowText.trim()),

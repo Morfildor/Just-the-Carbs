@@ -342,13 +342,18 @@ private object NutrientDeclarationBuilder {
                     val sourceRows = mutableListOf(rows[index])
                     var cursor = index
                     var hasValue = alignedCells(rows[index], columns, documentWidth).isNotEmpty()
-                    while (sourceRows.size < MAX_DECLARATION_ROWS && cursor + 1 < rows.size) {
+                    // The value-less accumulation phase (below) may need to reach further than an
+                    // ordinary declaration ever should, so the cap on that phase is separate from
+                    // and looser than the ordinary one. See [MAX_NAME_ONLY_DECLARATION_ROWS].
+                    val rowLimit = if (hasValue) MAX_DECLARATION_ROWS else MAX_NAME_ONLY_DECLARATION_ROWS
+                    while (sourceRows.size < rowLimit && cursor + 1 < rows.size) {
                         val nextIndex = cursor + 1
                         val next = rows[nextIndex]
                         if (!isAdjacent(rows[cursor], next)) break
                         when (kinds[nextIndex]) {
                             NutritionRowKind.CARBOHYDRATE_CHILD, NutritionRowKind.HEADER -> break
                             NutritionRowKind.TOTAL_CARBOHYDRATE -> {
+                                if (sourceRows.size >= MAX_DECLARATION_ROWS) break
                                 val nextHasValue = alignedCells(next, columns, documentWidth).isNotEmpty()
                                 if (hasValue && nextHasValue) break
                                 sourceRows += next
@@ -356,8 +361,20 @@ private object NutrientDeclarationBuilder {
                             }
                             NutritionRowKind.OTHER -> {
                                 if (hasValue) break
-                                if (!isValueOnlyContinuation(next, columns, documentWidth)) break
-                                sourceRows += next
+                                if (isValueOnlyContinuation(next, columns, documentWidth)) {
+                                    sourceRows += next
+                                } else if (isNutrientlessValueContinuation(next, columns, documentWidth)) {
+                                    // See [isNutrientlessValueContinuation]: a row this narrow rule
+                                    // admits is bounded on both ends by the SAME properties as
+                                    // [isValueOnlyContinuation] would require, minus tolerating stray
+                                    // non-unit text that names no nutrient at all — which is what a
+                                    // multi-row, multilingual declaration's own reconstruction debris
+                                    // ("Of which... des") looks like, distinct from a genuinely
+                                    // different nutrient's clause bleeding in.
+                                    sourceRows += next
+                                } else {
+                                    break
+                                }
                             }
                         }
                         cursor = nextIndex
@@ -481,6 +498,58 @@ private object NutrientDeclarationBuilder {
         }
     }
 
+    /**
+     * A trailing `OTHER`-typed row that carries the value of a still-open, name-only
+     * `TOTAL_CARBOHYDRATE` declaration, once [isValueOnlyContinuation] has already refused it because
+     * the row also carries non-unit, non-punctuation text — as long as that surplus text names no
+     * nutrient of any kind.
+     *
+     * ### The capture this exists for
+     *
+     * A trilingual-label declaration whose carbohydrate name alone spans four physically distinct
+     * printed rows (`Carbohydrate/ Kolhydrat/`, `Hilihydraatit/ Kohlenhydrate/`, `Koolhydraten/
+     * Hidratos Glucides/`, `Weglowodany: de carbono/`), immediately followed by a fifth row —
+     * `Of which 58,9 g des` — that carries the printed `58,9 g` and nothing else meaningful, but also
+     * carries `Of`, `which` and `des`: reconstruction debris from the neighbouring "of which
+     * sugars"/"dont sucres" clause, not a second nutrient's own declaration. `RowClassifier` types
+     * this row `OTHER` — it names no nutrient at all, neither carbohydrate nor any other — which is
+     * exactly the property [CarbohydrateTermAnchor.nutrientAnchors] being empty confirms, and is what
+     * makes admitting it safe: a row this rule can reach could not have been
+     * [NutritionRowKind.CARBOHYDRATE_CHILD] or named a different nutrient, because either would
+     * already have classified it as something else.
+     *
+     * ### Why this is narrower than it looks, not wider
+     *
+     * Three conditions, all required, and each removes a distinct failure mode:
+     *
+     * - **The row names no nutrient of any kind.** [CarbohydrateTermAnchor.nutrientAnchors] covers
+     *   carbohydrate terms, child terms AND unrelated nutrients (fat, protein, salt) — the same check
+     *   [isValueOnlyContinuation] already trusts. A row naming any of those is refused, so this can
+     *   never absorb a genuinely different nutrient's own clause (a stray "Vetten 16,4 g" row sitting
+     *   between two carbohydrate-name fragments stays excluded).
+     * - **Exactly one aligned value cell.** Two or more would mean the row states more than one
+     *   figure, which this narrow rule has no way to disambiguate — refused rather than guessed.
+     * - **Only ever extends a value-LESS declaration** ([hasValue] is checked by the caller before
+     *   this is even asked, exactly as it already gates [isValueOnlyContinuation]) — so a declaration
+     *   that already found its value through the ordinary path can never have this rule silently
+     *   override or duplicate it.
+     *
+     * The recovered value still passes through every existing gate unchanged once the declaration is
+     * built: [CarbUnitAccompaniment], column ownership, [CrossColumnRatioCheck], plausibility and
+     * scale evidence all run exactly as they would on any other declaration's value cell. This
+     * function only decides which physical row supplies that cell — it never reads, validates or
+     * accepts the number itself.
+     */
+    private fun isNutrientlessValueContinuation(
+        row: LogicalRow,
+        columns: List<NutritionColumn>,
+        documentWidth: Int,
+    ): Boolean {
+        if (CarbohydrateTermAnchor.nutrientAnchors(row).isNotEmpty()) return false
+        val cells = alignedCells(row, columns, documentWidth)
+        return cells.size == 1
+    }
+
     private fun isAdjacent(first: LogicalRow, second: LogicalRow): Boolean {
         val medianHeight = (first.elements + second.elements).map { it.box.height }.sorted()
             .let { it[it.size / 2].coerceAtLeast(1) }
@@ -491,5 +560,22 @@ private object NutrientDeclarationBuilder {
     private val UNIT_OR_PUNCTUATION = Regex("^(?:g|gr|gram|ml|[,.;:/()%-]+)$", RegexOption.IGNORE_CASE)
     private val INLINE_VALUE = Regex("(?:^|\\s)\\d{1,3}(?:[.,]\\d{1,3})?\\s*(?:g|gr|gram|ml)(?:$|\\s|[,.;:])")
     private const val MAX_DECLARATION_ROWS = 3
+
+    /**
+     * The row-count ceiling while a declaration is still accumulating NAME-ONLY rows — no value cell
+     * found yet. Looser than [MAX_DECLARATION_ROWS], which bounds an ordinary (value-bearing)
+     * declaration, because a genuinely multilingual carbohydrate name can span more physical rows
+     * than [MAX_DECLARATION_ROWS] allows before its value ever appears — measured at four rows on a
+     * real device capture (`docs/scan-evidence (6).zip`, `20260907-164816-836`): `Carbohydrate/
+     * Kolhydrat/`, `Hilihydraatit/ Kohlenhydrate/`, `Koolhydraten/ Hidratos Glucides/`, `Weglowodany:
+     * de carbono/`, with the value on a fifth row still to come.
+     *
+     * Safe to loosen only for this phase: the moment any row in the accumulation carries a value,
+     * `hasValue` becomes true and the ordinary [MAX_DECLARATION_ROWS] guard applies to every
+     * subsequent `TOTAL_CARBOHYDRATE`-typed row from then on (see the `sourceRows.size >=
+     * MAX_DECLARATION_ROWS` check inside that branch) — so this can never let a declaration absorb an
+     * unbounded run of genuinely separate, value-bearing declarations.
+     */
+    private const val MAX_NAME_ONLY_DECLARATION_ROWS = 6
     private const val MAX_CONTINUATION_GAP_IN_HEIGHTS = 1
 }
