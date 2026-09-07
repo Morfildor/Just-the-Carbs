@@ -55,6 +55,85 @@ reader, and the granularity gap is deliberate.
 
 ---
 
+## 1.0.4 (versionCode 5)
+
+| | |
+|---|---|
+| Track | **Closed testing** (uploaded 2026-09-07; pending Play's acceptance) |
+| Uploaded | 2026-09-07 |
+| Built from | `f890e9a4bc373c3f87e382233d05fd204bc217cc` on `main`, `clean` build |
+| Artifact | `app-release.aab`, 35,925,236 bytes |
+| SHA-256 | `89448d7d00aff4ddca78ed11c272ab1d763d5a2a8aaabc8a7148fc3b4b682269` |
+| Upload key | `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — the same key as `versionCode` 1, 2, 3 and 4, which is what lets Play accept this as an update |
+
+Opened 2026-08-29 by a trust + feedback polish patch (Send Feedback, Rate the app in Settings, a
+crowd-sourced-data note beside the OCR provenance line), then carried the 2026-09-04/05 startup
+hardening pass (onboarding-flash fix, safe basis parsing replacing the last unguarded
+`NutritionBasis.valueOf`, a shared camera-permission recovery gate for both scanners,
+`LiveEvidenceBuffer` synchronization) and the 2026-09-07 scanner optimization pass — three OCR
+evidence-adjudication fixes (a unit-box overlap tolerance, a nine-language declaration fragmented
+across five rows, a recovery candidate reaching `ConfirmationEligibility`'s full-document
+cross-column re-check) plus a targeted, non-generic starting rectangle for the crop-fallback
+screen (`AutoCropTargeting`). No change to the calculation, the schema, migrations, the §10 lookup
+priority or barcode detection in any of it.
+
+**A separate, later fix measured against a 23-capture device corpus (`DISTINCT_OCR_AGREEMENT` no
+longer settling absolute decimal scale on its own) is recorded in `CHANGELOG.md`'s open `1.0.4`
+section but was confirmed, by commit history, to be on a review branch and NOT part of this
+artifact.** It ships in whichever version actually carries it; do not read it into this entry.
+
+The signer certificate was read from the built bundle with `keytool -printcert -jarfile` before
+upload, and the `versionCode`/`versionName` were decoded from the bundle's own extracted manifest
+(via `aapt2 dump xmltree`) rather than trusted from the Gradle configuration — the signing guard
+cannot tell a real upload key from a disposable one, so a green `bundleRelease` is not evidence
+that an uploadable artifact exists.
+
+### Verification at upload
+
+| Check | Result |
+|---|---|
+| JVM tests | 1883/1883, 0 failures, 0 errors, 0 skipped (`--rerun-tasks`, counted from 198 JUnit XML files) |
+| Lint | 0 errors, 23 warnings (unchanged baseline) |
+| Debug APK / androidTest compile | Both build clean from `clean` |
+| R8 privacy barriers | `ScanEvidenceRecorder`, `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`, `OcrDiagnosticsReport`, `ScanTrace` absent entirely. `UnitMarkerFilter`, `CandidateProvenance`, `CarbCandidate` retained as real classes. `AutoCropTargeting` shows the established inlined-not-dropped pattern (line-mapped fragments present, no standalone class entry), consistent with a small pure function folded into its caller rather than a stripped feature |
+| Release manifest (extracted and dumped, not assumed) | `versionCode=5`, `versionName="1.0.4"`, `package=app.justthecarbs`, `targetSdk=36`; permissions exactly CAMERA, INTERNET, ACCESS_NETWORK_STATE (transitive, disclosed) plus one framework-generated signature-level receiver permission; one exported component (`MainActivity`); no `FileProvider`; `allowBackup="false"`; not debuggable |
+| Packaged-content check | No leaked local filesystem paths/usernames anywhere in the compiled dex (scanned programmatically); no scan-evidence, test-asset, or secret files in the bundle beyond two routine third-party-library inclusions (`abc_vector_test.xml` from AndroidX, `DebugProbesKt.bin` from kotlinx-coroutines) |
+
+No OSV dependency scan was re-run for this specific artifact in this pass (the last recorded run,
+226 resolved release-runtime artifacts / 0 known vulnerabilities, is the 1.0.3-era figure; nothing
+in this version's dependency graph changed).
+
+### Device verification at upload — what was and was not checked
+
+The `f890e9a` code state was physically exercised on an SM-S928B before upload, including the
+nutrition-label scanner and the final crop-targeting behavior. **The final signed/minified AAB
+itself was not separately installed as a physical-device smoke test during this release
+preparation pass** — the build/verify/sign work in this pass was JVM plus config/manifest
+inspection of the built artifact itself, and the emulator's virtual camera was not exercised
+either. Artifact-specific device verification therefore remains distinct from the earlier
+source-state hardware test: the code that shipped was tested on hardware, but the signed bundle
+that was actually uploaded was not separately re-installed and re-tested after signing.
+
+The connected 39-test real-image OCR corpus was last measured on the emulator during the
+2026-09-07 scanner optimization pass at 33/39 passing with 6 pre-existing failures (confirmed
+identical by name against a `git worktree` control at clean `ebe6fe2` — zero regressions from that
+pass's own changes) — not re-run specifically for this upload.
+
+`docs/manual-qa.md` §37 (the scanner-optimization-pass gate) and §35 (the startup-hardening gate)
+are both still open. Recorded here so a tester report against this build can be read against what
+was actually known about it at upload time.
+
+### Play Store release notes (as uploaded)
+
+336 characters against the 500 limit. See `CHANGELOG.md`'s `1.0.4` section for the full draft
+context and why the 23-capture-corpus fix is deliberately not mentioned here.
+
+```
+Nutrition label scanning is more reliable: fixed cases where a good reading was missed due to overlapping text or a label split across many lines. Fixed an issue where the app could briefly show the wrong screen on launch, and where camera permission had no way back after being denied. Added Send Feedback and Rate the app to Settings.
+```
+
+---
+
 ## 1.0.3 (versionCode 4)
 
 | | |

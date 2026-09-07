@@ -72,6 +72,20 @@ Opened by a small trust + feedback polish patch, requested after reviewing close
 feedback (`docs/Closed_beta_tester_feedback.pdf`). Deliberately surgical — no OCR, scanning,
 calculation, database or networking file was touched.
 
+### Play Store release notes (draft, uploaded 2026-09-07 — re-check against the final artifact
+### before treating this as published)
+
+**Scoped to what is actually built into `f890e9a4bc373c3f87e382233d05fd204bc217cc`** — the trust
++ feedback additions above, the startup-hardening pass and the 2026-09-07 scanner optimization
+pass. The 23-capture-corpus scale-safety fix further down this section is **not** in this build
+(still on a review branch per its own entry) and is deliberately not described here; it belongs to
+whichever version it actually ships in. 336 characters against the 500 limit. Checked against §44
+§7.1: no health claim, no mention of diabetes, no medical wording.
+
+```
+Nutrition label scanning is more reliable: fixed cases where a good reading was missed due to overlapping text or a label split across many lines. Fixed an issue where the app could briefly show the wrong screen on launch, and where camera permission had no way back after being denied. Added Send Feedback and Rate the app to Settings.
+```
+
 ### Added
 
 - **Send feedback / Report a problem** (Settings → About). Opens the device's email app via
