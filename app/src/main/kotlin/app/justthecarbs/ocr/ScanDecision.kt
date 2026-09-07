@@ -48,7 +48,12 @@ sealed interface ScanDecision {
  * The constructor is private: the only way to obtain one is [ScanDecisionEngine.decide] deciding
  * every gate already held. This is what makes "AutoAccept requires verification" a type-level fact
  * rather than a rule a caller must remember to check.
+ *
+ * `@ConsistentCopyVisibility`, not `@ExposedCopyVisibility`: the generated `copy()` must be private
+ * too, or it would be a second, unchecked way to construct a "verified" reading that never actually
+ * passed [ScanDecisionEngine]'s gates -- exactly the hole the private constructor exists to close.
  */
+@ConsistentCopyVisibility
 data class VerifiedReading private constructor(
     val value: BigDecimal,
     val basis: NutritionBasis,

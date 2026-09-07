@@ -153,7 +153,7 @@ class QuickCalculationTest {
         override suspend fun search(terms: String) = ProductSearchResult.NoMatches
     }
 
-    private class Fixture {
+    private class Fixture(savedState: SavedStateHandle = SavedStateHandle()) {
         val local = RecordingLocal()
         val usage = RecordingUsage()
         val meal = RecordingMeal()
@@ -168,7 +168,7 @@ class QuickCalculationTest {
             clock = Clock.fixed(Instant.parse("2026-08-29T10:00:00Z"), ZoneOffset.UTC),
         )
 
-        val viewModel = ProductViewModel(repository, SavedStateHandle())
+        val viewModel = ProductViewModel(repository, savedState)
     }
 
     // ---- 1. a reading reaches a calculator with no name and no product -------------------------
@@ -224,6 +224,58 @@ class QuickCalculationTest {
         assertEquals(emptyList<Product>(), fixture.local.saved)
         assertEquals(emptyList<PortionUsage>(), fixture.usage.saved)
     }
+
+    // ---- Process-death recreation restores the typed portion (P1 §8) ---------------------------
+
+    /**
+     * `startQuickCalculation` used to build its scratch product and set state without ever reading
+     * `savedState`, even though `onPortionChanged` unconditionally writes the typed text to it under
+     * the same `"portion_text"` key `load`'s `onProductLoaded` restores from for a barcode product.
+     * So a killed-and-recreated process (a `SavedStateHandle` surviving while the `ProductViewModel`
+     * itself is rebuilt from scratch, which is exactly what `SavedStateHandle` exists to model) threw
+     * away whatever the user had already typed and reopened the calculator on an empty field, with no
+     * error and nothing to indicate the loss.
+     *
+     * The literal `"portion_text"` mirrors [ProductViewModel]'s own private `KEY_PORTION` constant —
+     * it is not duplicated logic, it is the one persisted contract between a write from
+     * `onPortionChanged` in a prior process and a read here simulating the next one.
+     */
+    @Test
+    fun `a portion typed before process death is restored when the quick calculation restarts`() =
+        runTest(dispatcher) {
+            val survivingSavedState = SavedStateHandle(mapOf("portion_text" to "35"))
+            val fixture = Fixture(savedState = survivingSavedState)
+
+            // The route arguments (carbs, basis) are recovered from the nav-graph's own saved state
+            // independently of this — startQuickCalculation is what a recreated composable calls
+            // with them, exactly as it would on the very first launch.
+            fixture.viewModel.startQuickCalculation(BigDecimal("48"), NutritionBasis.PER_100_G)
+            advanceUntilIdle()
+
+            val state = fixture.viewModel.state.value
+            assertEquals(
+                "the portion typed before the process died must be restored, not left blank",
+                "35",
+                state.portionText,
+            )
+            assertNotNull(
+                "a restored portion must actually recalculate a result, not just refill the field",
+                state.result,
+            )
+        }
+
+    /** A quick calculation reached fresh (no prior typing) restores to an empty field, as before. */
+    @Test
+    fun `a fresh quick calculation with no prior saved state starts with an empty portion`() =
+        runTest(dispatcher) {
+            val fixture = Fixture()
+
+            fixture.viewModel.startQuickCalculation(BigDecimal("48"), NutritionBasis.PER_100_G)
+            advanceUntilIdle()
+
+            assertEquals("", fixture.viewModel.state.value.portionText)
+            assertNull("no portion means no result yet", fixture.viewModel.state.value.result)
+        }
 
     // ---- 4, 5, 6. the basis reaches the calculator and the arithmetic is the production one -----
 

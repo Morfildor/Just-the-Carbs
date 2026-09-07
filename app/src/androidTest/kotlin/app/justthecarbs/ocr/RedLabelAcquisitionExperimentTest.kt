@@ -6,6 +6,7 @@ import android.graphics.ColorMatrix
 import android.graphics.Paint
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -79,6 +80,7 @@ import java.util.concurrent.TimeUnit
  * the user types the `7,2` they can read. **Re-run this class before proposing preprocessing again;
  * do not reason about it from the source.**
  */
+@ExploratoryExperiment
 class RedLabelAcquisitionExperimentTest {
 
     private val appContext get() = InstrumentationRegistry.getInstrumentation().targetContext

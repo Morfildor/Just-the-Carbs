@@ -126,9 +126,24 @@ class SearchRelevanceBenchmarkTest {
         )
     }
 
-    /** Stable synthetic barcode, so dedupe has genuinely distinct identities to work with. */
-    private fun barcodeFor(seed: String): String =
-        (8_700_000_000_000L + (seed.hashCode().toLong() and 0xFFFFFF)).toString()
+    /**
+     * Stable synthetic barcode, so dedupe has genuinely distinct identities to work with.
+     *
+     * Ends in a real GTIN-13 mod-10 check digit (P1 §10 pinned this app now validates a search
+     * hit's barcode before accepting it — see [OpenFoodFactsDataSource.toHit] /
+     * [SearchALiciousDataSource.toHit]), computed the same way [BarcodeValidator] itself does: from
+     * the right, excluding the check digit, alternating weights of 3 and 1. Without this every
+     * synthetic barcode in this benchmark would fail validation and be silently dropped, collapsing
+     * every case to zero hits rather than measuring the ranking pipeline this file exists to pin.
+     */
+    private fun barcodeFor(seed: String): String {
+        val body = (8_700_000_000_00L + (seed.hashCode().toLong() and 0xFFFFF)).toString().padStart(12, '0')
+        val sum = body.reversed()
+            .mapIndexed { index, char -> char.digitToInt() * if (index % 2 == 0) 3 else 1 }
+            .sum()
+        val check = (10 - sum % 10) % 10
+        return body + check
+    }
 
     private fun String.jsonQuoted(): String = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
@@ -208,16 +223,16 @@ class SearchRelevanceBenchmarkTest {
             MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json")
                 .setBody(
                     """{"count":4,"hits":[
-                     {"code":"111","product_name":"First","quantity":"100 g"},
-                     {"code":"222","product_name":"Second","quantity":"100 g"},
-                     {"code":"111","product_name":"First again","quantity":"100 g"},
-                     {"code":"333","product_name":"Third","quantity":"100 g"}]}""",
+                     {"code":"1111111111116","product_name":"First","quantity":"100 g"},
+                     {"code":"2222222222222","product_name":"Second","quantity":"100 g"},
+                     {"code":"1111111111116","product_name":"First again","quantity":"100 g"},
+                     {"code":"3333333333338","product_name":"Third","quantity":"100 g"}]}""",
                 ),
         )
 
         val hits = (source.search("dupes") as ProductSearchResult.Found).hits
 
-        assertEquals(listOf("111", "222", "333"), hits.map { it.barcode })
+        assertEquals(listOf("1111111111116", "2222222222222", "3333333333338"), hits.map { it.barcode })
         // The FIRST occurrence is kept, so relevance order is preserved rather than the later
         // duplicate displacing it.
         assertEquals("First", hits.first().name)
@@ -229,8 +244,8 @@ class SearchRelevanceBenchmarkTest {
             MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json")
                 .setBody(
                     """{"count":2,"hits":[
-                     {"code":"111","product_name":"Gouda","brands":["Albert Heijn"],"quantity":"100 g"},
-                     {"code":"222","product_name":"Gouda","brands":["Jumbo"],"quantity":"100 g"}]}""",
+                     {"code":"1111111111116","product_name":"Gouda","brands":["Albert Heijn"],"quantity":"100 g"},
+                     {"code":"2222222222222","product_name":"Gouda","brands":["Jumbo"],"quantity":"100 g"}]}""",
                 ),
         )
 

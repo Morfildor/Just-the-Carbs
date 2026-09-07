@@ -39,6 +39,7 @@ import app.justthecarbs.ui.onboarding.OnboardingScreen
 import app.justthecarbs.ui.onboarding.OnboardingViewModel
 import app.justthecarbs.ui.search.SearchScreen
 import app.justthecarbs.ui.search.SearchViewModel
+import app.justthecarbs.ui.product.ProductNavigationEvent
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductViewModel
 import app.justthecarbs.domain.ProductDataOrigin
@@ -46,6 +47,7 @@ import app.justthecarbs.ui.scan.LabelScannerScreen
 import app.justthecarbs.ui.scan.ScannerScreen
 import app.justthecarbs.ui.settings.SettingsScreen
 import app.justthecarbs.ui.settings.SettingsViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -152,7 +154,18 @@ private object Routes {
      */
     const val QUICK = "quick?carbs={carbs}&basis={basis}"
 
-    fun product(barcode: String) = "product/$barcode"
+    /**
+     * Defense in depth for a dynamic path segment (P1 §10), on top of — not instead of — validating
+     * a barcode at the boundary it enters this app (the scanner, manual entry, and now
+     * [app.justthecarbs.domain.BarcodeValidator]-checked search hits). Every barcode reaching this
+     * function today is already a validated, digits-only GTIN and needs no encoding at all — but a
+     * route builder should not depend on every future caller remembering that. URL-encoding here
+     * means a malformed value (one containing `/`, `?`, `#`, `%` or whitespace, however it got past
+     * an upstream check) becomes a single opaque path segment rather than corrupting the route —
+     * extra segments, a broken match, or a navigation Compose otherwise cannot recover from —
+     * instead of crashing navigation or, worse, silently landing on an unintended destination.
+     */
+    fun product(barcode: String) = "product/${java.net.URLEncoder.encode(barcode, "UTF-8")}"
 
     fun quick(carbs: String, basis: String) = "quick?carbs=$carbs&basis=$basis"
 
@@ -325,8 +338,25 @@ fun JustTheCarbsNavHost(
                 factory = factory { ProductViewModel(container.productRepository, createSavedStateHandle()) },
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
+            val coroutineScope = rememberCoroutineScope()
 
             LaunchedEffect(barcode) { viewModel.load(barcode) }
+
+            // Navigate to the scanner only once *Add & scan next*'s write has actually landed
+            // (P0 §1). `addCurrentToMeal` sends this event after persistence succeeds, never before
+            // — so collecting it and navigating here cannot pop this route (destroying `viewModel`
+            // and cancelling its coroutine) while the insert is still in flight. `LaunchedEffect(Unit)`
+            // rather than keying on `state`: the event is one-shot by construction (a `Channel`, not
+            // a replaying flow), so there is nothing to re-key the collector on.
+            LaunchedEffect(Unit) {
+                viewModel.navigationEvents.collect { event ->
+                    when (event) {
+                        ProductNavigationEvent.ScanNext -> navController.navigate(Routes.SCAN) {
+                            popUpTo(Routes.HOME)
+                        }
+                    }
+                }
+            }
 
             // A label reading handed back by the scanner (§12). Read once and cleared, so returning
             // to this screen later does not re-open a comparison the user already resolved.
@@ -357,8 +387,16 @@ fun JustTheCarbsNavHost(
                 onBack = {
                     // The portion is remembered on the way out, not on every keystroke, so a
                     // half-typed number never becomes the pre-fill for next time (§20).
-                    viewModel.rememberUsage()
-                    navController.popBackStack()
+                    //
+                    // Awaited before popping (P0 §3): `rememberUsage()` alone launches into
+                    // `viewModelScope` and returns immediately, so popping right after it could
+                    // destroy `viewModel` and cancel that write before Room ever runs. This
+                    // composable's own `coroutineScope` — not the ViewModel's — outlives the pop,
+                    // so the write finishes before `popBackStack()` runs.
+                    coroutineScope.launch {
+                        viewModel.rememberUsageAndAwait()
+                        navController.popBackStack()
+                    }
                 },
                 // *Verify label* opens the camera straight into nutrition-label OCR (spec §7).
                 // It previously opened a dialog asking the user to retype the figure — which is
@@ -403,16 +441,16 @@ fun JustTheCarbsNavHost(
                 onCorrectPortionUnit = viewModel::correctSelectedPortionUnit,
                 onCancelPortionUnitCorrection = viewModel::cancelPortionUnitCorrection,
                 onAddToMeal = { description, fallbackName ->
-                    viewModel.addCurrentToMeal(description, fallbackName)
+                    viewModel.addCurrentToMeal(description, fallbackName, scanNext = false)
                 },
+                // Straight back to the camera, with this product popped off the stack, once the
+                // write has landed: after adding a fourth item the user wants the scanner, not a
+                // four-deep back stack of products they have already finished with (§11). The
+                // navigation itself happens in the `navigationEvents` collector above, only after
+                // `addCurrentToMeal` confirms persistence succeeded (P0 §1) — this call only starts
+                // the write and cannot itself trigger navigation.
                 onAddToMealAndScanNext = { description, fallbackName ->
-                    viewModel.addCurrentToMeal(description, fallbackName)
-                    // Straight back to the camera, with this product popped off the stack: after
-                    // adding a fourth item the user wants the scanner, not a four-deep back stack
-                    // of products they have already finished with (§11).
-                    navController.navigate(Routes.SCAN) {
-                        popUpTo(Routes.HOME)
-                    }
+                    viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
                 },
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
                 onConfirmLabelMatch = viewModel::confirmLabelMatch,
@@ -492,6 +530,18 @@ fun JustTheCarbsNavHost(
                 }
             }
 
+            // Same P0 fix as the barcode-product route above: navigate to the scanner only once
+            // *Add & scan next*'s write has actually landed, never before.
+            LaunchedEffect(Unit) {
+                viewModel.navigationEvents.collect { event ->
+                    when (event) {
+                        ProductNavigationEvent.ScanNext -> navController.navigate(Routes.SCAN) {
+                            popUpTo(Routes.HOME)
+                        }
+                    }
+                }
+            }
+
             ProductScreen(
                 state = state,
                 settings = settings,
@@ -514,11 +564,12 @@ fun JustTheCarbsNavHost(
                 onEnterManually = { navController.navigate(Routes.manual()) },
                 onRetry = {},
                 onAddToMeal = { description, fallbackName ->
-                    viewModel.addCurrentToMeal(description, fallbackName)
+                    viewModel.addCurrentToMeal(description, fallbackName, scanNext = false)
                 },
+                // Navigation happens in the `navigationEvents` collector above, only after the write
+                // succeeds (P0 §1) — same as the barcode-product route.
                 onAddToMealAndScanNext = { description, fallbackName ->
-                    viewModel.addCurrentToMeal(description, fallbackName)
-                    navController.navigate(Routes.SCAN) { popUpTo(Routes.HOME) }
+                    viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
                 },
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
                 onShowSaveQuickCalculation = viewModel::showSaveQuickCalculation,
@@ -753,14 +804,23 @@ fun JustTheCarbsNavHost(
                     { kind, conversion ->
                         // Suspends until the write completes and reports what happened, so the
                         // scanner can only show "saved" once the row is genuinely on disk.
-                        runCatching {
+                        //
+                        // A plain runCatching would also catch CancellationException — if this
+                        // screen is torn down mid-write, that would report as an ordinary failed
+                        // save rather than letting the cancellation propagate (P1 §14).
+                        try {
                             container.productRepository.saveUserPortionUnit(
                                 barcode = barcode,
                                 kind = kind,
                                 conversion = conversion,
                                 origin = ProductDataOrigin.OCR,
                             )
-                        }.isSuccess
+                            true
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            false
+                        }
                     }
                 },
                 // No product row yet: carry the accepted portion into creation instead of writing

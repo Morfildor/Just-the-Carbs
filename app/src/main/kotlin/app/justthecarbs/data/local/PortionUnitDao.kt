@@ -18,6 +18,9 @@ interface PortionUnitDao {
     @Query("SELECT * FROM portion_units WHERE id = :id")
     suspend fun findById(id: Long): PortionUnitEntity?
 
+    @Query("SELECT * FROM portion_units WHERE id IN (:ids)")
+    suspend fun findByIds(ids: List<Long>): List<PortionUnitEntity>
+
     @Upsert
     suspend fun upsert(portionUnit: PortionUnitEntity): Long
 

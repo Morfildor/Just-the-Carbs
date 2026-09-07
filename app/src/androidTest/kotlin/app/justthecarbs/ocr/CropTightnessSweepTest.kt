@@ -3,6 +3,7 @@ package app.justthecarbs.ocr
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -36,6 +37,7 @@ import java.util.concurrent.TimeUnit
  *
  * Either way this is measurement, not a product assertion, so it prints rather than asserts.
  */
+@ExploratoryExperiment
 class CropTightnessSweepTest {
 
     private val testContext get() = InstrumentationRegistry.getInstrumentation().context

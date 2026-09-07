@@ -57,18 +57,17 @@ sealed interface RememberedCarbs {
  */
 fun rememberedCarbs(product: Product, unit: PortionUnit?): RememberedCarbs? {
     val count = product.lastCount
-    val countable = product.lastInputMode == InputMode.PORTION_UNIT && unit != null && count != null
 
-    if (countable) {
-        return when (val conversion = unit!!.conversion) {
+    if (product.lastInputMode == InputMode.PORTION_UNIT && unit != null && count != null) {
+        return when (val conversion = unit.conversion) {
             is PortionConversion.DirectCarbs -> RememberedCarbs.Countable(
-                exactCarbs = DirectCarbCalculator.exactCarbs(count!!, conversion.carbsPerUnit),
+                exactCarbs = DirectCarbCalculator.exactCarbs(count, conversion.carbsPerUnit),
                 count = count,
                 resolvedAmount = null,
             )
 
             is PortionConversion.WeightBased -> {
-                val resolved = PortionResolver.resolve(count!!, conversion.amountPerUnit)
+                val resolved = PortionResolver.resolve(count, conversion.amountPerUnit)
                 RememberedCarbs.Countable(
                     exactCarbs = CarbCalculator.calculate(
                         carbsPer100 = product.carbsPer100,

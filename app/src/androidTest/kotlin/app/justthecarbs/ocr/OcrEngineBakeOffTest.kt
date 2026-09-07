@@ -3,6 +3,7 @@ package app.justthecarbs.ocr
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -50,6 +51,7 @@ import java.util.concurrent.TimeUnit
  * Note the Play Services model is delivered on demand, so its first run on a clean device may report
  * `UNAVAILABLE` — a real operational property worth measuring, not a reason to discard the run.
  */
+@ExploratoryExperiment
 class OcrEngineBakeOffTest {
 
     private val testContext get() = InstrumentationRegistry.getInstrumentation().context

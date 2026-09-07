@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import app.justthecarbs.domain.InputMode
+import app.justthecarbs.domain.toInputModeOrNull
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
@@ -99,7 +100,7 @@ fun ProductEntity.toDomain(): Product = Product(
     lastUsedAt = lastUsedAt?.let(Instant::ofEpochMilli),
     lastPortion = lastPortion?.let(::BigDecimal),
     favorite = favorite,
-    lastInputMode = lastInputMode?.let(InputMode::valueOf),
+    lastInputMode = lastInputMode.toInputModeOrNull(),
     lastSelectedPortionUnitId = lastSelectedPortionUnitId,
     lastCount = lastCount?.let(::BigDecimal),
     images = ProductImageCacheCodec.decode(galleryImagesJson),

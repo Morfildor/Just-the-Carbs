@@ -9,6 +9,7 @@ import app.justthecarbs.domain.CarbCalculator
 import app.justthecarbs.domain.CarbResult
 import app.justthecarbs.domain.DirectCarbCalculator
 import app.justthecarbs.domain.InputMode
+import app.justthecarbs.domain.toInputModeOrNull
 import app.justthecarbs.domain.LabelComparison
 import app.justthecarbs.domain.LabelVerdict
 import app.justthecarbs.domain.LookupError
@@ -26,17 +27,35 @@ import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.UnusableReason
 import app.justthecarbs.domain.VerificationStatus
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.util.UUID
+
+/**
+ * A one-shot outcome of [ProductViewModel.addCurrentToMeal] that only navigation should react to.
+ *
+ * A [Channel] rather than a replaying [kotlinx.coroutines.flow.SharedFlow]: the event must be
+ * delivered at most once and never replayed to a late collector (e.g. after a configuration
+ * change re-subscribes), because replaying it would fire a second, unwanted navigation for a meal
+ * item that was already added and already navigated away from.
+ */
+sealed interface ProductNavigationEvent {
+    /** Persistence succeeded and the caller asked to move on to the scanner (§11). */
+    data object ScanNext : ProductNavigationEvent
+}
 
 /** What the calculator screen is showing. Immutable, one object, driven by a StateFlow (§65). */
 data class ProductUiState(
@@ -89,6 +108,13 @@ data class ProductUiState(
     val selectedPortionUnitId: Long? = null,
     val countText: String = "",
     val showAddPortionUnitForm: Boolean = false,
+    /**
+     * A custom-portion-unit save is in flight.
+     *
+     * Same rationale as [addingToMeal]: the write is asynchronous, and without a guard a rapid
+     * double tap on *Save* starts two insert coroutines for one form submission.
+     */
+    val savingPortionUnit: Boolean = false,
     /** Same immutability rule as [newerRemoteCarbs], scoped to the unit currently in use (§9). */
     val newerRemotePortionUnit: PortionConversion? = null,
     /** The inline "1 slice = [36] g" correction form is open (development-pass brief §3.3). */
@@ -96,8 +122,21 @@ data class ProductUiState(
     // ---- temporary meal (development-pass brief §7-§10) --------------------------------------
     /** The current meal, live. Adding from this screen is what puts items here (§8). */
     val mealItems: List<MealItem> = emptyList(),
-    /** Set for one collection after *Add & scan next*, so the screen knows to move on (§11). */
-    val addedToMeal: Boolean = false,
+    /**
+     * A meal-add write is in flight.
+     *
+     * The write is asynchronous, so without this a second tap before the first completes starts a
+     * second write — two rows in the meal for one *Add to meal* tap.
+     */
+    val addingToMeal: Boolean = false,
+    /**
+     * The last meal-add attempt failed and nothing was written.
+     *
+     * Said out loud rather than swallowed, same as [quickSaveFailed]: the result is still on screen
+     * and still correct, so silence here reads as success and the user would leave believing the
+     * item was added.
+     */
+    val mealAddFailed: Boolean = false,
     /**
      * A label reading waiting to be compared against the current value (§12).
      *
@@ -176,6 +215,7 @@ sealed interface Failure {
  * save before a number appears (§16). Portion text is held in [SavedStateHandle] so a mid-edit
  * portion survives process death (§63).
  */
+@OptIn(FlowPreview::class)
 class ProductViewModel(
     private val repository: ProductRepository,
     private val savedState: SavedStateHandle,
@@ -183,6 +223,17 @@ class ProductViewModel(
 
     private val _state = MutableStateFlow(ProductUiState())
     val state: StateFlow<ProductUiState> = _state.asStateFlow()
+
+    /**
+     * One-shot navigation outcomes, collected by the NavHost.
+     *
+     * Buffered (not conflated, not a replaying [kotlinx.coroutines.flow.SharedFlow]) so an event
+     * sent before the collector has started composing is not lost — [Channel.BUFFERED] queues it
+     * rather than dropping it, and [receiveAsFlow] hands each element to at most one collector, so
+     * it cannot replay into a second navigation after a configuration change.
+     */
+    private val _navigationEvents = Channel<ProductNavigationEvent>(Channel.BUFFERED)
+    val navigationEvents: Flow<ProductNavigationEvent> = _navigationEvents.receiveAsFlow()
 
     init {
         // Record the portion from the state itself rather than from a "back was pressed" callback.
@@ -290,10 +341,22 @@ class ProductViewModel(
             dataSource = origin,
             verificationStatus = VerificationStatus.UNVERIFIED,
         )
+        // Restores a mid-edit portion across process death (P1 §8), the same guarantee `load`'s
+        // `onProductLoaded` already gives a barcode product — `startQuickCalculation` previously
+        // read nothing from `savedState` at all, so a killed-and-recreated process silently dropped
+        // whatever the user had already typed and reopened the screen on an empty field.
+        //
+        // Only `portionText` is restored, deliberately not `KEY_MODE`/`KEY_SELECTED_UNIT`/
+        // `KEY_COUNT`: a quick calculation's `scratch` product always has an empty barcode, and
+        // `ProductScreen` only ever offers *Add portion unit* for a non-empty one — so
+        // `InputMode.PORTION_UNIT` can never be legitimately reached here, and restoring it would
+        // select a mode this screen has no portion-unit list to resolve it against.
+        val restoredPortion = savedState.get<String>(KEY_PORTION)
         _state.update {
             it.copy(
                 loading = false,
                 product = scratch,
+                portionText = restoredPortion ?: "",
                 unsaved = true,
                 failure = null,
                 // A second reading replaces the first outright. Leaving a stale verdict or notice
@@ -358,12 +421,14 @@ class ProductViewModel(
         _state.update { it.copy(savingQuickCalculation = true, quickSaveNameError = false) }
 
         viewModelScope.launch {
-            runCatching {
+            // A plain `runCatching` here would also catch `CancellationException` — this coroutine
+            // being cancelled (e.g. the ViewModel torn down mid-save) is not a save failure and must
+            // not be reported as one, so cancellation is rethrown rather than routed to `onFailure`.
+            try {
                 repository.saveUserAuthoredProduct(
                     saved,
                     origin = if (product.dataSource.isUserAuthored) product.dataSource else ProductDataOrigin.MANUAL,
                 )
-            }.onSuccess {
                 // The screen keeps every number it was showing; only its identity changes. The
                 // portion is recorded now that there is a row to record it against.
                 _state.update {
@@ -377,7 +442,9 @@ class ProductViewModel(
                     )
                 }
                 rememberUsage()
-            }.onFailure {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 // Reported rather than merely survived: clearing the flag alone would re-enable the
                 // button and change nothing else, making a failed save look like a missed tap.
                 //
@@ -416,7 +483,7 @@ class ProductViewModel(
         // all (§20) — but only if they have not already started typing in this session.
         val restoredPortion = savedState.get<String>(KEY_PORTION)
         val restoredCount = savedState.get<String>(KEY_COUNT)
-        val restoredMode = savedState.get<String>(KEY_MODE)?.let(InputMode::valueOf)
+        val restoredMode = savedState.get<String>(KEY_MODE).toInputModeOrNull()
         val restoredSelectedId = savedState.get<Long>(KEY_SELECTED_UNIT)
 
         run {
@@ -582,19 +649,39 @@ class ProductViewModel(
 
     fun showAddPortionUnitForm(show: Boolean) = _state.update { it.copy(showAddPortionUnitForm = show) }
 
-    /** A unit the user defines themselves (§6). Always saved as verified — they read their own scale. */
+    /**
+     * A unit the user defines themselves (§6). Always saved as verified — they read their own scale.
+     *
+     * [ProductUiState.savingPortionUnit] guards against a rapid double tap on *Save* starting two
+     * insert coroutines for one form submission, the same shape of race as [addCurrentToMeal].
+     */
     fun addPortionUnit(kind: PortionUnitKind, conversion: PortionConversion, customLabel: String?) {
         val product = _state.value.product ?: return
         if (product.barcode.isEmpty()) return
+        if (_state.value.savingPortionUnit) return
+
+        _state.update { it.copy(savingPortionUnit = true) }
         viewModelScope.launch {
-            val saved = repository.saveUserPortionUnit(
-                barcode = product.barcode,
-                kind = kind,
-                conversion = conversion,
-                customLabel = customLabel,
-            )
-            _state.update { it.copy(portionUnits = it.portionUnits + saved, showAddPortionUnitForm = false) }
-            switchToPortionUnit(saved.id)
+            try {
+                val saved = repository.saveUserPortionUnit(
+                    barcode = product.barcode,
+                    kind = kind,
+                    conversion = conversion,
+                    customLabel = customLabel,
+                )
+                _state.update {
+                    it.copy(
+                        portionUnits = it.portionUnits + saved,
+                        showAddPortionUnitForm = false,
+                        savingPortionUnit = false,
+                    )
+                }
+                switchToPortionUnit(saved.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(savingPortionUnit = false) }
+            }
         }
     }
 
@@ -659,18 +746,43 @@ class ProductViewModel(
     // ---- temporary meal (development-pass brief §7-§11) ----------------------------------------
 
     /**
-     * Add the calculation currently on screen to the meal (§9).
+     * What [addCurrentToMeal] actually writes — captured synchronously from state before any
+     * coroutine suspends, so a fast edit after the tap cannot change what gets persisted.
      *
-     * [portionDescription] comes from the UI in the user's own words — "2 slices", "½ pack", "200
-     * ml" — because pluralised unit names live in resources and only a composable can read them.
-     * The ViewModel supplies the numbers; the screen supplies the wording.
-     *
-     * The stored carbohydrate figure is [ProductUiState.result]'s exact value: the number the user
-     * is looking at as they tap. Nothing is recomputed here, so the meal cannot disagree with the
-     * screen it was added from.
+     * Reading `_state.value` piecemeal *inside* a launched coroutine let an edit that lands after
+     * suspension begins (a keystroke, a portion-unit switch) blend into the same write: the
+     * description could describe calculation A while the exact carbohydrate figure came from
+     * calculation B, because each field was read at whatever moment the coroutine happened to reach
+     * that line. This type makes that impossible — every field is fixed before `launch` runs at all.
      */
-    fun addCurrentToMeal(portionDescription: String, fallbackName: String = "") {
-        val product = _state.value.product ?: return
+    private sealed interface PendingMealItem {
+        data class Weighed(
+            val barcode: String?,
+            val displayName: String,
+            val portionDescription: String,
+            val resolvedAmount: BigDecimal,
+            val basis: NutritionBasis,
+            val carbsPer100: BigDecimal,
+            val exactCarbs: BigDecimal,
+        ) : PendingMealItem
+
+        data class DirectCarbs(
+            val barcode: String?,
+            val displayName: String,
+            val portionDescription: String,
+            val count: BigDecimal,
+            val carbsPerUnit: BigDecimal,
+            val exactCarbs: BigDecimal,
+        ) : PendingMealItem
+    }
+
+    /**
+     * Builds the exact, immutable write [addCurrentToMeal] will perform, or null if the state on
+     * screen right now has nothing addable — mirrors the early-`return@launch` guards the previous
+     * implementation ran *inside* the coroutine, but run here, synchronously, before one starts.
+     */
+    private fun buildPendingMealItem(portionDescription: String, fallbackName: String): PendingMealItem? {
+        val product = _state.value.product ?: return null
         val barcode = product.barcode.takeIf { !_state.value.unsaved }
         val directCarbs = _state.value.directCarbResult
         val conversion = _state.value.selectedPortionUnit?.conversion
@@ -680,39 +792,87 @@ class ProductViewModel(
         // the screen for the same reason [portionDescription] does: it lives in resources.
         val displayName = product.name.ifBlank { fallbackName }
 
-        viewModelScope.launch {
-            if (directCarbs != null && conversion is PortionConversion.DirectCarbs) {
-                val count = PortionParser.parse(_state.value.countText) ?: return@launch
-                repository.addDirectCarbMealItem(
-                    productBarcode = barcode,
-                    displayName = displayName,
-                    portionDescription = portionDescription,
-                    count = count,
-                    carbsPerUnit = conversion.carbsPerUnit,
-                    exactCarbs = directCarbs,
-                )
-            } else {
-                val result = _state.value.result ?: return@launch
-                val resolved = PortionParser.parse(_state.value.portionText) ?: return@launch
-                repository.addMealItem(
-                    productBarcode = barcode,
-                    displayName = displayName,
-                    portionDescription = portionDescription,
-                    resolvedAmount = resolved,
-                    basis = product.basis,
-                    carbsPer100 = product.carbsPer100,
-                    exactCarbs = result.exact,
-                )
-            }
-            // Adding to a meal is the strongest possible signal that this portion is real — stronger
-            // than the debounced typing signal — so it counts towards *Usual* too (§13).
-            rememberUsage()
-            _state.update { it.copy(addedToMeal = true) }
+        return if (directCarbs != null && conversion is PortionConversion.DirectCarbs) {
+            val count = PortionParser.parse(_state.value.countText) ?: return null
+            PendingMealItem.DirectCarbs(
+                barcode = barcode,
+                displayName = displayName,
+                portionDescription = portionDescription,
+                count = count,
+                carbsPerUnit = conversion.carbsPerUnit,
+                exactCarbs = directCarbs,
+            )
+        } else {
+            val result = _state.value.result ?: return null
+            val resolved = PortionParser.parse(_state.value.portionText) ?: return null
+            PendingMealItem.Weighed(
+                barcode = barcode,
+                displayName = displayName,
+                portionDescription = portionDescription,
+                resolvedAmount = resolved,
+                basis = product.basis,
+                carbsPer100 = product.carbsPer100,
+                exactCarbs = result.exact,
+            )
         }
     }
 
-    /** Consumed by the screen once it has acted on [ProductUiState.addedToMeal]. */
-    fun consumeAddedToMeal() = _state.update { it.copy(addedToMeal = false) }
+    /**
+     * Add the calculation currently on screen to the meal (§9), transactionally from the user's
+     * perspective.
+     *
+     * The snapshot is built and validated *before* `launch`, so nothing read after that point can
+     * change what gets written (see [PendingMealItem]). [ProductUiState.addingToMeal] blocks a
+     * second tap from starting a second write while the first is still in flight — without it a
+     * rapid double tap on *Add to meal* inserts two rows for one user action. On success, if
+     * [scanNext] was requested, a [ProductNavigationEvent.ScanNext] is sent — only then, and only
+     * once — so the NavHost cannot navigate to the scanner (destroying this ViewModel and cancelling
+     * this coroutine) before the write has actually landed. On failure the screen stays put, the
+     * guard is released and [ProductUiState.mealAddFailed] is set so the user can retry; nothing
+     * pretends the item was added.
+     */
+    fun addCurrentToMeal(portionDescription: String, fallbackName: String = "", scanNext: Boolean = false) {
+        if (_state.value.addingToMeal) return
+        val pending = buildPendingMealItem(portionDescription, fallbackName) ?: return
+
+        _state.update { it.copy(addingToMeal = true, mealAddFailed = false) }
+        viewModelScope.launch {
+            try {
+                when (pending) {
+                    is PendingMealItem.DirectCarbs -> repository.addDirectCarbMealItem(
+                        productBarcode = pending.barcode,
+                        displayName = pending.displayName,
+                        portionDescription = pending.portionDescription,
+                        count = pending.count,
+                        carbsPerUnit = pending.carbsPerUnit,
+                        exactCarbs = pending.exactCarbs,
+                    )
+
+                    is PendingMealItem.Weighed -> repository.addMealItem(
+                        productBarcode = pending.barcode,
+                        displayName = pending.displayName,
+                        portionDescription = pending.portionDescription,
+                        resolvedAmount = pending.resolvedAmount,
+                        basis = pending.basis,
+                        carbsPer100 = pending.carbsPer100,
+                        exactCarbs = pending.exactCarbs,
+                    )
+                }
+                // Adding to a meal is the strongest possible signal that this portion is real —
+                // stronger than the debounced typing signal — so it counts towards *Usual* too
+                // (§13). Awaited, not fire-and-forget: it is part of what "the add succeeded" means.
+                writeUsageSnapshot(buildUsageSnapshot())
+                _state.update { it.copy(addingToMeal = false) }
+                if (scanNext) {
+                    _navigationEvents.send(ProductNavigationEvent.ScanNext)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(addingToMeal = false, mealAddFailed = true) }
+            }
+        }
+    }
 
     fun removeMealItem(item: MealItem) {
         viewModelScope.launch { repository.removeMealItem(item) }
@@ -744,8 +904,18 @@ class ProductViewModel(
         }
     }
 
+    /** What [rememberUsage] and [rememberUsageAndAwait] write, fixed before any coroutine suspends. */
+    private data class UsageSnapshot(
+        val barcode: String,
+        val resolvedPortion: BigDecimal?,
+        val mode: InputMode,
+        val portionUnitId: Long?,
+        val count: BigDecimal?,
+    )
+
     /**
-     * Remember the portion once the user has actually acted on the result (§20, §21, §11-§12).
+     * Captures what "the portion the user is currently looking at" means right now, or null if
+     * there is nothing usable to record (§20, §21, §11-§12).
      *
      * Branches on the selected unit's [PortionConversion] rather than falling back through nullable
      * values (correction pass §4). The old form was `parse(portionText) ?: count`, which for a
@@ -756,9 +926,9 @@ class ProductViewModel(
      * still hold grams left over from an earlier weight-based selection this session, which would be
      * recorded as if the user had just chosen it. The typed branch below never reads it there.
      */
-    fun rememberUsage() {
-        val product = _state.value.product ?: return
-        if (_state.value.unsaved || product.barcode.isEmpty()) return
+    private fun buildUsageSnapshot(): UsageSnapshot? {
+        val product = _state.value.product ?: return null
+        if (_state.value.unsaved || product.barcode.isEmpty()) return null
         val mode = _state.value.inputMode
         val conversion = _state.value.selectedPortionUnit?.conversion
 
@@ -775,17 +945,51 @@ class ProductViewModel(
         }
 
         // Nothing usable to record at all: no weight and, in countable mode, no count either.
-        if (resolvedPortion == null && count == null) return
+        if (resolvedPortion == null && count == null) return null
 
-        viewModelScope.launch {
-            repository.recordUse(
-                product.barcode,
-                resolvedPortion,
-                mode = mode,
-                portionUnitId = _state.value.selectedPortionUnitId,
-                count = count,
-            )
-        }
+        return UsageSnapshot(
+            barcode = product.barcode,
+            resolvedPortion = resolvedPortion,
+            mode = mode,
+            portionUnitId = _state.value.selectedPortionUnitId,
+            count = count,
+        )
+    }
+
+    private suspend fun writeUsageSnapshot(snapshot: UsageSnapshot?) {
+        if (snapshot == null) return
+        repository.recordUse(
+            snapshot.barcode,
+            snapshot.resolvedPortion,
+            mode = snapshot.mode,
+            portionUnitId = snapshot.portionUnitId,
+            count = snapshot.count,
+        )
+    }
+
+    /**
+     * Remember the portion once the user has actually acted on the result — the debounced
+     * typing-settle signal (§20, §21, §11-§12). Fire-and-forget by design: the collector in [init]
+     * owns this coroutine's lifetime and keeps running for as long as the ViewModel does, so there
+     * is no navigation racing to cancel it the way there is on exit (see [rememberUsageAndAwait]).
+     */
+    fun rememberUsage() {
+        val snapshot = buildUsageSnapshot() ?: return
+        viewModelScope.launch { writeUsageSnapshot(snapshot) }
+    }
+
+    /**
+     * The exit-time counterpart to [rememberUsage], for a caller that must not proceed (pop the
+     * back stack, navigate away) until the write has actually landed.
+     *
+     * `rememberUsage()` alone is unsafe on the way out: it launches into [viewModelScope] and
+     * returns immediately, so a caller that pops the back stack right after it — the previous
+     * behaviour of both toolbar Back and the system back gesture — can destroy this ViewModel and
+     * cancel that coroutine before Room ever runs. This suspends until the write completes (or is
+     * confirmed to be a no-op), so the caller can safely navigate only after it returns.
+     */
+    suspend fun rememberUsageAndAwait() {
+        writeUsageSnapshot(buildUsageSnapshot())
     }
 
     fun toggleFavorite() {

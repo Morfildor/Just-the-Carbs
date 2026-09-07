@@ -226,11 +226,11 @@ class ProductDaoTest {
     fun aUsedPortionCannotReappearAfterClearingHistory() = runTest {
         val usage = database.portionUsageDao()
         dao.upsert(product("111", usedSecondsAfterEpoch = 10).toEntity())
-        usage.insert(
+        usage.upsert(
             PortionUsageEntity(
                 productBarcode = "111",
                 inputMode = InputMode.GRAMS.name,
-                portionUnitId = null,
+                portionUnitId = PortionUsageEntity.NO_UNIT_SENTINEL,
                 amount = "65",
                 usageCount = 4,
                 lastUsedAt = epoch.toEpochMilli(),
@@ -293,7 +293,7 @@ class ProductDaoTest {
                 updatedAt = epoch.toEpochMilli(),
             ),
         )
-        usage.insert(
+        usage.upsert(
             PortionUsageEntity(
                 productBarcode = "111",
                 inputMode = InputMode.PORTION_UNIT.name,

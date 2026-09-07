@@ -3,6 +3,7 @@ package app.justthecarbs.ocr
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -36,6 +37,7 @@ import java.util.concurrent.TimeUnit
  *
  * Nothing here asserts a product outcome; it prints a table. Read it, then design.
  */
+@ExploratoryExperiment
 class RecognizerCapabilityProbeTest {
 
     private val testContext get() = InstrumentationRegistry.getInstrumentation().context

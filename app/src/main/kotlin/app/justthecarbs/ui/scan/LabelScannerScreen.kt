@@ -113,6 +113,7 @@ import app.justthecarbs.ui.theme.Space
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
 import java.math.BigDecimal
@@ -1834,9 +1835,16 @@ private fun LabelCamera(
                                 saveScope.launch {
                                     // Success is whatever persistence reports, never the mere fact
                                     // that a save was started.
-                                    val persisted = runCatching {
+                                    //
+                                    // A plain runCatching would also catch CancellationException —
+                                    // if this screen is disposed mid-save (retake, navigate away),
+                                    // that would report as an ordinary failed save instead of
+                                    // letting the cancellation propagate (P1 §14).
+                                    val persisted = try {
                                         onSavePortionUnit(kind, conversion)
-                                    }.getOrElse { error ->
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (error: Exception) {
                                         OcrDiagnosticsLogger.failure("Could not save portion unit", error)
                                         false
                                     }

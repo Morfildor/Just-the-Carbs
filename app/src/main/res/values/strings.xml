@@ -193,6 +193,7 @@
     -->
     <string name="meal_add" tools:ignore="MissingTranslation">Add to meal</string>
     <string name="meal_add_and_scan" tools:ignore="MissingTranslation">Add &amp; scan next</string>
+    <string name="meal_add_failed" tools:ignore="MissingTranslation">Could not add this to the meal. Your calculation is unchanged.</string>
     <string name="meal_bar_summary" tools:ignore="MissingTranslation">Meal · %1$s · %2$s g carbs</string>
     <string name="meal_title" tools:ignore="MissingTranslation">Meal total</string>
     <string name="meal_total_label" tools:ignore="MissingTranslation">MEAL TOTAL</string>

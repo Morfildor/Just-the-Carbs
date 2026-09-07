@@ -1,5 +1,6 @@
 package app.justthecarbs.data.remote
 
+import app.justthecarbs.domain.BarcodeValidator
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.NutritionValueValidator
 import app.justthecarbs.domain.PackageBasisResolver
@@ -161,7 +162,11 @@ class SearchALiciousDataSource(
      * ordinary states of a crowd-sourced record, and a user may still recognise the package.
      */
     private fun SearchALiciousHit.toHit(): ProductSearchHit? {
-        val barcode = code?.takeIf { it.isNotBlank() } ?: return null
+        // Validated and normalised (P1 §10), not merely non-blank — see
+        // OpenFoodFactsDataSource.toHit's identical fix for the full rationale. `code` here is
+        // equally untrusted remote text, and this hit ends up in the same `product/{barcode}`
+        // navigation route.
+        val barcode = BarcodeValidator.normalize(code.orEmpty()) ?: return null
         val displayName = listOfNotNull(productNameNl, productName)
             .firstOrNull { it.isNotBlank() }
             ?.trim()

@@ -118,9 +118,9 @@ class SearchALiciousDataSourceTest {
         respond(
             """
             {"count":3,"hits":[
-              {"code":"1","product_name":"A","brands":["First","Second"]},
-              {"code":"2","product_name":"B","brands":"Legacy Style,Other"},
-              {"code":"3","product_name":"C","brands":[]}
+              {"code":"1111111111116","product_name":"A","brands":["First","Second"]},
+              {"code":"2222222222222","product_name":"B","brands":"Legacy Style,Other"},
+              {"code":"3333333333338","product_name":"C","brands":[]}
             ]}
             """.trimIndent(),
         )
@@ -136,11 +136,11 @@ class SearchALiciousDataSourceTest {
 
     @Test
     fun `a hit with no brand, image, quantity or carbs is still returned`() = runTest {
-        respond("""{"count":1,"hits":[{"code":"5","product_name":"Bare record"}]}""")
+        respond("""{"count":1,"hits":[{"code":"5555555555550","product_name":"Bare record"}]}""")
 
         val hit = hits(dataSource.search("bare")).single()
 
-        assertEquals("5", hit.barcode)
+        assertEquals("5555555555550", hit.barcode)
         assertEquals("Bare record", hit.name)
         assertNull(hit.brand)
         assertNull(hit.imageUrl)
@@ -157,16 +157,16 @@ class SearchALiciousDataSourceTest {
             {"count":5,"hits":[
               {"product_name":"No barcode"},
               {"code":"","product_name":"Blank barcode"},
-              {"code":"7"},
-              {"code":"8","product_name":"   "},
-              {"code":"9","product_name":"Keeps this one"}
+              {"code":"7777777777772"},
+              {"code":"8888888888888","product_name":"   "},
+              {"code":"9999999999994","product_name":"Keeps this one"}
             ]}
             """.trimIndent(),
         )
 
         val hits = hits(dataSource.search("x"))
 
-        assertEquals(listOf("9"), hits.map { it.barcode })
+        assertEquals(listOf("9999999999994"), hits.map { it.barcode })
     }
 
     /**
@@ -180,18 +180,89 @@ class SearchALiciousDataSourceTest {
         respond(
             """
             {"count":4,"hits":[
-              {"code":"100","product_name":"Gouda","brands":["First seen"]},
-              {"code":"200","product_name":"Gouda","brands":["A different product"]},
-              {"code":"100","product_name":"Gouda","brands":["Duplicate, dropped"]}
+              {"code":"1111111111116","product_name":"Gouda","brands":["First seen"]},
+              {"code":"2222222222222","product_name":"Gouda","brands":["A different product"]},
+              {"code":"1111111111116","product_name":"Gouda","brands":["Duplicate, dropped"]}
             ]}
             """.trimIndent(),
         )
 
         val hits = hits(dataSource.search("gouda"))
 
-        assertEquals(listOf("100", "200"), hits.map { it.barcode })
+        assertEquals(listOf("1111111111116", "2222222222222"), hits.map { it.barcode })
         // distinctBy keeps the FIRST occurrence, which is what preserves relevance ordering.
         assertEquals("First seen", hits[0].brand)
+    }
+
+    // ---- P1 §10: a malformed remote `code` must not reach a search hit ---------------------------
+    //
+    // `hit.barcode` becomes a `product/{barcode}` navigation route verbatim. Mirrors
+    // OpenFoodFactsSearchTest's identical group — see that file for the full rationale. This
+    // provider's `code` field is equally untrusted remote text and reaches the same route.
+
+    @Test
+    fun `a search hit whose code contains a path separator is dropped rather than passed through`() = runTest {
+        respond("""{"count":1,"hits":[{"code":"123/456","product_name":"Suspicious"}]}""")
+
+        // `count` claimed one match and it was dropped, so — per this provider's own
+        // count-claims-but-nothing-survived rule (see "unusable hits with no count at all are
+        // MALFORMED" above) — this is MALFORMED, not NoMatches: the dropped hit must still make
+        // the response fallback-eligible rather than being silently reported as "no such product".
+        val result = dataSource.search("suspicious")
+        assertEquals(
+            "a code that could corrupt the product/{barcode} route must not become a hit",
+            LookupError.MALFORMED,
+            (result as ProductSearchResult.Failed).error,
+        )
+    }
+
+    @Test
+    fun `a search hit whose code has an invalid check digit is dropped`() = runTest {
+        respond("""{"count":1,"hits":[{"code":"8710496979129","product_name":"Wrong Check Digit"}]}""")
+
+        val result = dataSource.search("query")
+        assertEquals(LookupError.MALFORMED, (result as ProductSearchResult.Failed).error)
+    }
+
+    @Test
+    fun `a search hit whose code contains non-digit characters is dropped`() = runTest {
+        respond("""{"count":1,"hits":[{"code":"87104969791?5","product_name":"Malformed"}]}""")
+
+        val result = dataSource.search("query")
+        assertEquals(LookupError.MALFORMED, (result as ProductSearchResult.Failed).error)
+    }
+
+    /** A malformed hit does not poison the rest of the page — the other, valid hits still come through. */
+    @Test
+    fun `one malformed code does not discard the other valid hits on the same page`() = runTest {
+        respond(
+            """
+            {"count":2,"hits":[
+              {"code":"123/456","product_name":"Bad"},
+              {"code":"8710496979125","product_name":"Chocoladehagel puur","brands":["De Ruijter"]}
+            ]}
+            """.trimIndent(),
+        )
+
+        val result = hits(dataSource.search("mixed"))
+
+        assertEquals(1, result.size)
+        assertEquals("8710496979125", result.single().barcode)
+    }
+
+    /**
+     * A valid 12-digit UPC-A must be normalised to the 13-digit form this app keys products by —
+     * the same normalisation a scanned or manually-typed barcode already receives, so a search
+     * result and a scanned result for the identical physical product resolve to the same row.
+     */
+    @Test
+    fun `a valid 12-digit code is normalised to the 13-digit form used as the database key`() = runTest {
+        respond("""{"count":1,"hits":[{"code":"036000291452","product_name":"UPC-A Product"}]}""")
+
+        val result = hits(dataSource.search("upc"))
+
+        assertEquals(1, result.size)
+        assertEquals("0036000291452", result.single().barcode)
     }
 
     @Test
@@ -199,15 +270,18 @@ class SearchALiciousDataSourceTest {
         respond(
             """
             {"count":4,"hits":[
-              {"code":"1","product_name":"Most relevant"},
-              {"code":"2","product_name":"Second"},
-              {"code":"3","product_name":"Third"},
-              {"code":"4","product_name":"Least"}
+              {"code":"1111111111116","product_name":"Most relevant"},
+              {"code":"2222222222222","product_name":"Second"},
+              {"code":"3333333333338","product_name":"Third"},
+              {"code":"4444444444444","product_name":"Least"}
             ]}
             """.trimIndent(),
         )
 
-        assertEquals(listOf("1", "2", "3", "4"), hits(dataSource.search("x")).map { it.barcode })
+        assertEquals(
+            listOf("1111111111116", "2222222222222", "3333333333338", "4444444444444"),
+            hits(dataSource.search("x")).map { it.barcode },
+        )
     }
 
     /**
@@ -283,15 +357,15 @@ class SearchALiciousDataSourceTest {
         respond(
             """{"count":3,"hits":[
                  {"product_name":"no code"},
-                 {"code":"111","product_name":"Real product"},
-                 {"code":"222"}
+                 {"code":"1111111111116","product_name":"Real product"},
+                 {"code":"2222222222222"}
                ]}""",
         )
 
         val hits = hits(dataSource.search("x"))
 
         assertEquals(1, hits.size)
-        assertEquals("111", hits[0].barcode)
+        assertEquals("1111111111116", hits[0].barcode)
     }
 
     /**
@@ -484,7 +558,7 @@ class SearchALiciousDataSourceTest {
     @Test
     fun `an impossible carbohydrate value is dropped rather than shown`() = runTest {
         respond(
-            """{"count":1,"hits":[{"code":"1","product_name":"Corrupt",
+            """{"count":1,"hits":[{"code":"1111111111116","product_name":"Corrupt",
                "quantity":"100 g","nutriments":{"carbohydrates_100g":900}}]}""",
         )
 
@@ -502,7 +576,7 @@ class SearchALiciousDataSourceTest {
     @Test
     fun `an unreadable quantity yields no basis and no number`() = runTest {
         respond(
-            """{"count":1,"hits":[{"code":"1","product_name":"Mystery pack",
+            """{"count":1,"hits":[{"code":"1111111111116","product_name":"Mystery pack",
                "quantity":"family size","nutriments":{"carbohydrates_100g":20}}]}""",
         )
 
@@ -518,7 +592,7 @@ class SearchALiciousDataSourceTest {
     @Test
     fun `the localized name is preferred over the default one`() = runTest {
         respond(
-            """{"count":1,"hits":[{"code":"1","product_name":"Chocolate sprinkles",
+            """{"count":1,"hits":[{"code":"1111111111116","product_name":"Chocolate sprinkles",
                "product_name_nl":"Chocoladehagelslag"}]}""",
         )
 

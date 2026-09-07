@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import org.junit.Test
 import java.io.IOException
 
@@ -62,6 +63,7 @@ import java.io.IOException
  *
  * Read the tag `JustTheCarbsCluster`.
  */
+@ExploratoryExperiment
 class RawElementClusteringDiagnosticTest {
 
     private val testContext get() = InstrumentationRegistry.getInstrumentation().context

@@ -3,6 +3,7 @@ package app.justthecarbs.ocr
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeUnit
  * it a flaky test rather than a useful one. It is here to catch an order-of-magnitude regression
  * (someone reintroducing recognition behind the crop), not to police milliseconds.
  */
+@ExploratoryExperiment
 class SelectedTableLatencyTest {
 
     private val testContext get() = InstrumentationRegistry.getInstrumentation().context

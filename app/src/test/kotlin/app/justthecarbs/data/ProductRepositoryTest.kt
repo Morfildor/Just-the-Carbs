@@ -405,6 +405,134 @@ class ProductRepositoryTest {
         assertEquals(0, BigDecimal("65").compareTo(stored.lastPortion!!))
     }
 
+    /**
+     * P0 §4: the three countable-portion fields (§11) are exactly as device-owned as `favorite` and
+     * `lastPortion`, and were silently dropped by the previous `fetched.copy(...)` — `fetched` is a
+     * value straight off the wire, carrying `Product`'s defaults (null) for all three. Together
+     * these fields *are* a remembered portion ("2 slices"), so an ordinary background refresh could
+     * erase it on any unverified Open Food Facts product with no error, no notice and no way to
+     * detect the loss short of noticing the next visit pre-filled nothing.
+     */
+    @Test
+    fun `a background refresh preserves the remembered countable-portion mode`() = runTest {
+        val cached = product(PLAIN_OFF, "48.2").copy(
+            lastInputMode = InputMode.PORTION_UNIT,
+            lastSelectedPortionUnitId = 7L,
+            lastCount = BigDecimal("2"),
+        )
+        val local = FakeLocal(listOf(cached))
+        val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "50.1")))
+        val repository = repositoryOf(local, remote)
+
+        repository.refreshFromRemote(barcode)
+
+        val stored = local.stored.getValue(barcode)
+        assertEquals(
+            "refresh must not clear the remembered countable-portion mode",
+            InputMode.PORTION_UNIT,
+            stored.lastInputMode,
+        )
+        assertEquals(7L, stored.lastSelectedPortionUnitId)
+        assertEquals(0, BigDecimal("2").compareTo(stored.lastCount!!))
+    }
+
+    /**
+     * A [ProductDataSource] whose [fetch] suspends for [delayMs] before returning, and whose caller
+     * can mutate [local] during that suspension — standing in for the user acting on the product
+     * (favouriting it, changing its remembered portion) while the network request is still in
+     * flight. This is what makes the lost-update race in P0 §4 reachable in a test at all: without
+     * an actual suspension between reading `existing` and writing the merged result, there is no
+     * window for a concurrent local write to land in.
+     */
+    private class SuspendingRemote(
+        private val result: ProductFetchResult,
+        private val delayMs: Long,
+        private val onSuspended: suspend () -> Unit,
+    ) : ProductDataSource {
+        override suspend fun fetch(barcode: String): ProductFetchResult {
+            onSuspended()
+            kotlinx.coroutines.delay(delayMs)
+            return result
+        }
+    }
+
+    /**
+     * The classic lost-update shape: read, suspend, a concurrent write lands, then a merge based on
+     * the pre-suspension read overwrites it. `refreshFromRemote` used to build its merged product
+     * from `existing` — read *before* `remote.fetch` — so a favourite toggled while the network call
+     * was in flight was silently rolled back the instant the refresh's own write landed afterwards.
+     */
+    @Test
+    fun `a favourite toggled while a refresh is in flight survives the refresh`() = runTest {
+        val cached = product(PLAIN_OFF, "48.2").copy(favorite = false)
+        val local = FakeLocal(listOf(cached))
+        val remote = SuspendingRemote(
+            result = ProductFetchResult.Found(product(PLAIN_OFF, "50.1")),
+            delayMs = 100L,
+            onSuspended = {
+                // The user favourites the product while the network request the refresh started is
+                // still in flight — exactly the window a stale pre-fetch snapshot cannot see.
+                local.save(local.stored.getValue(barcode).copy(favorite = true))
+            },
+        )
+        val repository = repositoryOf(local, remote)
+
+        repository.refreshFromRemote(barcode)
+
+        assertTrue(
+            "a favourite set while the refresh was in flight must survive the refresh's own write",
+            local.stored.getValue(barcode).favorite,
+        )
+    }
+
+    /** Same race, for the remembered portion rather than the favourite flag. */
+    @Test
+    fun `a new portion recorded while a refresh is in flight survives the refresh`() = runTest {
+        val cached = product(PLAIN_OFF, "48.2").copy(lastPortion = BigDecimal("50"))
+        val local = FakeLocal(listOf(cached))
+        val remote = SuspendingRemote(
+            result = ProductFetchResult.Found(product(PLAIN_OFF, "50.1")),
+            delayMs = 100L,
+            onSuspended = {
+                local.save(local.stored.getValue(barcode).copy(lastPortion = BigDecimal("90")))
+            },
+        )
+        val repository = repositoryOf(local, remote)
+
+        repository.refreshFromRemote(barcode)
+
+        assertEquals(
+            "a portion recorded while the refresh was in flight must survive the refresh's own write",
+            0,
+            BigDecimal("90").compareTo(local.stored.getValue(barcode).lastPortion!!),
+        )
+    }
+
+    /** The fix must not turn into "never update anything" — remote-owned fields still refresh. */
+    @Test
+    fun `remote-owned fields still update across the same race window`() = runTest {
+        val cached = product(PLAIN_OFF, "48.2").copy(favorite = false)
+        val local = FakeLocal(listOf(cached))
+        val remote = SuspendingRemote(
+            result = ProductFetchResult.Found(product(PLAIN_OFF, "55.5")),
+            delayMs = 100L,
+            onSuspended = {
+                local.save(local.stored.getValue(barcode).copy(favorite = true))
+            },
+        )
+        val repository = repositoryOf(local, remote)
+
+        val outcome = repository.refreshFromRemote(barcode)
+
+        assertTrue(outcome is RefreshOutcome.RemoteDiffers)
+        assertEquals(
+            "the fix for the race must not come at the cost of the remote figure being recorded",
+            0,
+            BigDecimal("55.5").compareTo((outcome as RefreshOutcome.RemoteDiffers).latestRemoteCarbs),
+        )
+        assertEquals(now, local.stored.getValue(barcode).remoteUpdatedAt)
+    }
+
     @Test
     fun `verifying a product keeps the original online value and stamps the time`() = runTest {
         val local = FakeLocal(listOf(product(PLAIN_OFF, "48.2")))

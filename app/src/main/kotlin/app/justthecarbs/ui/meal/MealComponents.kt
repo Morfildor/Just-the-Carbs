@@ -53,6 +53,13 @@ fun MealActions(
     onAdd: () -> Unit,
     onAddAndScanNext: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * False while a previous tap's write is still in flight.
+     *
+     * The write is asynchronous, so without this a second tap before the first completes starts a
+     * second insert — two rows in the meal for one user action.
+     */
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -60,6 +67,7 @@ fun MealActions(
     ) {
         OutlinedButton(
             onClick = onAdd,
+            enabled = enabled,
             shape = RoundedCornerShape(Space.buttonRadius),
             modifier = Modifier.weight(1f).testTag(MEAL_ADD_TAG),
         ) {
@@ -70,6 +78,7 @@ fun MealActions(
         // between adding six things and giving up after two (§11).
         Button(
             onClick = onAddAndScanNext,
+            enabled = enabled,
             shape = RoundedCornerShape(Space.buttonRadius),
             modifier = Modifier.weight(1f).testTag(MEAL_ADD_AND_SCAN_TAG),
         ) {

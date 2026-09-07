@@ -1,5 +1,6 @@
 package app.justthecarbs.data.remote
 
+import app.justthecarbs.domain.BarcodeValidator
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.NutritionValueValidator
@@ -95,7 +96,17 @@ class OpenFoodFactsDataSource(
     }
 
     private fun OffProduct.toHit(): ProductSearchHit? {
-        val barcode = code?.takeIf { it.isNotBlank() } ?: return null
+        // Validated and normalised (P1 §10), not merely non-blank. `code` is untrusted remote text —
+        // a search hit's barcode has never passed through the scanner or manual entry's own
+        // BarcodeValidator check, unlike every other barcode this app puts into a `product/{barcode}`
+        // route. A malformed value (wrong length, non-digit characters, or one containing `/`, `?`,
+        // `#`, `%` or whitespace) reaching that route unvalidated could corrupt navigation — extra
+        // path segments, a broken route match, or characters a URI parser treats as delimiters. This
+        // is the boundary (see the class KDoc) where that stops being possible: `normalize` returns
+        // null for anything that is not a real, check-digit-valid GTIN, and a hit that fails is
+        // silently absent from the result list rather than reaching the screen with a barcode this
+        // app cannot safely act on.
+        val barcode = BarcodeValidator.normalize(code.orEmpty()) ?: return null
         val displayName = listOfNotNull(productNameNl, productName)
             .firstOrNull { it.isNotBlank() }
             ?.trim()

@@ -25,13 +25,22 @@ class HomeViewModel(private val repository: ProductRepository) : ViewModel() {
     /**
      * Recents come straight from the database, so home draws without waiting for anything (§7).
      * `WhileSubscribed` keeps the query alive briefly across a rotation instead of re-running it.
+     *
+     * One batch [ProductRepository.findPortionUnits] call per emission, not one [ProductRepository.findPortionUnit]
+     * call per product (P1 §13) — the loop form issued one Room query per recent product on every
+     * list change, up to [RECENTS_LIMIT] queries for a single screen draw.
      */
     val recents: StateFlow<List<RecentEntry>> = repository.observeRecents(RECENTS_LIMIT)
         .map { products ->
+            val unitIds = products.mapNotNull { product ->
+                product.lastSelectedPortionUnitId
+                    ?.takeIf { product.lastInputMode == InputMode.PORTION_UNIT }
+            }
+            val unitsById = repository.findPortionUnits(unitIds).associateBy { it.id }
             products.map { product ->
                 val lastUnit = product.lastSelectedPortionUnitId
                     ?.takeIf { product.lastInputMode == InputMode.PORTION_UNIT }
-                    ?.let { repository.findPortionUnit(it) }
+                    ?.let { unitsById[it] }
                 RecentEntry(product, lastUnit)
             }
         }

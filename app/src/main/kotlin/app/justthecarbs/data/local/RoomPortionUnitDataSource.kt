@@ -15,6 +15,11 @@ class RoomPortionUnitDataSource(private val dao: PortionUnitDao) : PortionUnitSt
 
     override suspend fun findById(id: Long): PortionUnit? = dao.findById(id)?.toDomain()
 
+    override suspend fun findByIds(ids: List<Long>): List<PortionUnit> {
+        if (ids.isEmpty()) return emptyList()
+        return dao.findByIds(ids.distinct()).map { it.toDomain() }
+    }
+
     override suspend fun save(unit: PortionUnit): PortionUnit {
         val entity = unit.toEntity()
         val id = dao.upsert(entity)

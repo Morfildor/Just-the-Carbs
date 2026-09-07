@@ -125,22 +125,32 @@ class ProductRepository(
 
         refreshPortionUnitFromCandidate(barcode, fetchedResult.portionUnitCandidate)
 
+        // Re-read immediately before writing, rather than merging onto the snapshot taken before
+        // `remote.fetch` suspended (P0 §4). The network call above can take hundreds of
+        // milliseconds; if the user favourites this product, changes its remembered portion, or
+        // records a new use while it is in flight, `existing` no longer describes the row on disk.
+        // Merging onto it anyway is a classic lost update: this save would silently roll that
+        // change back to whatever `existing` held at the *start* of the network call. Falling back
+        // to `existing` only if the row has vanished entirely (a real edge case a concurrent
+        // deletion could produce) rather than aborting the refresh outright.
+        val latest = (local.fetch(barcode) as? ProductFetchResult.Found)?.product ?: existing
+
         val remoteCarbs = fetched.carbsPer100
-        val differs = remoteCarbs.compareTo(existing.carbsPer100) != 0
+        val differs = remoteCarbs.compareTo(latest.carbsPer100) != 0
 
         // §23: a verified or user-authored product belongs to the user. The newer remote figure is
         // *recorded* so the app can mention that the product may have been reformulated (§24), but
         // the value in use is never replaced.
-        if (!existing.isRemoteRefreshable) {
+        if (!latest.isRemoteRefreshable) {
             local.save(
-                existing.copy(
+                latest.copy(
                     latestRemoteCarbs = remoteCarbs,
                     remoteUpdatedAt = clock.instant(),
                     // Images are display-only metadata. Refreshing them must not move the product
                     // facts or the immutable calculation snapshot the user is working with.
-                    images = fetched.images.ifEmpty { existing.images },
-                    imageUrl = fetched.imageUrl ?: existing.imageUrl,
-                    largeImageUrl = fetched.largeImageUrl ?: existing.largeImageUrl,
+                    images = fetched.images.ifEmpty { latest.images },
+                    imageUrl = fetched.imageUrl ?: latest.imageUrl,
+                    largeImageUrl = fetched.largeImageUrl ?: latest.largeImageUrl,
                 ),
             )
             return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs) else RefreshOutcome.Unchanged
@@ -150,16 +160,26 @@ class ProductRepository(
         // provider's value either way and the user has not expressed an opinion about it.
         // Remote owns the product facts; the device owns how the user has been using it, so
         // merging rather than replacing stops a refresh from clearing a favourite.
+        //
+        // Every device-owned field is carried forward from `latest`, not just the three this once
+        // preserved (`favorite`, `lastPortion`, `lastUsedAt`): `lastInputMode`,
+        // `lastSelectedPortionUnitId` and `lastCount` together *are* a remembered countable portion
+        // ("2 slices"), and omitting them let an ordinary background refresh silently erase it,
+        // since `fetched` — a value straight off the wire — carries `Product`'s defaults (null) for
+        // all three.
         local.save(
             fetched.copy(
-                favorite = existing.favorite,
-                lastPortion = existing.lastPortion,
-                lastUsedAt = existing.lastUsedAt,
+                favorite = latest.favorite,
+                lastPortion = latest.lastPortion,
+                lastUsedAt = latest.lastUsedAt,
+                lastInputMode = latest.lastInputMode,
+                lastSelectedPortionUnitId = latest.lastSelectedPortionUnitId,
+                lastCount = latest.lastCount,
                 // A response may temporarily omit selected_images. Keep previously validated
                 // display metadata rather than turning a cached offline gallery into an empty one.
-                images = fetched.images.ifEmpty { existing.images },
-                imageUrl = fetched.imageUrl ?: existing.imageUrl,
-                largeImageUrl = fetched.largeImageUrl ?: existing.largeImageUrl,
+                images = fetched.images.ifEmpty { latest.images },
+                imageUrl = fetched.imageUrl ?: latest.imageUrl,
+                largeImageUrl = fetched.largeImageUrl ?: latest.largeImageUrl,
                 latestRemoteCarbs = remoteCarbs,
                 remoteUpdatedAt = clock.instant(),
             ),
@@ -342,6 +362,9 @@ class ProductRepository(
     suspend fun findPortionUnits(barcode: String): List<PortionUnit> = portionUnits.findByBarcode(barcode)
 
     suspend fun findPortionUnit(id: Long): PortionUnit? = portionUnits.findById(id)
+
+    /** Batch lookup for Home's recents row (P1 §13) — one call for the whole visible list. */
+    suspend fun findPortionUnits(ids: List<Long>): List<PortionUnit> = portionUnits.findByIds(ids)
 
     /**
      * A unit the user defines themselves (§6): a known [kind] with their own weight, or a fully
@@ -572,23 +595,12 @@ class ProductRepository(
         // reach the two-uses threshold.
         val normalised = amount.stripTrailingZeros()
         val unitId = portionUnitId.takeIf { inputMode == InputMode.PORTION_UNIT }
-        val now = clock.instant()
 
-        val existing = portionUsage.findVariant(barcode, inputMode, unitId, normalised)
-        if (existing == null) {
-            portionUsage.save(
-                PortionUsage(
-                    productBarcode = barcode,
-                    inputMode = inputMode,
-                    portionUnitId = unitId,
-                    amount = normalised,
-                    usageCount = 1,
-                    lastUsedAt = now,
-                ),
-            )
-        } else {
-            portionUsage.save(existing.copy(usageCount = existing.usageCount + 1, lastUsedAt = now))
-        }
+        // A single atomic call (P0 §5), not a find-then-decide-then-save sequence: two concurrent
+        // recordings of the identical variant (e.g. rapid double-tap Add-to-meal calling
+        // `rememberUsage` twice) must never race a read from one against a write from the other.
+        // See [PortionUsageDao.recordUse]'s KDoc for the failure this replaces.
+        portionUsage.recordUse(barcode, inputMode, unitId, normalised, clock.instant())
 
         UsualPortionSelector.prunable(portionUsage.findByBarcode(barcode))
             .forEach { portionUsage.delete(it) }

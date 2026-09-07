@@ -10,6 +10,7 @@ import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -94,6 +95,21 @@ class ManualEntryViewModel(
 
     private val _state = MutableStateFlow(ManualEntryUiState())
     val state: StateFlow<ManualEntryUiState> = _state.asStateFlow()
+
+    /**
+     * Like [runCatching], but never catches [CancellationException] (P1 §14) — a plain
+     * `runCatching` around a suspending repository write would report the coroutine's own
+     * cancellation (e.g. this ViewModel cleared mid-save) as an ordinary failed save instead of
+     * letting it propagate, which is exactly the structured-concurrency violation this exists to
+     * avoid at every save call site below.
+     */
+    private suspend fun <T> runCatchingSuspend(block: suspend () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
 
     /**
      * Pre-fill from wherever the user came here from.
@@ -193,7 +209,7 @@ class ManualEntryViewModel(
             if (pending == null) {
                 // A failed product write must not leave the button disabled forever: the screen would
                 // be stuck with no way to retry and no explanation.
-                runCatching { repository.saveUserAuthoredProduct(product, origin = ProductDataOrigin.MANUAL) }
+                runCatchingSuspend { repository.saveUserAuthoredProduct(product, origin = ProductDataOrigin.MANUAL) }
                     .onSuccess {
                         _state.update { it.copy(savedBarcode = key, saving = false, saveFailed = false) }
                     }
@@ -215,7 +231,7 @@ class ManualEntryViewModel(
             // this save, so a failed *product* write was reported as a portion failure and the user
             // was sent to a calculator showing the old record. Nothing in the caught exception can
             // distinguish the two cases, so the ordering has to be visible here.
-            val productSaved = runCatching {
+            val productSaved = runCatchingSuspend {
                 repository.saveUserAuthoredProduct(product, origin = ProductDataOrigin.OCR)
             }
             if (productSaved.isFailure) {
@@ -227,7 +243,7 @@ class ManualEntryViewModel(
 
             // The OCR provenance is preserved: the portion was read off the package by the camera
             // even though the surrounding product was typed.
-            val portionSaved = runCatching {
+            val portionSaved = runCatchingSuspend {
                 repository.saveUserPortionUnit(
                     barcode = key,
                     kind = pending.kind,

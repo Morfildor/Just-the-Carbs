@@ -127,13 +127,19 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # Excludes ExploratoryExperiment-tagged classes (P1 §11) — measurement/calibration harnesses
+      # and rejected-approach evidence that assert little or nothing and were never meant to gate a
+      # push. Some individually take minutes against the real ML Kit recognizer; running them here
+      # bought nothing, since this job already tolerates failures and none of them were caught.
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
           target: google_apis
           arch: x86_64
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon
+          script: >-
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon
+            -Pandroid.testInstrumentationRunnerArguments.notAnnotation=app.justthecarbs.ExploratoryExperiment
 
   # The blocking release gate (§64 hardening pass). Builds the actual minified/shrunk release
   # configuration and fails the workflow if R8 fails, the APK is not produced, or any release-path

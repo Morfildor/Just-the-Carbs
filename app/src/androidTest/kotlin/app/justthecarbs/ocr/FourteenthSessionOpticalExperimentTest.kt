@@ -6,6 +6,7 @@ import android.graphics.ColorMatrix
 import android.graphics.Paint
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -25,6 +26,7 @@ import java.util.concurrent.TimeUnit
  * scale, basis, or child-nutrient safety rules. A production view may only be proposed after this
  * complete physical corpus shows a useful gain without confident-wrong readings.
  */
+@ExploratoryExperiment
 class FourteenthSessionOpticalExperimentTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     // Internal storage avoids scoped-storage mount differences on newer Android emulators. Inputs

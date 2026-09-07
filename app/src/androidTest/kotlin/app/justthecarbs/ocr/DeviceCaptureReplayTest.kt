@@ -3,6 +3,7 @@ package app.justthecarbs.ocr
 import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import org.junit.Test
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -42,6 +43,7 @@ import java.util.concurrent.TimeUnit
  * Then run the class. It asserts nothing — it is a measurement, and the images are deliberately not
  * committed, so an assertion would fail for anyone without them. Read the tag `JustTheCarbsReplay`.
  */
+@ExploratoryExperiment
 class DeviceCaptureReplayTest {
 
     private val appContext get() = InstrumentationRegistry.getInstrumentation().targetContext

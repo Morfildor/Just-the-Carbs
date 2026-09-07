@@ -130,6 +130,12 @@ jobs:
       # ram-size is explicit: CLAUDE.md records the instrumentation process being OOM-killed part way
       # through on a 2.5 GB device once the 8 MP still path is exercised, which surfaces as a driver
       # error rather than a test failure and is easy to misread as flakiness.
+      #
+      # Excludes ExploratoryExperiment-tagged classes (P1 §11) — measurement/calibration harnesses,
+      # rejected-approach evidence, and a live-network diagnostic that talks to a real third-party
+      # host. None of them assert product behaviour, and a release gate must not fail on a network
+      # flake or an unpushed manual-replay fixture that has nothing to do with release readiness. The
+      # mandatory nine-photograph corpus is NOT in this category and keeps running here unfiltered.
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -137,7 +143,9 @@ jobs:
           target: google_apis
           arch: x86_64
           ram-size: 4096M
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon
+          script: >-
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon
+            -Pandroid.testInstrumentationRunnerArguments.notAnnotation=app.justthecarbs.ExploratoryExperiment
 
       - name: Assert no instrumented test was skipped
         run: |

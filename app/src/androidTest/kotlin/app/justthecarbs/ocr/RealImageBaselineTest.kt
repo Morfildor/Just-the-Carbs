@@ -3,6 +3,7 @@ package app.justthecarbs.ocr
 import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit
  * is known before any production code is touched. Delete or keep as a diagnostic aid — it asserts
  * nothing and can never fail for a parser reason.
  */
+@ExploratoryExperiment
 class RealImageBaselineTest {
 
     private val testContext get() = InstrumentationRegistry.getInstrumentation().context

@@ -339,6 +339,88 @@ class JustTheCarbsDatabaseMigrationTest {
             }
     }
 
+    // ---- v6 -> v7: portion_usage.portionUnitId becomes NOT NULL (P0 §5) -------------------------
+
+    @Test
+    fun migratingFromV6RewritesAGramsModeNullPortionUnitIdToTheSentinel() {
+        val db = helper.createDatabase(TEST_DB, 6)
+        db.execSQL(
+            """
+            INSERT INTO portion_usage (id, productBarcode, inputMode, portionUnitId, amount, usageCount, lastUsedAt)
+            VALUES (1, '888', 'GRAMS', NULL, '65', 3, 9000)
+            """.trimIndent(),
+        )
+        db.close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 7, true, JustTheCarbsDatabase.MIGRATION_6_7)
+
+        migrated.query("SELECT portionUnitId, usageCount, lastUsedAt FROM portion_usage WHERE productBarcode = '888'")
+            .use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(
+                    "a grams-mode NULL portionUnitId must become the NO_UNIT_SENTINEL, not stay NULL",
+                    0,
+                    cursor.getInt(0),
+                )
+                assertEquals(3, cursor.getInt(1))
+                assertEquals(9000, cursor.getLong(2))
+            }
+    }
+
+    /** A countable-portion row's real unit id is a normal value, not the sentinel — left untouched. */
+    @Test
+    fun migratingFromV6LeavesARealPortionUnitIdUnchanged() {
+        val db = helper.createDatabase(TEST_DB, 6)
+        db.execSQL(
+            """
+            INSERT INTO portion_usage (id, productBarcode, inputMode, portionUnitId, amount, usageCount, lastUsedAt)
+            VALUES (1, '999', 'PORTION_UNIT', 42, '2', 1, 9000)
+            """.trimIndent(),
+        )
+        db.close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 7, true, JustTheCarbsDatabase.MIGRATION_6_7)
+
+        migrated.query("SELECT portionUnitId FROM portion_usage WHERE productBarcode = '999'").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(42, cursor.getInt(0))
+        }
+    }
+
+    /**
+     * The case the naive "just rewrite NULL to 0" version of this migration could not survive: two
+     * grams-mode rows for the identical variant, which the pre-fix NULL-holed unique index never
+     * prevented from coexisting. A migration that copied both forward unchanged would violate the
+     * new NOT NULL unique index on its second row and fail outright — on exactly the data it exists
+     * to repair. They must instead be merged into one row, counts summed, most-recent timestamp kept.
+     */
+    @Test
+    fun migratingFromV6MergesPreExistingGramsModeDuplicatesInsteadOfFailing() {
+        val db = helper.createDatabase(TEST_DB, 6)
+        db.execSQL(
+            """
+            INSERT INTO portion_usage (id, productBarcode, inputMode, portionUnitId, amount, usageCount, lastUsedAt)
+            VALUES
+                (1, 'aaa', 'GRAMS', NULL, '65', 2, 9000),
+                (2, 'aaa', 'GRAMS', NULL, '65', 5, 9500)
+            """.trimIndent(),
+        )
+        db.close()
+
+        // The assertion this test exists for: runMigrationsAndValidate must not throw a unique
+        // constraint violation while merging the duplicates above.
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 7, true, JustTheCarbsDatabase.MIGRATION_6_7)
+
+        migrated.query(
+            "SELECT COUNT(*), SUM(usageCount), MAX(lastUsedAt) FROM portion_usage WHERE productBarcode = 'aaa'",
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("the two duplicates must merge into exactly one row", 1, cursor.getInt(0))
+            assertEquals("their counts must be summed, not one discarded", 7, cursor.getInt(1))
+            assertEquals("the most recent lastUsedAt must survive", 9500, cursor.getLong(2))
+        }
+    }
+
     // A unique name per test instance (JUnit creates a fresh instance per @Test method): reusing a
     // fixed name let one test's already-migrated v3 file leak into the next test's "fresh" v2
     // database, since MigrationTestHelper.createDatabase() does not itself guarantee a clean file.

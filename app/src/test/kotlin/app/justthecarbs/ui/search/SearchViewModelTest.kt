@@ -1595,6 +1595,183 @@ class SearchViewModelTest {
         }
     }
 
+    // ---- P2. The governor must never fail open (P1 §6) ------------------------------------------
+
+    /**
+     * The previous wait loop capped its re-checks at `MAX_PERMIT_WAIT_ROUNDS` (8) and, once that
+     * cap was reached, fell through to `emit(request)` regardless of whether the governor still
+     * reported a positive wait. A rate limiter that eventually sends anyway is not a rate limiter.
+     *
+     * This drives the governor's block being externally extended well past what 8 rounds of the
+     * old loop would have covered, and asserts zero network calls happen until the block has
+     * genuinely, naturally lifted — never as a side effect of having waited "long enough" in round
+     * terms.
+     */
+    @Test
+    fun `the governor block is honoured however many times it is extended, never overridden by a round count`() {
+        runTest {
+            val source = AlwaysFoundSource()
+            val viewModel = viewModelFor(source)
+
+            // Block the governor for longer than the settle wait, so it is still active at the exact
+            // moment the request first reaches it (right after the settle delay elapses) — a shorter
+            // block would already have expired by then, and there would be nothing here for the
+            // extensions below to hold back.
+            governor.recordRateLimited(
+                dispatcher.scheduler.currentTime,
+                retryAfterMs = SearchViewModel.REMOTE_SEARCH_SETTLE_MS + 200,
+            )
+
+            viewModel.onQueryChanged("chocolate")
+            // Past the settle wait — the request now reaches the governor for the first time, which
+            // must still be blocked (the backoff above outlasts this by 200ms).
+            dispatcher.scheduler.advanceTimeBy(SearchViewModel.REMOTE_SEARCH_SETTLE_MS + 1)
+            assertEquals("precondition: nothing has been sent yet", 0, source.callsInOrder.size)
+
+            // Re-extend the block every 50ms, each extension comfortably longer (200ms) than the gap
+            // to the next one, so the pipeline's wait loop keeps re-checking and finding a fresh
+            // positive wait rather than ever seeing zero. A round only advances once its own
+            // `delay(wait)` elapses — with `wait` staying around 150-200ms and 40 extensions spanning
+            // 2000ms of virtual time, that is comfortably more re-check rounds than the old 8-round
+            // cap allowed, so a capped loop would have fallen through and sent the request well
+            // before this finishes.
+            repeat(40) {
+                governor.recordRateLimited(dispatcher.scheduler.currentTime, retryAfterMs = 200)
+                dispatcher.scheduler.advanceTimeBy(50)
+            }
+
+            assertEquals(
+                "continuously re-extending the block for far longer than 8 re-check rounds would " +
+                    "cover must still hold the request — a round-count cap would have let it " +
+                    "through long before this point",
+                0,
+                source.callsInOrder.size,
+            )
+
+            // Let the block actually expire, with nothing further extending it.
+            dispatcher.scheduler.advanceTimeBy(201)
+            assertEquals("the request goes out once the block genuinely lifts", 1, source.callsInOrder.size)
+        }
+    }
+
+    // ---- P3. The 429 retry budget is per-query, not per-ViewModel (P1 §7) ------------------------
+
+    /**
+     * A fake whose every call returns 429, so the ViewModel's own one-automatic-resume rule is what
+     * eventually stops the retries — this file's fixture for exercising that rule directly, distinct
+     * from [AlwaysFoundSource] used with a single canned rate-limit result.
+     */
+    private class AlwaysRateLimitedSource : ProductSearchSource {
+        val callsInOrder = mutableListOf<String>()
+        override suspend fun search(terms: String): ProductSearchResult {
+            callsInOrder.add(terms)
+            return ProductSearchResult.Failed(LookupError.RATE_LIMITED, retryAfterMs = 5_000)
+        }
+    }
+
+    /**
+     * The exact scenario the old `resumedAfterRateLimit` flag got wrong: query A consumes its one
+     * automatic resume, the user moves on to an unrelated query B before A's story is even over, and
+     * B's own first 429 must still get its own legitimate resume — because the flag belonged to the
+     * ViewModel, not to A, a stale `true` left over from A silently denied B a resume it was entitled
+     * to.
+     */
+    @Test
+    fun `switching to a new query after a rate limit gives the new query its own automatic resume`() {
+        runTest {
+            val source = AlwaysRateLimitedSource()
+            val viewModel = viewModelFor(source)
+
+            // Query A: first request, then its one automatic resume — both 429. That consumes A's
+            // (previously: the ViewModel's) retry allowance.
+            viewModel.onQueryChanged("chocolate")
+            dispatcher.scheduler.advanceTimeBy(past())
+            dispatcher.scheduler.advanceTimeBy(5_001) // A's own backoff, its automatic resume fires
+            assertEquals(
+                "precondition: A's request and its one automatic resume have both gone out",
+                listOf("chocolate", "chocolate"),
+                source.callsInOrder,
+            )
+            assertEquals(
+                "precondition: A's retry was refused again and reported as a finished failure",
+                LookupError.RATE_LIMITED,
+                viewModel.state.value.error,
+            )
+
+            // The user moves on. B is an entirely different query.
+            viewModel.onQueryChanged("gouda")
+            dispatcher.scheduler.advanceTimeBy(past())
+            assertEquals(
+                "B's first request must go out",
+                listOf("chocolate", "chocolate", "gouda"),
+                source.callsInOrder,
+            )
+
+            // B's first 429. It must get its OWN automatic resume — not be denied one because A
+            // already spent the (old, ViewModel-scoped) allowance.
+            dispatcher.scheduler.advanceTimeBy(5_001)
+            assertEquals(
+                "B must receive its own legitimate automatic resume, not inherit A's exhausted one",
+                listOf("chocolate", "chocolate", "gouda", "gouda"),
+                source.callsInOrder,
+            )
+        }
+    }
+
+    /** B's retry budget is still bounded to one — the per-query fix must not become unbounded. */
+    @Test
+    fun `a sustained rate limit on the new query still stops after its own one resume`() {
+        runTest {
+            val source = AlwaysRateLimitedSource()
+            val viewModel = viewModelFor(source)
+
+            viewModel.onQueryChanged("chocolate")
+            dispatcher.scheduler.advanceTimeBy(past())
+            dispatcher.scheduler.advanceTimeBy(5_001)
+
+            viewModel.onQueryChanged("gouda")
+            dispatcher.scheduler.advanceTimeBy(past())
+            dispatcher.scheduler.advanceTimeBy(5_001) // B's own automatic resume
+            dispatcher.scheduler.advanceTimeBy(5_001) // if this fired a THIRD B request, the fix over-corrected
+
+            assertEquals(
+                "B gets exactly one automatic resume, never an unbounded retry loop",
+                listOf("chocolate", "chocolate", "gouda", "gouda"),
+                source.callsInOrder,
+            )
+            assertEquals(LookupError.RATE_LIMITED, viewModel.state.value.error)
+        }
+    }
+
+    /** Explicit Search is subject to the same governor as everything else — no bypass. */
+    @Test
+    fun `an explicit search submission still cannot bypass the governor`() {
+        runTest {
+            val source = AlwaysFoundSource()
+            val viewModel = viewModelFor(source)
+
+            // The first query needs only the settle wait — the governor has nothing to enforce yet.
+            viewModel.onQueryChanged("chocolate")
+            dispatcher.scheduler.advanceTimeBy(SearchViewModel.REMOTE_SEARCH_SETTLE_MS + 1)
+            assertEquals("precondition: chocolate's request has gone out", 1, source.callsInOrder.size)
+
+            // Immediately submit a second, different query via the explicit action, well inside the
+            // interval chocolate's own send just started.
+            viewModel.onQueryChanged("gouda")
+            viewModel.search()
+            dispatcher.scheduler.runCurrent()
+
+            assertEquals(
+                "an explicit submission must still wait for the shared interval",
+                1,
+                source.callsInOrder.size,
+            )
+
+            dispatcher.scheduler.advanceTimeBy(RemoteSearchGovernor.MIN_INTERVAL_MS + 1)
+            assertEquals(listOf("chocolate", "gouda"), source.callsInOrder)
+        }
+    }
+
     // ---- Q. Local narrowing ---------------------------------------------------------------------
 
     private fun namedHit(barcode: String, name: String) = ProductSearchHit(

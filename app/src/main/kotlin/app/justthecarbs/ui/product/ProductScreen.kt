@@ -1,5 +1,6 @@
 package app.justthecarbs.ui.product
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -197,6 +198,13 @@ fun ProductScreen(
     val galleryImages = remember(state.product?.images) {
         state.product?.let(ProductImageSelector::galleryImages).orEmpty()
     }
+
+    // The system back gesture and the toolbar back button must persist the same way (P0 §3). Without
+    // this, only the toolbar's `IconButton` called `onBack` — the system gesture went straight to
+    // Compose Navigation's default handling, so `rememberUsageAndAwait()` (or the old fire-and-forget
+    // `rememberUsage()`) never ran at all on a gesture exit, which is the far more common way to
+    // leave a screen on a modern device.
+    BackHandler(onBack = onBack)
 
     if (galleryOpen && state.product != null && galleryImages.isNotEmpty()) {
         ProductGalleryDialog(
@@ -2010,7 +2018,7 @@ private fun ResultPanel(
                 Spacer(Modifier.height(Space.xs))
                 Text(
                     text = stringResource(
-                        if (state.product?.isUserVerified == true) {
+                        if (state.product.isUserVerified) {
                             R.string.product_result_verified
                         } else {
                             R.string.product_result_unverified
@@ -2025,7 +2033,25 @@ private fun ResultPanel(
             // Only once there is a number worth adding. Offered under the result, never in place
             // of it: the app answers a carbohydrate question first and builds a meal second (§9).
             Spacer(Modifier.height(Space.m))
-            MealActions(onAdd = onAddToMeal, onAddAndScanNext = onAddToMealAndScanNext)
+            MealActions(
+                onAdd = onAddToMeal,
+                onAddAndScanNext = onAddToMealAndScanNext,
+                enabled = !state.addingToMeal,
+            )
+            // Reported rather than merely survived, same rule as `quickSaveFailed`: the result is
+            // still on screen and still correct, so silence here reads as success and the user would
+            // leave believing the item was added. `MealActions` re-enables itself the moment this
+            // shows, since the failed write already released the guard — this is the retry surface.
+            if (state.mealAddFailed) {
+                Spacer(Modifier.height(Space.xs))
+                Text(
+                    text = stringResource(R.string.meal_add_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

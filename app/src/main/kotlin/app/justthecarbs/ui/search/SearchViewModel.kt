@@ -230,12 +230,21 @@ class SearchViewModel(
     private var inFlight: Job? = null
 
     /**
-     * A rate-limited query has already been resumed once automatically.
+     * The [SearchRequest.generation] that has already consumed its one automatic 429 resume, or
+     * null before any query has needed one (P0/P1 §7).
      *
-     * Bounds the automatic resume in [runSearch] to one attempt, so a server answering 429 to
-     * everything cannot drive an unbounded retry loop. Reset by any successful search.
+     * Keyed to a generation rather than a plain flag: a flag belongs to the ViewModel, but the
+     * budget it bounds is meant to belong to one *query*. With a plain `Boolean`, query A hitting
+     * 429 and consuming the flag left it set for query B — a completely unrelated search the user
+     * typed next — so B's own first 429 was wrongly treated as an already-exhausted retry and
+     * reported as a dead-end failure instead of getting the automatic resume every fresh query is
+     * entitled to. Comparing against [request]'s own generation makes the check self-resetting: a
+     * new query always carries a generation this field cannot yet equal, with no explicit
+     * "reset on success" step needed (the old `resumedAfterRateLimit = false` on a successful
+     * result is gone because there is nothing left to reset — the *next* query's generation will
+     * simply never match whatever this field currently holds).
      */
-    private var resumedAfterRateLimit = false
+    private var retriedGeneration: Long? = null
 
     init {
         viewModelScope.launch {
@@ -262,19 +271,25 @@ class SearchViewModel(
                         //    landing for a *different* screen's search extends the block, and a
                         //    single pre-computed delay would then expire early and issue the very
                         //    request the backoff exists to prevent.
+                        //
+                        //    Unbounded rather than capped at a fixed number of rounds (P1 §6): a rate
+                        //    limiter that eventually sends anyway is not a rate limiter, and a cap
+                        //    here meant exactly that — once `MAX_PERMIT_WAIT_ROUNDS` re-checks had
+                        //    happened, the loop fell through to `emit(request)` regardless of whether
+                        //    `wait` was still positive, so a governor that kept extending its block
+                        //    (e.g. repeated 429s for another screen's search) was silently overridden
+                        //    after 8 rounds. The bound this replaced was defending against a genuine
+                        //    but different hazard — a busy loop under clock skew — and `delay(wait)`
+                        //    already closes that on its own: every iteration suspends for the actual
+                        //    remaining wait rather than polling on a fixed interval, so the loop
+                        //    cannot spin regardless of how many times the block is extended, and it
+                        //    terminates the moment `waitUntilPermittedMs` reports zero.
                         var wait = governor.waitUntilPermittedMs(nowMs())
                         if (wait > 0) {
                             markAwaitingPermit()
-                            // Bounded rather than `while (wait > 0)`. The loop re-reads because the
-                            // block can grow while we are inside it — a 429 for the *other* screen's
-                            // search extends it — but an unbounded re-read is a spin if the wait
-                            // clock and the delay clock ever disagree, and this coroutine must not
-                            // be able to become a busy loop under any clock skew.
-                            var rounds = 0
-                            while (wait > 0 && rounds < MAX_PERMIT_WAIT_ROUNDS) {
+                            while (wait > 0) {
                                 delay(wait)
                                 wait = governor.waitUntilPermittedMs(nowMs())
-                                rounds++
                             }
                         }
 
@@ -623,10 +638,10 @@ class SearchViewModel(
             result.error == LookupError.RATE_LIMITED &&
             request.generation == requestGeneration
         ) {
-            if (resumedAfterRateLimit) {
-                // Already retried once and refused again. Report it as a finished, actionable
-                // failure instead of silently waiting forever behind a progress line.
-                resumedAfterRateLimit = false
+            if (retriedGeneration == request.generation) {
+                // This exact generation already consumed its one automatic resume and was refused
+                // again. Report it as a finished, actionable failure instead of silently waiting
+                // forever behind a progress line.
                 _state.update {
                     it.copy(
                         searching = false,
@@ -638,16 +653,18 @@ class SearchViewModel(
                 }
                 return
             }
-            resumedAfterRateLimit = true
             displayedQuery = null
             requestedQuery = request.terms
             waitPending = true
-            requests.value = SearchRequest(request.terms, immediate = true, generation = ++requestGeneration)
-        } else if (result !is ProductSearchResult.Failed) {
-            // A query that got through resets the allowance, so a later unrelated burst is again
-            // entitled to its one automatic resume.
-            resumedAfterRateLimit = false
+            // The retry gets a fresh generation, and that new generation — not the one that just
+            // failed — is what must be recorded as "already resumed": it is the retry's own 429
+            // this check exists to catch.
+            val retryGeneration = ++requestGeneration
+            retriedGeneration = retryGeneration
+            requests.value = SearchRequest(request.terms, immediate = true, generation = retryGeneration)
         }
+        // No explicit reset on success: a query that gets through simply never reaches this branch
+        // again, and the next distinct query carries a generation `retriedGeneration` cannot equal.
     }
 
     /**
@@ -706,14 +723,5 @@ class SearchViewModel(
          * budget; it can only waste settle time.
          */
         const val REMOTE_SEARCH_SETTLE_MS = 500L
-
-        /**
-         * How many times the governor wait may be re-read before the request goes anyway.
-         *
-         * Only reached if the block keeps being extended while we wait in it. Generous enough that
-         * an ordinary extension or two is honoured, finite so no clock disagreement can turn this
-         * coroutine into a spin.
-         */
-        private const val MAX_PERMIT_WAIT_ROUNDS = 8
     }
 }

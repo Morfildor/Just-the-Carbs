@@ -1,5 +1,6 @@
 package app.justthecarbs.data.remote
 
+import app.justthecarbs.ExploratoryExperiment
 import app.justthecarbs.domain.ProductSearchResult
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
@@ -28,6 +29,7 @@ import android.util.Log
  * ```
  * Then read the results with `adb logcat -s JtcSearchBench`.
  */
+@ExploratoryExperiment
 class SearchALiciousLiveDiagnosticTest {
 
     private val source = SearchALiciousDataSource(

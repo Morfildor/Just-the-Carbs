@@ -28,7 +28,7 @@ import androidx.sqlite.execSQL
         MealItemEntity::class,
         PortionUsageEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class JustTheCarbsDatabase : RoomDatabase() {
@@ -281,6 +281,69 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v6 → v7: `portion_usage.portionUnitId` becomes `NOT NULL`, storing
+         * [PortionUsageEntity.NO_UNIT_SENTINEL] (`0`) for a GRAMS-mode row instead of SQL `NULL`
+         * (P0 §5).
+         *
+         * SQLite's ordinary unique-index semantics treat every `NULL` as distinct from every other
+         * `NULL` — including from itself — so the pre-existing
+         * `UNIQUE (productBarcode, inputMode, portionUnitId, amount)` index never actually
+         * constrained a grams-mode row (`portionUnitId` always `NULL` there): any number of
+         * "duplicate" grams-mode variants for the same product and amount could coexist despite the
+         * index's own name. Only countable-portion rows (`portionUnitId` a real id) were ever
+         * protected. `0` is a safe, permanent sentinel: `PortionUnit.id` is
+         * `@PrimaryKey(autoGenerate = true)`, and SQLite `AUTOINCREMENT` never assigns `0` to a real
+         * saved row.
+         *
+         * Rebuild-and-copy rather than an in-place `ALTER`, because SQLite cannot add a `NOT NULL`
+         * constraint to an existing nullable column. The copy also **merges** any pre-existing
+         * grams-mode duplicates it finds — rows this exact bug could have produced, since the old
+         * `NULL`-holed index never stopped them accumulating — by summing their `usageCount` and
+         * keeping the most recent `lastUsedAt`, grouped by the natural key the new unique index will
+         * enforce going forward. A naive `INSERT ... SELECT` that only rewrote `NULL` to `0` would
+         * itself violate that same new unique index the moment it reached a second duplicate row,
+         * failing the migration outright on exactly the data it exists to repair. One surviving
+         * row's `id` is kept (arbitrarily, via `MIN(id)`) so any portion-usage id referenced
+         * elsewhere still resolves to *a* row for that variant, consistent with `MIGRATION_5_6`'s
+         * "row ids are preserved" note — this is the one migration in this file where more than one
+         * source row can fold into a single destination row, because merging duplicates is the
+         * point.
+         */
+        internal val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `portion_usage_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `productBarcode` TEXT NOT NULL,
+                        `inputMode` TEXT NOT NULL,
+                        `portionUnitId` INTEGER NOT NULL,
+                        `amount` TEXT NOT NULL,
+                        `usageCount` INTEGER NOT NULL,
+                        `lastUsedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    """
+                    INSERT INTO `portion_usage_new`
+                        (id, productBarcode, inputMode, portionUnitId, amount, usageCount, lastUsedAt)
+                    SELECT MIN(id), productBarcode, inputMode, COALESCE(portionUnitId, 0), amount,
+                           SUM(usageCount), MAX(lastUsedAt)
+                    FROM `portion_usage`
+                    GROUP BY productBarcode, inputMode, COALESCE(portionUnitId, 0), amount
+                    """.trimIndent(),
+                )
+                connection.execSQL("DROP TABLE `portion_usage`")
+                connection.execSQL("ALTER TABLE `portion_usage_new` RENAME TO `portion_usage`")
+                connection.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_portion_usage_productBarcode_inputMode_portionUnitId_amount` " +
+                        "ON `portion_usage` (`productBarcode`, `inputMode`, `portionUnitId`, `amount`)",
+                )
+            }
+        }
+
         /** Shared by the guarded migrations above. SQLite has no "ADD COLUMN IF NOT EXISTS". */
         private fun SQLiteConnection.hasColumn(table: String, column: String): Boolean {
             val statement = prepare("PRAGMA table_info(`$table`)")
@@ -298,7 +361,14 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
 
         fun build(context: Context): JustTheCarbsDatabase =
             Room.databaseBuilder(context.applicationContext, JustTheCarbsDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                )
                 .build()
     }
 }

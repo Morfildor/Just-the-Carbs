@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.ExploratoryExperiment
 import org.junit.Test
 import java.io.File
 import java.io.IOException
@@ -35,6 +36,7 @@ import java.util.concurrent.TimeUnit
  *
  * Read the logcat tag `JustTheCarbsFraming`.
  */
+@ExploratoryExperiment
 class FramedCaptureDiagnosticTest {
 
     private val testContext get() = InstrumentationRegistry.getInstrumentation().context

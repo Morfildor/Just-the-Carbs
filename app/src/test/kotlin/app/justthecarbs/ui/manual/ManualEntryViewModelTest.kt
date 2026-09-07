@@ -19,6 +19,7 @@ import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
 import app.justthecarbs.domain.VerificationStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -650,4 +651,74 @@ class ManualEntryViewModelTest {
         assertTrue(units.stored.isEmpty())
         assertNull(viewModel.state.value.savedBarcode)
     }
+
+    // ---- P1 §14: a cancelled save must propagate, never report as a failed save --------------
+
+    @Test
+    fun `a cancellation during the no-portion product write propagates instead of setting saveFailed`() =
+        runTest(dispatcher) {
+            // A plain runCatching around this write would also catch CancellationException — e.g.
+            // the screen being navigated away from mid-save — and report it exactly like a genuine
+            // disk error. It must instead propagate out of viewModelScope.launch, leaving saveFailed
+            // untouched rather than flipped to true.
+            val journal = Journal()
+            val cancelling = object : FakeLocal(journal) {
+                override suspend fun save(product: Product): Unit = throw CancellationException("torn down")
+            }
+            val viewModel = ManualEntryViewModel(repositoryOf(cancelling, FakeUnits(journal)))
+            viewModel.start(barcode)
+            viewModel.fillIn()
+
+            viewModel.save()
+            advanceUntilIdle()
+
+            assertFalse(
+                "a cancellation is not a save failure",
+                viewModel.state.value.saveFailed,
+            )
+        }
+
+    @Test
+    fun `a cancellation during the product write of a pending-portion save propagates instead of setting saveFailed`() =
+        runTest(dispatcher) {
+            val journal = Journal()
+            val cancelling = object : FakeLocal(journal) {
+                override suspend fun save(product: Product): Unit = throw CancellationException("torn down")
+            }
+            val units = FakeUnits(journal)
+            val viewModel = ManualEntryViewModel(repositoryOf(cancelling, units))
+            viewModel.start(barcode, pendingPortionUnit = slicePortion)
+            viewModel.fillIn()
+
+            viewModel.save()
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.saveFailed)
+            assertTrue("the portion was never attempted", units.stored.isEmpty())
+        }
+
+    @Test
+    fun `a cancellation during the portion write propagates instead of setting portionSaveFailed`() =
+        runTest(dispatcher) {
+            val journal = Journal()
+            val local = FakeLocal(journal)
+            val units = object : FakeUnits(journal) {
+                override suspend fun save(unit: PortionUnit): PortionUnit =
+                    throw CancellationException("torn down")
+            }
+            val viewModel = ManualEntryViewModel(repositoryOf(local, units))
+            viewModel.start(barcode, pendingPortionUnit = slicePortion)
+            viewModel.fillIn()
+
+            viewModel.save()
+            advanceUntilIdle()
+
+            assertFalse(
+                "a cancellation is not a portion save failure",
+                viewModel.state.value.portionSaveFailed,
+            )
+            // The product write itself completed before the cancellation, so it is still on disk —
+            // unlike a genuine portion-write failure, cancellation must not be misreported either way.
+            assertEquals(1, journal.entries.count { it == "product:$barcode" })
+        }
 }

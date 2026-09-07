@@ -108,7 +108,7 @@ class OpenFoodFactsSearchTest {
     fun `a search hit with a structured millilitre unit carries a millilitre basis`() = runTest {
         respond(
             """{"count":1,"products":[
-               {"code":"123","product_name":"Sinaasappelsap","quantity":"1,5 liter",
+               {"code":"1111111111116","product_name":"Sinaasappelsap","quantity":"1,5 liter",
                 "product_quantity":1500,"product_quantity_unit":"ml",
                 "nutriments":{"carbohydrates_100g":9.4}}]}""",
         )
@@ -123,7 +123,7 @@ class OpenFoodFactsSearchTest {
     fun `a search hit for a multipack carries the multipack's basis`() = runTest {
         respond(
             """{"count":1,"products":[
-               {"code":"123","product_name":"Cola","quantity":"6 x 33 cl",
+               {"code":"1111111111116","product_name":"Cola","quantity":"6 x 33 cl",
                 "nutriments":{"carbohydrates_100g":10.6}}]}""",
         )
 
@@ -145,7 +145,7 @@ class OpenFoodFactsSearchTest {
     fun `a search hit with no establishable basis shows no carbohydrate figure`() = runTest {
         respond(
             """{"count":1,"products":[
-               {"code":"123","product_name":"Onbekend","quantity":"family pack",
+               {"code":"1111111111116","product_name":"Onbekend","quantity":"family pack",
                 "nutriments":{"carbohydrates_100g":67}}]}""",
         )
 
@@ -161,7 +161,7 @@ class OpenFoodFactsSearchTest {
     fun `a search hit with an unsupported structured unit shows no carbohydrate figure`() = runTest {
         respond(
             """{"count":1,"products":[
-               {"code":"123","product_name":"Imported","quantity":"16 oz",
+               {"code":"1111111111116","product_name":"Imported","quantity":"16 oz",
                 "product_quantity":16,"product_quantity_unit":"oz",
                 "nutriments":{"carbohydrates_100g":67}}]}""",
         )
@@ -195,7 +195,7 @@ class OpenFoodFactsSearchTest {
         respond(
             """
             {"count":1,"products":[
-              {"code":"123","product_name":"Onbekend","quantity":"200 g","nutriments":{}}
+              {"code":"1111111111116","product_name":"Onbekend","quantity":"200 g","nutriments":{}}
             ]}
             """.trimIndent(),
         )
@@ -212,7 +212,7 @@ class OpenFoodFactsSearchTest {
         respond(
             """
             {"count":1,"products":[
-              {"code":"123","product_name":"Broken","quantity":"200 g",
+              {"code":"1111111111116","product_name":"Broken","quantity":"200 g",
                "nutriments":{"carbohydrates_100g":250}}
             ]}
             """.trimIndent(),
@@ -228,8 +228,8 @@ class OpenFoodFactsSearchTest {
             """
             {"count":3,"products":[
               {"product_name":"No barcode","quantity":"200 g"},
-              {"code":"456","quantity":"200 g"},
-              {"code":"789","product_name":"Usable","quantity":"200 g"}
+              {"code":"2222222222222","quantity":"200 g"},
+              {"code":"1111111111116","product_name":"Usable","quantity":"200 g"}
             ]}
             """.trimIndent(),
         )
@@ -237,7 +237,7 @@ class OpenFoodFactsSearchTest {
         val results = hits(dataSource.search("mixed"))
 
         assertEquals(1, results.size)
-        assertEquals("789", results.single().barcode)
+        assertEquals("1111111111116", results.single().barcode)
     }
 
     @Test
@@ -293,5 +293,104 @@ class OpenFoodFactsSearchTest {
             "search fields must not request gallery/serving metadata",
             !fields.contains("selected_images") && !fields.contains("serving_size"),
         )
+    }
+
+    // ---- P1 §10: a malformed remote `code` must not reach a search hit ---------------------------
+    //
+    // `hit.barcode` becomes a `product/{barcode}` navigation route verbatim. Before this fix, the
+    // only check on `code` was "non-blank" — so a value containing a path separator, a URI
+    // delimiter, the wrong length, or non-digit characters would reach that route with no validation
+    // at all, the one thing every other barcode this app handles (scanned, manually typed) already
+    // gets. A hit that fails validation is silently absent from the result list rather than reaching
+    // the screen with a barcode this app cannot safely act on — the same "malformed data means the
+    // record is missing, not corrupted" rule `NutritionValueValidator` already applies to a hit's
+    // carbohydrate figure.
+
+    @Test
+    fun `a search hit whose code contains a path separator is dropped rather than passed through`() = runTest {
+        respond(
+            """
+            {"count":1,"page":1,"page_size":1,"products":[
+              {"code":"123/456","product_name":"Suspicious","nutriments":{"carbohydrates_100g":10}}
+            ]}
+            """.trimIndent(),
+        )
+
+        // The whole page had exactly one hit and it was dropped, so the result collapses to
+        // NoMatches — the same rule an empty products array already produces, not a `Found`
+        // carrying an empty list.
+        assertEquals(
+            "a code that could corrupt the product/{barcode} route must not become a hit",
+            ProductSearchResult.NoMatches,
+            dataSource.search("suspicious"),
+        )
+    }
+
+    @Test
+    fun `a search hit whose code has an invalid check digit is dropped`() = runTest {
+        respond(
+            """
+            {"count":1,"page":1,"page_size":1,"products":[
+              {"code":"8710496979129","product_name":"Wrong Check Digit","nutriments":{"carbohydrates_100g":10}}
+            ]}
+            """.trimIndent(),
+        )
+
+        assertEquals(ProductSearchResult.NoMatches, dataSource.search("query"))
+    }
+
+    @Test
+    fun `a search hit whose code contains non-digit characters is dropped`() = runTest {
+        respond(
+            """
+            {"count":1,"page":1,"page_size":1,"products":[
+              {"code":"87104969791?5","product_name":"Malformed","nutriments":{"carbohydrates_100g":10}}
+            ]}
+            """.trimIndent(),
+        )
+
+        assertEquals(ProductSearchResult.NoMatches, dataSource.search("query"))
+    }
+
+    /** A malformed hit does not poison the rest of the page — the other, valid hits still come through. */
+    @Test
+    fun `one malformed code does not discard the other valid hits on the same page`() = runTest {
+        respond(
+            """
+            {"count":2,"page":1,"page_size":2,"products":[
+              {"code":"123/456","product_name":"Bad", "nutriments":{"carbohydrates_100g":10}},
+              {"code":"8710496979125","product_name":"Chocoladehagel puur","brands":"De Ruijter",
+               "quantity":"390 gram","product_quantity":390,"product_quantity_unit":"g",
+               "nutriments":{"carbohydrates_100g":67}}
+            ]}
+            """.trimIndent(),
+        )
+
+        val result = hits(dataSource.search("mixed"))
+
+        assertEquals(1, result.size)
+        assertEquals("8710496979125", result.single().barcode)
+    }
+
+    /**
+     * A valid 12-digit UPC-A must be normalised to the 13-digit form this app keys products by —
+     * the same normalisation a scanned or manually-typed barcode already receives, so a search
+     * result and a scanned result for the identical physical product resolve to the same row rather
+     * than two.
+     */
+    @Test
+    fun `a valid 12-digit code is normalised to the 13-digit form used as the database key`() = runTest {
+        respond(
+            """
+            {"count":1,"page":1,"page_size":1,"products":[
+              {"code":"036000291452","product_name":"UPC-A Product","nutriments":{"carbohydrates_100g":10}}
+            ]}
+            """.trimIndent(),
+        )
+
+        val result = hits(dataSource.search("upc"))
+
+        assertEquals(1, result.size)
+        assertEquals("0036000291452", result.single().barcode)
     }
 }
