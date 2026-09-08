@@ -349,7 +349,7 @@ fun JustTheCarbsNavHost(
                 stepIndex = stepIndex,
                 mode = mode,
                 onNext = viewModel::next,
-                onPrevious = viewModel::previous,
+                onPrevious = {},
                 // Skip, system Back and the final action all route here: leaving is leaving, and
                 // someone who skips has decided they are done. Guarded on `saving` only -- Idle and
                 // Failed both allow a tap, since a Failed state is a retry rather than a reason to

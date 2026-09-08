@@ -135,7 +135,7 @@ class TutorialNavigationTest {
                     stepIndex = stepIndex,
                     mode = mode,
                     onNext = viewModel::next,
-                    onPrevious = viewModel::previous,
+                    onPrevious = {},
                     onExit = { exitScope.launch { viewModel.finish() } },
                     busy = completion is OnboardingViewModel.CompletionState.Saving,
                 )

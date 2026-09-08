@@ -66,17 +66,6 @@ class OnboardingViewModel(
     }
 
     /**
-     * Step back one moment.
-     *
-     * Coerced at zero rather than wrapping to the end: the first step is the beginning of a
-     * sequence, and wrapping would hide that. Back *from* the first step is the screen's business
-     * (it leaves the tutorial), not this function's.
-     */
-    fun previous() {
-        _stepIndex.value = (_stepIndex.value - 1).coerceAtLeast(0)
-    }
-
-    /**
      * Jump to a step directly. Coerced rather than trusted, so an out-of-range index from a caller
      * cannot become state and crash the screen when it indexes [TUTORIAL_STEPS].
      */
