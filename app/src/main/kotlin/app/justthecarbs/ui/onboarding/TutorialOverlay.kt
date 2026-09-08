@@ -7,8 +7,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -18,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
 
 /**
  * The dim over the app, with the current target left clear.
@@ -146,11 +143,12 @@ private const val FEATHER_STEPS = 12
 private const val EDGE_WEIGHT = 0.85f
 
 /**
- * The ring drawn around the spotlight, and the connector from the callout to it.
+ * The ring drawn around the spotlight.
  *
- * Restrained by design: a solid rounded outline and one gently curved line ending in a small
- * arrowhead. No bouncing, no flashing, no dashes marching around the target — the tutorial is read
- * once and should not be the loudest thing the user ever sees the app do.
+ * Restrained by design: one static rounded outline, nothing else. No pulse, no connector, no
+ * arrowhead — the tutorial is read once and should not be the loudest thing the user ever sees the
+ * app do, and a tap-anywhere overlay does not need an arrow telling the user where to press, because
+ * pressing anywhere works.
  *
  * The border is not the only cue that a control is the target: the spotlight is a hole in an
  * otherwise uniform dim, and the callout names the control in words. So the design does not rely on
@@ -159,45 +157,16 @@ private const val EDGE_WEIGHT = 0.85f
 @Composable
 fun TutorialSpotlightDecoration(
     spotlight: Rect?,
-    arrowStart: Offset?,
     accent: Color,
     cornerRadius: Dp,
     strokeWidth: Dp,
     modifier: Modifier = Modifier,
-    /**
-     * Breathing scale for the outer halo, 1f at rest.
-     *
-     * Only the halo moves. The ring itself stays exactly on the control's bounds, because a border
-     * that grows and shrinks around a button reads as the button changing size — and on this screen
-     * the ring is a claim about *which* control the words are describing.
-     */
-    pulse: Float = 1f,
 ) {
     Canvas(modifier = modifier.clearAndSetSemantics { }) {
         if (spotlight == null) return@Canvas
 
         val radiusPx = cornerRadius.toPx()
         val strokePx = strokeWidth.toPx()
-
-        // Three concentric strokes of decreasing alpha standing in for a blur: a hard 2dp outline
-        // reads as a box drawn on the screen, where a halo reads as light coming off the control.
-        // Cheap enough to redraw every frame of the pulse, unlike a real blur.
-        repeat(HALO_LAYERS) { layer ->
-            val spread = strokePx * (layer + 1) * HALO_STEP * pulse
-            drawRoundRect(
-                color = accent.copy(alpha = accent.alpha * HALO_ALPHA / (layer + 1)),
-                topLeft = Offset(spotlight.left - spread, spotlight.top - spread),
-                size = androidx.compose.ui.geometry.Size(
-                    spotlight.width + spread * 2f,
-                    spotlight.height + spread * 2f,
-                ),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                    radiusPx + spread,
-                    radiusPx + spread,
-                ),
-                style = Stroke(width = strokePx * 1.5f),
-            )
-        }
 
         drawRoundRect(
             color = accent,
@@ -206,91 +175,7 @@ fun TutorialSpotlightDecoration(
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
             style = Stroke(width = strokePx),
         )
-
-        if (arrowStart != null) {
-            drawConnector(
-                start = arrowStart,
-                target = spotlight,
-                color = accent,
-                strokeWidth = strokePx,
-            )
-        }
     }
-}
-
-private const val HALO_LAYERS = 3
-private const val HALO_STEP = 2.2f
-private const val HALO_ALPHA = 0.28f
-
-/**
- * A curved connector from [start] to the nearest edge of [target], with an arrowhead.
- *
- * The line stops at the target's edge rather than its centre, so it never overlaps the control it
- * is pointing at. The curve is a single quadratic whose control point is offset perpendicular to
- * the run, which is what gives it a gentle bow rather than a right-angled elbow.
- */
-private fun DrawScope.drawConnector(
-    start: Offset,
-    target: Rect,
-    color: Color,
-    strokeWidth: Float,
-) {
-    val center = target.center
-    // Aim at the point on the target's edge closest to the callout, so the arrow lands on the side
-    // the user is reading from.
-    val end = Offset(
-        x = center.x.coerceIn(target.left, target.right),
-        y = if (start.y < center.y) target.top - strokeWidth else target.bottom + strokeWidth,
-    )
-
-    val dx = end.x - start.x
-    val dy = end.y - start.y
-    if (abs(dx) < 0.5f && abs(dy) < 0.5f) return
-
-    // Bow the line sideways by a fraction of its vertical run. Proportional rather than a fixed
-    // number of pixels, so a short connector stays nearly straight and a long one curves gently
-    // instead of swinging wide.
-    val bow = dy * 0.28f
-    val control = Offset(start.x + dx * 0.5f - bow * 0.35f, start.y + dy * 0.5f)
-
-    val path = Path().apply {
-        moveTo(start.x, start.y)
-        quadraticTo(control.x, control.y, end.x, end.y)
-    }
-    drawPath(
-        path = path,
-        color = color,
-        style = Stroke(width = strokeWidth, pathEffect = PathEffect.cornerPathEffect(strokeWidth)),
-    )
-
-    drawArrowHead(tip = end, from = control, color = color, strokeWidth = strokeWidth)
-}
-
-/** A small solid arrowhead at [tip], oriented along the direction from [from]. */
-private fun DrawScope.drawArrowHead(tip: Offset, from: Offset, color: Color, strokeWidth: Float) {
-    val dx = tip.x - from.x
-    val dy = tip.y - from.y
-    val length = kotlin.math.sqrt(dx * dx + dy * dy)
-    if (length < 0.5f) return
-
-    val ux = dx / length
-    val uy = dy / length
-    val size = strokeWidth * 3f
-    // Perpendicular to the direction of travel, giving the head its two back corners.
-    val px = -uy
-    val py = ux
-
-    val baseX = tip.x - ux * size
-    val baseY = tip.y - uy * size
-    val half = size * 0.45f
-
-    val head = Path().apply {
-        moveTo(tip.x, tip.y)
-        lineTo(baseX + px * half, baseY + py * half)
-        lineTo(baseX - px * half, baseY - py * half)
-        close()
-    }
-    drawPath(path = head, color = color)
 }
 
 /**
