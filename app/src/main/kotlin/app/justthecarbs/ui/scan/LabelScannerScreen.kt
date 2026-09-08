@@ -100,6 +100,7 @@ import app.justthecarbs.ocr.RecognitionEvidence
 import app.justthecarbs.ocr.RecoveryCandidates
 import app.justthecarbs.ocr.ScaleAmbiguity
 import app.justthecarbs.ocr.ScanEvidenceRecorder
+import app.justthecarbs.ocr.ScanHapticCue
 import app.justthecarbs.ocr.ScanPresentationDecision
 import app.justthecarbs.ocr.ScanRegionMapper
 import app.justthecarbs.ocr.SelectedRegionCrop
@@ -230,8 +231,15 @@ fun LabelScannerScreen(
     onCarryPendingPortionUnit: ((PortionUnitKind, PortionConversion) -> Unit)? = null,
     /**
      * The app-level haptics preference (Settings), mirroring [ScannerScreen]'s parameter of the same
-     * name. A committed shutter capture gives one [HapticFeedbackType.LongPress] when this is true —
-     * shutter acknowledgement only, never an OCR-success signal. See `captureLabel` in [LabelCamera].
+     * name. The **single** preference gating every cue this screen produces — there is deliberately
+     * no scanner-specific haptics setting.
+     *
+     * A scan produces at most two cues, and neither ever asserts that a figure is correct:
+     *
+     * 1. a [HapticFeedbackType.LongPress] the instant a committed shutter press is accepted —
+     *    shutter acknowledgement only (see `captureLabel` in [LabelCamera]);
+     * 2. one cue when the automatic pass finishes, saying what the user must now do — check
+     *    something, carry on, or supply something. See [ScanHapticCue], which decides it.
      *
      * No default: every real caller reads this from [app.justthecarbs.domain.AppSettings], and a
      * default masks a caller that forgot to wire it rather than surfacing it at compile time.
@@ -898,6 +906,42 @@ private fun LabelCamera(
             // from the decision that executed it rather than reconstructed beside it.
             val uiAction = decision.name
 
+            // The tactile half of the same decision (see [ScanHapticCue]).
+            //
+            // Fired here — once, from the one place the outcome is decided — rather than inside the
+            // branches below, for exactly the reason the branches themselves were collapsed into a
+            // single `when (decision)`: a cue restated per branch is a second copy of a policy, and
+            // this file's own history records that shape three times.
+            //
+            // **What this cue means, and what it must never mean.** It reports that the app has
+            // stopped working and says what the user must now do — check something, carry on, or
+            // supply something. It never asserts that a figure is correct; the app does not know
+            // that, which is why every screen below still asks. The most confident outcome
+            // deliberately gets the *lightest* effect so the habit this builds is "firm buzz means
+            // read the screen", never "strong buzz means trustworthy number".
+            //
+            // Gated on the single app-level `hapticsEnabled` preference, exactly like the shutter
+            // acknowledgement in `captureLabel` and barcode acceptance in `ScannerScreen`. No second
+            // setting: someone who has turned haptics off has turned them off.
+            if (hapticsEnabled) {
+                when (ScanHapticCue.forCompletedPass(decision, automatic)) {
+                    // The app has a question on the frozen photograph. `Confirm` is about the
+                    // *interaction* completing — the scan is over and it is the user's turn — never
+                    // about the value being right.
+                    ScanHapticCue.NeedsDecision ->
+                        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    // Resolved and already moving on. The softest effect in the vocabulary.
+                    ScanHapticCue.Advanced ->
+                        haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                    // Handing the work back. Not a scolding: a refusal is a correct outcome here.
+                    ScanHapticCue.HandedBack ->
+                        haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                    // Silence, and most moments are: a user-confirmed crop is watched, so it is
+                    // announced by the screen rather than the hand.
+                    null -> Unit
+                }
+            }
+
             // The photograph is released on exactly the transitions the decision calls terminal.
             // The eighth session's P0 was `releaseCapture` running first and unconditionally, so a
             // confirmation card inherited a recycled bitmap and fell back to drawing itself over the
@@ -1437,8 +1481,19 @@ private fun LabelCamera(
         // Immediate tactile acknowledgement that the shutter press was accepted and capture has
         // begun — the same restrained pattern ScannerScreen uses for barcode acceptance. This means
         // only "the shutter fired", never "OCR succeeded": it fires here, before any recognition
-        // work has even started, and nothing later in this pipeline (still capture, OCR, automatic
-        // advancement, confirmation, assisted/focused entry) triggers a second one.
+        // work has even started.
+        //
+        // It is the FIRST of at most two cues a scan produces, and the two are distinguishable by
+        // effect. This one is `LongPress`; the second — fired once from `readSelectedTable` when the
+        // automatic pass finishes — is `Confirm`, `SegmentTick` or `Reject` depending on what the
+        // user must do next. See [ScanHapticCue], which is the whole policy and the only place it
+        // is decided. Nothing else in the pipeline vibrates: not the still capture landing, not OCR
+        // completing on a user-confirmed crop, not ordinary confirmation, assisted or focused entry,
+        // crop adjustment, reread, Retake or Close.
+        //
+        // Do not move this below `beginNewWork()` or fold it into the cue above: the freeze must
+        // stay the first thing a committed shutter press does, and this line is deliberately
+        // adjacent to it so the acknowledgement is immediate rather than waiting on recognition.
         if (hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         // Only now: a new attempt invalidates anything still in flight from the previous one. The
         // aim epoch is NOT bumped here — a shutter press does not start a new aim, it ends one.
