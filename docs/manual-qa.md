@@ -116,7 +116,7 @@ one-handed, without putting anything down.
 | 9.5 | Two plausible columns → candidates shown, app does not choose | ☐ |
 | 9.6 | Carb row visible but basis unclear → routes to manual entry with **no g/ml chip pre-selected** (never a guessed basis); the value carries over, the basis field is left for the user to pick with the package in hand | ☐ |
 | 9.7 | Unreadable label → honest failure plus *Capture label* and manual entry | ☐ |
-| 9.8 | *Capture label* reads a sharper still through the same confirmation flow | ☐ |
+| 9.8 | *Capture label* reads the authoritative still through the same safety/decision pipeline; confirmation is shown only when required | ☐ |
 | 9.9 | Torch toggles when the device has a flash; scanner remains usable without one | ☐ |
 | 9.10 | Repeated capture/live attempts stay responsive; no OCR backlog develops | ☐ |
 | 9.11 | No captured label image appears in Photos and no temporary file remains after completion/exit | ☐ |
@@ -2272,5 +2272,28 @@ recovery, calculation, persistence or navigation rule changed anywhere in this p
       disabled at the OS level, to see whether the app's vibration is suppressed by that system
       setting on this device (informational — not a pass/fail gate on its own, since OEM behaviour
       here varies).
+
+**Result:** ____________________ **Date:** ____________
+
+
+## 39. Repository-review fixes (1.0.6, phone retest pending)
+
+- [ ] 39.1 Enter 50 g, switch to two direct-carb slices at 14 g each, then verify the per-100 value.
+      The answer stays 28 g carbs; adding it to the meal stores the same answer.
+- [ ] 39.2 Change a product from per 100 g to per 100 ml. The old portion and package amount clear;
+      the old gram-based slice cannot produce a result. Enter a fresh millilitre quantity.
+- [ ] 39.3 Verify an online product with a different basis, then reset to online. Both the original
+      amount and original basis return; no previous quantity is silently reused.
+- [ ] 39.4 Open manual barcode entry while the camera sees a barcode. Leave it open for several
+      seconds: no camera lookup or acceptance vibration. Dismiss and scan normally; then repeat
+      and submit a typed barcode, confirming only that lookup happens.
+- [ ] 39.5 Close the barcode scanner while aiming at a barcode. No late lookup reopens a product.
+- [ ] 39.6 Let a weak label reach crop adjustment. The automatic target is visible; dragging it and
+      rereading uses the adjusted rectangle.
+- [ ] 39.7 Export several debug captures. The screen remains responsive during preparation, repeated
+      taps start no second export, and the resulting zip opens and contains the selection diagnostics.
+- [ ] 39.8 Upgrade the existing debug install without clearing its data. Products, portions and meals
+      remain available. An older edited product whose historical online basis is unknown offers no
+      unsafe reset; a fresh online refresh can provide a new amount/basis pair.
 
 **Result:** ____________________ **Date:** ____________

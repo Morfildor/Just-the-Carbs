@@ -1,5 +1,6 @@
 package app.justthecarbs.ui.scan
 
+import androidx.activity.compose.BackHandler
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -155,9 +156,13 @@ private fun CameraPreview(
     val currentHaptics by rememberUpdatedState(haptics)
     val currentOnBarcode by rememberUpdatedState(onBarcode)
 
+    val ended = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    var providerOwned by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    var useCases by remember { mutableStateOf<List<androidx.camera.core.UseCase>>(emptyList()) }
     val executor = remember { Executors.newSingleThreadExecutor() }
     val analyzer = remember {
         BarcodeAnalyzer { acceptance ->
+            if (ended.get()) return@BarcodeAnalyzer
             when (acceptance) {
                 is BarcodeAcceptance.Accepted -> {
                     // A short haptic confirms the read without the user having to look away from
@@ -168,6 +173,7 @@ private fun CameraPreview(
                     if (currentHapticsEnabled) {
                         currentHaptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     }
+                    ended.set(true)
                     acquired = true
                     currentOnBarcode(acceptance.value)
                 }
@@ -177,9 +183,18 @@ private fun CameraPreview(
         }
     }
 
+    val leave: (() -> Unit) -> Unit = { action ->
+        ended.set(true)
+        analyzer.close()
+        action()
+    }
+    BackHandler(enabled = !showBarcodeDialog) { leave(onClose) }
+
     DisposableEffect(Unit) {
         onDispose {
+            ended.set(true)
             analyzer.close()
+            providerOwned?.unbind(*useCases.toTypedArray())
             executor.shutdown()
         }
     }
@@ -191,11 +206,11 @@ private fun CameraPreview(
             modifier = Modifier.fillMaxSize().padding(top = 120.dp),
         ) {
             Button(
-                onClick = onEnterManually,
+                onClick = { leave(onEnterManually) },
                 modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
                 shape = RoundedCornerShape(Space.buttonRadius),
             ) { Text(stringResource(R.string.permission_manual)) }
-            TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = { leave(onClose) }, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.action_close))
             }
         }
@@ -204,8 +219,8 @@ private fun CameraPreview(
 
     if (showBarcodeDialog) {
         ManualBarcodeDialog(
-            onConfirm = { code -> showBarcodeDialog = false; onManualBarcode(code) },
-            onDismiss = { showBarcodeDialog = false },
+            onConfirm = { code -> leave { onManualBarcode(code) } },
+            onDismiss = { showBarcodeDialog = false; analyzer.setPaused(false) },
         )
     }
 
@@ -219,6 +234,7 @@ private fun CameraPreview(
                 val providerFuture = ProcessCameraProvider.getInstance(ctx)
 
                 providerFuture.addListener({
+                    if (ended.get()) return@addListener
                     try {
                         val provider = providerFuture.get()
                         val preview = Preview.Builder().build().apply {
@@ -231,7 +247,8 @@ private fun CameraPreview(
                             .build()
                             .also { it.setAnalyzer(executor, analyzer) }
 
-                        provider.unbindAll()
+                        providerOwned = provider
+                        useCases = listOf(preview, analysis)
                         camera = provider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
@@ -258,7 +275,7 @@ private fun CameraPreview(
             horizontalArrangement = Arrangement.Start,
         ) {
             ScrimIconButton(
-                onClick = onClose,
+                onClick = { leave(onClose) },
                 icon = Icons.Filled.Close,
                 description = stringResource(R.string.scanner_close),
             )
@@ -322,7 +339,7 @@ private fun CameraPreview(
                 // previously jumped straight to manual product entry, so the control did not do
                 // what its label said.
                 TextButton(
-                    onClick = { showBarcodeDialog = true },
+                    onClick = { analyzer.setPaused(true); holdSteady = false; showBarcodeDialog = true },
                     // A lookup is already under way and this screen is about to be replaced;
                     // opening the manual dialog on top of it would start a second, competing one.
                     enabled = !acquired,

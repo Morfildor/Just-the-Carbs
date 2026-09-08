@@ -44,6 +44,9 @@ class BarcodeAnalyzer(
 ) : ImageAnalysis.Analyzer {
 
     private val tracker = BarcodeStabilityTracker()
+    private var generation = 0L
+    private var paused = false
+    private var closed = false
 
     private val scanner: BarcodeScanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder()
@@ -59,10 +62,19 @@ class BarcodeAnalyzer(
     )
 
     /** Re-arms the scanner: clears both the held-barcode count and the one-shot latch. */
-    fun reset() = tracker.reset()
+    @Synchronized
+    fun setPaused(value: Boolean) {
+        paused = value
+        generation++
+        tracker.reset()
+    }
 
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
+        val frameGeneration = synchronized(this) {
+            if (paused || closed) { imageProxy.close(); return }
+            generation
+        }
         val mediaImage = imageProxy.image
         if (mediaImage == null) {
             imageProxy.close()
@@ -79,30 +91,44 @@ class BarcodeAnalyzer(
         val now = System.nanoTime()
 
         val input = InputImage.fromMediaImage(mediaImage, rotation)
-        scanner.process(input)
-            .addOnSuccessListener { barcodes ->
-                val candidates = barcodes.mapNotNull { barcode ->
-                    val box = barcode.boundingBox ?: return@mapNotNull null
-                    // A misread digit must not become a lookup for a different product (§36). UPC-E
-                    // is format-aware here rather than falling through to EAN-8's plain length
-                    // rules, since an 8-digit UPC-E raw value is a compressed UPC-A, not an EAN-8.
-                    BarcodeFrameReader.read(
-                        rawValue = barcode.rawValue,
-                        format = barcode.format.toBarcodeFormat(),
-                        boxLeft = box.left,
-                        boxTop = box.top,
-                        boxRight = box.right,
-                        boxBottom = box.bottom,
-                        uprightWidth = uprightWidth,
-                        uprightHeight = uprightHeight,
-                        timestampNanos = now,
-                    )
+        try {
+            scanner.process(input)
+                .addOnSuccessListener { barcodes ->
+                    val candidates = barcodes.mapNotNull { barcode ->
+                        val box = barcode.boundingBox ?: return@mapNotNull null
+                        // A misread digit must not become a lookup for a different product (§36). UPC-E
+                        // is format-aware here rather than falling through to EAN-8's plain length
+                        // rules, since an 8-digit UPC-E raw value is a compressed UPC-A, not an EAN-8.
+                        BarcodeFrameReader.read(
+                            rawValue = barcode.rawValue,
+                            format = barcode.format.toBarcodeFormat(),
+                            boxLeft = box.left,
+                            boxTop = box.top,
+                            boxRight = box.right,
+                            boxBottom = box.bottom,
+                            uprightWidth = uprightWidth,
+                            uprightHeight = uprightHeight,
+                            timestampNanos = now,
+                        )
+                    }
+                    synchronized(this) {
+                        if (!closed && !paused && generation == frameGeneration) {
+                            onAcceptance(tracker.onFrame(candidates, now))
+                        }
+                    }
                 }
-                onAcceptance(tracker.onFrame(candidates, now))
-            }
-            // A failed frame is not worth reporting: the next one arrives in milliseconds.
-            .addOnCompleteListener { imageProxy.close() }
+                // A failed frame is not worth reporting: the next one arrives in milliseconds.
+                .addOnCompleteListener { imageProxy.close() }
+        } catch (_: Exception) {
+            imageProxy.close()
+        }
     }
 
-    fun close() = scanner.close()
+    @Synchronized
+    fun close() {
+        if (closed) return
+        closed = true
+        generation++
+        scanner.close()
+    }
 }

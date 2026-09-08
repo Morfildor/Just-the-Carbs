@@ -37,7 +37,7 @@ sealed interface RefreshOutcome {
     data object Unchanged : RefreshOutcome
 
     /** The provider now reports a different figure. Recorded locally; not applied. */
-    data class RemoteDiffers(val latestRemoteCarbs: java.math.BigDecimal) : RefreshOutcome
+    data class RemoteDiffers(val latestRemoteCarbs: java.math.BigDecimal, val basis: NutritionBasis) : RefreshOutcome
 }
 
 /**
@@ -136,7 +136,7 @@ class ProductRepository(
         val latest = (local.fetch(barcode) as? ProductFetchResult.Found)?.product ?: existing
 
         val remoteCarbs = fetched.carbsPer100
-        val differs = remoteCarbs.compareTo(latest.carbsPer100) != 0
+        val differs = remoteCarbs.compareTo(latest.carbsPer100) != 0 || fetched.basis != latest.basis
 
         // §23: a verified or user-authored product belongs to the user. The newer remote figure is
         // *recorded* so the app can mention that the product may have been reformulated (§24), but
@@ -145,6 +145,7 @@ class ProductRepository(
             local.save(
                 latest.copy(
                     latestRemoteCarbs = remoteCarbs,
+                    latestRemoteBasis = fetched.basis,
                     remoteUpdatedAt = clock.instant(),
                     // Images are display-only metadata. Refreshing them must not move the product
                     // facts or the immutable calculation snapshot the user is working with.
@@ -153,7 +154,7 @@ class ProductRepository(
                     largeImageUrl = fetched.largeImageUrl ?: latest.largeImageUrl,
                 ),
             )
-            return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs) else RefreshOutcome.Unchanged
+            return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs, fetched.basis) else RefreshOutcome.Unchanged
         }
 
         // Plain cached remote data: the cache may be brought up to date, because it is the
@@ -167,24 +168,26 @@ class ProductRepository(
         // ("2 slices"), and omitting them let an ordinary background refresh silently erase it,
         // since `fetched` — a value straight off the wire — carries `Product`'s defaults (null) for
         // all three.
+        val usageCompatible = clearUsageForBasisChange(latest, fetched.basis)
         local.save(
             fetched.copy(
                 favorite = latest.favorite,
-                lastPortion = latest.lastPortion,
+                lastPortion = usageCompatible.lastPortion,
                 lastUsedAt = latest.lastUsedAt,
-                lastInputMode = latest.lastInputMode,
-                lastSelectedPortionUnitId = latest.lastSelectedPortionUnitId,
-                lastCount = latest.lastCount,
+                lastInputMode = usageCompatible.lastInputMode,
+                lastSelectedPortionUnitId = usageCompatible.lastSelectedPortionUnitId,
+                lastCount = usageCompatible.lastCount,
                 // A response may temporarily omit selected_images. Keep previously validated
                 // display metadata rather than turning a cached offline gallery into an empty one.
                 images = fetched.images.ifEmpty { latest.images },
                 imageUrl = fetched.imageUrl ?: latest.imageUrl,
                 largeImageUrl = fetched.largeImageUrl ?: latest.largeImageUrl,
                 latestRemoteCarbs = remoteCarbs,
+                    latestRemoteBasis = fetched.basis,
                 remoteUpdatedAt = clock.instant(),
             ),
         )
-        return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs) else RefreshOutcome.Unchanged
+        return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs, fetched.basis) else RefreshOutcome.Unchanged
     }
 
     /**
@@ -212,14 +215,22 @@ class ProductRepository(
             existing.dataSource.isUserAuthored -> null
             else -> existing.originalRemoteCarbs ?: existing.carbsPer100
         }
+        val compatible = clearUsageForBasisChange(existing, basis)
+        val originalBasis = when {
+            existing.dataSource.isUserAuthored -> null
+            existing.originalRemoteCarbs != null -> existing.originalRemoteBasis
+            existing.verificationStatus == VerificationStatus.UNVERIFIED -> existing.basis
+            else -> null
+        }
         local.save(
-            existing.copy(
+            compatible.copy(
                 name = name ?: existing.name,
                 carbsPer100 = verifiedCarbsPer100,
                 basis = basis,
-                packageAmount = packageAmount ?: existing.packageAmount,
+                packageAmount = packageAmount ?: compatible.packageAmount,
                 verificationStatus = VerificationStatus.USER_VERIFIED,
                 originalRemoteCarbs = onlineOriginal,
+                originalRemoteBasis = originalBasis,
                 verifiedAt = clock.instant(),
             ),
         )
@@ -236,10 +247,14 @@ class ProductRepository(
     suspend fun applyLatestRemoteValue(barcode: String) {
         val existing = requireExisting(barcode)
         val latest = existing.latestRemoteCarbs ?: return
+        val basis = existing.latestRemoteBasis ?: return
+        val compatible = clearUsageForBasisChange(existing, basis)
         local.save(
-            existing.copy(
+            compatible.copy(
+                basis = basis,
                 carbsPer100 = latest,
                 originalRemoteCarbs = existing.originalRemoteCarbs ?: existing.carbsPer100,
+                originalRemoteBasis = if (existing.originalRemoteCarbs != null) existing.originalRemoteBasis else existing.basis,
                 verificationStatus = VerificationStatus.UNVERIFIED,
                 verifiedAt = null,
             ),
@@ -253,11 +268,15 @@ class ProductRepository(
     suspend fun resetToOnlineValue(barcode: String) {
         val existing = requireExisting(barcode)
         val online = existing.originalRemoteCarbs ?: return
+        val basis = existing.originalRemoteBasis ?: return
+        val compatible = clearUsageForBasisChange(existing, basis)
         local.save(
-            existing.copy(
+            compatible.copy(
+                basis = basis,
                 carbsPer100 = online,
                 verificationStatus = VerificationStatus.UNVERIFIED,
                 originalRemoteCarbs = null,
+                originalRemoteBasis = null,
                 verifiedAt = null,
             ),
         )
@@ -310,8 +329,10 @@ class ProductRepository(
         mode: InputMode? = null,
         portionUnitId: Long? = null,
         count: BigDecimal? = null,
+        expectedBasis: NutritionBasis? = null,
     ) {
         val existing = requireExisting(barcode)
+        if (expectedBasis != null && expectedBasis != existing.basis) return
         local.save(
             existing.copy(
                 // Only ever advanced by a real resolved amount; a direct-carb use preserves it.
@@ -337,6 +358,13 @@ class ProductRepository(
                 amount = variantAmount,
             )
         }
+    }
+
+    private suspend fun clearUsageForBasisChange(product: Product, basis: NutritionBasis): Product {
+        if (product.basis == basis) return product
+        portionUsage.findByBarcode(product.barcode).forEach { portionUsage.delete(it) }
+        return product.copy(packageAmount = null, servingAmount = null, lastPortion = null,
+            lastInputMode = null, lastSelectedPortionUnitId = null, lastCount = null)
     }
 
     suspend fun setFavorite(barcode: String, favorite: Boolean) {

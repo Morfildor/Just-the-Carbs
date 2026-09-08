@@ -25,18 +25,8 @@ interface PortionUsageStore {
 
     suspend fun delete(usage: PortionUsage)
 
-    /**
-     * Atomically record one use of a portion variant: insert it at count 1 if it has never been
-     * seen, or increment an existing row's count (P0 §5).
-     *
-     * The default implementation — [findVariant] to decide, then [save] — is what every in-memory
-     * test fake gets for free, and it is correct there: a fake backed by a plain
-     * `MutableMap`/`MutableList` under a single-threaded test dispatcher has no window for two
-     * calls to interleave, so there is nothing for atomicity to protect against. [RoomPortionUsageDataSource]
-     * overrides this with a single `INSERT ... ON CONFLICT ... DO UPDATE` statement, because SQLite
-     * genuinely does have concurrent writers and a read-decide-write pattern there is a real race —
-     * see its KDoc for the failure this fixes.
-     */
+    /** Atomically records usage. Room implements this with an API-26-compatible transaction;
+     * in-memory stores use the default implementation. */
     suspend fun recordUse(
         barcode: String,
         inputMode: InputMode,

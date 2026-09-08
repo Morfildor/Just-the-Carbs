@@ -63,3 +63,9 @@ data class PortionUnit(
         else -> false
     }
 }
+
+/** Weight and volume cannot be exchanged without a density; direct carbs have no such unit. */
+fun PortionUnit.isCompatibleWith(basis: NutritionBasis): Boolean = when (val value = conversion) {
+    is PortionConversion.WeightBased -> value.basis == basis
+    is PortionConversion.DirectCarbs -> true
+}

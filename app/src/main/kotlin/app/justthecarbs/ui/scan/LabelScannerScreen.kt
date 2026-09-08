@@ -1249,10 +1249,9 @@ private fun LabelCamera(
                             }
                             captureState = CaptureState.IDLE
                             if (result.bitmap == null) {
-                                // Nothing to show a crop of; report the whole-frame outcome, which
-                                // is the pre-crop behaviour and always safe.
-                                reading = result.report.reading
-                                servingCandidate = result.report.servingCandidate
+                                // No retained photo means no safe visual confirmation path.
+                                reading = LabelReading.NotFound
+                                servingCandidate = null
                             } else {
                                 // The scan guide the user was aiming with, widened by the same
                                 // safety margin the old crop used.

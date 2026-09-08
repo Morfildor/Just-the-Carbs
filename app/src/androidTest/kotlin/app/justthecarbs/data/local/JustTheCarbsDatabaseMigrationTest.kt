@@ -421,6 +421,25 @@ class JustTheCarbsDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migratingFromV7LeavesUnknownHistoricalBasesNull() {
+        val db = helper.createDatabase(TEST_DB, 7)
+        db.execSQL("""
+            INSERT INTO products (barcode, name, carbsPer100, basis, dataSource, verificationStatus,
+                originalRemoteCarbs, latestRemoteCarbs, favorite)
+            VALUES ('legacy', 'Legacy', '10', 'PER_100_ML', 'OPEN_FOOD_FACTS', 'USER_VERIFIED', '40', '50', 0)
+        """.trimIndent())
+        db.close()
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 8, true, JustTheCarbsDatabase.MIGRATION_7_8)
+        migrated.query("SELECT originalRemoteCarbs, latestRemoteCarbs, originalRemoteBasis, latestRemoteBasis FROM products WHERE barcode = 'legacy'").use {
+            assertTrue(it.moveToFirst())
+            assertEquals("40", it.getString(0))
+            assertEquals("50", it.getString(1))
+            assertTrue(it.isNull(2))
+            assertTrue(it.isNull(3))
+        }
+    }
+
     // A unique name per test instance (JUnit creates a fresh instance per @Test method): reusing a
     // fixed name let one test's already-migrated v3 file leak into the next test's "fresh" v2
     // database, since MigrationTestHelper.createDatabase() does not itself guarantee a clean file.

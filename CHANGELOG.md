@@ -27,8 +27,10 @@ describe what 1.0.0, 1.0.1 or 1.0.2 actually did; that phrasing is withdrawn.
   afterwards. `1.0.4` / `versionCode 5` is the concrete case — submitted, then withdrawn by the
   owner before review completed, and `5` was still consumed; the corrective build that followed used
   the next number (`6`), not a rebuilt `5`.
-- `versionCode` increments by one each time and is **never reused** — Play refuses a duplicate,
-  including for a build that was rejected, withdrawn mid-review, or never uploaded at all.
+- `versionCode` increments for each Play artifact and is **never reused once Play has received
+  it**, including when that submission is later rejected or withdrawn. A purely local build that
+  never reached Play does not consume another `versionCode` — it can be rebuilt as many times as
+  needed under the same open number until it is actually uploaded.
 - Documentation-only changes do not open a version. A version number exists to identify an
   artifact, and prose that changes no code produces none.
 - Test figures and the Play *What's new* text inside an unreleased section describe the work so far
@@ -58,9 +60,10 @@ work after
   defect line says what the user would have seen, not which function moved.
 - `versionCode` is unique per upload and **never reused** — Play rejects a duplicate. It is bumped
   when a version section is opened, then left alone until that build ships.
-- **`versionCode 1` through `6` are spent.** All are on the closed track (`5` withdrawn before
-  review completed, see its section below) and none is to be rebuilt or re-uploaded; the next
-  number is `7`, which `1.0.6` has open below.
+- **`versionCode 1` through `6` are spent** — none is to be rebuilt or re-uploaded; the next number
+  is `7`, which `1.0.6` has open below. Code `5` was consumed by the withdrawn closed-testing
+  submission (see its section below) and never became a released closed-track artifact; `1`, `2`,
+  `3`, `4` and `6` reached the closed track as recorded in `docs/version-history.md`.
 - When a version is uploaded, copy its section verbatim into `docs/version-history.md`. Nothing is
   rewritten on the way across, so the record of what shipped stays what it said at the time.
 - Every version also carries a **Play Store release notes** block — the *What's new* text, written
@@ -75,24 +78,22 @@ work after
 Nothing yet. `1.0.6` / `versionCode 7` is open below; a documentation-only change opens nothing
 further and lands directly under that heading.
 
-## 1.0.6 (versionCode 7) — in development, not built or uploaded
+## 1.0.6 (versionCode 7) — in development, not uploaded
 
-Opened by a small scanner UX patch: nutrition-label capture now gives the same tactile shutter
-acknowledgement the barcode scanner already gives on accepted detection. Deliberately surgical — no
-OCR recognition, eligibility, evidence resolution, verification, scale, recovery, calculation,
-persistence or navigation file was touched.
+Opened by the scanner shutter-haptic patch, then extended by the repository-review fixes below.
+This version also corrects portion recalculation, nutrition-basis persistence, meal-save reporting,
+and scanner lifecycle handling. It remains a local development build; no Play upload has been made.
 
 ### Play Store release notes (draft)
 
 ```
-Improved scanner feedback: nutrition-label scanning now gives a brief vibration when you tap
-Capture, matching the tactile feedback used for barcode scanning. No change to scan accuracy.
+Nutrition-label capture now gives brief tactile feedback. Fixed portion calculations after product
+edits and online-value resets, improved meal-save feedback, and made manual barcode entry and crop
+selection more reliable.
 ```
 
-Checked against §44 §7.1: no health claim, no mention of diabetes, no medical wording. 186
-characters against the 500 limit. Deliberately says "when you tap Capture" rather than "when the
-photo is captured" — the feedback fires on the tap being committed, not once JPEG acquisition or
-recognition has finished, and the earlier draft's wording could be misread as the latter.
+The draft describes observable changes without a health or accuracy claim. Physical-phone testing
+of this combined build is still pending.
 
 ### Added
 
@@ -106,6 +107,44 @@ recognition has finished, and the earlier draft's wording could be misread as th
   ordinary confirmation, scale-unresolved confirmation, assisted/focused entry, crop adjustment,
   reread, Retake or Close.
 
+### Fixed
+
+- **Remembering portions on older Android versions.** Recording a usual portion used SQLite's
+  `ON CONFLICT DO UPDATE` syntax, which the platform SQLite shipped on Android 8–10 cannot parse.
+  The DAO now inserts-or-ignores and increments inside one Room transaction, preserving the unique
+  variant and accumulated use count without requiring a newer SQLite engine.
+- **Direct-carb portions after verification or reset.** A previous gram input could regain priority
+  after a product update: two slices at 14 g carbs each could display a recalculated weighed result
+  while the meal received 28 g. Recalculation now follows the selected input mode and clears the
+  inactive result, so the visible answer and meal calculation use the same conversion.
+- **Gram quantities surviving a switch to millilitres.** Editing a product's basis now clears its
+  remembered quantity, package amount and usual-portion history. Incompatible weight-based units
+  cannot be selected or calculated, and Recents refuses to resolve them. Pending history writes
+  carry their original basis and are discarded if the product has since changed basis.
+- **Online values restored with the wrong basis.** Original and latest remote values now persist
+  their own g/ml bases; applying or resetting restores the pair. A basis-only remote change is
+  reported too, with the new basis in the notice. Room migration **7 → 8** preserves existing
+  amounts but leaves their unknown historical bases null, withholding reset/apply until a known
+  pair exists rather than guessing a basis from the current edited product.
+- **A saved meal reported as failed when remembering its portion failed.** Meal insertion and
+  optional usage-history reporting now have separate outcomes. The usage snapshot is captured
+  before the insert suspends; a history failure leaves the meal successful, permits *Scan next*,
+  and reports that the portion could not be remembered instead of inviting a duplicate meal retry.
+- **An OCR fallback bypassing the current confirmation gates.** If the retained still has no
+  bitmap, the scanner now offers recovery instead of handing the old parser proposal to ordinary
+  confirmation. A missing photograph cannot become a shortcut around the current decision path.
+- **Barcode detection competing with manual entry or Close.** Opening manual barcode entry pauses
+  and resets the analyzer. Generation checks discard callbacks from earlier frames after pause,
+  resume or disposal; navigation closes acceptance immediately. The camera-provider callback also
+  checks disposal, and the screen unbinds its own camera use cases when it leaves.
+- **Automatic crop target arriving after the crop screen opened.** The selection now follows a
+  changed capture/initial target, so the narrow automatic rectangle reaches the already-composed
+  screen. Ordinary recomposition with the same target retains the user's drag adjustment.
+- **Debug evidence work blocking the screen.** Export waiting and zip creation now run on an IO
+  dispatcher with repeated taps disabled while work is pending. Crop diagnostic rendering and
+  writes use the evidence writer queue; an export whose queue-drain times out is refused. Export
+  failure wording no longer asserts that every failure means nothing has been recorded.
+
 ### Internal
 
 - **Barcode analyzer callback-freshness hardening.** `ScannerScreen`'s `remember { BarcodeAnalyzer {
@@ -117,16 +156,28 @@ recognition has finished, and the earlier draft's wording could be misread as th
   is not re-entered with a live analyzer while the haptics setting changes underneath it — this is
   a latent-hazard fix, not a reproduced defect.
 
+- **Regression coverage and cleanup.** The review's four failing probes are retained as permanent
+  regressions, with additional unknown-basis and stale-history checks. A v7 → v8 migration test
+  checks that legacy bases remain unknown. CI adds blocking API 26/29 database tests alongside
+  the existing API 36 suite. Unused synchronous evidence-writing wrappers, the unused DAO deletion
+  method and the unused `recent_summary` string were removed.
+
 ### Verified this pass
 
-`:app:compileDebugKotlin` BUILD SUCCESSFUL. `:app:testDebugUnitTest --rerun-tasks`: **1883/1883**
-(0 failures, 0 errors, 0 skipped, 198 JUnit XML files). `:app:lintDebug`: exit 0, **0 errors, 23
-warnings** — unchanged baseline. `:app:assembleDebug` BUILD SUCCESSFUL.
-`:app:compileDebugAndroidTestKotlin` BUILD SUCCESSFUL.
+Full debug JVM suite: **1890/1890** (0 failures, 0 errors, 0 skipped), including all seven
+repository-review regressions and the evidence-bundle assertions after queued writes finish.
+`:app:lintDebug`: exit 0, **0 errors, 22 warnings**. `:app:assembleDebug` BUILD SUCCESSFUL;
+instrumented test sources compiled successfully.
 
-**Not done, deliberately:** no physical-device haptic verification (see `docs/manual-qa.md` §38 —
-tactile timing and feel cannot be judged from the emulator or a test); no release build for this
-version; no Play upload; no release AAB/APK created.
+Targeted connected tests on the available **API 36 emulator: 20/20**, 0 failed, 0 skipped:
+`PortionUsageDaoTest`, `JustTheCarbsDatabaseMigrationTest`, and `CropSelectionUpdateTest`.
+This checks real SQLite writes/concurrency, migration preservation and the late crop-target handoff.
+API 26/29 database coverage is configured in CI; those emulator versions were not run locally.
+
+**Still to verify on the phone:** shutter haptic timing/feel, manual-barcode pause/resume and Close,
+upgrade with existing data, and responsiveness while exporting a real capture backlog. See
+`docs/manual-qa.md` §§38–39. No full connected OCR suite was run in this repair pass; no release
+AAB/APK was created and no Play upload was made. The debug APK is ready for the owner's retest.
 
 ## 1.0.5 (versionCode 6) — released to closed testing 2026-09-07, available to selected testers
 

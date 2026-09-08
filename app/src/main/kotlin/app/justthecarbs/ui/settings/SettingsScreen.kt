@@ -30,6 +30,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +87,8 @@ fun SettingsScreen(
     var privacyPolicyLinkFailed by remember { mutableStateOf(false) }
     var feedbackLinkFailed by remember { mutableStateOf(false) }
     var rateLinkFailed by remember { mutableStateOf(false) }
+    val evidenceScope = rememberCoroutineScope()
+    var evidenceBusy by remember { mutableStateOf(false) }
     var evidenceExportFailed by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
@@ -323,28 +330,49 @@ fun SettingsScreen(
                     )
                     if (evidenceExportFailed) {
                         Text(
-                            text = "Nothing recorded yet — capture a nutrition label first.",
+                            text = "Could not export evidence. Capture a label first, then try again.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     SettingsAction(
-                        text = "Export scan evidence",
+                        text = if (evidenceBusy) "Preparing evidence…" else "Export scan evidence",
+                        enabled = !evidenceBusy,
                         onClick = {
-                            val intent = ScanEvidenceExport.share(context)
-                            if (intent == null) {
-                                evidenceExportFailed = true
-                            } else {
-                                evidenceExportFailed = false
-                                runCatching { context.startActivity(intent) }
+                            evidenceBusy = true
+                            evidenceScope.launch {
+                                try {
+                                    val intent = withContext(Dispatchers.IO) { ScanEvidenceExport.share(context) }
+                                    evidenceExportFailed = intent == null
+                                    if (intent != null) {
+                                        evidenceExportFailed = runCatching { context.startActivity(intent) }.isFailure
+                                    }
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    evidenceExportFailed = true
+                                } finally { evidenceBusy = false }
                             }
                         },
                     )
                     SettingsAction(
                         text = "Clear recorded captures",
+                        enabled = !evidenceBusy,
                         onClick = {
-                            ScanEvidenceRecorder.clear(context)
-                            evidenceExportFailed = false
+                            evidenceBusy = true
+                            evidenceScope.launch {
+                                try {
+                                    withContext(Dispatchers.IO) {
+                                        check(ScanEvidenceRecorder.drain())
+                                        ScanEvidenceRecorder.clear(context)
+                                    }
+                                    evidenceExportFailed = false
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    evidenceExportFailed = true
+                                } finally { evidenceBusy = false }
+                            }
                         },
                     )
                 }
@@ -458,7 +486,7 @@ private fun RateUsCard(failed: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SettingsAction(text: String, onClick: () -> Unit) {
+private fun SettingsAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyLarge,
@@ -466,7 +494,7 @@ private fun SettingsAction(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(Space.minTouchTarget)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .semantics { role = Role.Button }
             .padding(vertical = 12.dp),
     )

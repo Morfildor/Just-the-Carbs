@@ -4071,7 +4071,7 @@ disagrees, this one is right — and fix the older passage rather than working a
 |---|---|
 | What is the latest release? | `1.0.5` / **`versionCode 6`**, released to Play's closed-testing track 2026-09-07, **available to selected testers** (per Play Console) |
 | Which track? | **Closed testing.** `versionCode 1` (internal → closed), `2`, `3`, `4` preceded it and were each replaced in turn; `5` (`1.0.4`) was uploaded, entered review, then withdrawn by the owner before review completed — Play still consumed the code, so `5` never reached the track as a release |
-| What is in development? | **`1.0.6` / `versionCode 7`, OPEN.** Opened 2026-09-08 by a scanner shutter-haptic patch. `branding.gradle.kts` names `7` / `"1.0.6"`. Nothing built or uploaded against it |
+| What is in development? | **`1.0.6` / `versionCode 7`, OPEN.** Opened 2026-09-08 by a scanner shutter-haptic patch. `branding.gradle.kts` names `7` / `"1.0.6"`. Debug build verified (`assembleDebug`); no release artifact built or uploaded |
 | Is 1.0.5 released? | **Yes**, to closed testing. In `docs/version-history.md` with hash, size and signer. Do not describe it as "pending Play review" — Play Console shows it live and available to selected testers |
 | Is 1.0.4 released? | **No.** Uploaded, entered review, withdrawn by the owner before completion (private-correspondence text found in repo history). `versionCode 5` is spent and never reused; the corrective build used `6`, not a rebuilt `5` |
 | What do I develop against? | **`1.0.6` / `versionCode 7`** — already open; further changes this cycle land under `CHANGELOG.md`'s existing `## 1.0.6` heading, not a new bump, until it is built and uploaded |

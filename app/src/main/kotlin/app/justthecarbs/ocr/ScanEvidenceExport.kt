@@ -23,6 +23,7 @@ object ScanEvidenceExport {
      * Null when there is nothing to export or the build is not a debug build — the caller shows the
      * "nothing recorded yet" state rather than an empty share sheet.
      */
+    @Synchronized
     fun share(context: Context): Intent? {
         if (!ScanEvidenceRecorder.enabled) return null
 
@@ -33,7 +34,7 @@ object ScanEvidenceExport {
         // a deliberate user action with no latency budget, and it is the one moment where a
         // half-written `passA.png` would be zipped as though it were complete. This is the only
         // place in the app that waits for the writer.
-        ScanEvidenceRecorder.drain()
+        if (!ScanEvidenceRecorder.drain()) return null
 
         val captures = ScanEvidenceRecorder.captures(context)
         if (captures.isEmpty()) return null

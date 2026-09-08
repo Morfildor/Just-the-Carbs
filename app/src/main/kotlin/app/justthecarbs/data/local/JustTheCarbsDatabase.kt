@@ -28,7 +28,7 @@ import androidx.sqlite.execSQL
         MealItemEntity::class,
         PortionUsageEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class JustTheCarbsDatabase : RoomDatabase() {
@@ -359,6 +359,14 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
             }
         }
 
+        internal val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE products ADD COLUMN originalRemoteBasis TEXT")
+                connection.execSQL("ALTER TABLE products ADD COLUMN latestRemoteBasis TEXT")
+                // A verified row may have changed basis. Leave historical pairs unknown.
+            }
+        }
+
         fun build(context: Context): JustTheCarbsDatabase =
             Room.databaseBuilder(context.applicationContext, JustTheCarbsDatabase::class.java, NAME)
                 .addMigrations(
@@ -368,6 +376,7 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                     MIGRATION_6_7,
+                    MIGRATION_7_8,
                 )
                 .build()
     }

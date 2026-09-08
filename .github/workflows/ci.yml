@@ -83,8 +83,9 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
-  # Instrumented tests need an emulator, which is slow and flaky on shared runners, so on ordinary
-  # pushes and pull requests they stay non-blocking: a device hiccup should not block a change to
+  # API 26/29 run the focused database suite as blocking compatibility checks.
+  # The full API 36 suite remains non-blocking on ordinary
+  # pushes and pull requests: a device hiccup should not block a change to
   # the unit-tested logic, which is where the calculation safety actually lives.
   #
   # This is NOT the release gate. `release-gate.yml` runs the same suite with no continue-on-error
@@ -92,9 +93,13 @@ jobs:
   # a passing release gate means the instrumented suite passed is true there and only there —
   # this job's tolerance is deliberately confined to day-to-day branch work.
   instrumented:
-    name: Instrumented tests [debug, non-blocking — see release-gate.yml]
+    name: Instrumented tests [API ${{ matrix.api }}]
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: ${{ matrix.api == 36 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [26, 29, 36]
 
     steps:
       - uses: actions/checkout@v4
@@ -134,12 +139,12 @@ jobs:
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
+          api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64
           script: >-
             ./gradlew :app:connectedDebugAndroidTest --no-daemon
-            -Pandroid.testInstrumentationRunnerArguments.notAnnotation=app.justthecarbs.ExploratoryExperiment
+            ${{ matrix.api == 36 && '-Pandroid.testInstrumentationRunnerArguments.notAnnotation=app.justthecarbs.ExploratoryExperiment' || '-Pandroid.testInstrumentationRunnerArguments.class=app.justthecarbs.data.local.PortionUsageDaoTest,app.justthecarbs.data.local.JustTheCarbsDatabaseMigrationTest' }}
 
   # The blocking release gate (§64 hardening pass). Builds the actual minified/shrunk release
   # configuration and fails the workflow if R8 fails, the APK is not produced, or any release-path

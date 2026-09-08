@@ -20,28 +20,7 @@ import org.junit.runner.RunWith
 import java.math.BigDecimal
 import java.time.Instant
 
-/**
- * P0 §5: [PortionUsageDao.recordUse] correctly handles high concurrency against a real database
- * connection, not a hand-built fake. `Room.inMemoryDatabaseBuilder(...).build()` — the same
- * connection path production uses — is deliberate rather than incidental: an in-memory `Map`-backed
- * fake cannot exercise this at all, since there is no real writer to race against.
- *
- * **What this class does and does not prove, stated plainly rather than overclaimed.** The 20
- * concurrent recordings below pass under both this fix and the read-decide-write pattern it
- * replaced — checked directly, including with an artificial delay inserted between the read and
- * the write to widen the race window — because Room dispatches every suspend DAO call through its
- * own internal single-threaded write executor before it reaches SQLite, which already serializes
- * same-process calls before either version's code runs. So this class does not reproduce a lost
- * update as a device-observed defect. What it does establish: [PortionUsageDao.recordUse]'s single
- * `INSERT ... ON CONFLICT ... DO UPDATE` statement is correct at real concurrency (no exception, no
- * duplicate row, the exact expected count every time), which is the DB-level guarantee this fix
- * moves the invariant onto — SQLite's own atomic-statement guarantee, not Room's current executor
- * behaviour, which nothing in the public API contracts to keep serializing forever. See
- * [PortionUsageDao.recordUse]'s KDoc for the one half of this fix that *is* a measured defect
- * (the `NULL`-holed unique index), independent of concurrency altogether.
- *
- * NOTE: this is an **instrumented** test.
- */
+/** Exercises compatible insert/update transactions, uniqueness and concurrent counts in SQLite. */
 @RunWith(AndroidJUnit4::class)
 class PortionUsageDaoTest {
 

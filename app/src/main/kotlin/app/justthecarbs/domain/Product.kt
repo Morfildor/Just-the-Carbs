@@ -95,6 +95,9 @@ data class Product(
      * overwriting what the user verified against the package (§24, correction #10).
      */
     val latestRemoteCarbs: BigDecimal? = null,
+    /** Null for historical rows whose remote denominator was never stored. Never infer it. */
+    val originalRemoteBasis: NutritionBasis? = null,
+    val latestRemoteBasis: NutritionBasis? = null,
     /** When the user last confirmed this against the package (§24). Never blocks calculation. */
     val verifiedAt: Instant? = null,
     val remoteUpdatedAt: Instant? = null,
@@ -127,7 +130,7 @@ data class Product(
         get() = !dataSource.isUserAuthored && verificationStatus == VerificationStatus.UNVERIFIED
 
     /** True once the user overrode an online figure, so *Reset to online value* can be offered (§23). */
-    val canResetToOnlineValue: Boolean get() = originalRemoteCarbs != null
+    val canResetToOnlineValue: Boolean get() = originalRemoteCarbs != null && originalRemoteBasis != null
 
     /**
      * The remote provider now reports a different figure from the one in use.
@@ -136,5 +139,5 @@ data class Product(
      * not an error, and the user may well be holding the older packaging (§24).
      */
     val remoteValueDiffers: Boolean
-        get() = latestRemoteCarbs?.let { it.compareTo(carbsPer100) != 0 } == true
+        get() = latestRemoteBasis != null && latestRemoteCarbs?.let { it.compareTo(carbsPer100) != 0 || latestRemoteBasis != basis } == true
 }

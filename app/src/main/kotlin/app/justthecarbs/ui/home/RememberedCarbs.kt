@@ -67,6 +67,7 @@ fun rememberedCarbs(product: Product, unit: PortionUnit?): RememberedCarbs? {
             )
 
             is PortionConversion.WeightBased -> {
+                if (conversion.basis != product.basis) return null
                 val resolved = PortionResolver.resolve(count, conversion.amountPerUnit)
                 RememberedCarbs.Countable(
                     exactCarbs = CarbCalculator.calculate(

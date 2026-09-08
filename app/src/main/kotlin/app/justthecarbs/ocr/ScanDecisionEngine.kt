@@ -1,7 +1,8 @@
 package app.justthecarbs.ocr
 
 /**
- * Wraps the existing, already-correct decision chain
+ * Test-harness adapter; LabelScannerScreen does not call this object.
+ * Wraps the decision chain
  * ([EvidenceResolver] -> [AutomaticVerification] -> [ScanPresentationDecision]) into one
  * exhaustive [ScanDecision]. Adds no new policy: every threshold and rule this delegates to is
  * unchanged. What it adds is a type-level guarantee that only a bundle [ScanPresentationDecision]

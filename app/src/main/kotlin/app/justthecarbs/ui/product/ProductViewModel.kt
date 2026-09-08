@@ -8,6 +8,7 @@ import app.justthecarbs.data.RefreshOutcome
 import app.justthecarbs.domain.CarbCalculator
 import app.justthecarbs.domain.CarbResult
 import app.justthecarbs.domain.DirectCarbCalculator
+import app.justthecarbs.domain.isCompatibleWith
 import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.toInputModeOrNull
 import app.justthecarbs.domain.LabelComparison
@@ -101,6 +102,8 @@ data class ProductUiState(
      * the life of the session.
      */
     val newerRemoteCarbs: BigDecimal? = null,
+    val newerRemoteBasis: NutritionBasis? = null,
+    val usageSaveFailed: Boolean = false,
     // ---- countable portions (brief §2, §9-§12) ----------------------------------------------
     /** Frozen for the session once loaded — a background refresh never replaces this list. */
     val portionUnits: List<PortionUnit> = emptyList(),
@@ -479,6 +482,7 @@ class ProductViewModel(
      * whole operation instead of only its network half.
      */
     private suspend fun onProductLoaded(product: Product) {
+        prepareForProductUpdate(product)
         // Pre-fill the portion the user chose last time, so a repeat product needs no typing at
         // all (§20) — but only if they have not already started typing in this session.
         val restoredPortion = savedState.get<String>(KEY_PORTION)
@@ -494,7 +498,8 @@ class ProductViewModel(
 
             val mode = restoredMode ?: product.lastInputMode ?: InputMode.GRAMS
             val candidateSelectedId = restoredSelectedId ?: product.lastSelectedPortionUnitId
-            val resolvedMode = if (mode == InputMode.PORTION_UNIT && units.none { it.id == candidateSelectedId }) {
+            val incompatibleSelection = units.any { it.id == candidateSelectedId && !it.isCompatibleWith(product.basis) }
+            val resolvedMode = if (mode == InputMode.PORTION_UNIT && units.none { it.id == candidateSelectedId && it.isCompatibleWith(product.basis) }) {
                 InputMode.GRAMS
             } else {
                 mode
@@ -504,7 +509,7 @@ class ProductViewModel(
                 ?: product.lastCount?.takeIf { resolvedMode == InputMode.PORTION_UNIT }?.stripTrailingZeros()?.toPlainString()
                 ?: ""
 
-            val portionText = if (resolvedMode == InputMode.PORTION_UNIT && resolvedSelectedId != null) {
+            val portionText = if (incompatibleSelection) "" else if (resolvedMode == InputMode.PORTION_UNIT && resolvedSelectedId != null) {
                 when (val conversion = units.first { it.id == resolvedSelectedId }.conversion) {
                     is PortionConversion.WeightBased -> {
                         val count = PortionParser.parse(countText) ?: BigDecimal.ONE
@@ -535,14 +540,7 @@ class ProductViewModel(
                     usualPortions = repository.usualPortions(product.barcode),
                 )
             }
-            // A restored countable selection must recalculate through its own conversion path;
-            // recalculate() alone only covers the grams field.
-            val restoredUnit = units.firstOrNull { it.id == resolvedSelectedId }
-            if (restoredUnit != null && resolvedMode == InputMode.PORTION_UNIT) {
-                recalculateFromCount(restoredUnit, countText)
-            } else {
-                recalculate()
-            }
+            recalculate()
 
             // Background refresh only, never on the path to a result: the value is already on screen
             // by now (§10.2).
@@ -554,7 +552,7 @@ class ProductViewModel(
             // follow the exact same rule (§9).
             when (val outcome = repository.refreshFromRemote(product.barcode)) {
                 is RefreshOutcome.RemoteDiffers ->
-                    _state.update { it.copy(newerRemoteCarbs = outcome.latestRemoteCarbs) }
+                    _state.update { it.copy(newerRemoteCarbs = outcome.latestRemoteCarbs, newerRemoteBasis = outcome.basis) }
                 RefreshOutcome.Unchanged -> Unit
             }
 
@@ -602,6 +600,7 @@ class ProductViewModel(
 
     fun switchToPortionUnit(unitId: Long) {
         val unit = _state.value.portionUnits.firstOrNull { it.id == unitId } ?: return
+        if (!unit.isCompatibleWith(_state.value.product?.basis ?: return)) return
         val countText = _state.value.countText.ifBlank { "1" }
         savedState[KEY_MODE] = InputMode.PORTION_UNIT.name
         savedState[KEY_SELECTED_UNIT] = unitId
@@ -609,42 +608,14 @@ class ProductViewModel(
         _state.update {
             it.copy(inputMode = InputMode.PORTION_UNIT, selectedPortionUnitId = unitId, countText = countText)
         }
-        recalculateFromCount(unit, countText)
+        recalculate()
     }
 
     fun onCountChanged(text: String) {
         savedState[KEY_COUNT] = text
         _state.update { it.copy(countText = text) }
         val unit = _state.value.selectedPortionUnit ?: return
-        recalculateFromCount(unit, text)
-    }
-
-    private fun recalculateFromCount(unit: PortionUnit, countText: String) {
-        val count = PortionParser.parse(countText)
-        if (count == null) {
-            _state.update { it.copy(result = null, directCarbResult = null) }
-            return
-        }
-
-        when (val conversion = unit.conversion) {
-            is PortionConversion.WeightBased -> {
-                val resolved = PortionResolver.resolve(count, conversion.amountPerUnit)
-                val portionText = resolved.stripTrailingZeros().toPlainString()
-                savedState[KEY_PORTION] = portionText
-                _state.update { it.copy(portionText = portionText, directCarbResult = null) }
-                recalculate()
-            }
-            is PortionConversion.DirectCarbs -> {
-                // No grams exist on this path, so none are written into portionText. Filling it with
-                // a derived figure would put a weight the app never knew in front of the user.
-                _state.update {
-                    it.copy(
-                        result = null,
-                        directCarbResult = DirectCarbCalculator.exactCarbs(count, conversion.carbsPerUnit),
-                    )
-                }
-            }
-        }
+        recalculate()
     }
 
     fun showAddPortionUnitForm(show: Boolean) = _state.update { it.copy(showAddPortionUnitForm = show) }
@@ -719,7 +690,7 @@ class ProductViewModel(
             // The corrected weight is a deliberate user action, so unlike a background refresh it
             // *should* move the open session's result (§9 protects against surprise, not intent).
             if (_state.value.selectedPortionUnitId == verified.id) {
-                recalculateFromCount(verified, _state.value.countText)
+                recalculate()
             }
         }
     }
@@ -736,7 +707,7 @@ class ProductViewModel(
                 )
             }
             if (_state.value.selectedPortionUnitId == applied.id) {
-                recalculateFromCount(applied, _state.value.countText)
+                recalculate()
             }
         }
     }
@@ -834,6 +805,7 @@ class ProductViewModel(
     fun addCurrentToMeal(portionDescription: String, fallbackName: String = "", scanNext: Boolean = false) {
         if (_state.value.addingToMeal) return
         val pending = buildPendingMealItem(portionDescription, fallbackName) ?: return
+        val usage = buildUsageSnapshot()
 
         _state.update { it.copy(addingToMeal = true, mealAddFailed = false) }
         viewModelScope.launch {
@@ -860,8 +832,8 @@ class ProductViewModel(
                 }
                 // Adding to a meal is the strongest possible signal that this portion is real —
                 // stronger than the debounced typing signal — so it counts towards *Usual* too
-                // (§13). Awaited, not fire-and-forget: it is part of what "the add succeeded" means.
-                writeUsageSnapshot(buildUsageSnapshot())
+                // (§13). Await completion, but report history failure separately from the committed meal.
+                writeUsageSnapshot(usage)
                 _state.update { it.copy(addingToMeal = false) }
                 if (scanNext) {
                     _navigationEvents.send(ProductNavigationEvent.ScanNext)
@@ -882,31 +854,58 @@ class ProductViewModel(
         viewModelScope.launch { repository.clearMeal() }
     }
 
+    /** Calculate only the active input; inactive results must never survive a product update. */
     private fun recalculate() {
-        val product = _state.value.product
-        val portion = PortionParser.parse(_state.value.portionText)
-
-        // No portion, no result. Showing a stale or zero number while the field is empty would be
-        // showing a value the user did not ask for (§13).
-        if (product == null || portion == null) {
-            _state.update { it.copy(result = null) }
+        val state = _state.value
+        val product = state.product
+        if (product == null) {
+            _state.update { it.copy(result = null, directCarbResult = null) }
             return
         }
-
-        _state.update {
-            it.copy(
-                result = CarbCalculator.calculate(
-                    carbsPer100 = product.carbsPer100,
-                    portion = portion,
-                    basis = product.basis,
-                ),
-            )
+        var portion = PortionParser.parse(state.portionText)
+        if (state.inputMode == InputMode.PORTION_UNIT) {
+            val count = PortionParser.parse(state.countText)
+            val conversion = state.selectedPortionUnit?.conversion
+            if (count == null || conversion == null ||
+                (conversion is PortionConversion.WeightBased && conversion.basis != product.basis)) {
+                _state.update { it.copy(result = null, directCarbResult = null) }
+                return
+            }
+            when (conversion) {
+                is PortionConversion.DirectCarbs -> {
+                    _state.update { it.copy(result = null,
+                        directCarbResult = DirectCarbCalculator.exactCarbs(count, conversion.carbsPerUnit)) }
+                    return
+                }
+                is PortionConversion.WeightBased -> {
+                    portion = PortionResolver.resolve(count, conversion.amountPerUnit)
+                    val text = portion.stripTrailingZeros().toPlainString()
+                    savedState[KEY_PORTION] = text
+                    _state.update { it.copy(portionText = text) }
+                }
+            }
         }
+        val result = portion?.let { CarbCalculator.calculate(product.carbsPer100, it, product.basis) }
+        _state.update { it.copy(result = result, directCarbResult = null) }
+    }
+
+    private fun prepareForProductUpdate(product: Product) {
+        val previousBasis = _state.value.product?.basis?.name ?: savedState.get<String>(KEY_BASIS)
+        if (previousBasis != null && previousBasis != product.basis.name) {
+            savedState.remove<String>(KEY_PORTION)
+            savedState.remove<String>(KEY_COUNT)
+            savedState.remove<String>(KEY_MODE)
+            savedState.remove<Long>(KEY_SELECTED_UNIT)
+            _state.update { it.copy(portionText = "", countText = "", inputMode = InputMode.GRAMS,
+                selectedPortionUnitId = null, result = null, directCarbResult = null, usualPortions = emptyList()) }
+        }
+        savedState[KEY_BASIS] = product.basis.name
     }
 
     /** What [rememberUsage] and [rememberUsageAndAwait] write, fixed before any coroutine suspends. */
     private data class UsageSnapshot(
         val barcode: String,
+        val basis: NutritionBasis,
         val resolvedPortion: BigDecimal?,
         val mode: InputMode,
         val portionUnitId: Long?,
@@ -928,7 +927,7 @@ class ProductViewModel(
      */
     private fun buildUsageSnapshot(): UsageSnapshot? {
         val product = _state.value.product ?: return null
-        if (_state.value.unsaved || product.barcode.isEmpty()) return null
+        if (_state.value.unsaved || product.barcode.isEmpty() || _state.value.exactCarbs == null) return null
         val mode = _state.value.inputMode
         val conversion = _state.value.selectedPortionUnit?.conversion
 
@@ -949,6 +948,7 @@ class ProductViewModel(
 
         return UsageSnapshot(
             barcode = product.barcode,
+            basis = product.basis,
             resolvedPortion = resolvedPortion,
             mode = mode,
             portionUnitId = _state.value.selectedPortionUnitId,
@@ -958,13 +958,17 @@ class ProductViewModel(
 
     private suspend fun writeUsageSnapshot(snapshot: UsageSnapshot?) {
         if (snapshot == null) return
-        repository.recordUse(
-            snapshot.barcode,
-            snapshot.resolvedPortion,
-            mode = snapshot.mode,
-            portionUnitId = snapshot.portionUnitId,
-            count = snapshot.count,
-        )
+        try {
+            repository.recordUse(snapshot.barcode, snapshot.resolvedPortion,
+                mode = snapshot.mode, portionUnitId = snapshot.portionUnitId,
+                count = snapshot.count, expectedBasis = snapshot.basis)
+            _state.update { it.copy(usageSaveFailed = false) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // A history failure must neither crash Back nor turn a committed meal into a retry.
+            _state.update { it.copy(usageSaveFailed = true) }
+        }
     }
 
     /**
@@ -1006,6 +1010,7 @@ class ProductViewModel(
         viewModelScope.launch {
             repository.applyLatestRemoteValue(product.barcode)
             (repository.lookup(product.barcode) as? ProductFetchResult.Found)?.let { updated ->
+                prepareForProductUpdate(updated.product)
                 _state.update { it.copy(product = updated.product, newerRemoteCarbs = null) }
                 recalculate()
             }
@@ -1031,7 +1036,7 @@ class ProductViewModel(
     fun applyUsualPortion(usage: PortionUsage) {
         if (usage.inputMode == InputMode.PORTION_UNIT && usage.portionUnitId != null) {
             val unit = _state.value.portionUnits.firstOrNull { it.id == usage.portionUnitId }
-            if (unit != null) {
+            if (unit != null && unit.isCompatibleWith(_state.value.product?.basis ?: return)) {
                 savedState[KEY_MODE] = InputMode.PORTION_UNIT.name
                 savedState[KEY_SELECTED_UNIT] = unit.id
                 val countText = usage.amount.stripTrailingZeros().toPlainString()
@@ -1043,7 +1048,7 @@ class ProductViewModel(
                         countText = countText,
                     )
                 }
-                recalculateFromCount(unit, countText)
+                recalculate()
                 return
             }
             // The unit was deleted since the usage was recorded. Falling back to grams here would
@@ -1125,6 +1130,7 @@ class ProductViewModel(
     private suspend fun reloadAfterVerification() {
         val product = _state.value.product ?: return
         (repository.lookup(product.barcode) as? ProductFetchResult.Found)?.let { updated ->
+            prepareForProductUpdate(updated.product)
             _state.update { it.copy(product = updated.product, labelVerdict = null) }
             recalculate()
         }
@@ -1142,6 +1148,7 @@ class ProductViewModel(
                 name = name.ifBlank { null },
             )
             (repository.lookup(product.barcode) as? ProductFetchResult.Found)?.let { updated ->
+                prepareForProductUpdate(updated.product)
                 _state.update { it.copy(product = updated.product, showVerifyDialog = false) }
                 recalculate()
             }
@@ -1153,6 +1160,7 @@ class ProductViewModel(
         viewModelScope.launch {
             repository.resetToOnlineValue(product.barcode)
             (repository.lookup(product.barcode) as? ProductFetchResult.Found)?.let { updated ->
+                prepareForProductUpdate(updated.product)
                 _state.update { it.copy(product = updated.product) }
                 recalculate()
             }
@@ -1160,6 +1168,7 @@ class ProductViewModel(
     }
 
     private companion object {
+        const val KEY_BASIS = "portion_basis"
         const val KEY_PORTION = "portion_text"
         const val KEY_COUNT = "count_text"
         const val KEY_MODE = "input_mode"

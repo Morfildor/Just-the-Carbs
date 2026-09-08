@@ -36,16 +36,8 @@ class RoomPortionUsageDataSource(private val dao: PortionUsageDao) : PortionUsag
         return if (usage.id != 0L) usage else usage.copy(id = id)
     }
 
-    /**
-     * The real fix for P0 §5's read-decide-write race: one atomic `INSERT ... ON CONFLICT ... DO
-     * UPDATE` statement, so two concurrent calls for the same variant cannot interleave a read from
-     * one with a write from the other. See [PortionUsageDao.recordUse]'s KDoc for the failure this
-     * closes. The returned [PortionUsage] is re-read rather than reconstructed from the arguments,
-     * because the statement does not report whether it inserted or incremented, or what the
-     * resulting `id`/`usageCount` are — SQLite's `INSERT ... ON CONFLICT` has no `RETURNING`-based
-     * Room binding this codebase's SQLite version supports here, so a follow-up `findVariant` is the
-     * simplest correct way to hand the caller the row as it now stands.
-     */
+    /** Atomically records usage. Room implements this with an API-26-compatible transaction;
+     * in-memory stores use the default implementation. */
     override suspend fun recordUse(
         barcode: String,
         inputMode: InputMode,

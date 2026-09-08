@@ -102,7 +102,7 @@ fun CropConfirmationScreen(
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
     // Held in image fractions, not view pixels: a rotation or a window resize changes the displayed
     // rectangle, and a selection stored in pixels would silently point somewhere else afterwards.
-    var selection by remember { mutableStateOf(initialSelection) }
+    var selection by remember(bitmap, initialSelection) { mutableStateOf(initialSelection) }
 
     Column(
         modifier = Modifier

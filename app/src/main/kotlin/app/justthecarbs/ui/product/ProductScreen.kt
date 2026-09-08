@@ -608,7 +608,7 @@ private fun CalculatorBody(
         state.newerRemoteCarbs?.let { newer ->
             RemoteChangedNotice(
                 newerCarbs = newer,
-                unit = product.portionUnit,
+                unit = (state.newerRemoteBasis ?: product.basis).unitLabel,
                 onApply = onApplyNewerRemote,
                 onDismiss = onDismissNewerRemote,
                 modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
@@ -2042,6 +2042,9 @@ private fun ResultPanel(
             // still on screen and still correct, so silence here reads as success and the user would
             // leave believing the item was added. `MealActions` re-enables itself the moment this
             // shows, since the failed write already released the guard — this is the retry surface.
+            if (state.usageSaveFailed) {
+                Text(stringResource(R.string.usage_save_failed), color = MaterialTheme.colorScheme.error)
+            }
             if (state.mealAddFailed) {
                 Spacer(Modifier.height(Space.xs))
                 Text(

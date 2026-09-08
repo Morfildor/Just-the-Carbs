@@ -14,20 +14,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * The real-image suite for the pipeline the DEVICE runs.
- *
- * `RealImageOcrTest` recognises each asset with `InputImage.fromBitmap(asset, 0)`, which skips
- * `StillImageLoader` (decode, EXIF rotation, region handling) entirely — it measures the parser given
- * recognition, not the shipped feature. That gap hid a defect that cost BOTH canaries: the
- * unconditional ROI crop removed the basis header band, `ColumnClassifier` reclassified the per-100
- * column as `REFERENCE_PERCENT`, and the interpreter correctly refused an unplaceable value.
- *
- * Every case here therefore goes through [LabelAnalyzer.analyzeStill] — the same entry point
- * `LabelScannerScreen` calls — against a real JPEG on disk, with a scan region set, exactly as a
- * capture arrives.
- *
- * These assertions are about the PRODUCTION PATH. A regression here is a regression a user would
- * experience, which is not true of a whole-bitmap assertion.
+ * Real-JPEG coverage of the legacy analyzeStill adapter and shared still loading/recognition.
+ * The screen now calls analyzeStillRetaining and applies additional evidence and presentation
+ * gates. These tests protect the shared image path; they do not exercise screen routing.
  */
 class ProductionStillPipelineTest {
 

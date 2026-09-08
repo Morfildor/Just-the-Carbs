@@ -156,20 +156,18 @@ object ScanEvidenceRecorder {
      * the executor alive for the next capture. Shutting it down would make the *next* scan
      * reconstruct it, which is the per-call construction cost this executor exists to avoid.
      *
-     * A timeout bounds it, because a share sheet that never opens is a worse outcome than an archive
-     * missing its most recent capture — and the integrity check in [ZipIntegrity] still refuses
-     * whatever did get written if it is incomplete.
+     * A timeout bounds the wait. False means the exporter must refuse the incomplete snapshot.
      *
      * Returns immediately when nothing has ever been written (the executor does not exist) or in
      * release, where [enabled] is false and there is no writer at all.
      */
-    fun drain() {
-        if (!enabled) return
-        val executor = writerOrNull ?: return
+    fun drain(): Boolean {
+        if (!enabled) return true
+        val executor = writerOrNull ?: return true
         val done = java.util.concurrent.CountDownLatch(1)
         runCatching { executor.execute { done.countDown() } }
-            .onFailure { return }
-        runCatching { done.await(DRAIN_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS) }
+            .onFailure { return false }
+        return runCatching { done.await(DRAIN_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false)
     }
 
     /**
@@ -289,14 +287,6 @@ object ScanEvidenceRecorder {
         }
     }
 
-    /** ML Kit's complete output, so "did the recognizer see it?" is answerable without the phone. */
-    fun recordRecognizedText(folder: File?, text: Text) {
-        if (!enabled || folder == null) return
-        runCatching {
-            File(folder, "recognized.txt").writeText(renderRecognizedText(text))
-        }.onFailure { OcrDiagnosticsLogger.failure("Could not record recognized text", it) }
-    }
-
     /**
      * The verbatim recognizer dump, as a string.
      *
@@ -323,14 +313,6 @@ object ScanEvidenceRecorder {
         }
     }
 
-    /** The stage trace, including the refusal reason when the parser declined to answer. */
-    fun recordDiagnostics(folder: File?, document: OcrDocument, report: NutritionParseReport) {
-        if (!enabled || folder == null) return
-        runCatching {
-            File(folder, "diagnostics.txt").writeText(OcrDiagnosticsReport.render(document, report))
-        }.onFailure { OcrDiagnosticsLogger.failure("Could not record diagnostics", it) }
-    }
-
     /**
      * Renders the diagnostics now and writes them **after** the caller has handed its result to the
      * UI (§ latency).
@@ -351,7 +333,7 @@ object ScanEvidenceRecorder {
      * safe — the same discipline `recordPassAImageAsync` uses when it re-decodes from the moved
      * capture rather than touching a bitmap whose ownership has transferred.
      *
-     * A caller that needs the file to exist before it returns keeps using [recordDiagnostics].
+     * Export waits for queued writes with [drain] on a background thread.
      */
     fun recordDiagnosticsAsync(folder: File?, document: OcrDocument, report: NutritionParseReport) {
         if (!enabled || folder == null) return
@@ -602,126 +584,128 @@ object ScanEvidenceRecorder {
         strategyBCrop: SelectedRegionCrop.PixelRect? = null,
     ) {
         if (!enabled || folder == null) return
-        runCatching {
-            // Rendered in the same format as `diagnostics.txt`, so a Strategy B document replays
-            // through exactly the tooling that already reads a Pass A one — no new parser, and the
-            // element count is self-checking against the header it prints.
-            strategyBDocument?.let {
-                File(folder, "strategyB.txt").writeText(
-                    buildString {
-                        appendLine("=== strategy B coordinate space ===")
-                        appendLine("native size     : ${it.width}x${it.height} (the crop, not the capture)")
-                        appendLine(
-                            "crop origin     : " + (
-                                strategyBCrop?.let { crop ->
-                                    "(${crop.left}, ${crop.top}) ${crop.width}x${crop.height} " +
-                                        "— add this to every box below to reach capture coordinates"
-                                } ?: "unrecorded"
-                                ),
-                        )
-                        appendLine()
-                        append(OcrDiagnosticsReport.render(it, NutritionTableInterpreter.interpret(it)))
-                    },
-                )
-            }
-            val retained = document?.let { ElementRegionFilter.filter(it, region)?.elements }.orEmpty()
-            val rejected = document?.let { ElementRegionFilter.rejected(it, region) }.orEmpty()
-            File(folder, "selection.txt").writeText(
-                buildString {
-                    appendLine("=== user-confirmed crop ===")
-                    appendLine(
-                        "region          : [%.4f,%.4f,%.4f,%.4f] (fractions of the upright capture)"
-                            .format(region.left, region.top, region.right, region.bottom),
-                    )
-                    appendLine("capture size    : ${document?.width}x${document?.height}")
-                    appendLine("outcome         : $outcome")
-                    appendLine("elements        : $elementsBefore -> $elementsAfter")
-                    appendLine("reading         : ${report.reading::class.simpleName} (Strategy A re-parse)")
-                    appendLine("provenance      : ${report.provenance}")
-                    appendLine("failure reason  : ${failureReason?.name ?: "none"}")
-                    appendLine(
-                        "resolver.verdict: " + (resolverVerdict ?: "not supplied by caller") +
-                            "  <- what AutomaticScanAdvance reads",
-                    )
-                    appendLine(
-                        "strategy B      : " + (strategyBStatus ?: "not recorded by caller"),
-                    )
-                    appendLine(
-                        "automatic-verification: " + (verification ?: "not recorded by caller") +
-                            "  <- CROSS_COLUMN | DISTINCT_OCR_AGREEMENT | NONE",
-                    )
-                    appendLine(
-                        // CONFIRM_ON_CAPTURE is the eighth session's addition: an unverified reading
-                        // held on the frozen photograph. Distinct from CONFIRM, which was the
-                        // live-preview card that made `12 g / 100 g` unanswerable on `213005-691`.
-                        "final UI action : " + (uiAction ?: "not recorded by caller") +
-                            "  <- AUTO_ADVANCE | CONFIRM_ON_CAPTURE | CONFIRM | RECOVERY",
-                    )
-                    appendLine(
-                        "passes contributing evidence: " + (
-                            if (passesRan.isEmpty()) "not recorded by caller" else passesRan.joinToString(", ")
-                            ),
-                    )
-                    appendLine("cross-run dispute: ${disputed.describe()}")
-                    appendLine(
-                        "scale evidence  : " + when (scaleVerdict) {
-                            is ScaleAmbiguity.Verdict.Ambiguous ->
-                                "AMBIGUOUS — candidate '${scaleVerdict.candidateText}' paired with " +
-                                    "'${scaleVerdict.pairedText}'; ${scaleVerdict.reason}"
-                            is ScaleAmbiguity.Verdict.Established -> "established (${scaleVerdict.reason})"
-                            // Distinct from "established" on purpose: this line previously read
-                            // `established (no paired value ...)`, a sentence that described an
-                            // absence of evidence while claiming its presence. That wording is what
-                            // made `20260902-213005-691` hard to attribute.
-                            is ScaleAmbiguity.Verdict.Unsupported ->
-                                "UNSUPPORTED — candidate '${scaleVerdict.candidateText}'; " +
-                                    "${scaleVerdict.reason}. Not evidence of a sound scale; an " +
-                                    "unverified reading is not offered for confirmation on this"
-                            null -> "not evaluated (no confident reading, or no document)"
+        writer().execute {
+            runCatching {
+                // Rendered in the same format as `diagnostics.txt`, so a Strategy B document replays
+                // through exactly the tooling that already reads a Pass A one — no new parser, and the
+                // element count is self-checking against the header it prints.
+                strategyBDocument?.let {
+                    File(folder, "strategyB.txt").writeText(
+                        buildString {
+                            appendLine("=== strategy B coordinate space ===")
+                            appendLine("native size     : ${it.width}x${it.height} (the crop, not the capture)")
+                            appendLine(
+                                "crop origin     : " + (
+                                    strategyBCrop?.let { crop ->
+                                        "(${crop.left}, ${crop.top}) ${crop.width}x${crop.height} " +
+                                            "— add this to every box below to reach capture coordinates"
+                                    } ?: "unrecorded"
+                                    ),
+                            )
+                            appendLine()
+                            append(OcrDiagnosticsReport.render(it, NutritionTableInterpreter.interpret(it)))
                         },
                     )
-                    appendLine(
-                        "correction hand-off: " + (correctionHandoff ?: "not recorded by caller"),
-                    )
-                    appendLine()
-                    appendLine("=== retained (${retained.size}) ===")
-                    retained.forEach {
+                }
+                val retained = document?.let { ElementRegionFilter.filter(it, region)?.elements }.orEmpty()
+                val rejected = document?.let { ElementRegionFilter.rejected(it, region) }.orEmpty()
+                File(folder, "selection.txt").writeText(
+                    buildString {
+                        appendLine("=== user-confirmed crop ===")
                         appendLine(
-                            "  '${it.text}' [${it.box.left},${it.box.top},${it.box.right},${it.box.bottom}]",
+                            "region          : [%.4f,%.4f,%.4f,%.4f] (fractions of the upright capture)"
+                                .format(region.left, region.top, region.right, region.bottom),
                         )
-                    }
-                    appendLine()
-                    appendLine("=== rejected as outside the selection (${rejected.size}) ===")
-                    rejected.forEach {
+                        appendLine("capture size    : ${document?.width}x${document?.height}")
+                        appendLine("outcome         : $outcome")
+                        appendLine("elements        : $elementsBefore -> $elementsAfter")
+                        appendLine("reading         : ${report.reading::class.simpleName} (Strategy A re-parse)")
+                        appendLine("provenance      : ${report.provenance}")
+                        appendLine("failure reason  : ${failureReason?.name ?: "none"}")
                         appendLine(
-                            "  '${it.text}' [${it.box.left},${it.box.top},${it.box.right},${it.box.bottom}]",
+                            "resolver.verdict: " + (resolverVerdict ?: "not supplied by caller") +
+                                "  <- what AutomaticScanAdvance reads",
                         )
-                    }
-                    appendLine()
-                    appendLine("=== parser diagnostics after filtering ===")
-                    report.diagnostics.forEach { appendLine("  ${it.stage}: ${it.message}") }
-                    appendLine()
-                    // What the recovery screen would offer and, for every value-shaped number it
-                    // would not, the rule that removed it.
-                    //
-                    // Added because a bundle could say `serving: … weight=none` beside a screen
-                    // reading "From 6 g per 18 g serving" and give a reader no way to reconcile
-                    // them. They are two different objects: that line reports the *parser's*
-                    // ServingCarbCandidate.descriptor, which really is absent on a US linear panel
-                    // because there is no column header to carry it, while the `18 g` the user sees
-                    // comes from ServingDeclaration reading `Serv. size: 1 Tbsp (18 g)` off the
-                    // panel itself. Both were true; only one was printed.
-                    //
-                    // A suppressed number previously left no trace at all, which is what made the
-                    // fabricated `72 g / serving` hard to attribute — the bundle showed the value
-                    // and the columns but never which rule had bound them together.
-                    appendLine("=== recovery proposal ===")
-                    val explained = RecoveryCandidates.explain(document, disputed)
-                    if (explained.isEmpty()) appendLine("  (no rows contribute candidates)")
-                    explained.forEach { appendLine("  $it") }
-                },
-            )
-        }.onFailure { OcrDiagnosticsLogger.failure("Could not record selection", it) }
+                        appendLine(
+                            "strategy B      : " + (strategyBStatus ?: "not recorded by caller"),
+                        )
+                        appendLine(
+                            "automatic-verification: " + (verification ?: "not recorded by caller") +
+                                "  <- CROSS_COLUMN | DISTINCT_OCR_AGREEMENT | NONE",
+                        )
+                        appendLine(
+                            // CONFIRM_ON_CAPTURE is the eighth session's addition: an unverified reading
+                            // held on the frozen photograph. Distinct from CONFIRM, which was the
+                            // live-preview card that made `12 g / 100 g` unanswerable on `213005-691`.
+                            "final UI action : " + (uiAction ?: "not recorded by caller") +
+                                "  <- AUTO_ADVANCE | CONFIRM_ON_CAPTURE | CONFIRM | RECOVERY",
+                        )
+                        appendLine(
+                            "passes contributing evidence: " + (
+                                if (passesRan.isEmpty()) "not recorded by caller" else passesRan.joinToString(", ")
+                                ),
+                        )
+                        appendLine("cross-run dispute: ${disputed.describe()}")
+                        appendLine(
+                            "scale evidence  : " + when (scaleVerdict) {
+                                is ScaleAmbiguity.Verdict.Ambiguous ->
+                                    "AMBIGUOUS — candidate '${scaleVerdict.candidateText}' paired with " +
+                                        "'${scaleVerdict.pairedText}'; ${scaleVerdict.reason}"
+                                is ScaleAmbiguity.Verdict.Established -> "established (${scaleVerdict.reason})"
+                                // Distinct from "established" on purpose: this line previously read
+                                // `established (no paired value ...)`, a sentence that described an
+                                // absence of evidence while claiming its presence. That wording is what
+                                // made `20260902-213005-691` hard to attribute.
+                                is ScaleAmbiguity.Verdict.Unsupported ->
+                                    "UNSUPPORTED — candidate '${scaleVerdict.candidateText}'; " +
+                                        "${scaleVerdict.reason}. Not evidence of a sound scale; an " +
+                                        "unverified reading is not offered for confirmation on this"
+                                null -> "not evaluated (no confident reading, or no document)"
+                            },
+                        )
+                        appendLine(
+                            "correction hand-off: " + (correctionHandoff ?: "not recorded by caller"),
+                        )
+                        appendLine()
+                        appendLine("=== retained (${retained.size}) ===")
+                        retained.forEach {
+                            appendLine(
+                                "  '${it.text}' [${it.box.left},${it.box.top},${it.box.right},${it.box.bottom}]",
+                            )
+                        }
+                        appendLine()
+                        appendLine("=== rejected as outside the selection (${rejected.size}) ===")
+                        rejected.forEach {
+                            appendLine(
+                                "  '${it.text}' [${it.box.left},${it.box.top},${it.box.right},${it.box.bottom}]",
+                            )
+                        }
+                        appendLine()
+                        appendLine("=== parser diagnostics after filtering ===")
+                        report.diagnostics.forEach { appendLine("  ${it.stage}: ${it.message}") }
+                        appendLine()
+                        // What the recovery screen would offer and, for every value-shaped number it
+                        // would not, the rule that removed it.
+                        //
+                        // Added because a bundle could say `serving: … weight=none` beside a screen
+                        // reading "From 6 g per 18 g serving" and give a reader no way to reconcile
+                        // them. They are two different objects: that line reports the *parser's*
+                        // ServingCarbCandidate.descriptor, which really is absent on a US linear panel
+                        // because there is no column header to carry it, while the `18 g` the user sees
+                        // comes from ServingDeclaration reading `Serv. size: 1 Tbsp (18 g)` off the
+                        // panel itself. Both were true; only one was printed.
+                        //
+                        // A suppressed number previously left no trace at all, which is what made the
+                        // fabricated `72 g / serving` hard to attribute — the bundle showed the value
+                        // and the columns but never which rule had bound them together.
+                        appendLine("=== recovery proposal ===")
+                        val explained = RecoveryCandidates.explain(document, disputed)
+                        if (explained.isEmpty()) appendLine("  (no rows contribute candidates)")
+                        explained.forEach { appendLine("  $it") }
+                    },
+                )
+            }.onFailure { OcrDiagnosticsLogger.failure("Could not record selection", it) }
+        }
     }
 
     /** Every retained capture folder, newest first. */

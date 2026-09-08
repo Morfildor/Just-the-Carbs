@@ -75,6 +75,7 @@ class ScanEvidenceDiagnosticsTest {
             strategyBDocument = strategyBDocument,
             strategyBCrop = strategyBCrop,
         )
+        assertTrue("queued diagnostics must finish before inspecting the bundle", ScanEvidenceRecorder.drain())
     }
 
     /**

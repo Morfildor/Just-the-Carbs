@@ -1,0 +1,450 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 8,
+    "identityHash": "7b8bd30e17484e4a83fbf6d24c9dc3cc",
+    "entities": [
+      {
+        "tableName": "products",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`barcode` TEXT NOT NULL, `name` TEXT NOT NULL, `carbsPer100` TEXT NOT NULL, `basis` TEXT NOT NULL, `dataSource` TEXT NOT NULL, `verificationStatus` TEXT NOT NULL, `brand` TEXT, `packageAmount` TEXT, `servingAmount` TEXT, `imageUrl` TEXT, `largeImageUrl` TEXT, `originalRemoteCarbs` TEXT, `latestRemoteCarbs` TEXT, `verifiedAt` INTEGER, `remoteUpdatedAt` INTEGER, `lastUsedAt` INTEGER, `lastPortion` TEXT, `favorite` INTEGER NOT NULL, `lastInputMode` TEXT, `lastSelectedPortionUnitId` INTEGER, `lastCount` TEXT, `galleryImagesJson` TEXT, `originalRemoteBasis` TEXT, `latestRemoteBasis` TEXT, PRIMARY KEY(`barcode`))",
+        "fields": [
+          {
+            "fieldPath": "barcode",
+            "columnName": "barcode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "carbsPer100",
+            "columnName": "carbsPer100",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "basis",
+            "columnName": "basis",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dataSource",
+            "columnName": "dataSource",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verificationStatus",
+            "columnName": "verificationStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "brand",
+            "columnName": "brand",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "packageAmount",
+            "columnName": "packageAmount",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "servingAmount",
+            "columnName": "servingAmount",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imageUrl",
+            "columnName": "imageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "largeImageUrl",
+            "columnName": "largeImageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "originalRemoteCarbs",
+            "columnName": "originalRemoteCarbs",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "latestRemoteCarbs",
+            "columnName": "latestRemoteCarbs",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "verifiedAt",
+            "columnName": "verifiedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "remoteUpdatedAt",
+            "columnName": "remoteUpdatedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastUsedAt",
+            "columnName": "lastUsedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastPortion",
+            "columnName": "lastPortion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "favorite",
+            "columnName": "favorite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastInputMode",
+            "columnName": "lastInputMode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSelectedPortionUnitId",
+            "columnName": "lastSelectedPortionUnitId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastCount",
+            "columnName": "lastCount",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "galleryImagesJson",
+            "columnName": "galleryImagesJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "originalRemoteBasis",
+            "columnName": "originalRemoteBasis",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "latestRemoteBasis",
+            "columnName": "latestRemoteBasis",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "barcode"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_products_favorite_lastUsedAt",
+            "unique": false,
+            "columnNames": [
+              "favorite",
+              "lastUsedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_products_favorite_lastUsedAt` ON `${TABLE_NAME}` (`favorite`, `lastUsedAt`)"
+          }
+        ]
+      },
+      {
+        "tableName": "portion_units",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `productBarcode` TEXT NOT NULL, `kind` TEXT NOT NULL, `customLabel` TEXT, `conversionKind` TEXT NOT NULL, `conversionValue` TEXT NOT NULL, `conversionBasis` TEXT, `dataSource` TEXT NOT NULL, `verificationStatus` TEXT NOT NULL, `verifiedAt` INTEGER, `originalRemoteConversionKind` TEXT, `originalRemoteConversionValue` TEXT, `originalRemoteConversionBasis` TEXT, `latestRemoteConversionKind` TEXT, `latestRemoteConversionValue` TEXT, `latestRemoteConversionBasis` TEXT, `rawRemoteServingText` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, FOREIGN KEY(`productBarcode`) REFERENCES `products`(`barcode`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "productBarcode",
+            "columnName": "productBarcode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "customLabel",
+            "columnName": "customLabel",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "conversionKind",
+            "columnName": "conversionKind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conversionValue",
+            "columnName": "conversionValue",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conversionBasis",
+            "columnName": "conversionBasis",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dataSource",
+            "columnName": "dataSource",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verificationStatus",
+            "columnName": "verificationStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verifiedAt",
+            "columnName": "verifiedAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "originalRemoteConversionKind",
+            "columnName": "originalRemoteConversionKind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "originalRemoteConversionValue",
+            "columnName": "originalRemoteConversionValue",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "originalRemoteConversionBasis",
+            "columnName": "originalRemoteConversionBasis",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "latestRemoteConversionKind",
+            "columnName": "latestRemoteConversionKind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "latestRemoteConversionValue",
+            "columnName": "latestRemoteConversionValue",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "latestRemoteConversionBasis",
+            "columnName": "latestRemoteConversionBasis",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rawRemoteServingText",
+            "columnName": "rawRemoteServingText",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_portion_units_productBarcode",
+            "unique": false,
+            "columnNames": [
+              "productBarcode"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_portion_units_productBarcode` ON `${TABLE_NAME}` (`productBarcode`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "products",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "productBarcode"
+            ],
+            "referencedColumns": [
+              "barcode"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "current_meal_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `productBarcode` TEXT, `displayName` TEXT NOT NULL, `portionDescription` TEXT NOT NULL, `itemKind` TEXT NOT NULL, `resolvedAmount` TEXT, `basis` TEXT, `carbsPer100` TEXT, `count` TEXT, `carbsPerUnit` TEXT, `exactCarbs` TEXT NOT NULL, `addedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "productBarcode",
+            "columnName": "productBarcode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "portionDescription",
+            "columnName": "portionDescription",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemKind",
+            "columnName": "itemKind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resolvedAmount",
+            "columnName": "resolvedAmount",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "basis",
+            "columnName": "basis",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "carbsPer100",
+            "columnName": "carbsPer100",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "count",
+            "columnName": "count",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "carbsPerUnit",
+            "columnName": "carbsPerUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "exactCarbs",
+            "columnName": "exactCarbs",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addedAt",
+            "columnName": "addedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "portion_usage",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `productBarcode` TEXT NOT NULL, `inputMode` TEXT NOT NULL, `portionUnitId` INTEGER NOT NULL, `amount` TEXT NOT NULL, `usageCount` INTEGER NOT NULL, `lastUsedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "productBarcode",
+            "columnName": "productBarcode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputMode",
+            "columnName": "inputMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "portionUnitId",
+            "columnName": "portionUnitId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amount",
+            "columnName": "amount",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "usageCount",
+            "columnName": "usageCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUsedAt",
+            "columnName": "lastUsedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_portion_usage_productBarcode_inputMode_portionUnitId_amount",
+            "unique": true,
+            "columnNames": [
+              "productBarcode",
+              "inputMode",
+              "portionUnitId",
+              "amount"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_portion_usage_productBarcode_inputMode_portionUnitId_amount` ON `${TABLE_NAME}` (`productBarcode`, `inputMode`, `portionUnitId`, `amount`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7b8bd30e17484e4a83fbf6d24c9dc3cc')"
+    ]
+  }
+}

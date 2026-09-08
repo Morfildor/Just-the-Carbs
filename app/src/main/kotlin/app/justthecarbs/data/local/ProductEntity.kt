@@ -54,6 +54,8 @@ data class ProductEntity(
     val lastCount: String?,
     /** Compact JSON for validated gallery metadata. Null on rows cached before v5. */
     val galleryImagesJson: String? = null,
+    val originalRemoteBasis: String? = null,
+    val latestRemoteBasis: String? = null,
 )
 
 fun Product.toEntity(): ProductEntity = ProductEntity(
@@ -79,6 +81,8 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
     lastSelectedPortionUnitId = lastSelectedPortionUnitId,
     lastCount = lastCount?.toPlainString(),
     galleryImagesJson = ProductImageCacheCodec.encode(images),
+    originalRemoteBasis = originalRemoteBasis?.name,
+    latestRemoteBasis = latestRemoteBasis?.name,
 )
 
 fun ProductEntity.toDomain(): Product = Product(
@@ -104,4 +108,6 @@ fun ProductEntity.toDomain(): Product = Product(
     lastSelectedPortionUnitId = lastSelectedPortionUnitId,
     lastCount = lastCount?.let(::BigDecimal),
     images = ProductImageCacheCodec.decode(galleryImagesJson),
+    originalRemoteBasis = originalRemoteBasis?.let(NutritionBasis::valueOf),
+    latestRemoteBasis = latestRemoteBasis?.let(NutritionBasis::valueOf),
 )

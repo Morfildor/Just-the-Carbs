@@ -553,7 +553,7 @@ class ProductRepositoryTest {
         val local = FakeLocal(
             listOf(
                 product(VERIFIED_OFF, "47.3").copy(
-                    originalRemoteCarbs = BigDecimal("48.2"),
+                    originalRemoteCarbs = BigDecimal("48.2"), originalRemoteBasis = NutritionBasis.PER_100_G,
                     verifiedAt = now,
                 ),
             ),
@@ -619,7 +619,7 @@ class ProductRepositoryTest {
         val local = FakeLocal(
             listOf(
                 product(VERIFIED_OFF, "47.3")
-                    .copy(originalRemoteCarbs = BigDecimal("48.2"), verifiedAt = now),
+                    .copy(originalRemoteCarbs = BigDecimal("48.2"), originalRemoteBasis = NutritionBasis.PER_100_G, verifiedAt = now),
             ),
         )
         val remote = FakeRemote(ProductFetchResult.Found(product(PLAIN_OFF, "50.1")))
@@ -647,7 +647,7 @@ class ProductRepositoryTest {
 
         // The difference is REPORTED (correction #10) but never applied: a hand-typed value is the
         // user's, and a sync may not correct it.
-        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("99.9")), outcome)
+        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("99.9"), NutritionBasis.PER_100_G), outcome)
         assertEquals(0, BigDecimal("12.0").compareTo(local.stored.getValue(barcode).carbsPer100))
         assertEquals(UNVERIFIED_MANUAL, local.stored.getValue(barcode).provenance())
         // The remote IS consulted now, so a reformulation can be detected (#10) — but the value
@@ -701,7 +701,7 @@ class ProductRepositoryTest {
 
         val outcome = repository.refreshFromRemote(barcode)
 
-        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("51.0")), outcome)
+        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("51.0"), NutritionBasis.PER_100_G), outcome)
         val stored = local.stored.getValue(barcode)
         assertEquals("the value in use must not move", 0, BigDecimal("48.2").compareTo(stored.carbsPer100))
         assertEquals("but the newer figure is recorded", 0, BigDecimal("51.0").compareTo(stored.latestRemoteCarbs!!))
@@ -760,7 +760,7 @@ class ProductRepositoryTest {
         val outcome = repository.refreshFromRemote(barcode)
 
         assertEquals("a stale product was not refreshed", 1, remote.calls)
-        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("51.0")), outcome)
+        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("51.0"), NutritionBasis.PER_100_G), outcome)
     }
 
     /**
@@ -870,7 +870,7 @@ class ProductRepositoryTest {
     @Test
     fun `applying the newer online value keeps the previous figure recoverable`() = runTest {
         val local = FakeLocal(
-            listOf(product(VERIFIED_OFF, "48.2").copy(latestRemoteCarbs = BigDecimal("51.0"))),
+            listOf(product(VERIFIED_OFF, "48.2").copy(latestRemoteCarbs = BigDecimal("51.0"), latestRemoteBasis = NutritionBasis.PER_100_G)),
         )
         val repository = repositoryOf(local, FakeRemote(ProductFetchResult.NotFound))
 
