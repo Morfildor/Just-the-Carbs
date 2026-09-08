@@ -18,6 +18,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import app.justthecarbs.ui.JustTheCarbsNavHost
 import app.justthecarbs.ui.StartupState
 import app.justthecarbs.ui.asStartupState
@@ -43,6 +45,18 @@ class MainActivity : ComponentActivity() {
         )
 
         val container = (application as JustTheCarbsApplication).container
+
+        // One launch, counted once — and only while the tutorial reminder still depends on the
+        // number (the repository re-checks that inside its own transaction, so this cannot make the
+        // counter climb forever).
+        //
+        // Deliberately in `onCreate` rather than in the composition: `setContent`'s block runs again
+        // on every recomposition and the Activity is recreated on rotation, so counting there would
+        // inflate the number and retire the reminder several launches early. `savedInstanceState ==
+        // null` is what distinguishes a genuine launch from a configuration change.
+        if (savedInstanceState == null) {
+            lifecycleScope.launch { container.settingsRepository.recordLaunch() }
+        }
 
         setContent {
             // `asStartupState()` applies a `Flow.map`, which lint's FlowOperatorInvokedInComposition

@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -65,6 +66,9 @@ import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.extendedColors
 
+/** Stable handle for instrumented tests. */
+const val SETTINGS_REPLAY_TUTORIAL_TAG = "settings_replay_tutorial"
+
 /**
  * Settings (§43). Four sections, deliberately small.
  *
@@ -80,6 +84,7 @@ fun SettingsScreen(
     onHapticsChanged: (Boolean) -> Unit,
     onClearRecents: () -> Unit,
     onClearProducts: () -> Unit,
+    onReplayTutorial: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     var confirmClearRecents by remember { mutableStateOf(false) }
@@ -187,6 +192,18 @@ fun SettingsScreen(
                     )
                     Switch(checked = settings.hapticsEnabled, onCheckedChange = onHapticsChanged)
                 }
+
+                // Replaying the tutorial belongs with Interaction rather than in a section of its
+                // own: it is a small, occasional action, and giving it a heading would make it the
+                // most prominent thing on a screen where it is the least important. It carries a
+                // supporting line because, unlike the rows above it, its label does not say what
+                // tapping it will show.
+                SettingsAction(
+                    text = stringResource(R.string.settings_replay_tutorial),
+                    supporting = stringResource(R.string.settings_replay_tutorial_body),
+                    onClick = onReplayTutorial,
+                    modifier = Modifier.testTag(SETTINGS_REPLAY_TUTORIAL_TAG),
+                )
 
                 HorizontalDivider()
 
@@ -485,19 +502,58 @@ private fun RateUsCard(failed: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * One tappable Settings row.
+ *
+ * [supporting] adds a second, quieter line for an action whose label alone does not say what it
+ * does. When present the row grows rather than being fixed at [Space.minTouchTarget] — `heightIn`
+ * rather than `height`, so the two lines are never squeezed into one row's worth of space at a large
+ * font scale — and the whole row merges into a single semantics node, so TalkBack announces one
+ * button with its explanation rather than a button followed by an orphaned line of text.
+ */
 @Composable
-private fun SettingsAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier
+private fun SettingsAction(
+    text: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    supporting: String? = null,
+    onClick: () -> Unit,
+) {
+    if (supporting == null) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = modifier
+                .fillMaxWidth()
+                .height(Space.minTouchTarget)
+                .clickable(enabled = enabled, onClick = onClick)
+                .semantics { role = Role.Button }
+                .padding(vertical = 12.dp),
+        )
+        return
+    }
+
+    Column(
+        modifier = modifier
             .fillMaxWidth()
-            .height(Space.minTouchTarget)
+            .heightIn(min = Space.minTouchTarget)
             .clickable(enabled = enabled, onClick = onClick)
-            .semantics { role = Role.Button }
-            .padding(vertical = 12.dp),
-    )
+            .semantics(mergeDescendants = true) { role = Role.Button }
+            .padding(vertical = Space.s),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = supporting,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

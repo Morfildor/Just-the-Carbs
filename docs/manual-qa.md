@@ -2297,3 +2297,114 @@ recovery, calculation, persistence or navigation rule changed anywhere in this p
       unsafe reset; a fresh online refresh can provide a new amount/basis pair.
 
 **Result:** ____________________ **Date:** ____________
+
+---
+
+## §40 — Nutrition-scanner outcome haptics (1.0.6, 2026-09-08)
+
+**PHYSICAL DEVICE ONLY.** An emulator cannot answer any question in this section — the whole design
+is whether three effects are distinguishable by touch, and a virtual device has no vibration motor.
+
+Automated coverage is `ScanHapticCueTest` (9 pure JVM cases, including the safety inversion). That
+pins *which* cue is chosen; it says nothing about how any of them feel.
+
+- [ ] 40.1 Haptics ON, scan a clean label that advances automatically: exactly TWO buzzes — the
+      shutter, then a soft tick as the calculator opens. The second must be clearly *lighter* than
+      the first.
+- [ ] 40.2 Haptics ON, scan a label that asks for confirmation: two buzzes, the second firm and
+      distinguishable from 40.1's tick **by feel alone, without looking at the screen**.
+- [ ] 40.3 Haptics ON, scan a label that lands on the crop / recovery / focused-entry screen: two
+      buzzes, the second distinguishable from BOTH 40.1 and 40.2.
+- [ ] 40.4 From the crop screen, press *Read table*: NO haptic on any outcome.
+- [ ] 40.5 Haptics OFF in Settings: zero buzzes anywhere in the scanner, including the shutter.
+- [ ] 40.6 Retake mid-recognition, then capture again: no stray buzz from the abandoned pass.
+- [ ] 40.7 **Judgement call, and the one that decides the design.** Do 40.1/40.2/40.3 read as one
+      restrained vocabulary, or as three undifferentiated buzzes? If undifferentiated, the design has
+      failed *even though each cue fired correctly* — report that plainly rather than ticking the
+      rows above.
+- [ ] 40.8 If an API 26-29 device is available: confirm the shutter cue and the handed-back cue
+      (40.3) are still distinguishable. Below API 30 `Reject` degrades to `LONG_PRESS`, which is what
+      the shutter already uses, so they may feel identical. Argued from the Compat source, never
+      measured.
+
+**Result:** ____________________ **Date:** ____________
+
+---
+
+## §41 — First-launch tutorial (1.0.6, 2026-09-08)
+
+The tutorial is **offered, never imposed**: the app always opens on Home, and the tutorial is a card
+there for the first launch and the five after it.
+
+Automated coverage: `TutorialStepTest`, `CalloutPlacementTest`, `TutorialReminderTest`,
+`OnboardingViewModelTest` (36 pure JVM cases) plus `TutorialScreenTest`, `TutorialNavigationTest` and
+`HomeTutorialReminderTest` (instrumented). What no test settles is **where the arrows actually
+point** on real hardware, which is 41.5 below.
+
+### Fresh install
+
+- [ ] 41.1 Install fresh (or clear app data). The app opens on **Home**, not on the tutorial.
+- [ ] 41.2 Home shows the *New here?* card above the two scan actions, and both scan actions are
+      still visible without scrolling.
+- [ ] 41.3 Tap *Show me*: the tutorial opens on step 1 of 6.
+- [ ] 41.4 Walk all six steps with *Next*. Each has its own title, one sentence, and a progress
+      indicator. The whole run takes roughly 30-45 seconds at a normal reading pace.
+- [ ] 41.5 **Every arrow points at the control its words name**, on each of steps 2-6: *Scan
+      barcode*, the search field, *Scan nutrition label*, *Add to meal*, *Meal Total*. A callout must
+      never cover the control it is describing, and no arrow may point at the screen corner.
+- [ ] 41.6 The final step's button reads *Start using Just the Carbs* and returns to Home.
+- [ ] 41.7 After finishing, the *New here?* card is gone from Home and does not return on the next
+      launch.
+
+### Skip, Back and dismissal
+
+- [ ] 41.8 Skip works from **every** step (repeat: open the tutorial, advance to step N, tap Skip).
+      It returns to Home and retires the card permanently.
+- [ ] 41.9 *Back* is absent on step 1 and present on steps 2-6, and returns one step.
+- [ ] 41.10 System Back exits the tutorial from any step — it does not step backwards — and retires
+      the card, exactly as Skip does.
+- [ ] 41.11 Fresh install, tap *No thanks* instead: the tutorial does not open, the card disappears,
+      and it does not return on the next launch. **This is the reinstalling-expert path.**
+- [ ] 41.12 Fresh install, ignore the card entirely and relaunch the app 6 times. The card is present
+      on launches 1-6 and **gone from launch 7 onward**, without ever having been tapped.
+
+### Replay
+
+- [ ] 41.13 Settings shows *Replay tutorial* with its explanatory line, and tapping it opens the
+      tutorial.
+- [ ] 41.14 Skip, system Back, and the final action from replay mode all return to **Settings**, not
+      to Home.
+- [ ] 41.15 Replaying does not bring the Home card back and does not alter anything else.
+
+### Safety and non-interaction
+
+- [ ] 41.16 **No camera permission prompt appears at any point in the tutorial**, and the camera is
+      never started.
+- [ ] 41.17 With the device in airplane mode the tutorial runs identically — it makes no network
+      request.
+- [ ] 41.18 After a full tutorial run, Home lists **no new products**, and the meal is unchanged (an
+      in-progress meal is still exactly as it was; an empty one is still empty). The example foods
+      shown in the previews are drawings and must never be saved.
+- [ ] 41.19 Tapping the dimmed preview behind the overlay does nothing — no control behind the scrim
+      is operable.
+
+### Presentation
+
+- [ ] 41.20 Light theme and Dark theme: text is legible on the callout card in both, and the
+      spotlight ring is visible against the dimmed backdrop.
+- [ ] 41.21 Largest font scale (Settings → Display → Font size): no callout text is clipped and the
+      primary action is still reachable on every step.
+- [ ] 41.22 Rotate to landscape mid-tutorial and back: the step does not reset, and the arrow still
+      points at the right control in both orientations.
+- [ ] 41.23 A small/narrow phone: the callout never runs off either edge.
+- [ ] 41.24 TalkBack: entering the tutorial is announced; each step's title and body are read on
+      arrival; the preview's controls behind the scrim are **not** reachable by swipe navigation.
+
+### Failure recovery (if practical)
+
+- [ ] 41.25 If a DataStore write failure can be induced, finishing the tutorial shows the "Could not
+      save. Try again." line, **stays on the tutorial**, and the action can be tapped again and
+      succeed. The user must never be dropped onto Home as though it had saved, nor trapped with a
+      dead button.
+
+**Result:** ____________________ **Date:** ____________

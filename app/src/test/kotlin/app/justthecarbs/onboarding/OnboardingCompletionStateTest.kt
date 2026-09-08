@@ -46,18 +46,18 @@ class OnboardingCompletionStateTest {
         return SettingsRepository.forTesting(flaky)
     }
 
-    @Test fun `complete moves to Saved on a successful write`() = runTest {
+    @Test fun `finish moves to Saved on a successful write`() = runTest {
         val viewModel = OnboardingViewModel(succeedingRepository())
 
         assertEquals(OnboardingViewModel.CompletionState.Idle, viewModel.completionState.value)
-        viewModel.complete()
+        viewModel.finish()
         assertEquals(OnboardingViewModel.CompletionState.Saved, viewModel.completionState.value)
     }
 
     @Test fun `a repository failure sets Failed and never Saved -- the button must be re-enabled`() = runTest {
         val viewModel = OnboardingViewModel(alwaysThrowingRepository())
 
-        viewModel.complete()
+        viewModel.finish()
 
         assertTrue(viewModel.completionState.value is OnboardingViewModel.CompletionState.Failed)
     }
@@ -65,14 +65,14 @@ class OnboardingCompletionStateTest {
     @Test fun `retrying after a failure and succeeding reaches Saved`() = runTest {
         val viewModel = OnboardingViewModel(failOnceThenSucceedRepository())
 
-        viewModel.complete() // fails
+        viewModel.finish() // fails
         assertTrue(viewModel.completionState.value is OnboardingViewModel.CompletionState.Failed)
 
-        viewModel.complete() // retries, succeeds
+        viewModel.finish() // retries, succeeds
         assertEquals(OnboardingViewModel.CompletionState.Saved, viewModel.completionState.value)
     }
 
-    @Test fun `calling complete again after Saved does not re-run the write`() = runTest {
+    @Test fun `calling finish again after Saved does not re-run the write`() = runTest {
         val real = tempStore()
         var writeCount = 0
         val counting = object : DataStore<Preferences> by real {
@@ -83,8 +83,8 @@ class OnboardingCompletionStateTest {
         }
         val viewModel = OnboardingViewModel(SettingsRepository.forTesting(counting))
 
-        viewModel.complete()
-        viewModel.complete()
+        viewModel.finish()
+        viewModel.finish()
 
         assertEquals(1, writeCount)
         assertEquals(OnboardingViewModel.CompletionState.Saved, viewModel.completionState.value)

@@ -169,9 +169,14 @@ class SettingsScreenTest {
         show()
 
         compose.onNodeWithText("Enjoying Just the Carbs?").performScrollTo().assertIsDisplayed()
+        // Scrolled to in its own right, not merely after its headline. Scrolling the headline into
+        // view does not guarantee the line beneath it is also on screen, so this assertion's result
+        // depended on how much content happened to sit above the card — it began failing when the
+        // Settings list grew by one row. The same below-the-fold trap this codebase has recorded
+        // several times: `assertIsDisplayed` is about the window, and it was telling the truth.
         compose.onNodeWithText(
             "A quick rating on the Play Store helps other people find the app.",
-        ).assertIsDisplayed()
+        ).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Rate JustTheCarbs").performScrollTo().assertIsDisplayed()
     }
 

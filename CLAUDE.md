@@ -62,18 +62,81 @@ Both scanners now give tactile shutter acknowledgement, gated by the single exis
 
 - **Barcode scanner** (`ScannerScreen.kt`) — unchanged behaviour, already established: one
   `HapticFeedbackType.LongPress` when `BarcodeAcceptance.Accepted` is consumed, nowhere else.
-- **Nutrition-label scanner** (`LabelScannerScreen.kt`, new this pass) — one
+- **Nutrition-label scanner** (`LabelScannerScreen.kt`) — one
   `HapticFeedbackType.LongPress` at a committed shutter capture, fired **immediately after**
   `coordinator.freezeAtShutter(...)` inside `captureLabel()` and before `coordinator.beginNewWork()`.
   This is shutter acknowledgement only — "the shutter press was accepted and the scan is being
-  captured" — **never** an OCR-success or value-confirmed signal. There is no second haptic anywhere
-  later in the pipeline (still capture, OCR completion, automatic advancement, ordinary confirmation,
-  scale-unresolved confirmation, assisted/focused entry, crop adjustment, reread, Retake, Close).
+  captured" — **never** an OCR-success or value-confirmed signal.
   `hapticsEnabled` is threaded from `AppSettings` through `JustTheCarbsNavHost` into
   `LabelScannerScreen`/`LabelCamera`, mirroring the barcode scanner's existing wiring exactly.
   **No default value** on either `hapticsEnabled` parameter (`LabelScannerScreen` or the private
   `LabelCamera`) — every real caller must supply it explicitly, so a caller that forgets to wire it
   fails to compile rather than silently shipping with haptics off.
+
+### Outcome haptics (2026-09-08, later same day) — CORRECTS THE "no second haptic" CLAIM ABOVE
+
+A scan now produces **at most two** haptics, distinguishable by effect. The shutter `LongPress` is
+unchanged and still fires immediately after `freezeAtShutter(...)`. The second is fired once from
+`readSelectedTable`, only on the **automatic** pass, and is decided by `ScanHapticCue`
+(`ocr/ScanHapticCue.kt`, pure, 9 JVM cases) keyed on `ScanPresentationDecision.Action`:
+`Confirm` when a question is put on the frozen photograph, `SegmentTick` on `AUTO_ADVANCE`,
+`Reject` when work is handed back, and **silence** for every outcome of a user-confirmed crop.
+
+**The safety property is an inversion and it is pinned by test:** `AUTO_ADVANCE` — the most
+corroborated outcome — gets the *softest* cue, so the habit built is "firm buzz means read the
+screen", never "strong buzz means trustworthy number". Do not "improve" this by making success feel
+more emphatic; `the most confident outcome gets the softest cue` fails first if you do. Negative
+controls: inverting it fails 3 tests, removing the `!automatic` restraint fails 1.
+
+Compose UI 1.12.0's `HapticFeedbackType` routes through `HapticFeedbackConstantsCompat`, whose
+`getFeedbackConstantOrFallback` guarantees a real effect on minSdk 26 (`Confirm`→`VIRTUAL_KEY`
+below API 30, `Reject`→`LONG_PRESS`, `SegmentTick`→`CONTEXT_CLICK` below 34). `ScannerScreen`'s
+comment about `CONFIRM` needing API 30 is therefore obsolete, and was left alone as out of scope.
+
+**Unverified on hardware, and this is the whole design:** whether the three effects are actually
+distinguishable by touch. Vibration motors differ enormously between devices; on a poor one the
+vocabulary collapses into three identical buzzes, which is exactly what this design exists to avoid.
+`docs/manual-qa.md` §39.7 is the gate.
+
+## The tutorial is offered, not imposed (2026-09-08) — READ BEFORE TOUCHING ONBOARDING
+
+The three-slide carousel is replaced by a six-step coach-mark tutorial, and — owner instruction —
+**the app no longer opens it by itself**. `startDestination` is now unconditionally `Routes.HOME`.
+
+**Why that matters beyond the feature:** the start destination no longer reads a DataStore value at
+all, so the onboarding-flash class of defect the startup-hardening pass guarded against is now
+structurally impossible on this route rather than merely defended. The splash/`StartupState` work is
+still correct and still needed for the *theme*; it is simply no longer load-bearing for onboarding.
+
+**The reminder window** is `domain/TutorialReminder` (pure, 7 JVM cases): Home offers the tutorial on
+the first launch and the **five after it** — launches 1..6 inclusive, which is `REMINDER_LAUNCHES +
+1` and the off-by-one worth not rediscovering. `AppSettings.launchCount` is incremented once per real
+launch from `MainActivity.onCreate` **guarded on `savedInstanceState == null`**, so a rotation does
+not burn a launch; the increment happens inside a single DataStore `edit` and re-checks its own stop
+condition against stored values, so two launches racing cannot both write the same number.
+
+**There is still exactly one flag.** Finishing, skipping and dismissing the Home card all set
+`hasSeenOnboarding`, and all three mean "I am done with this". Dismissal is deliberately permanent
+rather than a snooze — an experienced user reinstalling taps *No thanks* once and is never asked
+again — which is only safe because **Settings → Replay tutorial** keeps it reachable.
+
+**Replay mode writes nothing.** `OnboardingViewModel.finish()` returns `Saved` immediately for
+`TutorialMode.REPLAY` without touching the repository, so watching the tutorial from Settings cannot
+stand in for having completed it and cannot fail to close on a broken store. Both modes exit by
+`popBackStack()`, because the tutorial is always opened *from* somewhere still on the stack.
+
+**The previews are drawings, and that is structural.** `TutorialPreview.kt` renders constants — no
+ViewModel, no repository, no camera, no network, nothing that can write Room or the real meal. There
+is no state there to mutate, so "the tutorial cannot affect real data" is a property of the code
+rather than a rule to remember. The whole backdrop is `clearAndSetSemantics {}`, so TalkBack cannot
+reach a preview control that would do nothing.
+
+**Geometry, not coordinates.** `TutorialAnchors` records `boundsInRoot()` via `onGloballyPositioned`;
+an absent or zero-size rect returns null and the overlay renders a **centred callout with no arrow**
+rather than pointing at the origin. Anchors are cleared on backdrop change so a stale rectangle from
+the previous preview is never pointed at. `CalloutPlacement` (pure, 9 JVM cases) decides which side
+the card sits on and returns `CENTERED` when neither side fits — an overlapping card would hide the
+control the step is describing.
 
 **Do not move this haptic before `freezeAtShutter()` or after OCR/`onUseValue`.** The freeze must
 stay the first thing a committed shutter press does — see the "FREEZE FIRST" comment at its call

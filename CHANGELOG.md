@@ -87,9 +87,12 @@ and scanner lifecycle handling. It remains a local development build; no Play up
 ### Play Store release notes (draft)
 
 ```
-Nutrition-label capture now gives brief tactile feedback. Fixed portion calculations after product
-edits and online-value resets, improved meal-save feedback, and made manual barcode entry and crop
-selection more reliable.
+New: a short optional tutorial showing how scanning, portions and meals work. Take it or dismiss it
+from the home screen, or replay it any time from Settings.
+
+Nutrition-label capture now gives brief tactile feedback as you scan. Fixed portion calculations
+after product edits and online-value resets, improved meal-save feedback, and made manual barcode
+entry and crop selection more reliable.
 ```
 
 The draft describes observable changes without a health or accuracy claim. Physical-phone testing
@@ -102,10 +105,38 @@ of this combined build is still pending.
   accepted detection, gated by the existing app-level *Haptic feedback* setting (no new preference).
   It fires the instant a committed shutter capture begins — immediately after
   `CaptureEvidenceCoordinator.freezeAtShutter`, before any recognition work starts — and means only
-  "the shutter press was accepted", never "OCR succeeded" or "a value was confirmed". There is no
-  second haptic anywhere later in the pipeline: not on OCR completion, automatic advancement,
-  ordinary confirmation, scale-unresolved confirmation, assisted/focused entry, crop adjustment,
-  reread, Retake or Close.
+  "the shutter press was accepted", never "OCR succeeded" or "a value was confirmed".
+
+  *(Superseded later in this same version: a scan now produces at most **two** haptics — see
+  "Nutrition-label scanner outcome haptics" below. The shutter cue itself is unchanged.)*
+
+- **Nutrition-label scanner outcome haptics.** A completed automatic pass now gives one further cue
+  saying what to do next: a firm one when the app needs you to check a figure against the printed
+  row, a soft one when it has already moved you on to the calculator, and a distinct one when it is
+  handing the job back for a crop, a tap or the digits. A crop the user confirmed themselves stays
+  silent. Gated on the same existing *Haptic feedback* setting; no new preference.
+
+  The tactile vocabulary is deliberately **inverted against confidence**: the outcome the app is
+  most sure of gets the *softest* cue. A haptic never asserts that a scanned carbohydrate figure is
+  correct — it reports only how much attention is being asked for. The decision is a pure function
+  (`ocr/ScanHapticCue.kt`) keyed on the existing `ScanPresentationDecision.Action`, with 9 JVM cases.
+
+- **A first-launch tutorial, offered rather than imposed.** The three-slide onboarding carousel is
+  replaced by a six-step coach-mark walkthrough that points at the app's real controls — *Scan
+  barcode*, *Search products*, *Scan nutrition label*, *Add to meal* and *Meal Total* — over a
+  deterministic preview of Home, the calculator and the meal screen.
+
+  The app no longer opens the tutorial by itself. Every launch lands on Home, and the tutorial is
+  offered as a card there for the first launch and the five after it. Someone reinstalling the app
+  dismisses it once and is never asked again; someone new gets a repeated, obvious invitation
+  instead of one chance they might tap past. Finishing, skipping and dismissing all set the same
+  single `hasSeenOnboarding` flag — there is no second preference — and the tutorial stays available
+  from **Settings → Replay tutorial**, which is what makes a permanent dismissal safe to offer.
+
+  Nothing behind the tutorial's scrim is real: the previews are drawn from constants, so no camera,
+  network request, database write or change to the user's actual meal is reachable from any step.
+  Spotlights and arrows are positioned from measured layout geometry rather than hardcoded
+  coordinates, and fall back to a centred callout with no arrow when a target is unavailable.
 
 ### Fixed
 

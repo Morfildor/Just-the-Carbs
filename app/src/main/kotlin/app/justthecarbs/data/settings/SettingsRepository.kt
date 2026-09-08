@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.justthecarbs.domain.AppSettings
@@ -34,6 +35,10 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
                     ?: ResultStyle.DECIMAL_DOMINANT,
                 hapticsEnabled = prefs[HAPTICS] ?: true,
                 hasSeenOnboarding = prefs[HAS_SEEN_ONBOARDING] ?: false,
+                // Negative values are floored at zero rather than trusted. A corrupt counter should
+                // read as "not yet counted" — which shows a new user the reminder — instead of
+                // becoming a number that could silently suppress it.
+                launchCount = (prefs[LAUNCH_COUNT] ?: 0).coerceAtLeast(0),
             )
         }
 
@@ -49,6 +54,23 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
     suspend fun setHasSeenOnboarding(seen: Boolean) =
         store.edit { it[HAS_SEEN_ONBOARDING] = seen }.let {}
 
+    /**
+     * Record one app launch, if the tutorial reminder still depends on the count.
+     *
+     * Read-and-increment inside a single `edit` block, which DataStore serialises — so two launches
+     * racing (a rapid relaunch, a process restart) cannot both read the same value and write the
+     * same number. The stop condition is re-checked *inside* the transaction against the stored
+     * values rather than against whatever the caller last observed, so a stale snapshot cannot
+     * resurrect a counter that has already finished.
+     */
+    suspend fun recordLaunch() = store.edit { prefs ->
+        val seen = prefs[HAS_SEEN_ONBOARDING] ?: false
+        val count = (prefs[LAUNCH_COUNT] ?: 0).coerceAtLeast(0)
+        if (app.justthecarbs.domain.TutorialReminder.shouldCountLaunch(seen, count)) {
+            prefs[LAUNCH_COUNT] = count + 1
+        }
+    }.let {}
+
     private fun <T : Enum<T>> String.toEnum(values: List<T>, fallback: T): T =
         values.firstOrNull { it.name == this } ?: fallback
 
@@ -62,5 +84,6 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
         private val RESULT_STYLE = stringPreferencesKey("result_style")
         private val HAPTICS = booleanPreferencesKey("haptics")
         private val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
+        private val LAUNCH_COUNT = intPreferencesKey("launch_count")
     }
 }

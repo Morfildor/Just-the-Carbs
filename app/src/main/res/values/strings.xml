@@ -655,20 +655,65 @@
     <!-- §45: describes only what the software does. No efficacy or approval claim. -->
     <string name="settings_safety_body">This app calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
 
-    <!-- Onboarding (first-launch carousel) -->
-    <string name="onboarding_skip" tools:ignore="MissingTranslation">Skip</string>
-    <string name="onboarding_step_1" tools:ignore="MissingTranslation">STEP 1</string>
-    <string name="onboarding_step_2" tools:ignore="MissingTranslation">STEP 2</string>
-    <string name="onboarding_step_3" tools:ignore="MissingTranslation">STEP 3</string>
-    <string name="onboarding_title_1" tools:ignore="MissingTranslation">Scan it.</string>
-    <string name="onboarding_body_1" tools:ignore="MissingTranslation">Point your camera at any barcode. No searching, no typing a product name.</string>
-    <string name="onboarding_title_2" tools:ignore="MissingTranslation">Size the portion.</string>
-    <string name="onboarding_body_2" tools:ignore="MissingTranslation">Type it, or tap a preset. Grams, slices, whatever makes sense for the food.</string>
-    <string name="onboarding_title_3" tools:ignore="MissingTranslation">Get the number.</string>
-    <string name="onboarding_body_3" tools:ignore="MissingTranslation">Just the carbs. Nothing else on screen competes with it.</string>
-    <string name="onboarding_next" tools:ignore="MissingTranslation">Next</string>
-    <string name="onboarding_get_started" tools:ignore="MissingTranslation">Get started</string>
-    <string name="onboarding_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>
+    <!--
+      Onboarding: the first-launch coach-mark tutorial, also replayable from Settings.
+
+      Copy rules for this block, which is the first thing a new user reads:
+        - Second person, plain words, one idea per line.
+        - The app's own control labels verbatim (Scan barcode, Search products, Scan nutrition
+          label, Add to meal, Meal Total) — a tutorial that renames the buttons teaches nothing.
+        - No medical, diabetes, insulin or blood-sugar language of any kind (§44 §7.1).
+        - No internal vocabulary: no OCR, basis, candidate, confidence or provenance.
+        - Never promise the label reader is always right — step 4 says the user stays in control.
+    -->
+    <string name="tutorial_skip" tools:ignore="MissingTranslation">Skip</string>
+    <string name="tutorial_next" tools:ignore="MissingTranslation">Next</string>
+    <string name="tutorial_back" tools:ignore="MissingTranslation">Back</string>
+    <string name="tutorial_finish" tools:ignore="MissingTranslation">Start using Just the Carbs</string>
+    <string name="tutorial_progress" tools:ignore="MissingTranslation">Step %1$d of %2$d</string>
+    <string name="tutorial_pane_title" tools:ignore="MissingTranslation">Tutorial</string>
+    <string name="tutorial_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>
+
+    <string name="tutorial_title_orientation" tools:ignore="MissingTranslation">Three ways in. One clear answer.</string>
+    <string name="tutorial_body_orientation" tools:ignore="MissingTranslation">Find a food, choose a portion, and get the carbs. That\'s the whole rhythm.</string>
+    <string name="tutorial_title_barcode" tools:ignore="MissingTranslation">Barcode: the fastest route</string>
+    <string name="tutorial_body_barcode" tools:ignore="MissingTranslation">Point at a packaged-food barcode and let the app find the product.</string>
+    <string name="tutorial_title_search" tools:ignore="MissingTranslation">Search when you know the name</string>
+    <string name="tutorial_body_search" tools:ignore="MissingTranslation">Use Search products when the camera is inconvenient or the barcode is missing.</string>
+    <string name="tutorial_title_label" tools:ignore="MissingTranslation">Read the label</string>
+    <string name="tutorial_body_label" tools:ignore="MissingTranslation">Use Scan nutrition label to read the Total carbohydrate row from the package. If anything is unclear, you stay in control.</string>
+    <string name="tutorial_title_meal" tools:ignore="MissingTranslation">Build a meal as you go</string>
+    <string name="tutorial_body_meal" tools:ignore="MissingTranslation">Choose a portion, then tap Add to meal. The first item starts the current meal.</string>
+    <string name="tutorial_title_total" tools:ignore="MissingTranslation">One running total</string>
+    <string name="tutorial_body_total" tools:ignore="MissingTranslation">Keep adding foods. Meal Total combines the current meal. Remove an item or clear it when you\'re done.</string>
+
+    <!-- The find → portion → carbs strip on the tutorial's first step. -->
+    <string name="tutorial_rhythm_find" tools:ignore="MissingTranslation">Find food</string>
+    <string name="tutorial_rhythm_portion" tools:ignore="MissingTranslation">Choose portion</string>
+    <string name="tutorial_rhythm_carbs" tools:ignore="MissingTranslation">See carbs</string>
+
+    <!--
+      The example product in the tutorial's preview. A generic food, deliberately not a real brand:
+      the preview is a drawing, and naming a manufacturer would imply data the app has not looked up.
+    -->
+    <string name="tutorial_example_product" tools:ignore="MissingTranslation">Wholemeal bread</string>
+    <string name="tutorial_example_second_product" tools:ignore="MissingTranslation">Plain yoghurt</string>
+    <string name="tutorial_example_per_hundred" tools:ignore="MissingTranslation">%1$s g carbs / 100 g</string>
+
+    <!-- Settings entry point for replaying the tutorial. -->
+    <string name="settings_replay_tutorial" tools:ignore="MissingTranslation">Replay tutorial</string>
+    <string name="settings_replay_tutorial_body" tools:ignore="MissingTranslation">See how scanning, portions, and meals work.</string>
+
+    <!--
+      Home's tutorial invitation, shown on the first launch and the five after it.
+
+      "Not now" is worded as a decision rather than a postponement because that is what it does: it
+      is the same permanent answer as skipping, and Settings keeps the tutorial available afterwards.
+    -->
+    <string name="home_tutorial_reminder_title" tools:ignore="MissingTranslation">New here?</string>
+    <string name="home_tutorial_reminder_body" tools:ignore="MissingTranslation">A 30-second tour of scanning, portions, and meals.</string>
+    <string name="home_tutorial_reminder_start" tools:ignore="MissingTranslation">Show me</string>
+    <string name="home_tutorial_reminder_dismiss" tools:ignore="MissingTranslation">No thanks</string>
 
     <!-- Generic -->
     <string name="action_done">Done</string>

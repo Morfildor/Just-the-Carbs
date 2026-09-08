@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Close
@@ -42,6 +43,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -102,6 +104,9 @@ const val HOME_SEARCH_PENDING_TAG = "home_search_pending"
 const val HOME_SCAN_BARCODE_TAG = "home_scan_barcode"
 const val HOME_SCAN_LABEL_TAG = "home_scan_label"
 const val HOME_FAVORITES_HEADING_TAG = "home_favorites_heading"
+const val HOME_TUTORIAL_REMINDER_TAG = "home_tutorial_reminder"
+const val HOME_TUTORIAL_START_TAG = "home_tutorial_start"
+const val HOME_TUTORIAL_DISMISS_TAG = "home_tutorial_dismiss"
 
 /**
  * Home (§6, §7).
@@ -134,6 +139,9 @@ fun HomeScreen(
     onSearchScanLabel: () -> Unit = {},
     onSearchEnterManually: () -> Unit = {},
     onSearchRetry: () -> Unit = {},
+    showTutorialReminder: Boolean = false,
+    onStartTutorial: () -> Unit = {},
+    onDismissTutorialReminder: () -> Unit = {},
 ) {
     // Home is the start destination, so the system back button has no back-stack entry to pop and
     // would otherwise close the app while the user is mid-search. Intercept only while there is a
@@ -233,6 +241,9 @@ fun HomeScreen(
                     onManualEntry = onManualEntry,
                     onOpenProduct = onOpenProduct,
                     onToggleFavorite = onToggleFavorite,
+                    showTutorialReminder = showTutorialReminder,
+                    onStartTutorial = onStartTutorial,
+                    onDismissTutorialReminder = onDismissTutorialReminder,
                     modifier = Modifier.weight(1f).navigationBarsPadding(),
                 )
             }
@@ -554,6 +565,9 @@ private fun HomeBody(
     onManualEntry: () -> Unit,
     onOpenProduct: (String) -> Unit,
     onToggleFavorite: (Product) -> Unit,
+    showTutorialReminder: Boolean,
+    onStartTutorial: () -> Unit,
+    onDismissTutorialReminder: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -566,6 +580,18 @@ private fun HomeBody(
         ),
         verticalArrangement = Arrangement.spacedBy(Space.s),
     ) {
+        // The tutorial, offered rather than imposed (owner instruction, 2026-09-08). First in the
+        // column so a new user meets it before the actions it explains, and gone for good the
+        // moment it is taken or dismissed — see `TutorialReminder` for the window.
+        if (showTutorialReminder) {
+            item(key = "tutorial_reminder") {
+                TutorialReminderCard(
+                    onStart = onStartTutorial,
+                    onDismiss = onDismissTutorialReminder,
+                )
+            }
+        }
+
         item(key = "action_barcode") {
             HomeActionCard(
                 icon = Icons.Filled.QrCodeScanner,
@@ -735,6 +761,87 @@ private fun HomeActionCard(
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.75f),
         )
+    }
+}
+
+/**
+ * The tutorial invitation (owner instruction, 2026-09-08).
+ *
+ * Deliberately a quiet card rather than a dialog or a full-screen takeover: the app opens straight
+ * to Home for everyone, and someone reinstalling who already knows the app must be able to ignore or
+ * dismiss this in one tap rather than being walked through a gate. It is outlined in the app's own
+ * card idiom — not the filled gradient the two scan actions use — so it reads as an offer sitting
+ * above the real work, never as a fourth way in.
+ *
+ * *Not now* is a real, permanent answer, not a snooze: it sets the same `hasSeenOnboarding` flag
+ * that finishing and skipping set, so the reminder never returns. Replaying stays available in
+ * Settings, which is what makes a permanent dismissal safe to offer.
+ */
+@Composable
+private fun TutorialReminderCard(onStart: () -> Unit, onDismiss: () -> Unit) {
+    val shape = RoundedCornerShape(Space.cardRadius)
+    val accent = MaterialTheme.extendedColors.accents.violet
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .border(1.dp, accent.copy(alpha = 0.35f), shape)
+            .padding(Space.m)
+            .testTag(HOME_TUTORIAL_REMINDER_TAG),
+        verticalArrangement = Arrangement.spacedBy(Space.s),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(accent.copy(alpha = 0.14f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.HelpOutline,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(Space.s))
+            Text(
+                text = stringResource(R.string.home_tutorial_reminder_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Text(
+            text = stringResource(R.string.home_tutorial_reminder_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Space.s),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .heightIn(min = Space.minTouchTarget)
+                    .testTag(HOME_TUTORIAL_DISMISS_TAG),
+            ) {
+                Text(stringResource(R.string.home_tutorial_reminder_dismiss))
+            }
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = onStart,
+                shape = RoundedCornerShape(Space.buttonRadius),
+                modifier = Modifier
+                    .heightIn(min = Space.minTouchTarget)
+                    .testTag(HOME_TUTORIAL_START_TAG),
+            ) {
+                Text(stringResource(R.string.home_tutorial_reminder_start))
+            }
+        }
     }
 }
 

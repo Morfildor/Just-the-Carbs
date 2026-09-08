@@ -8,18 +8,51 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** First-launch carousel state: which of the 3 slides is showing, and marking it seen on exit. */
-class OnboardingViewModel(private val settingsRepository: SettingsRepository) : ViewModel() {
+/**
+ * Why the tutorial is on screen.
+ *
+ * The two modes share one screen and one step sequence and differ in exactly two ways: what leaving
+ * it does, and whether finishing writes anything. Keeping that as a mode rather than a second screen
+ * is what stops the app growing a parallel onboarding flow — see [OnboardingViewModel.finish].
+ */
+enum class TutorialMode {
+    /** The automatic first launch. Leaving marks onboarding seen and lands on Home. */
+    FIRST_RUN,
+
+    /** Replayed from Settings. Leaving writes nothing and returns to Settings. */
+    REPLAY,
+}
+
+/**
+ * The first-launch tutorial: which of [TUTORIAL_STEPS] is showing, and marking onboarding seen.
+ *
+ * `hasSeenOnboarding` remains the single first-run flag; this class adds no second preference. A
+ * replay deliberately has no persistence of its own — there is nothing to remember about having
+ * watched the tutorial twice, and a second flag would be a second thing that can disagree with the
+ * first.
+ */
+class OnboardingViewModel(
+    private val settingsRepository: SettingsRepository,
+    val mode: TutorialMode = TutorialMode.FIRST_RUN,
+) : ViewModel() {
 
     sealed interface CompletionState {
         data object Idle : CompletionState
         data object Saving : CompletionState
         data class Failed(val message: String) : CompletionState
+
+        /**
+         * The tutorial is finished and the screen may leave.
+         *
+         * In [TutorialMode.FIRST_RUN] this means the DataStore write landed. In
+         * [TutorialMode.REPLAY] there is no write, so it means only "the user is done" — the state
+         * exists in both modes so the screen has one exit signal to observe rather than two.
+         */
         data object Saved : CompletionState
     }
 
-    private val _slideIndex = MutableStateFlow(0)
-    val slideIndex: StateFlow<Int> = _slideIndex.asStateFlow()
+    private val _stepIndex = MutableStateFlow(0)
+    val stepIndex: StateFlow<Int> = _stepIndex.asStateFlow()
 
     private val _completionState = MutableStateFlow<CompletionState>(CompletionState.Idle)
     val completionState: StateFlow<CompletionState> = _completionState.asStateFlow()
@@ -27,36 +60,53 @@ class OnboardingViewModel(private val settingsRepository: SettingsRepository) : 
     private val completeMutex = Mutex()
 
     fun next() {
-        _slideIndex.value = (_slideIndex.value + 1).coerceAtMost(LAST_SLIDE)
+        _stepIndex.value = (_stepIndex.value + 1).coerceAtMost(TUTORIAL_LAST_STEP)
     }
 
     /**
-     * Follow a slide the user reached by swiping.
+     * Step back one moment.
      *
-     * Separate from [next] because a swipe can move in either direction and can land on any slide,
-     * where [next] only ever advances by one. Coerced rather than trusted: the pager is the source
-     * of the value and this keeps an out-of-range index from becoming state.
+     * Coerced at zero rather than wrapping to the end: the first step is the beginning of a
+     * sequence, and wrapping would hide that. Back *from* the first step is the screen's business
+     * (it leaves the tutorial), not this function's.
      */
-    fun showSlide(index: Int) {
-        _slideIndex.value = index.coerceIn(0, LAST_SLIDE)
-    }
-
-    fun skip() {
-        _slideIndex.value = LAST_SLIDE
+    fun previous() {
+        _stepIndex.value = (_stepIndex.value - 1).coerceAtLeast(0)
     }
 
     /**
-     * Persists `hasSeenOnboarding = true` and updates [completionState] to reflect the outcome.
-     *
-     * A [Mutex] guards against two callers racing (a rapid double tap on *Get started*) starting
-     * two DataStore edits. Unlike the previous design, a repository failure now sets
-     * [CompletionState.Failed] rather than leaving the caller's own local "in progress" flag stuck
-     * true forever -- the caller observes this state and re-enables its own UI on Failed. A retry
-     * (calling [complete] again after a Failed state) is a normal, supported second attempt: the
-     * mutex does not remember the previous failure, only whether a write is currently in flight or
-     * has already durably succeeded.
+     * Jump to a step directly. Coerced rather than trusted, so an out-of-range index from a caller
+     * cannot become state and crash the screen when it indexes [TUTORIAL_STEPS].
      */
-    suspend fun complete() {
+    fun showStep(index: Int) {
+        _stepIndex.value = index.coerceIn(0, TUTORIAL_LAST_STEP)
+    }
+
+    /**
+     * Leave the tutorial: Skip, system Back, or the final action. All three end it the same way.
+     *
+     * Skip is not a lesser exit than finishing — someone who skips has decided they are done, and
+     * showing them the tutorial again on the next launch would be the app disagreeing with them. So
+     * every exit from [TutorialMode.FIRST_RUN] persists `hasSeenOnboarding`, and the screen only
+     * leaves once that write has actually landed.
+     *
+     * A [Mutex] guards against two callers racing (a rapid double tap on the final action) starting
+     * two DataStore edits. A repository failure sets [CompletionState.Failed] rather than leaving
+     * the caller stuck: the screen re-enables its action and stays put, so a failed write never
+     * traps the user in the tutorial and never silently drops them onto Home as though it had
+     * worked. Retrying after a failure is a normal second attempt — the mutex remembers only
+     * whether a write is in flight or has already durably succeeded, not that one previously failed.
+     */
+    suspend fun finish() {
+        // A replay must not touch the flag. It is not merely unnecessary: re-writing `true` over an
+        // existing `true` is a pointless write, and writing it at all in a mode reachable *before*
+        // first-run completion would let watching the tutorial from Settings stand in for having
+        // completed it. Returning Saved directly also means a replay cannot fail to close.
+        if (mode == TutorialMode.REPLAY) {
+            _completionState.value = CompletionState.Saved
+            return
+        }
+
         completeMutex.withLock {
             if (_completionState.value is CompletionState.Saved) return
             _completionState.value = CompletionState.Saving
@@ -69,9 +119,5 @@ class OnboardingViewModel(private val settingsRepository: SettingsRepository) : 
                 _completionState.value = CompletionState.Failed(e.message ?: "Could not save")
             }
         }
-    }
-
-    private companion object {
-        const val LAST_SLIDE = 2
     }
 }

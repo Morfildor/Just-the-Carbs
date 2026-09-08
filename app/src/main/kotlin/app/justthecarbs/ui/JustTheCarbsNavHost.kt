@@ -27,6 +27,7 @@ import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.PortionUnitKind
+import app.justthecarbs.domain.TutorialReminder
 import java.math.BigDecimal
 import app.justthecarbs.ui.home.HomeScreen
 import app.justthecarbs.ui.home.HomeViewModel
@@ -37,6 +38,7 @@ import app.justthecarbs.ui.meal.MealScreen
 import app.justthecarbs.ui.meal.MealViewModel
 import app.justthecarbs.ui.onboarding.OnboardingScreen
 import app.justthecarbs.ui.onboarding.OnboardingViewModel
+import app.justthecarbs.ui.onboarding.TutorialMode
 import app.justthecarbs.ui.search.SearchScreen
 import app.justthecarbs.ui.search.SearchViewModel
 import app.justthecarbs.ui.product.ProductNavigationEvent
@@ -127,7 +129,15 @@ internal fun editManuallyRoute(barcode: String, basis: NutritionBasis?): String 
     Routes.manual(barcode, "", basis?.name.orEmpty())
 
 private object Routes {
-    const val ONBOARDING = "onboarding"
+    /**
+     * The tutorial, in one of two modes (see [app.justthecarbs.ui.onboarding.TutorialMode]).
+     *
+     * One route with a boolean argument rather than two destinations, because the two modes render
+     * the same screen and the same steps — they differ only in what leaving does and whether
+     * finishing writes anything. A second destination would be a second onboarding flow to keep in
+     * step with the first.
+     */
+    const val ONBOARDING = "onboarding?replay={replay}"
     const val HOME = "home"
     const val SCAN = "scan"
     const val PRODUCT = "product/{barcode}"
@@ -166,6 +176,14 @@ private object Routes {
      * instead of crashing navigation or, worse, silently landing on an unintended destination.
      */
     fun product(barcode: String) = "product/${java.net.URLEncoder.encode(barcode, "UTF-8")}"
+
+    /**
+     * [replay] false is the automatic first launch; true is Settings' *Replay tutorial*.
+     *
+     * The start destination uses the default (false) form, so a first run cannot accidentally be
+     * built as a replay and skip persisting `hasSeenOnboarding`.
+     */
+    fun onboarding(replay: Boolean = false) = "onboarding?replay=$replay"
 
     fun quick(carbs: String, basis: String) = "quick?carbs=$carbs&basis=$basis"
 
@@ -218,46 +236,70 @@ fun JustTheCarbsNavHost(
     settings: AppSettings,
     navController: NavHostController = rememberNavController(),
 ) {
-    // Evaluated once, at NavHost's first composition. By the time this composable exists at all,
-    // `settings` is guaranteed to be the real first DataStore value — MainActivity holds the splash
-    // screen and renders nothing but a neutral background (StartupState.Loading) until then, so a
-    // returning user's start destination is never decided from AppSettings()'s synthetic default.
-    // startDestination not re-evaluating on a later `settings` change is fine because completing
-    // onboarding navigates explicitly rather than relying on a recomposition.
-    val startDestination = if (settings.hasSeenOnboarding) Routes.HOME else Routes.ONBOARDING
+    // Home, always — including on a genuine first launch.
+    //
+    // The tutorial is no longer a gate in front of the app (owner instruction, 2026-09-08). It is
+    // offered on Home as a reminder card the user can take or dismiss, for the first launch and the
+    // five after it (see `TutorialReminder`). That way someone reinstalling the app is never held up
+    // by a walkthrough they already know, while a new user still gets a repeated, obvious invitation
+    // rather than one chance they might tap past.
+    //
+    // A pleasant consequence: the start destination no longer depends on a DataStore value at all,
+    // so the class of defect where onboarding flashes before Home on a returning user's cold start
+    // is now structurally impossible here rather than merely guarded against.
+    val startDestination = Routes.HOME
 
     NavHost(navController = navController, startDestination = startDestination) {
 
-        composable(Routes.ONBOARDING) {
+        composable(
+            route = Routes.ONBOARDING,
+            arguments = listOf(
+                navArgument("replay") { type = NavType.BoolType; defaultValue = false },
+            ),
+        ) { entry ->
+            // Defaults to first-run, which is the safe direction: a malformed argument produces a
+            // run that persists `hasSeenOnboarding`, never one that silently skips the write and
+            // shows the tutorial again on every launch.
+            val replay = entry.arguments?.getBoolean("replay") ?: false
+            val mode = if (replay) TutorialMode.REPLAY else TutorialMode.FIRST_RUN
+
             val viewModel: OnboardingViewModel = viewModel(
-                factory = factory { OnboardingViewModel(container.settingsRepository) },
+                factory = factory { OnboardingViewModel(container.settingsRepository, mode) },
             )
-            val slideIndex by viewModel.slideIndex.collectAsStateWithLifecycle()
+            val stepIndex by viewModel.stepIndex.collectAsStateWithLifecycle()
             val coroutineScope = rememberCoroutineScope()
             val completionState by viewModel.completionState.collectAsStateWithLifecycle()
 
+            // Only reached on `Saved`, which in first-run mode means the DataStore write has
+            // actually landed — so a failed write leaves the user on the tutorial with a retryable
+            // action rather than dropping them onward as though it had worked.
+            //
+            // Both modes pop, and now for the same reason: the tutorial is always opened *from*
+            // somewhere that is still on the stack underneath it (Home's reminder card, or
+            // Settings), so leaving means going back to wherever it was started. Navigating to Home
+            // explicitly would be wrong for the replay case and redundant for the other.
             LaunchedEffect(completionState) {
                 if (completionState is OnboardingViewModel.CompletionState.Saved) {
-                    navController.navigate(Routes.HOME) {
-                        popUpTo(Routes.ONBOARDING) { inclusive = true }
-                    }
+                    navController.popBackStack()
                 }
             }
 
+            val saving = completionState is OnboardingViewModel.CompletionState.Saving
+
             OnboardingScreen(
-                slideIndex = slideIndex,
+                stepIndex = stepIndex,
+                mode = mode,
                 onNext = viewModel::next,
-                onSkip = viewModel::skip,
-                onSlideChanged = viewModel::showSlide,
-                // Disabled only while a write is genuinely in flight -- Idle and Failed both allow a
-                // tap (Failed is a retry, not a re-disable), so a DataStore failure can no longer
-                // leave this button permanently unusable.
-                onGetStarted = {
-                    if (completionState !is OnboardingViewModel.CompletionState.Saving) {
-                        coroutineScope.launch { viewModel.complete() }
-                    }
+                onPrevious = viewModel::previous,
+                // Skip, system Back and the final action all route here: leaving is leaving, and
+                // someone who skips has decided they are done. Guarded on `saving` only -- Idle and
+                // Failed both allow a tap, since a Failed state is a retry rather than a reason to
+                // stay disabled forever.
+                onExit = {
+                    if (!saving) coroutineScope.launch { viewModel.finish() }
                 },
                 completionError = (completionState as? OnboardingViewModel.CompletionState.Failed)?.message,
+                busy = saving,
             )
         }
 
@@ -265,6 +307,7 @@ fun JustTheCarbsNavHost(
             val viewModel: HomeViewModel = viewModel(factory = factory { HomeViewModel(container.productRepository) })
             val recents by viewModel.recents.collectAsStateWithLifecycle()
             val mealItems by viewModel.mealItems.collectAsStateWithLifecycle()
+            val homeScope = rememberCoroutineScope()
 
             // Home's own search instance (§9, owner request 2026-08-14): a deliberate, always-on
             // entry point, not the SearchScreen fallback reached only from a failure. Same
@@ -294,6 +337,24 @@ fun JustTheCarbsNavHost(
                 onToggleFavorite = viewModel::toggleFavorite,
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onScanLabel = { navController.navigate(Routes.labelScan()) },
+                // The tutorial is offered here rather than opened automatically. Both actions are
+                // ordinary forward navigations / a single write — neither is a gate.
+                showTutorialReminder = TutorialReminder.shouldShow(
+                    hasSeenOnboarding = settings.hasSeenOnboarding,
+                    launchCount = settings.launchCount,
+                ),
+                onStartTutorial = { navController.navigate(Routes.onboarding()) },
+                // Dismissing is the same statement finishing and skipping make — "I am done with
+                // this" — so it sets the same single flag and the reminder never returns.
+                //
+                // Written here rather than through HomeViewModel: that ViewModel owns products and
+                // the meal and has no settings dependency, and giving it one so it can set a
+                // preference would widen it for a single one-line write. `homeScope` outlives the
+                // card being removed from composition, so the write cannot be cancelled by its own
+                // effect.
+                onDismissTutorialReminder = {
+                    homeScope.launch { container.settingsRepository.setHasSeenOnboarding(true) }
+                },
                 mealItems = mealItems,
                 mealTotal = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems),
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
@@ -861,6 +922,10 @@ fun JustTheCarbsNavHost(
                 onHapticsChanged = viewModel::setHaptics,
                 onClearRecents = viewModel::clearRecents,
                 onClearProducts = viewModel::clearProducts,
+                // An ordinary forward navigation, so the tutorial's own exit pops straight back to
+                // this screen. Replay mode writes nothing, so watching it again cannot alter
+                // onboarding state.
+                onReplayTutorial = { navController.navigate(Routes.onboarding(replay = true)) },
                 onBack = { navController.popBackStack() },
             )
         }
