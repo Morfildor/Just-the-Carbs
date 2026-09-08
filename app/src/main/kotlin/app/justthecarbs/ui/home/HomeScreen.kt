@@ -767,15 +767,15 @@ private fun HomeActionCard(
 /**
  * The tutorial invitation (owner instruction, 2026-09-08).
  *
- * Deliberately a quiet card rather than a dialog or a full-screen takeover: the app opens straight
- * to Home for everyone, and someone reinstalling who already knows the app must be able to ignore or
- * dismiss this in one tap rather than being walked through a gate. It is outlined in the app's own
- * card idiom — not the filled gradient the two scan actions use — so it reads as an offer sitting
- * above the real work, never as a fourth way in.
+ * Deliberately a quiet card rather than a dialog or a full-screen takeover. The welcome carousel is
+ * the app's one gate and it is already behind the user by the time this appears; someone who knows
+ * the app must be able to ignore or dismiss this in one tap rather than be walked through a second
+ * one. It is outlined in the app's own card idiom — not the filled gradient the two scan actions use
+ * — so it reads as an offer sitting above the real work, never as a fourth way in.
  *
- * *Not now* is a real, permanent answer, not a snooze: it sets the same `hasSeenOnboarding` flag
- * that finishing and skipping set, so the reminder never returns. Replaying stays available in
- * Settings, which is what makes a permanent dismissal safe to offer.
+ * *Not now* is a real, permanent answer, not a snooze: it sets the same `hasSeenTutorial` flag that
+ * finishing and skipping set, so the reminder never returns. Replaying stays available in Settings,
+ * which is what makes a permanent dismissal safe to offer.
  */
 @Composable
 private fun TutorialReminderCard(onStart: () -> Unit, onDismiss: () -> Unit) {

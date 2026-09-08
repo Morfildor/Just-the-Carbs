@@ -91,7 +91,7 @@ class TutorialNavigationTest {
             composable("home") {
                 Column {
                     Text("HOME")
-                    if (TutorialReminder.shouldShow(settings.hasSeenOnboarding, settings.launchCount)) {
+                    if (TutorialReminder.shouldShow(settings.hasSeenTutorial, settings.launchCount)) {
                         Text(
                             text = "Show me",
                             modifier = Modifier.clickable { nav.navigate("onboarding?replay=false") },
@@ -99,7 +99,7 @@ class TutorialNavigationTest {
                         Text(
                             text = "No thanks",
                             modifier = Modifier.clickable {
-                                scope.launch { repository.setHasSeenOnboarding(true) }
+                                scope.launch { repository.setHasSeenTutorial(true) }
                             },
                         )
                     }
@@ -196,15 +196,15 @@ class TutorialNavigationTest {
 
         assertEquals("home", route())
         compose.onNodeWithText("Show me").assertDoesNotExist()
-        assertTrue(runBlocking { repository.settings.first().hasSeenOnboarding })
+        assertTrue(runBlocking { repository.settings.first().hasSeenTutorial })
     }
 
     @Test
-    fun theReminderIsGoneOnceOnboardingHasBeenSeen() {
+    fun theReminderIsGoneOnceTheTutorialHasBeenSeen() {
         val repository = freshRepository()
         runBlocking {
             repository.recordLaunch()
-            repository.setHasSeenOnboarding(true)
+            repository.setHasSeenTutorial(true)
         }
         start(repository)
 
@@ -219,14 +219,14 @@ class TutorialNavigationTest {
         start(repository)
 
         compose.onNodeWithText("Show me").assertDoesNotExist()
-        // And it retired by running out of launches, not by pretending onboarding was completed.
-        assertFalse(runBlocking { repository.settings.first().hasSeenOnboarding })
+        // And it retired by running out of launches, not by pretending the tutorial was watched.
+        assertFalse(runBlocking { repository.settings.first().hasSeenTutorial })
     }
 
     // ---- exits ---------------------------------------------------------------------------------
 
     @Test
-    fun skippingTheTutorialPersistsOnboardingAndReturnsToHome() {
+    fun skippingTheTutorialPersistsItAndReturnsToHome() {
         val repository = freshRepository()
         runBlocking { repository.recordLaunch() }
         start(repository)
@@ -238,12 +238,12 @@ class TutorialNavigationTest {
 
         assertEquals("home", route())
         // Skip is a real exit, not a deferral: the reminder must not come back.
-        assertTrue(runBlocking { repository.settings.first().hasSeenOnboarding })
+        assertTrue(runBlocking { repository.settings.first().hasSeenTutorial })
         compose.onNodeWithText("Show me").assertDoesNotExist()
     }
 
     @Test
-    fun finishingTheTutorialPersistsOnboardingAndReturnsToHome() {
+    fun finishingTheTutorialPersistsItAndReturnsToHome() {
         val repository = freshRepository()
         runBlocking { repository.recordLaunch() }
         start(repository)
@@ -256,14 +256,14 @@ class TutorialNavigationTest {
         }
 
         assertEquals("home", route())
-        assertTrue(runBlocking { repository.settings.first().hasSeenOnboarding })
+        assertTrue(runBlocking { repository.settings.first().hasSeenTutorial })
     }
 
     @Test
     fun replayExitsBackToSettingsAndNotHome() {
         // The single most important replay behaviour: it returns the user where they started it.
         val repository = freshRepository()
-        runBlocking { repository.setHasSeenOnboarding(true) }
+        runBlocking { repository.setHasSeenTutorial(true) }
         start(repository)
 
         compose.runOnUiThread { nav.navigate("settings") }
@@ -279,9 +279,9 @@ class TutorialNavigationTest {
     }
 
     @Test
-    fun replayDoesNotAlterOnboardingState() {
+    fun replayDoesNotAlterTutorialState() {
         val repository = freshRepository()
-        runBlocking { repository.setHasSeenOnboarding(true) }
+        runBlocking { repository.setHasSeenTutorial(true) }
         start(repository)
 
         compose.runOnUiThread { nav.navigate("settings") }
@@ -293,6 +293,6 @@ class TutorialNavigationTest {
 
         // Still true, and never cleared: a replay has no business editing the flag in either
         // direction.
-        assertTrue(runBlocking { repository.settings.first().hasSeenOnboarding })
+        assertTrue(runBlocking { repository.settings.first().hasSeenTutorial })
     }
 }

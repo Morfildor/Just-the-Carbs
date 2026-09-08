@@ -15,7 +15,7 @@ class TutorialReminderTest {
 
     @Test
     fun `a first launch is invited`() {
-        assertTrue(TutorialReminder.shouldShow(hasSeenOnboarding = false, launchCount = 1))
+        assertTrue(TutorialReminder.shouldShow(hasSeenTutorial = false, launchCount = 1))
     }
 
     @Test
@@ -33,12 +33,37 @@ class TutorialReminderTest {
     }
 
     @Test
-    fun `having seen onboarding retires the reminder immediately at any launch count`() {
+    fun `having seen the tutorial retires the reminder immediately at any launch count`() {
         // Finishing, skipping and dismissing all set this flag, and all three mean "I am done with
         // this" — so none of them may leave the card on screen for the rest of the window.
         (0..10).forEach { count ->
-            assertFalse("launch $count", TutorialReminder.shouldShow(hasSeenOnboarding = true, launchCount = count))
+            assertFalse("launch $count", TutorialReminder.shouldShow(hasSeenTutorial = true, launchCount = count))
         }
+    }
+
+    @Test
+    fun `only the tutorial flag stops the count — the carousel is not consulted`() {
+        // `shouldCountLaunch` takes one flag, and it must be the tutorial's. The counter exists
+        // solely to decide whether Home still offers the coach marks, so were it keyed on the
+        // carousel a user who read the carousel on launch 1 would freeze the window there and lose
+        // the reminder for the five launches it was meant to cover.
+        //
+        // The rule cannot see `hasSeenOnboarding` at all -- there is no parameter for it -- which is
+        // the structural half of this guarantee. This case pins the other half: the counting
+        // decision at a given launch is whatever the tutorial flag says, nothing else.
+        assertTrue(TutorialReminder.shouldCountLaunch(hasSeenTutorial = false, launchCount = 3))
+        assertFalse(TutorialReminder.shouldCountLaunch(hasSeenTutorial = true, launchCount = 3))
+    }
+
+    @Test
+    fun `the welcome carousel does not retire the tutorial reminder`() {
+        // The two flags answer different questions. `hasSeenOnboarding` means "the carousel has been
+        // through"; `hasSeenTutorial` means "done with the coach marks". Finishing the carousel must
+        // therefore leave the Home reminder standing — otherwise the user gets the carousel *or* the
+        // tutorial and never both, which is the whole point of having the two.
+        assertTrue(
+            TutorialReminder.shouldShow(hasSeenTutorial = false, launchCount = 1),
+        )
     }
 
     @Test
@@ -56,7 +81,7 @@ class TutorialReminderTest {
         assertTrue(TutorialReminder.shouldCountLaunch(false, 1))
         assertTrue(TutorialReminder.shouldCountLaunch(false, TutorialReminder.REMINDER_LAUNCHES + 1))
         assertFalse(TutorialReminder.shouldCountLaunch(false, TutorialReminder.REMINDER_LAUNCHES + 2))
-        assertFalse(TutorialReminder.shouldCountLaunch(hasSeenOnboarding = true, launchCount = 1))
+        assertFalse(TutorialReminder.shouldCountLaunch(hasSeenTutorial = true, launchCount = 1))
     }
 
     @Test

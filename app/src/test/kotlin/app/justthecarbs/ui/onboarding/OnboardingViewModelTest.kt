@@ -93,13 +93,13 @@ class OnboardingViewModelTest {
     // ---- first-run persistence ----------------------------------------------------------------
 
     @Test
-    fun `finishing the first run persists hasSeenOnboarding before returning`() = runTest {
+    fun `finishing the first run persists hasSeenTutorial before returning`() = runTest {
         val repository = fakeRepository()
         val viewModel = OnboardingViewModel(repository, TutorialMode.FIRST_RUN)
 
         viewModel.finish()
 
-        assertEquals(true, repository.settings.first().hasSeenOnboarding)
+        assertEquals(true, repository.settings.first().hasSeenTutorial)
         assertEquals(OnboardingViewModel.CompletionState.Saved, viewModel.completionState.value)
     }
 
@@ -114,7 +114,7 @@ class OnboardingViewModelTest {
         viewModel.finish() // Skip on step 1, without advancing.
 
         assertEquals(0, viewModel.stepIndex.value)
-        assertEquals(true, repository.settings.first().hasSeenOnboarding)
+        assertEquals(true, repository.settings.first().hasSeenTutorial)
     }
 
     @Test
@@ -140,7 +140,7 @@ class OnboardingViewModelTest {
         viewModel.finish()
 
         assertEquals(1, writeCount.get())
-        assertEquals(true, repository.settings.first().hasSeenOnboarding)
+        assertEquals(true, repository.settings.first().hasSeenTutorial)
     }
 
     @Test
@@ -153,7 +153,7 @@ class OnboardingViewModelTest {
         first.await()
         second.await()
 
-        assertTrue(repository.settings.first().hasSeenOnboarding)
+        assertTrue(repository.settings.first().hasSeenTutorial)
     }
 
     // ---- failure handling ---------------------------------------------------------------------
@@ -201,7 +201,7 @@ class OnboardingViewModelTest {
         viewModel.finish()
 
         assertEquals(OnboardingViewModel.CompletionState.Saved, viewModel.completionState.value)
-        assertEquals(true, repository.settings.first().hasSeenOnboarding)
+        assertEquals(true, repository.settings.first().hasSeenTutorial)
     }
 
     // ---- replay mode --------------------------------------------------------------------------
@@ -231,14 +231,30 @@ class OnboardingViewModelTest {
     }
 
     @Test
-    fun `replay does not clear an onboarding flag that is already set`() = runTest {
+    fun `replay does not clear a tutorial flag that is already set`() = runTest {
         val repository = fakeRepository()
-        repository.setHasSeenOnboarding(true)
+        repository.setHasSeenTutorial(true)
 
         val viewModel = OnboardingViewModel(repository, TutorialMode.REPLAY)
         viewModel.finish()
 
-        assertEquals(true, repository.settings.first().hasSeenOnboarding)
+        assertEquals(true, repository.settings.first().hasSeenTutorial)
+    }
+
+    @Test
+    fun `finishing the tutorial never marks the welcome carousel seen`() = runTest {
+        // The two flags record different events and are set by different screens. If the tutorial
+        // wrote the carousel's flag as well, a user who reached the coach marks by some route other
+        // than the carousel would silently lose the carousel -- and, more importantly, the direction
+        // this guards is the one that is easy to "tidy up" into a single flag later.
+        val repository = fakeRepository()
+        val viewModel = OnboardingViewModel(repository, TutorialMode.FIRST_RUN)
+
+        viewModel.finish()
+
+        val settings = repository.settings.first()
+        assertEquals(true, settings.hasSeenTutorial)
+        assertEquals(false, settings.hasSeenOnboarding)
     }
 
     @Test

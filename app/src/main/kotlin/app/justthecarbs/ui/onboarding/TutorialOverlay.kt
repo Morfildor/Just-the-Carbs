@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -16,15 +17,29 @@ import androidx.compose.ui.graphics.Paint
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 
 /**
- * The dimmed scrim with a rounded hole cut out around the current target.
+ * The dim over the app, with the current target left clear.
  *
- * Drawn as one layer with [BlendMode.Clear] punching the hole, rather than as four rectangles
- * around the target: four rectangles leave hairline seams at their joins on fractional pixel
- * boundaries, which reads as a cross through the dim. `drawWithLayer` is required — a clear blend
- * needs its own layer or it erases everything beneath it, including the preview.
+ * Two things about how this is drawn are deliberate, and both are about not making the app look
+ * switched off while the tutorial is up.
+ *
+ * **The dim is graded, not flat.** A single uniform wash at the strength needed to make the far
+ * corners recede also flattens everything near the target, so the screen reads as blacked out with a
+ * hole punched in it rather than as the app with one part brought forward. Instead the base wash is
+ * light and a soft radial gradient adds the rest of the weight towards the edges, fading to nothing
+ * as it approaches the spotlight. The user can still see the app they are being taught.
+ *
+ * **The hole is feathered, not cut.** The clear-blended hole is followed by a soft ring that eases
+ * the dim back in over [FEATHER] rather than stopping at a hard edge, which is what stops the
+ * spotlight reading as a rectangle stuck on top of the screen.
+ *
+ * Drawn as one layer with [BlendMode.Clear] punching the hole, rather than as four rectangles around
+ * the target: four rectangles leave hairline seams at their joins on fractional pixel boundaries,
+ * which reads as a cross through the dim. The `saveLayer` is required — a clear blend needs its own
+ * layer or it erases everything beneath it, including the preview.
  *
  * A null [spotlight] dims the whole screen evenly, which is the orientation step and the
  * target-unavailable fallback.
@@ -42,10 +57,34 @@ fun TutorialScrim(
         modifier = modifier.clearAndSetSemantics { },
     ) {
         val radiusPx = cornerRadius.toPx()
+        val featherPx = FEATHER.toPx()
+
         drawIntoCanvas { canvas ->
             canvas.saveLayer(Rect(Offset.Zero, size), Paint())
+
             drawRect(color = scrimColor)
+
             if (spotlight != null) {
+                // Weight towards the edges of the screen, easing off near the target. Centred on the
+                // spotlight and sized to reach the far corner, so the falloff is about the distance
+                // from what the user is meant to be looking at rather than from the screen's middle.
+                val furthest = maxOf(
+                    spotlight.center.getDistance(),
+                    Offset(size.width - spotlight.center.x, spotlight.center.y).getDistance(),
+                    Offset(spotlight.center.x, size.height - spotlight.center.y).getDistance(),
+                    Offset(size.width - spotlight.center.x, size.height - spotlight.center.y)
+                        .getDistance(),
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        0f to Color.Transparent,
+                        0.35f to Color.Transparent,
+                        1f to scrimColor.copy(alpha = scrimColor.alpha * EDGE_WEIGHT),
+                        center = spotlight.center,
+                        radius = furthest.coerceAtLeast(1f),
+                    ),
+                )
+
                 drawRoundRect(
                     color = Color.Black,
                     topLeft = spotlight.topLeft,
@@ -53,11 +92,58 @@ fun TutorialScrim(
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
                     blendMode = BlendMode.Clear,
                 )
+
+                // Ease the dim back in around the hole, so there is no line where clear meets dim.
+                //
+                // Built from many thin strokes of increasing alpha rather than one thick one: a
+                // single stroke is a band of uniform strength, which on the device read as a pale
+                // ring drawn around the spotlight — a second edge, exactly the boxiness the feather
+                // exists to remove. Stepping the alpha approximates the gradient a blur would give.
+                val steps = FEATHER_STEPS
+                val bandWidth = featherPx / steps
+                repeat(steps) { i ->
+                    // Nearest the hole clears the most dim, tailing to nothing at the outer edge.
+                    val strength = (1f - i / steps.toFloat())
+                    val inset = bandWidth * (i + 0.5f)
+                    drawRoundRect(
+                        color = scrimColor.copy(alpha = scrimColor.alpha * strength),
+                        topLeft = Offset(spotlight.left - inset, spotlight.top - inset),
+                        size = androidx.compose.ui.geometry.Size(
+                            spotlight.width + inset * 2f,
+                            spotlight.height + inset * 2f,
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                            radiusPx + inset,
+                            radiusPx + inset,
+                        ),
+                        style = Stroke(width = bandWidth + 1f),
+                        blendMode = BlendMode.DstOut,
+                    )
+                }
             }
             canvas.restore()
         }
     }
 }
+
+/** How far the dim takes to come back in around the spotlight. */
+private val FEATHER = 28.dp
+
+/**
+ * How many bands the feather is drawn in.
+ *
+ * Enough that the steps are not individually visible at this width; more would cost overdraw for no
+ * difference anyone can see.
+ */
+private const val FEATHER_STEPS = 12
+
+/**
+ * How much extra dim the edges of the screen carry over the base wash.
+ *
+ * The base wash is deliberately light. This is what makes the far corners recede without flattening
+ * the area around the target — see [TutorialScrim].
+ */
+private const val EDGE_WEIGHT = 0.85f
 
 /**
  * The ring drawn around the spotlight, and the connector from the callout to it.
@@ -78,17 +164,47 @@ fun TutorialSpotlightDecoration(
     cornerRadius: Dp,
     strokeWidth: Dp,
     modifier: Modifier = Modifier,
+    /**
+     * Breathing scale for the outer halo, 1f at rest.
+     *
+     * Only the halo moves. The ring itself stays exactly on the control's bounds, because a border
+     * that grows and shrinks around a button reads as the button changing size — and on this screen
+     * the ring is a claim about *which* control the words are describing.
+     */
+    pulse: Float = 1f,
 ) {
     Canvas(modifier = modifier.clearAndSetSemantics { }) {
         if (spotlight == null) return@Canvas
 
         val radiusPx = cornerRadius.toPx()
+        val strokePx = strokeWidth.toPx()
+
+        // Three concentric strokes of decreasing alpha standing in for a blur: a hard 2dp outline
+        // reads as a box drawn on the screen, where a halo reads as light coming off the control.
+        // Cheap enough to redraw every frame of the pulse, unlike a real blur.
+        repeat(HALO_LAYERS) { layer ->
+            val spread = strokePx * (layer + 1) * HALO_STEP * pulse
+            drawRoundRect(
+                color = accent.copy(alpha = accent.alpha * HALO_ALPHA / (layer + 1)),
+                topLeft = Offset(spotlight.left - spread, spotlight.top - spread),
+                size = androidx.compose.ui.geometry.Size(
+                    spotlight.width + spread * 2f,
+                    spotlight.height + spread * 2f,
+                ),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                    radiusPx + spread,
+                    radiusPx + spread,
+                ),
+                style = Stroke(width = strokePx * 1.5f),
+            )
+        }
+
         drawRoundRect(
             color = accent,
             topLeft = spotlight.topLeft,
             size = spotlight.size,
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
-            style = Stroke(width = strokeWidth.toPx()),
+            style = Stroke(width = strokePx),
         )
 
         if (arrowStart != null) {
@@ -96,11 +212,15 @@ fun TutorialSpotlightDecoration(
                 start = arrowStart,
                 target = spotlight,
                 color = accent,
-                strokeWidth = strokeWidth.toPx(),
+                strokeWidth = strokePx,
             )
         }
     }
 }
+
+private const val HALO_LAYERS = 3
+private const val HALO_STEP = 2.2f
+private const val HALO_ALPHA = 0.28f
 
 /**
  * A curved connector from [start] to the nearest edge of [target], with an arrowhead.

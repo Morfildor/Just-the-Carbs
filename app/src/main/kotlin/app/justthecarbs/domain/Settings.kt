@@ -12,10 +12,22 @@ data class AppSettings(
     val resultStyle: ResultStyle = ResultStyle.DECIMAL_DOMINANT,
     val hapticsEnabled: Boolean = true,
     /**
-     * The one first-run flag. True once the user has finished the tutorial, skipped it, or
-     * dismissed the reminder on Home — all three mean "I am done with this".
+     * True once the welcome carousel has been through — finished or skipped.
+     *
+     * Gates the start destination and nothing else. It says the user has been introduced to the
+     * app, not that they have been shown where its controls are; [hasSeenTutorial] answers that
+     * separate question. Keeping them apart is what lets a first-run user get the carousel *and*
+     * then be offered the coach marks, rather than one standing in for the other.
      */
     val hasSeenOnboarding: Boolean = false,
+    /**
+     * True once the user is done with the coach-mark tutorial — finished it, skipped it, or
+     * dismissed the reminder card on Home. All three mean "I am done with this".
+     *
+     * Read only by [TutorialReminder.shouldShow]. Deliberately separate from [hasSeenOnboarding];
+     * see that field and `TutorialReminder` for why one flag cannot serve both.
+     */
+    val hasSeenTutorial: Boolean = false,
     /**
      * Launches recorded so far, including the current one.
      *

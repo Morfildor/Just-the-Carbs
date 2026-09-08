@@ -16,7 +16,7 @@ import kotlinx.coroutines.sync.withLock
  * is what stops the app growing a parallel onboarding flow — see [OnboardingViewModel.finish].
  */
 enum class TutorialMode {
-    /** The automatic first launch. Leaving marks onboarding seen and lands on Home. */
+    /** Taken from Home's reminder card. Leaving marks the tutorial seen and returns to Home. */
     FIRST_RUN,
 
     /** Replayed from Settings. Leaving writes nothing and returns to Settings. */
@@ -26,10 +26,12 @@ enum class TutorialMode {
 /**
  * The first-launch tutorial: which of [TUTORIAL_STEPS] is showing, and marking onboarding seen.
  *
- * `hasSeenOnboarding` remains the single first-run flag; this class adds no second preference. A
- * replay deliberately has no persistence of its own — there is nothing to remember about having
- * watched the tutorial twice, and a second flag would be a second thing that can disagree with the
- * first.
+ * `hasSeenTutorial` is the one flag this class writes, and a replay writes nothing at all — there is
+ * nothing to remember about having watched the tutorial twice.
+ *
+ * It never touches `hasSeenOnboarding`, which belongs to the welcome carousel. The two record
+ * different events: the carousel has been read, and the coach marks are done with. Collapsing them
+ * would make finishing either one silence the other.
  */
 class OnboardingViewModel(
     private val settingsRepository: SettingsRepository,
@@ -87,7 +89,7 @@ class OnboardingViewModel(
      *
      * Skip is not a lesser exit than finishing — someone who skips has decided they are done, and
      * showing them the tutorial again on the next launch would be the app disagreeing with them. So
-     * every exit from [TutorialMode.FIRST_RUN] persists `hasSeenOnboarding`, and the screen only
+     * every exit from [TutorialMode.FIRST_RUN] persists `hasSeenTutorial`, and the screen only
      * leaves once that write has actually landed.
      *
      * A [Mutex] guards against two callers racing (a rapid double tap on the final action) starting
@@ -100,8 +102,8 @@ class OnboardingViewModel(
     suspend fun finish() {
         // A replay must not touch the flag. It is not merely unnecessary: re-writing `true` over an
         // existing `true` is a pointless write, and writing it at all in a mode reachable *before*
-        // first-run completion would let watching the tutorial from Settings stand in for having
-        // completed it. Returning Saved directly also means a replay cannot fail to close.
+        // the reminder has been answered would let watching the tutorial from Settings stand in for
+        // having taken it up. Returning Saved directly also means a replay cannot fail to close.
         if (mode == TutorialMode.REPLAY) {
             _completionState.value = CompletionState.Saved
             return
@@ -111,7 +113,7 @@ class OnboardingViewModel(
             if (_completionState.value is CompletionState.Saved) return
             _completionState.value = CompletionState.Saving
             try {
-                settingsRepository.setHasSeenOnboarding(true)
+                settingsRepository.setHasSeenTutorial(true)
                 _completionState.value = CompletionState.Saved
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

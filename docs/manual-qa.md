@@ -2333,19 +2333,30 @@ pins *which* cue is chosen; it says nothing about how any of them feel.
 
 ## §41 — First-launch tutorial (1.0.6, 2026-09-08)
 
-The tutorial is **offered, never imposed**: the app always opens on Home, and the tutorial is a card
-there for the first launch and the five after it.
+**Revised 2026-09-08 (same day):** the app now has **two** introductions. The three-slide **welcome
+carousel** opens by itself on a genuine first launch; the **coach-mark tutorial** is still offered,
+never imposed, as a card on Home for the first launch and the five after it. Rows 41.1 and 41.2 are
+rewritten accordingly — an earlier revision of this section said the app always opens on Home, which
+is no longer true of a fresh install.
 
 Automated coverage: `TutorialStepTest`, `CalloutPlacementTest`, `TutorialReminderTest`,
-`OnboardingViewModelTest` (36 pure JVM cases) plus `TutorialScreenTest`, `TutorialNavigationTest` and
-`HomeTutorialReminderTest` (instrumented). What no test settles is **where the arrows actually
-point** on real hardware, which is 41.5 below.
+`OnboardingViewModelTest`, `WelcomeCarouselViewModelTest` (pure JVM) plus `TutorialScreenTest`,
+`TutorialNavigationTest`, `HomeTutorialReminderTest` and `WelcomeCarouselScreenTest` (instrumented).
+What no test settles is **where the arrows actually point** on real hardware (41.5) and **whether the
+dim now reads correctly** (41.30-41.34).
 
 ### Fresh install
 
-- [ ] 41.1 Install fresh (or clear app data). The app opens on **Home**, not on the tutorial.
-- [ ] 41.2 Home shows the *New here?* card above the two scan actions, and both scan actions are
-      still visible without scrolling.
+- [ ] 41.1 Install fresh (or clear app data). The app opens on the **welcome carousel**, slide 1
+      ("Scan it."). Walk it with *Next* — three slides, the background changing blue → cream → red —
+      and finish with *Get started*.
+- [ ] 41.1a Repeat with *Skip* on slide 1: it jumps to slide 3 rather than leaving, and *Get started*
+      is the only way out.
+- [ ] 41.1b Relaunch the app. It opens on **Home**; the carousel does not appear again.
+- [ ] 41.2 After *Get started*, Home shows the *New here?* card above the two scan actions, and both
+      scan actions are still visible without scrolling. **Both introductions appearing in one first
+      run is the point** — if finishing the carousel removed the card, the two flags have been
+      collapsed into one.
 - [ ] 41.3 Tap *Show me*: the tutorial opens on step 1 of 6.
 - [ ] 41.4 Walk all six steps with *Next*. Each has its own title, one sentence, and a progress
       indicator. The whole run takes roughly 30-45 seconds at a normal reading pace.
@@ -2406,5 +2417,31 @@ point** on real hardware, which is 41.5 below.
       save. Try again." line, **stays on the tutorial**, and the action can be tapped again and
       succeed. The user must never be dropped onto Home as though it had saved, nor trapped with a
       dead button.
+
+### The overlay's appearance (added 2026-09-08) — these are judgements, not assertions
+
+The owner's report was "it dims the screen, too boxy, too much dimming". Nothing in the automated
+suite looks at a shadow, a corner radius or a scrim alpha, so these rows are the only check on the
+work. Answer them by looking, on a real display in a normally lit room — an emulator screenshot on a
+desktop monitor is not the same judgement.
+
+- [ ] 41.30 **The app behind the tutorial is still visible.** On steps 2-6 the surrounding screen
+      should read as dimmed, not switched off: the words on the untargeted cards should still be
+      legible. If it looks like a black sheet with a hole in it, `BASE_SCRIM` is too high.
+- [ ] 41.31 **The dim is graded.** It should be lightest around the highlighted control and heaviest
+      at the screen's far corners, with no visible boundary between the two.
+- [ ] 41.32 **No ring of lighter dim around the spotlight.** The edge should fade smoothly. A
+      distinct pale band around the hole is the feather rendering as a second edge — the exact defect
+      a single thick stroke produced before it was split into steps.
+- [ ] 41.33 **The callout does not read as a plain box.** It should have a visible drop shadow, a
+      soft corner, and the accent spine down its left edge. Check the shadow specifically in **Light**
+      theme, where a white card on a light dim is where a missing shadow shows first.
+- [ ] 41.34 **The card is only as tall as its words.** It must not stretch to fill the screen — that
+      was a real defect on the emulator and no test catches it.
+- [ ] 41.35 **Motion.** Moving between steps: the spotlight travels rather than jumping, the words
+      cross-fade, and the progress indicator slides. The halo breathes slowly and should be easy to
+      ignore — if it draws the eye away from reading, it is too fast or too large.
+- [ ] 41.36 On a **low-end device**, the halo pulse and the 12-band feather redraw every frame the
+      tutorial is on screen. Confirm no visible stutter while stepping through.
 
 **Result:** ____________________ **Date:** ____________

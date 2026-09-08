@@ -10,9 +10,15 @@ package app.justthecarbs.domain
  * chance they might miss.
  *
  * The reminder is shown for at most [REMINDER_LAUNCHES] launches *after* the first. It stops early
- * and permanently as soon as `hasSeenOnboarding` is true, which is set by finishing the tutorial, by
+ * and permanently as soon as `hasSeenTutorial` is true, which is set by finishing the tutorial, by
  * skipping it, or by dismissing the reminder on Home — all three are the user saying they are done
  * with it, and the app must not keep asking after that.
+ *
+ * `hasSeenTutorial` is deliberately *not* `hasSeenOnboarding`. The latter records that the welcome
+ * carousel has been through, and it is set on a different occasion by a different screen. Reading
+ * the carousel's flag here would retire this card the moment the carousel finished, so a first-run
+ * user would get the carousel *or* the coach marks and never both — which is exactly the
+ * arrangement the two flows exist to avoid.
  *
  * Pure and settings-shaped rather than a flag someone toggles, so the decision is one testable rule
  * instead of a condition spread across Home, the ViewModel and the repository.
@@ -39,8 +45,8 @@ object TutorialReminder {
      * window": the counter is persisted, and a missing or corrupt value should invite a new user in,
      * not silently hide the only pointer to the tutorial.
      */
-    fun shouldShow(hasSeenOnboarding: Boolean, launchCount: Int): Boolean {
-        if (hasSeenOnboarding) return false
+    fun shouldShow(hasSeenTutorial: Boolean, launchCount: Int): Boolean {
+        if (hasSeenTutorial) return false
         if (launchCount <= 0) return true
         return launchCount <= REMINDER_LAUNCHES + 1
     }
@@ -52,6 +58,6 @@ object TutorialReminder {
      * forever is a number about the user's habits that this app has no use for (§2). It stops rather
      * than saturating.
      */
-    fun shouldCountLaunch(hasSeenOnboarding: Boolean, launchCount: Int): Boolean =
-        !hasSeenOnboarding && launchCount <= REMINDER_LAUNCHES + 1
+    fun shouldCountLaunch(hasSeenTutorial: Boolean, launchCount: Int): Boolean =
+        !hasSeenTutorial && launchCount <= REMINDER_LAUNCHES + 1
 }

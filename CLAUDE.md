@@ -98,27 +98,82 @@ distinguishable by touch. Vibration motors differ enormously between devices; on
 vocabulary collapses into three identical buzzes, which is exactly what this design exists to avoid.
 `docs/manual-qa.md` §39.7 is the gate.
 
-## The tutorial is offered, not imposed (2026-09-08) — READ BEFORE TOUCHING ONBOARDING
+## Two introductions, two flags (2026-09-08, later same day) — READ BEFORE TOUCHING ONBOARDING
 
-The three-slide carousel is replaced by a six-step coach-mark tutorial, and — owner instruction —
-**the app no longer opens it by itself**. `startDestination` is now unconditionally `Routes.HOME`.
+**Supersedes the "the carousel is replaced" and "there is still exactly one flag" claims that stood
+earlier the same day.** Owner instruction: keep **both**. The app now has two introductions.
 
-**Why that matters beyond the feature:** the start destination no longer reads a DataStore value at
-all, so the onboarding-flash class of defect the startup-hardening pass guarded against is now
-structurally impossible on this route rather than merely defended. The splash/`StartupState` work is
-still correct and still needed for the *theme*; it is simply no longer load-bearing for onboarding.
+| | welcome carousel | coach-mark tutorial |
+|---|---|---|
+| screen | `WelcomeCarouselScreen` | `OnboardingScreen` |
+| route | `Routes.WELCOME` | `Routes.ONBOARDING` |
+| opens itself? | **yes**, first launch only | **no**, offered on Home |
+| flag written | `hasSeenOnboarding` | `hasSeenTutorial` |
+| decides | `startDestination` | Home's reminder card + the launch counter |
 
-**The reminder window** is `domain/TutorialReminder` (pure, 7 JVM cases): Home offers the tutorial on
+**One flag cannot serve both, and this is the whole design.** `hasSeenOnboarding` means "the
+carousel has been through"; `hasSeenTutorial` means "done with the coach marks". Were they one
+field, finishing the carousel would retire the Home card before it had ever been shown, so a
+first-run user would get the carousel *or* the tutorial and never both — which is precisely the
+arrangement the pair exists to avoid. Pinned by `TutorialReminderTest.the welcome carousel does not
+retire the tutorial reminder` and `OnboardingViewModelTest.finishing the tutorial never marks the
+welcome carousel seen`; negative control (making the tutorial write the carousel's flag) fails 6.
+
+**`recordLaunch` keys on `hasSeenTutorial`, not the carousel's flag** — the counter exists solely to
+decide whether Home still offers the coach marks, so were it keyed on the carousel a user who read
+the carousel on launch 1 would freeze the window there and lose the reminder for the five launches
+it was meant to cover.
+
+**The onboarding-flash defect class is guarded again, not structurally impossible.**
+`startDestination` reads `settings.hasSeenOnboarding` once more, reversing the "no longer reads a
+DataStore value at all" property claimed earlier the same day. The guard is `MainActivity`'s splash
+hold: it keeps the splash on screen until `StartupState` carries a real settings value, so this
+branch never evaluates a default-shaped one. **That hold is load-bearing for onboarding again — do
+not remove it as merely a theme concern.**
+
+**No migration.** DataStore has no `has_seen_tutorial` key on an existing install, so it reads false
+and an existing tester sees the carousel once more on the next update. Accepted deliberately: one
+screen with a Skip on it, against the alternative of deriving carousel-completion from `launchCount`,
+which is cleverer and less honest.
+
+**Skip on the carousel does not exit** — it jumps to the last slide, where *Get started* is the one
+place the flag is written. A Skip that left directly would need its own copy of the write, the
+failure reporting and the navigation.
+
+**The reminder window** is `domain/TutorialReminder` (pure): Home offers the tutorial on
 the first launch and the **five after it** — launches 1..6 inclusive, which is `REMINDER_LAUNCHES +
 1` and the off-by-one worth not rediscovering. `AppSettings.launchCount` is incremented once per real
 launch from `MainActivity.onCreate` **guarded on `savedInstanceState == null`**, so a rotation does
 not burn a launch; the increment happens inside a single DataStore `edit` and re-checks its own stop
 condition against stored values, so two launches racing cannot both write the same number.
 
-**There is still exactly one flag.** Finishing, skipping and dismissing the Home card all set
-`hasSeenOnboarding`, and all three mean "I am done with this". Dismissal is deliberately permanent
-rather than a snooze — an experienced user reinstalling taps *No thanks* once and is never asked
-again — which is only safe because **Settings → Replay tutorial** keeps it reachable.
+**Finishing, skipping and dismissing the Home card all set `hasSeenTutorial`**, and all three mean
+"I am done with this". Dismissal is deliberately permanent rather than a snooze — an experienced user
+reinstalling taps *No thanks* once and is never asked again — which is only safe because
+**Settings → Replay tutorial** keeps it reachable.
+
+### A DataStore test trap on Windows — do not read it as a fixture bug
+
+**Two writes to one `DataStore` inside a single `runTest` fail on Windows**, with:
+
+```
+java.io.IOException: Unable to rename ...settings.preferences_pb.tmp to ...settings.preferences_pb.
+This likely means that there are multiple instances of DataStore for this file.
+```
+
+**That message is misleading.** There is exactly one instance; the atomic `.tmp` → file rename is
+refused while the previous write still holds the handle. It is a platform/fixture limitation, not app
+behaviour — `recordLaunch` is a single `edit` and the app calls it once per launch.
+
+Measured rather than guessed: a probe test doing two plain setter writes fails, while a single
+`recordLaunch` passes. **An explicit `CoroutineScope`, `Dispatchers.IO`, and unique temp directories
+were all tried and none of them fix it.** Every pre-existing test in `SettingsRepositoryTest` wrote at
+most once, which is why nothing had exercised it.
+
+The workaround is to keep each test to **one** write against the store under test — seed prior state
+through a *separate, discarded* DataStore instance (`storeSeededWith`) — and to assert rules that
+need two writes where the rule actually lives, i.e. in `TutorialReminder`, which takes the flag as a
+parameter and touches no file. `SettingsRepositoryTest` says so at the one assertion this cost.
 
 **Replay mode writes nothing.** `OnboardingViewModel.finish()` returns `Saved` immediately for
 `TutorialMode.REPLAY` without touching the repository, so watching the tutorial from Settings cannot
@@ -131,12 +186,79 @@ is no state there to mutate, so "the tutorial cannot affect real data" is a prop
 rather than a rule to remember. The whole backdrop is `clearAndSetSemantics {}`, so TalkBack cannot
 reach a preview control that would do nothing.
 
+### The overlay's presentation (2026-09-08) — owner: "it dims the screen, too boxy, too much dimming"
+
+Presentation only; no step, wording, navigation or flag behaviour changed.
+
+**The dim is graded, not flat.** `BASE_SCRIM` is **0.42**, down from a flat 0.78 everywhere. A single
+wash strong enough to make the far corners recede also flattens the area around the target, so a
+tutorial about the app's own buttons was drawn over an app you could barely see. `TutorialScrim` now
+lays a light base wash and adds the rest of the weight through a **radial gradient centred on the
+spotlight**, reaching `EDGE_WEIGHT` at the furthest corner. So 0.42 is not the strength the user sees
+at the edges — it is the strength near the control, which is what has to stay readable.
+
+**The hole is feathered.** The clear-blended hole is followed by `FEATHER_STEPS` (12) thin `DstOut`
+strokes of decreasing strength across `FEATHER` (28dp). **One thick stroke was tried first and is
+wrong** — a band of uniform alpha reads on the device as a pale ring drawn around the spotlight, i.e.
+a second edge, which is exactly the boxiness the feather exists to remove. Only a screenshot showed
+it.
+
+**Only the halo pulses, never the ring.** `TutorialSpotlightDecoration(pulse=)` scales three
+concentric halo strokes; the ring itself stays exactly on the control's bounds. A border that grows
+and shrinks around a button reads as the button changing size, and on this screen the ring is a claim
+about *which* control the words describe.
+
+**The spotlight travels between steps, but only between two known targets.** `lerpRect` interpolates
+per edge (not centre-plus-size, so a target changing shape stays a rectangle). Animating into or out
+of null is deliberately excluded: it would slide the hole from the screen's origin, or leave it
+briefly over a control the current step is not talking about.
+
+**`IntrinsicSize.Min` on the callout Row is load-bearing.** The accent spine asks to
+`fillMaxHeight()`, and in a parent offering unbounded height that takes all of it and drags the card
+with it — **measured on the device, the card filled the screen top to bottom** and the tutorial
+stopped being a callout at all. The suite was green throughout; nothing in it looks at how tall a
+card is.
+
+**The progress dots use `hideFromAccessibility()`, not `clearAndSetSemantics {}`.** The latter
+removes the whole subtree *including the test tag*, so `TUTORIAL_PROGRESS_TAG` became unfindable and
+`progressIsRenderedForEveryStep` failed. The node must stay findable; it just must not be spoken —
+the card's "Step 2 of 6" eyebrow now carries that in words.
+
 **Geometry, not coordinates.** `TutorialAnchors` records `boundsInRoot()` via `onGloballyPositioned`;
 an absent or zero-size rect returns null and the overlay renders a **centred callout with no arrow**
 rather than pointing at the origin. Anchors are cleared on backdrop change so a stale rectangle from
 the previous preview is never pointed at. `CalloutPlacement` (pure, 9 JVM cases) decides which side
 the card sits on and returns `CENTERED` when neither side fits — an overlapping card would hide the
 control the step is describing.
+
+### Verified (the two-introductions pass)
+
+JVM **1944/1944** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 204 JUnit XML
+files — up from 1927). Lint **exit 0, 22 findings, 0 errors** — unchanged baseline, none in a changed
+file. Debug APK builds.
+
+Instrumented on the `carbscan` emulator: **38/38, 0 skipped, on three consecutive runs** —
+`WelcomeCarouselScreenTest` (new), `TutorialScreenTest`, `TutorialNavigationTest`,
+`HomeTutorialReminderTest`. Three runs per this file's standing warning about the soft-keyboard
+artefact.
+
+**Negative control:** making `OnboardingViewModel.finish()` write `hasSeenOnboarding` instead of
+`hasSeenTutorial` fails **6** tests, including `finishing the tutorial never marks the welcome
+carousel seen` by name. Restored and re-verified green.
+
+Driven by hand on the emulator through the whole first run: carousel slides 1→2→3, *Get started* →
+Home **with the *New here?* card present**, tutorial steps 1→2 with the spotlight on *Scan barcode*,
+exit, force-stop, relaunch → straight to Home with no carousel.
+
+**Three defects only a device screenshot found**, none of which any assertion looks at: the callout
+card stretched to fill the entire screen (`fillMaxHeight` spine in an unbounded parent); the feather
+rendered as a visible pale ring rather than a fade; and — caught by a test, not the eye — the
+progress dots vanishing from the semantics tree along with their test tag.
+
+**NOT verified on physical hardware.** Everything above is JVM plus the emulator, including every
+screenshot. `docs/manual-qa.md` §41 is the gate — in particular the new **41.30–41.36**, which are
+the only check on whether the dimming and boxiness complaints are actually answered, and 41.1/41.1b,
+which are the first-launch gating the emulator can only approximate.
 
 **Do not move this haptic before `freezeAtShutter()` or after OCR/`onUseValue`.** The freeze must
 stay the first thing a committed shutter press does — see the "FREEZE FIRST" comment at its call

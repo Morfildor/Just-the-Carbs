@@ -35,6 +35,7 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
                     ?: ResultStyle.DECIMAL_DOMINANT,
                 hapticsEnabled = prefs[HAPTICS] ?: true,
                 hasSeenOnboarding = prefs[HAS_SEEN_ONBOARDING] ?: false,
+                hasSeenTutorial = prefs[HAS_SEEN_TUTORIAL] ?: false,
                 // Negative values are floored at zero rather than trusted. A corrupt counter should
                 // read as "not yet counted" — which shows a new user the reminder — instead of
                 // becoming a number that could silently suppress it.
@@ -54,6 +55,9 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
     suspend fun setHasSeenOnboarding(seen: Boolean) =
         store.edit { it[HAS_SEEN_ONBOARDING] = seen }.let {}
 
+    suspend fun setHasSeenTutorial(seen: Boolean) =
+        store.edit { it[HAS_SEEN_TUTORIAL] = seen }.let {}
+
     /**
      * Record one app launch, if the tutorial reminder still depends on the count.
      *
@@ -64,7 +68,10 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
      * resurrect a counter that has already finished.
      */
     suspend fun recordLaunch() = store.edit { prefs ->
-        val seen = prefs[HAS_SEEN_ONBOARDING] ?: false
+        // Keyed on the tutorial flag, not the carousel's: the count exists solely to decide whether
+        // Home still offers the coach marks, so it must stop when *that* card retires and not when
+        // the welcome carousel happens to finish.
+        val seen = prefs[HAS_SEEN_TUTORIAL] ?: false
         val count = (prefs[LAUNCH_COUNT] ?: 0).coerceAtLeast(0)
         if (app.justthecarbs.domain.TutorialReminder.shouldCountLaunch(seen, count)) {
             prefs[LAUNCH_COUNT] = count + 1
@@ -84,6 +91,7 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
         private val RESULT_STYLE = stringPreferencesKey("result_style")
         private val HAPTICS = booleanPreferencesKey("haptics")
         private val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
+        private val HAS_SEEN_TUTORIAL = booleanPreferencesKey("has_seen_tutorial")
         private val LAUNCH_COUNT = intPreferencesKey("launch_count")
     }
 }

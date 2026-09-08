@@ -39,6 +39,8 @@ import app.justthecarbs.ui.meal.MealViewModel
 import app.justthecarbs.ui.onboarding.OnboardingScreen
 import app.justthecarbs.ui.onboarding.OnboardingViewModel
 import app.justthecarbs.ui.onboarding.TutorialMode
+import app.justthecarbs.ui.onboarding.WelcomeCarouselScreen
+import app.justthecarbs.ui.onboarding.WelcomeCarouselViewModel
 import app.justthecarbs.ui.search.SearchScreen
 import app.justthecarbs.ui.search.SearchViewModel
 import app.justthecarbs.ui.product.ProductNavigationEvent
@@ -138,6 +140,16 @@ private object Routes {
      * step with the first.
      */
     const val ONBOARDING = "onboarding?replay={replay}"
+
+    /**
+     * The three-slide welcome carousel, shown once on a genuine first launch.
+     *
+     * A separate destination from [ONBOARDING] rather than a third tutorial mode, because it is a
+     * different screen making a different kind of statement: the carousel describes the app before
+     * any of it is on screen, the tutorial points at controls that are. They also write different
+     * flags and are reached on different occasions.
+     */
+    const val WELCOME = "welcome"
     const val HOME = "home"
     const val SCAN = "scan"
     const val PRODUCT = "product/{barcode}"
@@ -178,10 +190,12 @@ private object Routes {
     fun product(barcode: String) = "product/${java.net.URLEncoder.encode(barcode, "UTF-8")}"
 
     /**
-     * [replay] false is the automatic first launch; true is Settings' *Replay tutorial*.
+     * [replay] false is the run taken from Home's reminder card; true is Settings' *Replay
+     * tutorial*.
      *
-     * The start destination uses the default (false) form, so a first run cannot accidentally be
-     * built as a replay and skip persisting `hasSeenOnboarding`.
+     * Home's card uses the default (false) form, so the run that is supposed to answer the reminder
+     * cannot accidentally be built as a replay and skip persisting `hasSeenTutorial` — which would
+     * leave the card offering itself again after the user had just watched it.
      */
     fun onboarding(replay: Boolean = false) = "onboarding?replay=$replay"
 
@@ -236,20 +250,65 @@ fun JustTheCarbsNavHost(
     settings: AppSettings,
     navController: NavHostController = rememberNavController(),
 ) {
-    // Home, always — including on a genuine first launch.
+    // The welcome carousel on a genuine first launch, Home on every launch after it.
     //
-    // The tutorial is no longer a gate in front of the app (owner instruction, 2026-09-08). It is
-    // offered on Home as a reminder card the user can take or dismiss, for the first launch and the
-    // five after it (see `TutorialReminder`). That way someone reinstalling the app is never held up
-    // by a walkthrough they already know, while a new user still gets a repeated, obvious invitation
-    // rather than one chance they might tap past.
+    // The app has two introductions and they are gated differently, on purpose (owner instruction,
+    // 2026-09-08, revising the instruction of earlier the same day):
     //
-    // A pleasant consequence: the start destination no longer depends on a DataStore value at all,
-    // so the class of defect where onboarding flashes before Home on a returning user's cold start
-    // is now structurally impossible here rather than merely guarded against.
-    val startDestination = Routes.HOME
+    //  - The *carousel* opens by itself, once. It is three slides stating what the app is for, and
+    //    it is over in seconds.
+    //  - The *coach-mark tutorial* is still never opened by the app. It is offered on Home as a
+    //    card the user can take or dismiss, for the first launch and the five after it (see
+    //    `TutorialReminder`), so someone reinstalling is not held up by a walkthrough they know.
+    //
+    // This does re-arm the defect class where onboarding could flash before Home on a returning
+    // user's cold start: the start destination depends on a DataStore value again. It is guarded,
+    // not merely hoped about -- `MainActivity` holds the splash screen until `StartupState` carries
+    // a real settings value, so this branch is never evaluated against a default-shaped one. That
+    // guard is load-bearing again rather than belt-and-braces; do not remove it.
+    val startDestination = if (settings.hasSeenOnboarding) Routes.HOME else Routes.WELCOME
 
     NavHost(navController = navController, startDestination = startDestination) {
+
+        composable(route = Routes.WELCOME) {
+            val viewModel: WelcomeCarouselViewModel = viewModel(
+                factory = factory { WelcomeCarouselViewModel(container.settingsRepository) },
+            )
+            val slideIndex by viewModel.slideIndex.collectAsStateWithLifecycle()
+            val completionState by viewModel.completionState.collectAsStateWithLifecycle()
+            val coroutineScope = rememberCoroutineScope()
+
+            // Only on `Saved`, which means the DataStore write has actually landed -- so a failed
+            // write leaves the user on the carousel with a retryable action rather than dropping
+            // them onward as though it had worked.
+            //
+            // Home *replaces* the carousel rather than stacking on it: the carousel is a gate, and
+            // leaving it is not a navigation the user should be able to press Back into. That is
+            // also what makes Home's tutorial card the next thing they see, on a back stack with
+            // nothing behind it.
+            LaunchedEffect(completionState) {
+                if (completionState is WelcomeCarouselViewModel.CompletionState.Saved) {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                }
+            }
+
+            val saving = completionState is WelcomeCarouselViewModel.CompletionState.Saving
+
+            WelcomeCarouselScreen(
+                slideIndex = slideIndex,
+                onNext = viewModel::next,
+                onSkip = viewModel::skip,
+                onGetStarted = {
+                    if (!saving) coroutineScope.launch { viewModel.complete() }
+                },
+                onSlideChanged = viewModel::showSlide,
+                completionError =
+                    (completionState as? WelcomeCarouselViewModel.CompletionState.Failed)?.message,
+                busy = saving,
+            )
+        }
 
         composable(
             route = Routes.ONBOARDING,
@@ -258,8 +317,8 @@ fun JustTheCarbsNavHost(
             ),
         ) { entry ->
             // Defaults to first-run, which is the safe direction: a malformed argument produces a
-            // run that persists `hasSeenOnboarding`, never one that silently skips the write and
-            // shows the tutorial again on every launch.
+            // run that persists `hasSeenTutorial`, never one that silently skips the write and
+            // leaves the reminder card offering a tutorial the user has already watched.
             val replay = entry.arguments?.getBoolean("replay") ?: false
             val mode = if (replay) TutorialMode.REPLAY else TutorialMode.FIRST_RUN
 
@@ -340,7 +399,7 @@ fun JustTheCarbsNavHost(
                 // The tutorial is offered here rather than opened automatically. Both actions are
                 // ordinary forward navigations / a single write — neither is a gate.
                 showTutorialReminder = TutorialReminder.shouldShow(
-                    hasSeenOnboarding = settings.hasSeenOnboarding,
+                    hasSeenTutorial = settings.hasSeenTutorial,
                     launchCount = settings.launchCount,
                 ),
                 onStartTutorial = { navController.navigate(Routes.onboarding()) },
@@ -353,7 +412,7 @@ fun JustTheCarbsNavHost(
                 // card being removed from composition, so the write cannot be cancelled by its own
                 // effect.
                 onDismissTutorialReminder = {
-                    homeScope.launch { container.settingsRepository.setHasSeenOnboarding(true) }
+                    homeScope.launch { container.settingsRepository.setHasSeenTutorial(true) }
                 },
                 mealItems = mealItems,
                 mealTotal = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems),

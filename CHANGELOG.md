@@ -87,8 +87,9 @@ and scanner lifecycle handling. It remains a local development build; no Play up
 ### Play Store release notes (draft)
 
 ```
-New: a short optional tutorial showing how scanning, portions and meals work. Take it or dismiss it
-from the home screen, or replay it any time from Settings.
+New: a short welcome on first launch, plus an optional tutorial showing how scanning, portions and
+meals work. Take the tutorial or dismiss it from the home screen, or replay it any time from
+Settings.
 
 Nutrition-label capture now gives brief tactile feedback as you scan. Fixed portion calculations
 after product edits and online-value resets, improved meal-save feedback, and made manual barcode
@@ -121,24 +122,83 @@ of this combined build is still pending.
   correct — it reports only how much attention is being asked for. The decision is a pure function
   (`ocr/ScanHapticCue.kt`) keyed on the existing `ScanPresentationDecision.Action`, with 9 JVM cases.
 
-- **A first-launch tutorial, offered rather than imposed.** The three-slide onboarding carousel is
-  replaced by a six-step coach-mark walkthrough that points at the app's real controls — *Scan
-  barcode*, *Search products*, *Scan nutrition label*, *Add to meal* and *Meal Total* — over a
-  deterministic preview of Home, the calculator and the meal screen.
+- **A first-launch tutorial, offered rather than imposed.** A six-step coach-mark walkthrough that
+  points at the app's real controls — *Scan barcode*, *Search products*, *Scan nutrition label*,
+  *Add to meal* and *Meal Total* — over a deterministic preview of Home, the calculator and the meal
+  screen.
 
-  The app no longer opens the tutorial by itself. Every launch lands on Home, and the tutorial is
-  offered as a card there for the first launch and the five after it. Someone reinstalling the app
-  dismisses it once and is never asked again; someone new gets a repeated, obvious invitation
-  instead of one chance they might tap past. Finishing, skipping and dismissing all set the same
-  single `hasSeenOnboarding` flag — there is no second preference — and the tutorial stays available
-  from **Settings → Replay tutorial**, which is what makes a permanent dismissal safe to offer.
+  The app does not open the tutorial by itself. It is offered on Home as a card for the first launch
+  and the five after it. Someone reinstalling the app dismisses it once and is never asked again;
+  someone new gets a repeated, obvious invitation instead of one chance they might tap past.
+  Finishing, skipping and dismissing all mean "I am done with this", and the tutorial stays
+  available from **Settings → Replay tutorial**, which is what makes a permanent dismissal safe to
+  offer.
 
   Nothing behind the tutorial's scrim is real: the previews are drawn from constants, so no camera,
   network request, database write or change to the user's actual meal is reachable from any step.
   Spotlights and arrows are positioned from measured layout geometry rather than hardcoded
   coordinates, and fall back to a centred callout with no arrow when a target is unavailable.
 
+  *(Two things in this entry were revised later in the same version and are corrected here rather
+  than left to contradict what ships: the tutorial did **not** replace the welcome carousel — both
+  are present, see below — and it does not set `hasSeenOnboarding`, which now belongs to the
+  carousel alone.)*
+
+- **The welcome carousel is back, alongside the tutorial** (owner instruction). The app now has two
+  introductions, and they answer different questions at different moments:
+
+  - The **welcome carousel** — three full-screen slides, *Scan it. / Size the portion. / Get the
+    number.* — opens by itself on a genuine first launch and is over in seconds. It states what the
+    app is for, in the abstract, because on a first launch there is nothing on screen to point at.
+  - The **coach-mark tutorial** is still never opened by the app. It is offered on Home afterwards,
+    naming controls that by then exist.
+
+  They are gated by two separate flags. `hasSeenOnboarding` records that the carousel has been
+  through and decides the start destination; `hasSeenTutorial` decides Home's reminder card. One
+  flag could not serve both — finishing the carousel would have retired the tutorial offer before it
+  ever appeared, so a first-run user would get one or the other and never both.
+
+  This reverses the same version's earlier "the app no longer opens onboarding by itself", for the
+  carousel only. The consequence is stated rather than glossed: the start destination reads a stored
+  value again, so the class of defect where onboarding could flash before Home on a returning user's
+  cold start is guarded rather than structurally impossible. The guard is the existing splash hold —
+  the app waits for a real settings value before composing either destination — which is now
+  load-bearing again.
+
+  An existing tester will see the carousel once more on the next update. That is the cost of adding
+  a preference key with no migration, and it is one screen with a Skip on it.
+
+### Changed — the tutorial's presentation
+
+Presentation only. No step, no wording, no navigation and no flag behaviour changed here.
+
+- **The screen is no longer blacked out.** The dim was a flat wash at the strength needed to make
+  the far corners recede, which also flattened everything near the highlighted control — so a
+  tutorial about the app's own buttons was drawn over an app you could barely see. The dim is now
+  graded: light around the target, gathering weight towards the screen edges. The app being taught
+  stays visible while the eye still goes to the right place.
+- **The spotlight stopped being a rectangle.** Its edge now feathers back into the dim over ~28dp
+  instead of stopping dead, the corner radius is larger, and the ring around it is a soft halo with
+  a slow breath rather than a hard 2dp outline. It reads as light falling on a control instead of a
+  box cut out of a screenshot.
+- **The callout card is a card.** It has a real shadow, a softer corner, the accent spine used
+  elsewhere in the app, and a "Step 2 of 6" eyebrow above the title. Previously it was a flat pale
+  rectangle whose own edges were the loudest thing about it.
+- **Motion.** The spotlight travels between steps instead of jumping, the card's words cross-fade,
+  and the progress dots slide. The scrim's fade-in previously animated from full strength to full
+  strength — no motion at all — so the dim appeared between one frame and the next.
+
 ### Fixed
+
+- **Skip on the welcome carousel was below the minimum touch target.** Material's text button is
+  40dp tall against the app's 48dp floor. The carousel shipped that way before it was removed and
+  came back with the same defect; found by an instrumented assertion, which is realistically the
+  only way an 8dp shortfall gets noticed.
+- **The tutorial's progress dots disappeared from the semantics tree.** Marking them decorative
+  used `clearAndSetSemantics {}`, which removes the whole subtree — and with it the node's test
+  handle, so a test asserting the dots render could no longer find them. They are now marked
+  invisible-to-accessibility instead: still present, still not announced. The spoken step count is
+  unaffected; it comes from the card's own "Step 2 of 6" line.
 
 - **Remembering portions on older Android versions.** Recording a usual portion used SQLite's
   `ON CONFLICT DO UPDATE` syntax, which the platform SQLite shipped on Android 8–10 cannot parse.
