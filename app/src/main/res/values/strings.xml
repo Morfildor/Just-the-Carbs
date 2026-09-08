@@ -689,8 +689,7 @@
     -->
     <string name="tutorial_skip" tools:ignore="MissingTranslation">Skip</string>
     <string name="tutorial_next" tools:ignore="MissingTranslation">Next</string>
-    <string name="tutorial_back" tools:ignore="MissingTranslation">Back</string>
-    <string name="tutorial_finish" tools:ignore="MissingTranslation">Start using Just the Carbs</string>
+    <string name="tutorial_finish" tools:ignore="MissingTranslation">Got it — start using Just the Carbs</string>
     <string name="tutorial_progress" tools:ignore="MissingTranslation">Step %1$d of %2$d</string>
     <string name="tutorial_pane_title" tools:ignore="MissingTranslation">Tutorial</string>
     <string name="tutorial_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>
@@ -702,11 +701,11 @@
     <string name="tutorial_title_search" tools:ignore="MissingTranslation">Search when you know the name</string>
     <string name="tutorial_body_search" tools:ignore="MissingTranslation">Use Search products when the camera is inconvenient or the barcode is missing.</string>
     <string name="tutorial_title_label" tools:ignore="MissingTranslation">Read the label</string>
-    <string name="tutorial_body_label" tools:ignore="MissingTranslation">Use Scan nutrition label to read the Total carbohydrate row from the package. If anything is unclear, you stay in control.</string>
+    <string name="tutorial_body_label" tools:ignore="MissingTranslation">Use Scan nutrition label to read the Total carbohydrate row straight from the package.</string>
     <string name="tutorial_title_meal" tools:ignore="MissingTranslation">Build a meal as you go</string>
     <string name="tutorial_body_meal" tools:ignore="MissingTranslation">Choose a portion, then tap Add to meal. The first item starts the current meal.</string>
     <string name="tutorial_title_total" tools:ignore="MissingTranslation">One running total</string>
-    <string name="tutorial_body_total" tools:ignore="MissingTranslation">Keep adding foods. Meal Total combines the current meal. Remove an item or clear it when you\'re done.</string>
+    <string name="tutorial_body_total" tools:ignore="MissingTranslation">Meal Total combines everything you\'ve added so far.</string>
 
     <!-- The find → portion → carbs strip on the tutorial's first step. -->
     <string name="tutorial_rhythm_find" tools:ignore="MissingTranslation">Find food</string>
