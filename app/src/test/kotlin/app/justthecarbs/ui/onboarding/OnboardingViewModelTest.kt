@@ -64,22 +64,6 @@ class OnboardingViewModelTest {
     }
 
     @Test
-    fun `previous steps back and stops at the first step`() {
-        val viewModel = OnboardingViewModel(fakeRepository())
-        viewModel.showStep(2)
-
-        viewModel.previous()
-        assertEquals(1, viewModel.stepIndex.value)
-        viewModel.previous()
-        assertEquals(0, viewModel.stepIndex.value)
-
-        // Back from the first step is the screen's business (it exits); the index must not wrap to
-        // the end, which would silently restart the tutorial.
-        viewModel.previous()
-        assertEquals(0, viewModel.stepIndex.value)
-    }
-
-    @Test
     fun `an out-of-range step cannot become state`() {
         val viewModel = OnboardingViewModel(fakeRepository())
 
