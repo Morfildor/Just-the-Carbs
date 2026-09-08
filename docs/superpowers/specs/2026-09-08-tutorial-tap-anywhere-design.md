@@ -64,24 +64,43 @@ spotlight — enough to say "I'm talking about this," not enough to imply "press
 `TutorialSpotlightDecoration`'s halo loop and `drawConnector`/`drawArrowHead` are deleted;
 `arrowStart` and `pulse` parameters go with them.
 
-**Callout placement: bottom-safe-area is the deterministic default.** The current
-"whichever side has more room wins" comparison is what makes the reading location jump
-between steps — that is being removed, not preserved. `CalloutPlacement.kt` is simplified,
-not kept: the callout renders in the bottom safe area on every step unless doing so would
-materially overlap or obscure the highlighted target, or would be unusable at the current
-viewport/font scale (the card's estimated height, at the current font scale, would not fit
-in the bottom zone without covering the spotlight). Only then does it fall back to the top
-safe area. This fallback is deliberately coarse — a simple "does the spotlight's bottom edge
-sit low enough, and does the card's estimated height at this font scale fit below it without
-touching the spotlight" check, not a room-comparison between two candidate zones. There is no
-third position: a target so large neither zone is clear still resolves to one deterministic
-side (bottom bias unless the check above trips), never a centred/covering placement. Because
-the default is fixed, most steps will render the callout in the same place; only a step whose
-target sits low on screen predictably flips to the top, and the same step flips the same way
-on every run — that predictability is the point, not an incidental property.
-`calloutSideFor`'s contract changes: it no longer compares available space on both sides, and
-`CalloutPlacementTest` is rewritten to match the new deterministic-default-with-coarse-fallback
-behavior rather than the old "roomier side wins" cases.
+**Callout placement: bottom-safe-area is the deterministic default, decided against the
+card's actual measured size.** The current "whichever side has more room wins" comparison is
+what makes the reading location jump between steps — that is being removed, not preserved.
+`CalloutPlacement.kt` is simplified, not kept: the callout renders in the bottom safe area on
+every step unless doing so would materially overlap or obscure the highlighted target, or
+would be unusable at the current viewport/font scale. Only then does it fall back to the top
+safe area. There is no third position: a target so large neither zone is clear still resolves
+to one deterministic side (bottom bias unless the check below trips), never a
+centred/covering placement.
+
+The fit check uses the card's **real measured height**, not an estimate, because "would it
+fit / would it overlap" is exactly the kind of question a font-scale guess gets wrong at the
+extremes (a long translated string, a large accessibility font size) — which is what the
+414 dp `CALLOUT_HEIGHT_ESTIMATE` constant exists to paper over today. `OnboardingScreen`'s
+callout is restructured around `SubcomposeLayout`: the real `CalloutCard` (real strings, real
+`LocalDensity`/font scale, unchanged content) is subcomposed once per step to obtain its
+actual measured height, that height is compared against the space between the spotlight's
+bottom edge and the safe-area bottom inset, and only then is the card placed — bottom if it
+fits without touching the spotlight, top otherwise. This is a single additional measure pass
+around content that already exists; it does not reintroduce a scored, multi-candidate
+placement engine — the decision rule stays exactly bottom-default / top-only-on-overlap, and
+`SubcomposeLayout` is the standard Compose primitive for "measure a child before deciding
+where to place it," not a bespoke layout system.
+
+If `SubcomposeLayout` proves impractical for this composable during implementation (for
+example, incompatible with `AnimatedContent`'s cross-fade without disproportionate
+restructuring), the fallback is to keep an estimate-based heuristic, but it must be clearly
+isolated as a named, commented fallback distinct from the measured path — not silently
+threaded through the same function — and its test coverage must specifically exercise
+narrow-width and large-font-scale cases, since those are exactly where an estimate is most
+likely to disagree with the real card. Whichever path ships, `calloutSideFor`'s contract
+changes: it no longer compares available space on both sides, and `CalloutPlacementTest` is
+rewritten to match the new deterministic-default-with-measured-fallback behavior rather than
+the old "roomier side wins" cases. Because the default is fixed, most steps will render the
+callout in the same place; only a step whose target sits low on screen predictably flips to
+the top, and the same step flips the same way on every run — that predictability is the
+point, not an incidental property.
 
 **Copy audit.** Each of the 6 steps gets one short title + one sentence; tighten any step
 currently running two sentences where one suffices. No new steps, no removed steps — the
@@ -108,10 +127,14 @@ final-step tap finishes once. Back-button and dot-row-progress tests are deleted
 "Step N of M" text assertion stays. `TutorialNavigationTest` (routing/persistence) needs only
 its two `TUTORIAL_PRIMARY_TAG`-repeated-click walks changed to a generic tap on the full-screen
 hit surface — its routing/persistence assertions are unaffected. `TutorialStepTest` (pure
-step-list ordering) is unaffected. `CalloutPlacementTest` is rewritten for the new
-deterministic-bottom-default-with-coarse-top-fallback contract: same step index renders the
-callout in the same position on repeat calls (determinism), an ordinary target uses the bottom
-zone, a target low enough to make the bottom zone unusable at default font scale falls back to
-top, and the same low target continues to fall back to top at a larger font scale (where the
-card's estimated height grows). `TutorialPreview.kt` previews are updated to drop arrow/pulse
+step-list ordering) is unaffected. `CalloutPlacementTest`/the new placement logic is rewritten
+for the deterministic-bottom-default-with-fallback contract: same step index renders the
+callout in the same position on repeat calls (determinism); an ordinary target uses the bottom
+zone; a target low enough that the card's real measured height would overlap the spotlight in
+the bottom zone falls back to top; a narrow-width viewport and a large font scale (where the
+card grows tallest and widest) are both exercised explicitly as instrumented `CalloutCard`
+measurement cases, since those are exactly where a height estimate would have disagreed with
+the real card. If the estimate-based fallback path is used instead of `SubcomposeLayout`, its
+tests live in a clearly separate test class/section naming it as the fallback, not merged into
+the measured-path tests. `TutorialPreview.kt` previews are updated to drop arrow/pulse
 parameters used in any manual preview compositions, and to drop any dot-row preview state.
