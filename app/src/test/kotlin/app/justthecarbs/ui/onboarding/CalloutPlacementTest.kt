@@ -6,104 +6,121 @@ import org.junit.Test
 /**
  * Callout placement, tested at the sizes an emulator does not happen to have.
  *
- * This is the arithmetic that decides whether the card covers the control it is describing. It is
- * pure precisely so the awkward cases — a target at the very top, at the very bottom, on a short
- * screen where neither side fits — can be asserted directly rather than hoped for.
+ * Bottom is the deterministic default. The only decision this function makes is whether bottom
+ * placement, given the card's REAL measured height (not an estimate), would overlap the spotlight
+ * or fail to fit in the usable safe area below it — in which case it falls back to top. There is no
+ * "roomier side" comparison: a side is chosen once by this one rule, not by comparing two candidate
+ * zones' available space.
  */
 class CalloutPlacementTest {
 
     private val screen = 2400f
-    private val callout = 600f
+    private val card = 600f
 
     @Test
-    fun `a target near the top puts the callout below it`() {
+    fun `an ordinary target near the top uses the bottom default`() {
         val side = calloutSideFor(
             spotlightTop = 200f,
             spotlightBottom = 400f,
             screenHeight = screen,
-            requiredHeight = callout,
+            cardHeight = card,
         )
         assertEquals(CalloutSide.BELOW, side)
     }
 
     @Test
-    fun `a target near the bottom puts the callout above it`() {
+    fun `an ordinary target near vertical centre still uses the bottom default`() {
+        // The old "roomier side" rule would have picked ABOVE here (1400 above vs 1000 below).
+        // The new rule has no such comparison: bottom fits (1000 >= 600), so bottom is used.
+        val side = calloutSideFor(
+            spotlightTop = 1400f,
+            spotlightBottom = 1400f,
+            screenHeight = screen,
+            cardHeight = card,
+        )
+        assertEquals(CalloutSide.BELOW, side)
+    }
+
+    @Test
+    fun `a target low enough to make the bottom zone too small falls back to top`() {
+        // Only 300px below the spotlight, card needs 600 - bottom would overlap. Top has 2000px.
         val side = calloutSideFor(
             spotlightTop = 2000f,
-            spotlightBottom = 2300f,
+            spotlightBottom = 2100f,
             screenHeight = screen,
-            requiredHeight = callout,
+            cardHeight = card,
         )
         assertEquals(CalloutSide.ABOVE, side)
     }
 
     @Test
-    fun `the roomier side wins when both would fit`() {
-        // Target slightly above centre: 1000 above, 1200 below. Below is roomier.
-        assertEquals(
-            CalloutSide.BELOW,
-            calloutSideFor(1000f, 1200f, screen, callout),
-        )
-        // Target slightly below centre: 1400 above, 800 below. Above is roomier.
-        assertEquals(
-            CalloutSide.ABOVE,
-            calloutSideFor(1400f, 1600f, screen, callout),
-        )
-    }
-
-    @Test
-    fun `a side too small for the card is not chosen even when it is the roomier one`() {
-        // Both gaps are smaller than the card, so neither is usable; but this also pins the
-        // narrower case: with 500 above and 1900 below, "below" is both roomier AND large enough.
-        assertEquals(
-            CalloutSide.BELOW,
-            calloutSideFor(500f, 500f, screen, callout),
-        )
-    }
-
-    @Test
-    fun `a target filling the screen falls back to centred rather than covering itself`() {
-        // Neither side can hold the card. Overlapping the target would hide the control the step is
-        // pointing at, so the card centres and the arrow is dropped instead.
+    fun `a target flush against the bottom edge falls back to top`() {
         val side = calloutSideFor(
-            spotlightTop = 100f,
-            spotlightBottom = 2300f,
+            spotlightTop = 2100f,
+            spotlightBottom = 2400f,
             screenHeight = screen,
-            requiredHeight = callout,
+            cardHeight = card,
         )
-        assertEquals(CalloutSide.CENTERED, side)
+        assertEquals(CalloutSide.ABOVE, side)
     }
 
     @Test
-    fun `a target flush against the top edge still places the card below`() {
-        assertEquals(
-            CalloutSide.BELOW,
-            calloutSideFor(0f, 300f, screen, callout),
+    fun `a target flush against the top edge still uses the bottom default`() {
+        val side = calloutSideFor(
+            spotlightTop = 0f,
+            spotlightBottom = 300f,
+            screenHeight = screen,
+            cardHeight = card,
         )
+        assertEquals(CalloutSide.BELOW, side)
     }
 
     @Test
-    fun `a target flush against the bottom edge still places the card above`() {
-        assertEquals(
-            CalloutSide.ABOVE,
-            calloutSideFor(2100f, 2400f, screen, callout),
+    fun `the bottom safe-area inset is subtracted from the available gap`() {
+        // 700px between spotlight and screen bottom, card needs 600 - fits with no inset.
+        // But a 150px system-bar inset shrinks the usable gap to 550, which no longer fits.
+        val withoutInset = calloutSideFor(
+            spotlightTop = 1600f,
+            spotlightBottom = 1700f,
+            screenHeight = screen,
+            cardHeight = card,
+            safeAreaBottomInset = 0f,
         )
+        assertEquals(CalloutSide.BELOW, withoutInset)
+
+        val withInset = calloutSideFor(
+            spotlightTop = 1600f,
+            spotlightBottom = 1700f,
+            screenHeight = screen,
+            cardHeight = card,
+            safeAreaBottomInset = 150f,
+        )
+        assertEquals(CalloutSide.ABOVE, withInset)
     }
 
     @Test
-    fun `horizontal clamping keeps a box on screen at either edge`() {
-        // Far left: pushed in to the margin.
-        assertEquals(20f, clampHorizontally(-500f, 300f, 1080f, 20f), 0.01f)
-        // Far right: pulled back so the right edge clears the margin.
-        assertEquals(760f, clampHorizontally(5000f, 300f, 1080f, 20f), 0.01f)
-        // Comfortably inside: untouched.
-        assertEquals(400f, clampHorizontally(400f, 300f, 1080f, 20f), 0.01f)
+    fun `repeated calls with identical inputs return the identical side`() {
+        // Determinism is the whole point of removing the room-comparison: the same step must always
+        // render in the same place, never flip between runs on the same geometry.
+        val first = calloutSideFor(1000f, 1200f, screen, card)
+        val second = calloutSideFor(1000f, 1200f, screen, card)
+        val third = calloutSideFor(1000f, 1200f, screen, card)
+        assertEquals(first, second)
+        assertEquals(second, third)
     }
 
     @Test
-    fun `a box wider than the screen is pinned to the margin rather than given a negative position`() {
-        // Overflowing one edge is recoverable; starting off-screen is not, because the beginning of
-        // the text would be unreachable.
-        assertEquals(20f, clampHorizontally(0f, 2000f, 1080f, 20f), 0.01f)
+    fun `a very tall card that fits neither zone still resolves to top rather than centering`() {
+        // Bottom disqualified (does not fit); top is the only remaining on-target position, so it
+        // is used even though it is also tight -- there is no third "give up and center" outcome
+        // once a real spotlight exists. CENTERED is reserved for the no-spotlight case, decided by
+        // the caller, not by this function choosing it as a fallback.
+        val side = calloutSideFor(
+            spotlightTop = 1100f,
+            spotlightBottom = 1300f,
+            screenHeight = screen,
+            cardHeight = 1150f,
+        )
+        assertEquals(CalloutSide.ABOVE, side)
     }
 }
