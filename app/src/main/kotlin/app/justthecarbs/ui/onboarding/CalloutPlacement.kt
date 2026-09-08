@@ -43,16 +43,3 @@ fun calloutSideFor(
     return if (availableBelow >= cardHeight) CalloutSide.BELOW else CalloutSide.ABOVE
 }
 
-/**
- * Clamp [desired] so a [width]-wide box stays within `0..screenWidth`, inset by [margin].
- *
- * Used to keep the callout and its arrow on screen when the target sits near an edge. When the
- * available width is smaller than the box itself the box is pinned to the left margin rather than
- * being given a negative position: overflowing one edge is recoverable, and starting off-screen is
- * not.
- */
-fun clampHorizontally(desired: Float, width: Float, screenWidth: Float, margin: Float): Float {
-    val max = screenWidth - margin - width
-    if (max <= margin) return margin
-    return desired.coerceIn(margin, max)
-}
