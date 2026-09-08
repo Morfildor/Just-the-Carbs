@@ -112,9 +112,9 @@ one-handed, without putting anything down.
 | 9.1 | Dutch label: *Koolhydraten* row detected | ☐ |
 | 9.2 | English label: *Carbohydrate* row detected | ☐ |
 | 9.3 | **"waarvan suikers" is never taken as the total** | ☐ |
-| 9.4 | Nothing is auto-accepted — always *Use* / *Edit* | ☐ |
+| 9.4 | A reading only advances automatically (no confirmation tap) when it meets the current safety/eligibility rules — corroborated and scale-settled. An unsupported, conflicted, ambiguous, or scale-unresolved reading must reach *Use*/*Edit*/a confirmation or focused-entry screen, never advance silently | ☐ |
 | 9.5 | Two plausible columns → candidates shown, app does not choose | ☐ |
-| 9.6 | Carb row visible but per-100 basis unclear → candidate plus explicit g/ml choice; never a guessed basis | ☐ |
+| 9.6 | Carb row visible but basis unclear → routes to manual entry with **no g/ml chip pre-selected** (never a guessed basis); the value carries over, the basis field is left for the user to pick with the package in hand | ☐ |
 | 9.7 | Unreadable label → honest failure plus *Capture label* and manual entry | ☐ |
 | 9.8 | *Capture label* reads a sharper still through the same confirmation flow | ☐ |
 | 9.9 | Torch toggles when the device has a flash; scanner remains usable without one | ☐ |
@@ -2224,5 +2224,53 @@ the automated proxy — this section is only the parts a corpus of committed pho
       or blank card) so the automatic attempt declines with nothing structurally located. Confirm
       the crop screen falls back to exactly its previous behavior (the wide scan-guide rectangle),
       not an empty or clipped one.
+
+**Result:** ____________________ **Date:** ____________
+
+## §38 — Nutrition-label scanner shutter haptic (1.0.6, 2026-09-08)
+
+Everything below requires a physical device — vibration timing and quality cannot be judged from the
+emulator or from a test. The label haptic is new this pass; the barcode haptic (3.5 above) is
+unchanged and existing behaviour, repeated below only to check the shared setting doesn't regress it.
+This is deliberately a small UX patch: no OCR recognition, eligibility, scale, verification,
+recovery, calculation, persistence or navigation rule changed anywhere in this pass.
+
+- [ ] 38.1 With app haptics **ON**, tap *Capture label* on a valid frame. Confirm exactly **one**
+      immediate vibration, felt at the moment of the tap/shutter — not delayed until a result,
+      proposal or card appears.
+- [ ] 38.2 Time the same capture against when OCR/recognition visibly finishes (the frozen photo
+      resolving into a card, proposal, or crop screen). Confirm the haptic happens **at the shutter**,
+      clearly before recognition completes, not coincident with or after it.
+- [ ] 38.3 Let a capture reach an ordinary confident result (auto-advance or one-tap confirmation).
+      Confirm there is **no second vibration** anywhere after the initial shutter one — not on the
+      result appearing, not on tapping *Confirm*/*Use*.
+- [ ] 38.4 Let a capture reach the explicit scale-unresolved / visual confirmation screen. Confirm
+      accepting it produces **no** additional haptic beyond the original shutter one.
+- [ ] 38.5 Let a capture reach assisted or focused entry (tap-to-select a row/value, or type-it-in).
+      Confirm neither entering that flow nor accepting a value from it produces any haptic.
+- [ ] 38.6 From the crop/confirmation screen, drag a corner to adjust the selection and tap
+      *Read table*. Confirm the crop drag itself never vibrates, and confirm re-reading a table does
+      not add a second haptic on top of the original shutter one from the capture that opened it.
+- [ ] 38.7 Tap **Retake**. Confirm no haptic. Capture again afterward and confirm the shutter haptic
+      still fires normally on the new capture (i.e. Retake did not leave haptics silently disabled).
+- [ ] 38.8 Tap **Close** (from the live camera, and from a card/result state). Confirm no haptic in
+      either case.
+- [ ] 38.9 With app haptics **OFF** (Settings → Haptic feedback), repeat capture. Confirm **no**
+      vibration on the label scanner shutter, and separately re-check the barcode scanner (3.5):
+      confirm it is also silent with the same setting off, since both now read the one shared
+      preference.
+- [ ] 38.10 With app haptics back **ON**, re-check the barcode scanner: successful acceptance still
+      gives exactly one haptic (regression check on 3.5 only — no barcode behaviour is expected to
+      have changed in this pass).
+- [ ] 38.11 On the barcode scanner, hold the camera on a barcode that has not yet stabilised (the
+      *Hold steady* guidance showing) and separately on an empty frame with no barcode in view.
+      Confirm no haptic in either `Stabilizing` or `Searching` state — only a fully `Accepted` read
+      vibrates.
+- [ ] 38.12 Open the barcode scanner's manual-entry dialog and submit a barcode by typing it.
+      Confirm no haptic on typed/manual entry — the haptic is reserved for camera-based acceptance.
+- [ ] 38.13 If practical, repeat 38.1 with the device's own system touch-feedback / haptics setting
+      disabled at the OS level, to see whether the app's vibration is suppressed by that system
+      setting on this device (informational — not a pass/fail gate on its own, since OEM behaviour
+      here varies).
 
 **Result:** ____________________ **Date:** ____________

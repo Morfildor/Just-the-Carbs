@@ -51,6 +51,45 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Scanner shutter haptic feedback (2026-09-08) — READ FIRST
+
+`1.0.6` / `versionCode 7` — see "Version and track state" further down this file for the single
+current-version authority; that section is kept up to date and is where to check version status,
+not here.
+
+Both scanners now give tactile shutter acknowledgement, gated by the single existing app-level
+*Haptic feedback* setting (`AppSettings.hapticsEnabled` — no new preference was added):
+
+- **Barcode scanner** (`ScannerScreen.kt`) — unchanged behaviour, already established: one
+  `HapticFeedbackType.LongPress` when `BarcodeAcceptance.Accepted` is consumed, nowhere else.
+- **Nutrition-label scanner** (`LabelScannerScreen.kt`, new this pass) — one
+  `HapticFeedbackType.LongPress` at a committed shutter capture, fired **immediately after**
+  `coordinator.freezeAtShutter(...)` inside `captureLabel()` and before `coordinator.beginNewWork()`.
+  This is shutter acknowledgement only — "the shutter press was accepted and the scan is being
+  captured" — **never** an OCR-success or value-confirmed signal. There is no second haptic anywhere
+  later in the pipeline (still capture, OCR completion, automatic advancement, ordinary confirmation,
+  scale-unresolved confirmation, assisted/focused entry, crop adjustment, reread, Retake, Close).
+  `hapticsEnabled` is threaded from `AppSettings` through `JustTheCarbsNavHost` into
+  `LabelScannerScreen`/`LabelCamera`, mirroring the barcode scanner's existing wiring exactly.
+  **No default value** on either `hapticsEnabled` parameter (`LabelScannerScreen` or the private
+  `LabelCamera`) — every real caller must supply it explicitly, so a caller that forgets to wire it
+  fails to compile rather than silently shipping with haptics off.
+
+**Do not move this haptic before `freezeAtShutter()` or after OCR/`onUseValue`.** The freeze must
+stay the first thing a committed shutter press does — see the "FREEZE FIRST" comment at its call
+site in `captureLabel()`, which this pass did not touch, only inserted after.
+
+**Also this pass:** `ScannerScreen.kt`'s `remember { BarcodeAnalyzer { ... } }` closure is long-lived
+and unkeyed (created once for the composable's lifetime), so it previously captured
+`hapticsEnabled`, the haptic feedback host and `onBarcode` from whichever composition was current
+when first created. It now reads all three through `rememberUpdatedState`, so a later change to any
+of them is picked up without recreating the analyzer. This is a latent-hazard hardening fix, not a
+reproduced defect — nothing in the app currently re-enters this screen with a live analyzer while
+`hapticsEnabled` changes underneath it.
+
+**Not verified on physical hardware in this pass** — see `docs/manual-qa.md` §38. Emulator/JVM
+execution does not establish vibration quality or timing feel.
+
 ## Post-rebrand hardening pass (2026-08-15)
 
 The 2026-08-14 rebrand commit renamed Kotlin identifiers and docs but **missed
@@ -4023,106 +4062,97 @@ diagnostic deliberately bypasses `SearchALiciousDataSource` — the escaper esca
 can only be built by appending it *after* escaping, and going through the data source would measure
 the escaper instead of the service.
 
-## Version and track state (2026-08-28) — THE AUTHORITATIVE ANSWER, READ BEFORE ANY RELEASE CLAIM
+## Version and track state (updated 2026-09-08) — THE AUTHORITATIVE ANSWER, READ BEFORE ANY RELEASE CLAIM
 
 Everything else in this file and in `docs/` is subordinate to this section. Where an older passage
 disagrees, this one is right — and fix the older passage rather than working around it.
 
 | Question | Answer |
 |---|---|
-| What is the latest release? | `1.0.3` / **`versionCode 4`**, uploaded and **accepted by Play 2026-09-04**, built from `7cbf78d` on branch `ui-refresh-2026-09-03` |
-| Which track? | **Closed testing.** `versionCode 1` (internal → closed), `2` and `3` preceded it |
-| Closed-testing period | **Running.** 12+ testers opted in |
-| What is in development? | **`1.0.4` / `versionCode 5`, OPEN.** Opened 2026-09-04 by a feedback/rate-us settings patch; the 2026-09-04/05 startup-hardening pass (onboarding flash, OCR basis defaults, permission recovery, `LiveEvidenceBuffer` concurrency) landed under the same open heading. `branding.gradle.kts` already names `5` |
-| Is 1.0.3 released? | **Yes.** Uploaded 2026-09-04, in `docs/version-history.md` with its hash, size and signer. Artifact and barrier evidence: `docs/play-release-readiness.md` §7 |
-| What do I develop against? | **`1.0.4` / `versionCode 5`** — already open (see above); further changes this cycle land under `CHANGELOG.md`'s existing `## 1.0.4` heading, not a new bump, until it is built and Play accepts it |
-| **What 1.0.3 shipped without** | **Any physical-device verification.** It was built and uploaded on JVM + emulator evidence alone; `docs/manual-qa.md` §34 and §§26–33 were all unticked at upload. Testers are the first hardware this build has run on — see the note below |
+| What is the latest release? | `1.0.5` / **`versionCode 6`**, released to Play's closed-testing track 2026-09-07, **available to selected testers** (per Play Console) |
+| Which track? | **Closed testing.** `versionCode 1` (internal → closed), `2`, `3`, `4` preceded it and were each replaced in turn; `5` (`1.0.4`) was uploaded, entered review, then withdrawn by the owner before review completed — Play still consumed the code, so `5` never reached the track as a release |
+| What is in development? | **`1.0.6` / `versionCode 7`, OPEN.** Opened 2026-09-08 by a scanner shutter-haptic patch. `branding.gradle.kts` names `7` / `"1.0.6"`. Nothing built or uploaded against it |
+| Is 1.0.5 released? | **Yes**, to closed testing. In `docs/version-history.md` with hash, size and signer. Do not describe it as "pending Play review" — Play Console shows it live and available to selected testers |
+| Is 1.0.4 released? | **No.** Uploaded, entered review, withdrawn by the owner before completion (private-correspondence text found in repo history). `versionCode 5` is spent and never reused; the corrective build used `6`, not a rebuilt `5` |
+| What do I develop against? | **`1.0.6` / `versionCode 7`** — already open; further changes this cycle land under `CHANGELOG.md`'s existing `## 1.0.6` heading, not a new bump, until it is built and uploaded |
 | Production | Not submitted. Gated by the Play forms + the §44 signature — see below |
 
-**An earlier revision of this table said "Nothing. No version is open" and "`versionCode 4` is
-spent, so `branding.gradle.kts` currently names a used number".** That was correct on 2026-08-28 and
-went stale the moment 1.0.4 was opened (2026-09-04); the row above supersedes it. Do not read the
-"already spent" framing as still describing the current number — check `branding.gradle.kts` and
-`CHANGELOG.md`'s topmost version heading before trusting either this table or your own memory of it.
+**THE VERSIONING RULE.** A version number identifies an **artifact that reached Play**, not a
+commit and not merely a local build:
 
-**THE VERSIONING RULE, resolved by the owner 2026-08-30. This wording is authoritative.**
+> The first development change after a release **that reached Play** opens the next `versionCode`.
+> Multiple coherent changes may accumulate under that open version until it is uploaded. Once
+> **uploaded** — i.e. received by Play, whether or not review subsequently completes, and whether or
+> not the release is later withdrawn — that `versionCode` is spent and frozen forever.
 
-> The **first** development change after an uploaded release opens the next `versionCode`. Multiple
-> coherent changes may accumulate under that development version until it is uploaded. Once
-> uploaded, that version is **frozen**.
+Play acceptance/review completion is **not** the gate for opening the next number: uploading is.
+`1.0.4` / `versionCode 5` is the concrete proof — submitted, entered review, then withdrawn before
+Play finished reviewing it, and `5` was still permanently consumed. The corrective release that
+followed opened the *next* number (`6`), never a rebuilt `5`. Do not read an older passage's "do not
+bump until the open version has been uploaded **and accepted**" as still correct; acceptance is not
+required, only upload.
 
-So a version number identifies an *artifact*, not a commit. `1.0.3` / `versionCode 4` was opened on
-2026-08-29 by the OCR quick-calculation work and **stays open**: every further change in this cycle
-lands under it until it is built and Play accepts it. This is what 1.0.0, 1.0.1 and 1.0.2 actually
-did — 1.0.2 accumulated five separate passes (live search, the Search-a-licious migration, search
-hardening, search accuracy, the theme fixes) under one number.
-
-An earlier revision of this file said "every code change gets its own version number" and flagged
-the contradiction with its own next sentence as an open question. **That phrasing is withdrawn**; do
-not reintroduce it, and do not bump to `versionCode 5` until `4` has been uploaded.
+This is what 1.0.0 through 1.0.5 actually did — 1.0.2 alone accumulated five separate passes (live
+search, the Search-a-licious migration, search hardening, search accuracy, the theme fixes) under
+one number before its single upload.
 
 Documentation-only changes open nothing: prose that changes no code produces no artifact.
 
-**`versionCode 1`, `2` and `3` are all spent.** None is to be rebuilt or re-uploaded — Play refuses a
-duplicate code, and all are on an active track. The next number is **4**.
+**`versionCode 1` through `6` are all spent** (`5` by upload-then-withdrawal, not by a completed
+release — see above). None is to be rebuilt or re-uploaded — Play refuses a duplicate code
+regardless of what happened to that code's review. The next number is **7**, already open as `1.0.6`
+above.
 
-The current artifact is `app-release.aab` from `clean` on **`29a4f3d`**: 35,671,928 bytes, SHA-256
+**A version belongs in `docs/version-history.md` once it has reached Play** — uploaded to a track —
+whether or not review has since completed and whether or not it was later withdrawn. `1.0.4`'s
+entry there is correct to keep despite never shipping cleanly: the archive records what a
+`versionCode` actually was. A build that never left the machine is the only case that stays out.
+
+### HISTORICAL — 1.0.3 artifact facts and post-1.0.2 rules, superseded by the table above
+
+*(Kept for the signer/promotion provenance and the general rules, which are still true. The
+version-specific claims — "current artifact", "no version is open", "next technical action" — describe
+`1.0.2`→`1.0.3`, not the current `1.0.5`→`1.0.6` state. Do not read anything below this line as
+naming the current version.)*
+
+The `1.0.3` artifact was `app-release.aab` from `clean` on **`29a4f3d`**: 35,671,928 bytes, SHA-256
 `7c2ae0618fda7fdfcaa8e5be24172ccfe54b1639177efc978a2b88c3c2a42828`, signed with the real upload key
-`1E:21:23:F3:…:C4:F5` — **the same key as `versionCode 1` and `2`**, which is what lets Play accept
-it as an update. The signer DN was read from the built bundle with `keytool -printcert -jarfile`
-before upload, not inferred from a green build: the Gradle guard cannot tell a real upload key from
-a disposable one. `versionCode`/`versionName` were also decoded from the bundle's own protobuf
-manifest rather than trusted from the Gradle configuration.
+`1E:21:23:F3:…:C4:F5` — the same key used by every version through `1.0.5`, which is what lets Play
+accept each as an update. The signer DN was read from the built bundle with
+`keytool -printcert -jarfile` before upload, not inferred from a green build: the Gradle guard
+cannot tell a real upload key from a disposable one. **This DN-reading discipline is still current
+practice** — apply it to any future release build regardless of version.
 
 `versionCode 1` (`1.0.0`, `68c85a3`, SHA-256 `37be0232…c7e604b`) reached the closed track by
 **promotion of the same bundle** — same bytes, same hash, same version code. `docs/version-history.md`
 records it **once**, with the track progression noted; a promotion is not a release and does not get
-a second entry. Play still shows the temporary name `app.justthecarbs (unreviewed)`; that is expected
-pre-review and is not a defect.
+a second entry.
 
-### Working rules after 1.0.2
+**General rules that are still current** (the version numbers in the surrounding prose are not):
 
-- **No version is open.** `1.0.2` / `versionCode 3` shipped on 2026-08-29, so `branding.gradle.kts`
-  currently names a **spent** number. The first code change after this bumps it to `1.0.3` /
-  `versionCode 4` and opens that `CHANGELOG.md` section **in the same change**, so the number and
-  the notes never disagree.
 - **A documentation-only change opens nothing.** No version, no bump, no `CHANGELOG.md` heading.
-- **Do not rebuild or upload `versionCode 1`, `2` or `3`.** All are on an active track and Play
-  refuses a duplicate code. Superseded artifacts stay superseded — in particular the earlier bundle
-  `00876FA9…BBB4A2`, built from an uncommitted tree.
-- **Nothing goes into `docs/version-history.md` until Play accepts a build.** That file is the
-  append-only record of artifacts that actually shipped. A built-but-unuploaded version is not
-  history.
+- **Never rebuild or re-upload a spent `versionCode`.** Play refuses a duplicate regardless of
+  what happened to that code's review — see the corrected versioning rule above.
 - The test figures and the Play *What's new* text in an unreleased section describe the work **so
   far** and must be re-checked and rewritten before the build is made.
 - **A release build is a deliberate, instructed act.** Building or uploading an AAB is never part of
   an ordinary development pass. When one is asked for, follow `docs/play-release-readiness.md`
   §2c/§2d — build from a committed tree, verify the R8 privacy barriers and **read the signer DN off
-  the artifact**, then copy the section into `docs/version-history.md` with the hash once Play
-  accepts it.
-
-**Historical note.** Earlier revisions of this file and of `docs/play-release-readiness.md` said
-"DO NOT REBUILD … any replacement needs `versionCode 2`", then later that `versionCode 2` "exists
-and is the development target". Both are stale: **2 shipped on 2026-08-28**. What survives from them
-is only the general rule — a version code that has reached a track is never rebuilt or re-uploaded,
-which now covers 1 and 2 alike.
+  the artifact**, then copy the section into `docs/version-history.md` with the hash once the upload
+  reaches a track.
 
 **1.0.2 is verified on physical hardware for everything it changed** (owner, 2026-08-29, against the
 Play-delivered build): **live search works**, **Light and Dark themes both render correctly** — the
 reported status-bar and dark-mode-contrast defects are gone — and **barcode scanning is
 regression-free**. Do not re-list those as unverified.
 
-**Next technical action:** run `docs/manual-qa.md` **§34** on physical hardware against the
-Play-delivered `versionCode 4`.
-
 **1.0.3 shipped on JVM and emulator evidence alone — no row of §34 or §§26–33 was ticked before
-upload.** That is a decision the owner made with the gaps stated, not an oversight, and it changes
-what the closed track now *is*: **the testers are the first hardware this build has run on.** Treat
-their reports as the missing measurement rather than as routine feedback, and read any scanning
-report against §34's rows before concluding anything about the code.
+upload.** That is a decision the owner made with the gaps stated, not an oversight. `1.0.4` (never
+released) and `1.0.5` (released 2026-09-07, see its own CHANGELOG/version-history sections) are the
+versions that actually followed; `1.0.5`'s physical safety retest is recorded there, not here.
 
-The two highest-value things to watch for, because they are what this version changed and what it
-deliberately traded:
+The two highest-value things that were being watched for on `1.0.3`, kept for reference against
+future scanner-safety changes:
 
 - **§34.1–34.5 — no wrong figure offered.** A separatorless pair now withholds *both* members, so a
   label like `46 g / 100 g` + `12 g / 25 g` should offer neither and route to focused entry with the

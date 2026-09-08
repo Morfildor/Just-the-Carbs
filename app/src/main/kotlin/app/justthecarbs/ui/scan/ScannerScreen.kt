@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -142,6 +143,18 @@ private fun CameraPreview(
      */
     var acquired by remember { mutableStateOf(false) }
 
+    // The analyzer below is `remember`ed once, unkeyed, and lives for the composable's whole
+    // lifetime — recreating it on every recomposition would tear down and rebuild the ML Kit
+    // client mid-scan. Its closure would otherwise capture `hapticsEnabled`, `haptics` and
+    // `onBarcode` from whichever composition happened to be current when the analyzer was first
+    // created, so a settings change after that point (or any other reason these values might
+    // change) would silently keep firing against the stale ones. `rememberUpdatedState` gives the
+    // closure a stable reference that always reads the latest value without ever recreating the
+    // analyzer itself.
+    val currentHapticsEnabled by rememberUpdatedState(hapticsEnabled)
+    val currentHaptics by rememberUpdatedState(haptics)
+    val currentOnBarcode by rememberUpdatedState(onBarcode)
+
     val executor = remember { Executors.newSingleThreadExecutor() }
     val analyzer = remember {
         BarcodeAnalyzer { acceptance ->
@@ -149,12 +162,14 @@ private fun CameraPreview(
                 is BarcodeAcceptance.Accepted -> {
                     // A short haptic confirms the read without the user having to look away from
                     // the package (§41). Restrained: this is one of only two places the app
-                    // vibrates. Compose's abstraction is used rather than
-                    // HapticFeedbackConstants.CONFIRM, which needs API 30 and would be silently
-                    // inlined as an unsupported constant on minSdk 26.
-                    if (hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    // vibrates — the label scanner's shutter capture is the other. Compose's
+                    // abstraction is used rather than HapticFeedbackConstants.CONFIRM, which needs
+                    // API 30 and would be silently inlined as an unsupported constant on minSdk 26.
+                    if (currentHapticsEnabled) {
+                        currentHaptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
                     acquired = true
-                    onBarcode(acceptance.value)
+                    currentOnBarcode(acceptance.value)
                 }
                 BarcodeAcceptance.Stabilizing -> holdSteady = true
                 BarcodeAcceptance.Searching -> holdSteady = false

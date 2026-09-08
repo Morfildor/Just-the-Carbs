@@ -56,10 +56,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -226,6 +228,15 @@ fun LabelScannerScreen(
      * Null when the product already exists, which is what selects the direct-save path above.
      */
     onCarryPendingPortionUnit: ((PortionUnitKind, PortionConversion) -> Unit)? = null,
+    /**
+     * The app-level haptics preference (Settings), mirroring [ScannerScreen]'s parameter of the same
+     * name. A committed shutter capture gives one [HapticFeedbackType.LongPress] when this is true —
+     * shutter acknowledgement only, never an OCR-success signal. See `captureLabel` in [LabelCamera].
+     *
+     * No default: every real caller reads this from [app.justthecarbs.domain.AppSettings], and a
+     * default masks a caller that forgot to wire it rather than surfacing it at compile time.
+     */
+    hapticsEnabled: Boolean,
 ) {
     // §6, startup-hardening pass: the same shared five-state gate ScannerScreen uses. Previously
     // this screen carried its own copy of the granted/not-granted-plus-requested tracking, with the
@@ -242,6 +253,7 @@ fun LabelScannerScreen(
                 onClose = onClose,
                 onSavePortionUnit = onSavePortionUnit,
                 onCarryPendingPortionUnit = onCarryPendingPortionUnit,
+                hapticsEnabled = hapticsEnabled,
             )
         } else {
             CameraPermissionRationale(
@@ -264,11 +276,13 @@ private fun LabelCamera(
     onClose: () -> Unit,
     onSavePortionUnit: (suspend (PortionUnitKind, PortionConversion) -> Boolean)? = null,
     onCarryPendingPortionUnit: ((PortionUnitKind, PortionConversion) -> Unit)? = null,
+    hapticsEnabled: Boolean,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val mainExecutor = remember(context) { ContextCompat.getMainExecutor(context) }
     val saveScope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
 
     /**
      * The authoritative reading. Set ONLY from a still capture — never from a live frame.
@@ -1421,6 +1435,12 @@ private fun LabelCamera(
         // single counter this line's predecessor incremented before any read, so those frames were
         // stamped with one value and read back under another, and none of them ever qualified.
         frozenLiveSnapshot = coordinator.freezeAtShutter(liveEvidence, SystemClock.elapsedRealtime())
+        // Immediate tactile acknowledgement that the shutter press was accepted and capture has
+        // begun — the same restrained pattern ScannerScreen uses for barcode acceptance. This means
+        // only "the shutter fired", never "OCR succeeded": it fires here, before any recognition
+        // work has even started, and nothing later in this pipeline (still capture, OCR, automatic
+        // advancement, confirmation, assisted/focused entry) triggers a second one.
+        if (hapticsEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         // Only now: a new attempt invalidates anything still in flight from the previous one. The
         // aim epoch is NOT bumped here — a shutter press does not start a new aim, it ends one.
         val workGeneration = coordinator.beginNewWork()

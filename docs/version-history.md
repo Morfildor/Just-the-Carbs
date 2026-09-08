@@ -64,7 +64,7 @@ in `CHANGELOG.md`'s `1.0.5` section; this entry records the build/artifact facts
 
 | | |
 |---|---|
-| Track | **Closed testing — uploaded 2026-09-07; pending Play's review** |
+| Track | **Closed testing — released 2026-09-07, available to selected testers** (per Play Console) |
 | Built from | `6f8ff63d11ce88bcf601d3ae298d96799555bc36` on `main`, `clean` build |
 | AAB | `app-release.aab`, 35,925,241 bytes |
 | AAB SHA-256 | `40854973366ece208f42f8a1bd715a81249ab14d2b988a6cbc0a0b30c0e937f2` |

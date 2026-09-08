@@ -5,8 +5,8 @@ most recent released one; every uploaded version is copied into
 [`docs/version-history.md`](docs/version-history.md), the append-only archive that records each
 artifact's hash, size and signer.
 
-**Latest release: `1.0.3` / `versionCode 4`**, on closed testing since 2026-09-04. `1.0.4` /
-`versionCode 5` is now open below.
+**Latest closed-testing release: `1.0.5` / `versionCode 6`**, released to selected testers
+2026-09-07. `1.0.6` / `versionCode 7` is now in development, open below.
 
 ## Versioning rule — one version per uploaded artifact (owner, resolved 2026-08-30)
 
@@ -21,15 +21,23 @@ describe what 1.0.0, 1.0.1 or 1.0.2 actually did; that phrasing is withdrawn.
 - The first code change after a release **opens a new version**: bump `brandVersionCode` and
   `brandVersionName` in `branding.gradle.kts`, and rename the **Unreleased** heading to that
   version. Later changes in the same cycle land under that same heading.
-- Do **not** bump again until the open version has been uploaded and accepted.
+- Do **not** bump again until the open version has actually reached Play — i.e. been **uploaded**.
+  Play review completing (or Play *accepting* the build onto a track) is not the gate: once Play has
+  received a `versionCode`, that code is spent and frozen, whatever happens to the review
+  afterwards. `1.0.4` / `versionCode 5` is the concrete case — submitted, then withdrawn by the
+  owner before review completed, and `5` was still consumed; the corrective build that followed used
+  the next number (`6`), not a rebuilt `5`.
 - `versionCode` increments by one each time and is **never reused** — Play refuses a duplicate,
-  including for a build that was rejected or never uploaded.
+  including for a build that was rejected, withdrawn mid-review, or never uploaded at all.
 - Documentation-only changes do not open a version. A version number exists to identify an
   artifact, and prose that changes no code produces none.
 - Test figures and the Play *What's new* text inside an unreleased section describe the work so far
   and must be re-checked before the build is made.
-- A version moves to [`docs/version-history.md`](docs/version-history.md) only once **Play accepts
-  the upload**. A build that never left the machine is not a release.
+- A version moves to [`docs/version-history.md`](docs/version-history.md) only once it has actually
+  **reached Play** — i.e. been uploaded to a track, whether or not Play's review has since completed
+  or the release was later withdrawn. A build that never left the machine is not a release; a build
+  that was uploaded and later withdrawn still belongs in history (see `1.0.4`'s section below),
+  because the archive records what a `versionCode` actually was, not only what shipped cleanly.
 
 ### How 1.0.0, 1.0.1 and 1.0.2 were produced
 
@@ -50,8 +58,9 @@ work after
   defect line says what the user would have seen, not which function moved.
 - `versionCode` is unique per upload and **never reused** — Play rejects a duplicate. It is bumped
   when a version section is opened, then left alone until that build ships.
-- **`versionCode 1`, `2` and `3` are spent.** All three are on the closed track and none is to be
-  rebuilt or re-uploaded; the next number is `4`, which `1.0.3` has open below.
+- **`versionCode 1` through `6` are spent.** All are on the closed track (`5` withdrawn before
+  review completed, see its section below) and none is to be rebuilt or re-uploaded; the next
+  number is `7`, which `1.0.6` has open below.
 - When a version is uploaded, copy its section verbatim into `docs/version-history.md`. Nothing is
   rewritten on the way across, so the record of what shipped stays what it said at the time.
 - Every version also carries a **Play Store release notes** block — the *What's new* text, written
@@ -63,10 +72,63 @@ work after
 
 ## Unreleased
 
-Nothing yet. `1.0.5` / `versionCode 6` is open below; a documentation-only change opens nothing
+Nothing yet. `1.0.6` / `versionCode 7` is open below; a documentation-only change opens nothing
 further and lands directly under that heading.
 
-## 1.0.5 (versionCode 6) — uploaded 2026-09-07, closed testing — pending Play review
+## 1.0.6 (versionCode 7) — in development, not built or uploaded
+
+Opened by a small scanner UX patch: nutrition-label capture now gives the same tactile shutter
+acknowledgement the barcode scanner already gives on accepted detection. Deliberately surgical — no
+OCR recognition, eligibility, evidence resolution, verification, scale, recovery, calculation,
+persistence or navigation file was touched.
+
+### Play Store release notes (draft)
+
+```
+Improved scanner feedback: nutrition-label scanning now gives a brief vibration when you tap
+Capture, matching the tactile feedback used for barcode scanning. No change to scan accuracy.
+```
+
+Checked against §44 §7.1: no health claim, no mention of diabetes, no medical wording. 186
+characters against the 500 limit. Deliberately says "when you tap Capture" rather than "when the
+photo is captured" — the feedback fires on the tap being committed, not once JPEG acquisition or
+recognition has finished, and the earlier draft's wording could be misread as the latter.
+
+### Added
+
+- **Nutrition-label scanner shutter haptic.** Capturing a label now gives one immediate
+  `HapticFeedbackType.LongPress`, the same restrained pattern the barcode scanner already uses on
+  accepted detection, gated by the existing app-level *Haptic feedback* setting (no new preference).
+  It fires the instant a committed shutter capture begins — immediately after
+  `CaptureEvidenceCoordinator.freezeAtShutter`, before any recognition work starts — and means only
+  "the shutter press was accepted", never "OCR succeeded" or "a value was confirmed". There is no
+  second haptic anywhere later in the pipeline: not on OCR completion, automatic advancement,
+  ordinary confirmation, scale-unresolved confirmation, assisted/focused entry, crop adjustment,
+  reread, Retake or Close.
+
+### Internal
+
+- **Barcode analyzer callback-freshness hardening.** `ScannerScreen`'s `remember { BarcodeAnalyzer {
+  ... } }` closure is long-lived and unkeyed, so it captured `hapticsEnabled`, the haptic feedback
+  host and `onBarcode` from whichever composition was current when the analyzer was first created.
+  The closure now reads all three through `rememberUpdatedState`, so a later change to any of them
+  is picked up without recreating the analyzer (which would tear down and rebuild the ML Kit
+  client mid-scan). No behaviour change under the app's current usage — the barcode scanner screen
+  is not re-entered with a live analyzer while the haptics setting changes underneath it — this is
+  a latent-hazard fix, not a reproduced defect.
+
+### Verified this pass
+
+`:app:compileDebugKotlin` BUILD SUCCESSFUL. `:app:testDebugUnitTest --rerun-tasks`: **1883/1883**
+(0 failures, 0 errors, 0 skipped, 198 JUnit XML files). `:app:lintDebug`: exit 0, **0 errors, 23
+warnings** — unchanged baseline. `:app:assembleDebug` BUILD SUCCESSFUL.
+`:app:compileDebugAndroidTestKotlin` BUILD SUCCESSFUL.
+
+**Not done, deliberately:** no physical-device haptic verification (see `docs/manual-qa.md` §38 —
+tactile timing and feel cannot be judged from the emulator or a test); no release build for this
+version; no Play upload; no release AAB/APK created.
+
+## 1.0.5 (versionCode 6) — released to closed testing 2026-09-07, available to selected testers
 
 Emergency corrective release. `1.0.4` / `versionCode 5` (below) was **submitted to Google Play's
 closed testing review and then withdrawn/stopped before completion**, after the accidental

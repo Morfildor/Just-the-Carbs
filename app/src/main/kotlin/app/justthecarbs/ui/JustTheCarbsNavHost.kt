@@ -739,6 +739,7 @@ fun JustTheCarbsNavHost(
             }
 
             LabelScannerScreen(
+                hapticsEnabled = settings.hapticsEnabled,
                 onUseValue = { carbs, basis ->
                     // For a product already on the calculator, a label reading comes back as a
                     // *comparison* rather than as a new product (§12): the user scanned to check
