@@ -11,10 +11,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -30,8 +32,8 @@ import app.justthecarbs.ui.onboarding.OnboardingScreen
 import app.justthecarbs.ui.onboarding.OnboardingViewModel
 import app.justthecarbs.ui.onboarding.TUTORIAL_LAST_STEP
 import app.justthecarbs.ui.onboarding.TUTORIAL_OVERLAY_TAG
-import app.justthecarbs.ui.onboarding.TUTORIAL_PRIMARY_TAG
 import app.justthecarbs.ui.onboarding.TUTORIAL_SKIP_TAG
+import app.justthecarbs.ui.onboarding.TUTORIAL_TAP_SURFACE_TAG
 import app.justthecarbs.ui.onboarding.TutorialMode
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
 import kotlinx.coroutines.flow.first
@@ -135,7 +137,6 @@ class TutorialNavigationTest {
                     stepIndex = stepIndex,
                     mode = mode,
                     onNext = viewModel::next,
-                    onPrevious = {},
                     onExit = { exitScope.launch { viewModel.finish() } },
                     busy = completion is OnboardingViewModel.CompletionState.Saving,
                 )
@@ -251,7 +252,7 @@ class TutorialNavigationTest {
         compose.waitForIdle()
 
         repeat(TUTORIAL_LAST_STEP + 1) {
-            compose.onNodeWithTag(TUTORIAL_PRIMARY_TAG).performClick()
+            compose.onNodeWithTag(TUTORIAL_TAP_SURFACE_TAG).performTouchInput { click() }
             compose.waitForIdle()
         }
 
