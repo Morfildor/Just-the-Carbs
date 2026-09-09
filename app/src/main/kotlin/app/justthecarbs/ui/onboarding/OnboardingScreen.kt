@@ -3,6 +3,8 @@ package app.justthecarbs.ui.onboarding
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector4D
+import androidx.compose.animation.core.TwoWayConverter
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,7 +30,6 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,7 +37,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -51,8 +51,10 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,9 +66,18 @@ import app.justthecarbs.ui.theme.Space
 const val TUTORIAL_OVERLAY_TAG = "tutorial_overlay"
 const val TUTORIAL_TITLE_TAG = "tutorial_title"
 const val TUTORIAL_BODY_TAG = "tutorial_body"
-const val TUTORIAL_PRIMARY_TAG = "tutorial_primary"
 const val TUTORIAL_SKIP_TAG = "tutorial_skip"
 const val TUTORIAL_TAP_SURFACE_TAG = "tutorial_tap_surface"
+
+/** The callout card itself — the node carrying the accessible Next/Finish `onClick` action. */
+const val TUTORIAL_CALLOUT_TAG = "tutorial_callout"
+
+/**
+ * The purely-visual "Tap anywhere to continue/finish" line. Its tag lives inside
+ * `clearAndSetSemantics {}` rather than a separate `Modifier.testTag()` call, because a tag applied
+ * outside that block would be wiped along with everything else it clears — see the call site.
+ */
+const val TUTORIAL_TAP_AFFORDANCE_TAG = "tutorial_tap_affordance"
 
 /** How much larger than its control the spotlight is drawn. */
 private val SPOTLIGHT_PADDING = 10.dp
@@ -139,28 +150,31 @@ fun OnboardingScreen(
         // leave it briefly over a control the current step is not talking about. So an appearing or
         // disappearing target snaps, and only a move from one real rectangle to another is animated.
         //
-        // Interpolated per edge rather than as a centre plus a size, so a target that changes shape
-        // as well as position (a wide card to a small icon) stays a rectangle throughout.
-        val previous = remember { mutableStateOf<Rect?>(null) }
-        val progress = remember { Animatable(1f) }
-        val from = previous.value
+        // A single Animatable<Rect> holds the RENDERED rectangle directly, rather than splitting the
+        // state into a separately-read "previous" rect plus a 0..1 progress float. That split used to
+        // let a recomposition land between the two updates: on the frame `target` first changed, the
+        // read of `previous.value` and the read of `progress.value` could still both reflect the OLD
+        // step (progress left at 1f from the last completed animation) while `target` already named
+        // the NEW one -- so the `progress.value >= 1f` branch fired early and rendered the new target
+        // outright, one frame before the LaunchedEffect below had even run to snap progress back to
+        // 0 and start the real animation from the old rect. The next recomposition then jumped BACK
+        // to the old rect and animated forward from there -- a visible flash-then-rewind. Reading the
+        // Animatable's own value can't produce that: there is only one piece of state, so there is no
+        // stale combination to observe mid-update.
+        val spotlightAnimation = remember { Animatable(target ?: Rect.Zero, RectVectorConverter) }
+        val previousTarget = remember { mutableStateOf(target) }
 
         LaunchedEffect(target) {
-            val start = previous.value
-            if (target != null && start != null && start != target) {
-                progress.snapTo(0f)
-                progress.animateTo(1f, tween(Motion.STANDARD_MS))
-            } else {
-                progress.snapTo(1f)
+            val start = previousTarget.value
+            previousTarget.value = target
+            when {
+                target == null -> Unit // keep whatever is currently drawn; the caller reads null below
+                start == null || start == target -> spotlightAnimation.snapTo(target)
+                else -> spotlightAnimation.animateTo(target, tween(Motion.STANDARD_MS))
             }
-            previous.value = target
         }
 
-        val spotlight: Rect? = when {
-            target == null -> null
-            from == null || progress.value >= 1f -> target
-            else -> lerpRect(from, target, progress.value)
-        }
+        val spotlight: Rect? = if (target == null) null else spotlightAnimation.value
 
         // The preview, then the scrim over it, then the ring, then the controls. The whole backdrop
         // is marked decorative: while the tutorial is up, its controls must not be separately
@@ -212,8 +226,8 @@ fun OnboardingScreen(
                     }
                 }
                 // Decorative: the tap surface has no meaning of its own to announce. TalkBack
-                // reaches "advance" through Skip and the primary button inside the card instead,
-                // exactly as it did before this redesign.
+                // reaches "advance" through Skip and the callout card's own onClick action instead
+                // — see CalloutCard.
                 .clearAndSetSemantics { },
         )
 
@@ -298,6 +312,12 @@ fun OnboardingScreen(
                             CalloutSide.BELOW -> constraints.maxHeight - measured.height
                             CalloutSide.ABOVE -> 0
                             CalloutSide.CENTERED -> (constraints.maxHeight - measured.height) / 2
+                            // The emergency case: the card fits neither clear zone. Clamp into
+                            // [0, maxHeight - height] so it stays fully on screen (never partly
+                            // above y=0 or spilling past the bottom edge) rather than picking a side
+                            // that is, by construction, already known to overlap the spotlight.
+                            CalloutSide.CLAMPED ->
+                                (constraints.maxHeight - measured.height).coerceAtLeast(0)
                         }
                         measured.place(0, y)
                     }
@@ -308,15 +328,23 @@ fun OnboardingScreen(
 }
 
 /**
- * The instructional card: title, one sentence, step count, and the primary action.
+ * The instructional card: title, one sentence, step count, and a restrained tap-anywhere affordance.
  *
  * The title and body are one polite live region, so a step change is announced as a single sentence
  * rather than as two separate interruptions — and politely, so it waits for whatever the user is
  * already hearing rather than cutting across it.
  *
- * Deliberately has no `clickable` of its own on its background: a tap on the card's background (but
- * not on the primary button) falls through to the tap-anywhere surface beneath it in exactly the
- * same way a tap on open scrim does. Only the primary button intercepts a tap ahead of that surface.
+ * There is no visible button. Tap-anywhere is the sighted-user progression model, so a primary
+ * button here would be a second, competing way to do the same thing and would draw the eye away
+ * from the words it exists to support. The card carries no `clickable` of its own and no pointer
+ * input at all: a tap anywhere on it — including the affordance line — falls through to the
+ * tap-anywhere surface beneath it, exactly like a tap on open scrim.
+ *
+ * TalkBack still gets a real Next/Finish action. [Modifier.semantics] `onClick` attaches an
+ * accessibility action without installing a pointer-input gesture handler, so it adds nothing for a
+ * sighted user to accidentally hit and steals no touch from the tap-anywhere surface — but explore-
+ * by-touch exposes it as the card's double-tap action, labelled from the same `tutorial_next` /
+ * `tutorial_finish` strings the old button used.
  */
 @Composable
 private fun CalloutCard(
@@ -332,14 +360,24 @@ private fun CalloutCard(
 ) {
     val shape = RoundedCornerShape(CALLOUT_RADIUS)
     val accent = MaterialTheme.colorScheme.primary
+    val advanceLabel = stringResource(if (last) R.string.tutorial_finish else R.string.tutorial_next)
 
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .testTag(TUTORIAL_CALLOUT_TAG)
             .shadow(CALLOUT_ELEVATION, shape, clip = false)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-            .height(IntrinsicSize.Min),
+            .height(IntrinsicSize.Min)
+            .semantics {
+                if (!busy) {
+                    onClick(label = advanceLabel) {
+                        if (last) onFinish() else onNext()
+                        true
+                    }
+                }
+            },
     ) {
         Box(
             modifier = Modifier
@@ -391,27 +429,22 @@ private fun CalloutCard(
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-            ) {
-                Button(
-                    onClick = if (last) onFinish else onNext,
-                    enabled = !busy,
-                    shape = RoundedCornerShape(Space.buttonRadius),
-                    modifier = Modifier
-                        .heightIn(min = Space.minTouchTarget)
-                        .testTag(TUTORIAL_PRIMARY_TAG),
-                ) {
-                    Text(
-                        text = stringResource(
-                            if (last) R.string.tutorial_finish else R.string.tutorial_next,
-                        ),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
+            Text(
+                text = stringResource(
+                    if (last) R.string.tutorial_tap_to_finish else R.string.tutorial_tap_to_continue,
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // Purely visual restatement of the card's own onClick action above -- giving it
+                    // semantics of its own would announce the affordance twice. The tag has to go
+                    // INSIDE the clearAndSetSemantics block, not chained before it -- a testTag set
+                    // outside is wiped along with everything else and the node becomes unfindable by
+                    // tag, exactly as SearchScreen's SEARCH_REFRESH_PROGRESS_TAG already documents.
+                    .clearAndSetSemantics { testTag = TUTORIAL_TAP_AFFORDANCE_TAG },
+            )
         }
     }
 }
@@ -436,14 +469,13 @@ private val SPINE_WIDTH = 4.dp
 private const val BASE_SCRIM = 0.42f
 
 /**
- * Interpolate between two rectangles, edge by edge.
+ * Lets [Animatable] hold a [Rect] directly, animating all four edges together.
  *
- * Per-edge rather than centre-plus-size so a target that changes shape as well as position stays a
- * rectangle for every frame in between, instead of scaling through an intermediate aspect ratio.
+ * Per-edge rather than centre-plus-size, so a target that changes shape as well as position (a wide
+ * card to a small icon) stays a rectangle for every frame in between, instead of scaling through an
+ * intermediate aspect ratio.
  */
-private fun lerpRect(from: Rect, to: Rect, fraction: Float): Rect = Rect(
-    left = from.left + (to.left - from.left) * fraction,
-    top = from.top + (to.top - from.top) * fraction,
-    right = from.right + (to.right - from.right) * fraction,
-    bottom = from.bottom + (to.bottom - from.bottom) * fraction,
+private val RectVectorConverter = TwoWayConverter<Rect, AnimationVector4D>(
+    convertToVector = { AnimationVector4D(it.left, it.top, it.right, it.bottom) },
+    convertFromVector = { Rect(it.v1, it.v2, it.v3, it.v4) },
 )

@@ -136,13 +136,15 @@ of this combined build is still pending.
 
   Nothing behind the tutorial's scrim is real: the previews are drawn from constants, so no camera,
   network request, database write or change to the user's actual meal is reachable from any step.
-  Spotlights and arrows are positioned from measured layout geometry rather than hardcoded
-  coordinates, and fall back to a centred callout with no arrow when a target is unavailable.
+  Spotlights are positioned from measured layout geometry rather than hardcoded coordinates, and
+  fall back to a centred callout when a target is unavailable.
 
-  *(Two things in this entry were revised later in the same version and are corrected here rather
+  *(Three things in this entry were revised later in the same version and are corrected here rather
   than left to contradict what ships: the tutorial did **not** replace the welcome carousel — both
-  are present, see below — and it does not set `hasSeenOnboarding`, which now belongs to the
-  carousel alone.)*
+  are present, see below — it does not set `hasSeenOnboarding`, which now belongs to the
+  carousel alone, and there was never an arrow — the tap-anywhere pass below removed the visible
+  Next/Finish button this entry also implied, and a callout that advances on any tap has no need
+  to point at where to press.)*
 
 - **The welcome carousel is back, alongside the tutorial** (owner instruction). The app now has two
   introductions, and they answer different questions at different moments:
@@ -178,15 +180,21 @@ Presentation only. No step, no wording, no navigation and no flag behaviour chan
   graded: light around the target, gathering weight towards the screen edges. The app being taught
   stays visible while the eye still goes to the right place.
 - **The spotlight stopped being a rectangle.** Its edge now feathers back into the dim over ~28dp
-  instead of stopping dead, the corner radius is larger, and the ring around it is a soft halo with
-  a slow breath rather than a hard 2dp outline. It reads as light falling on a control instead of a
-  box cut out of a screenshot.
+  instead of stopping dead, and the corner radius is larger. It reads as light falling on a control
+  instead of a box cut out of a screenshot.
 - **The callout card is a card.** It has a real shadow, a softer corner, the accent spine used
   elsewhere in the app, and a "Step 2 of 6" eyebrow above the title. Previously it was a flat pale
   rectangle whose own edges were the loudest thing about it.
-- **Motion.** The spotlight travels between steps instead of jumping, the card's words cross-fade,
-  and the progress dots slide. The scrim's fade-in previously animated from full strength to full
-  strength — no motion at all — so the dim appeared between one frame and the next.
+- **Motion.** The spotlight travels between steps instead of jumping and the card's words
+  cross-fade. The scrim's fade-in previously animated from full strength to full strength — no
+  motion at all — so the dim appeared between one frame and the next.
+- **Tap-anywhere replaces a visible Next/Finish button.** The tutorial has no Next/Finish button
+  anywhere on screen; a tap almost anywhere on screen advances (Skip is the one exception, and
+  always wins on its own bounds). The card carries a restrained "Tap anywhere to continue" /
+  "Tap anywhere to finish" line instead, and still exposes a real accessibility action so TalkBack
+  reaches the same advance behaviour through explore-by-touch. The spotlight ring is a single
+  static outline with no motion of its own and there is no arrow — pressing anywhere works, so
+  nothing needs to point at where to press.
 
 ### Fixed
 
@@ -194,11 +202,18 @@ Presentation only. No step, no wording, no navigation and no flag behaviour chan
   40dp tall against the app's 48dp floor. The carousel shipped that way before it was removed and
   came back with the same defect; found by an instrumented assertion, which is realistically the
   only way an 8dp shortfall gets noticed.
-- **The tutorial's progress dots disappeared from the semantics tree.** Marking them decorative
-  used `clearAndSetSemantics {}`, which removes the whole subtree — and with it the node's test
-  handle, so a test asserting the dots render could no longer find them. They are now marked
-  invisible-to-accessibility instead: still present, still not announced. The spoken step count is
-  unaffected; it comes from the card's own "Step 2 of 6" line.
+- **The tutorial's spotlight could flash to the next step's target for one frame, then jump back
+  and animate forward.** The transition read the previous rectangle and an animation-progress value
+  as two separately-updated pieces of state; on the frame the target first changed, a recomposition
+  could observe them still combined in their old configuration while the new target was already
+  known, rendering it outright before the animation had actually started. Replaced with a single
+  `Animatable<Rect>` holding the rendered rectangle directly, which removes the stale-combination
+  window structurally rather than by reordering.
+- **A callout card too tall for the accessibility font size in use could overlap the spotlight it
+  was describing.** The bottom/top placement rule previously fell back to the top zone whenever the
+  bottom did not fit, without checking whether the card fit there either — safe at ordinary font
+  sizes, not at the largest ones on a small screen. The card is now clamped fully on screen as a
+  distinct third case, checked only after both the normal zones are confirmed not to fit.
 
 - **Remembering portions on older Android versions.** Recording a usual portion used SQLite's
   `ON CONFLICT DO UPDATE` syntax, which the platform SQLite shipped on Android 8–10 cannot parse.
@@ -269,6 +284,21 @@ API 26/29 database coverage is configured in CI; those emulator versions were no
 upgrade with existing data, and responsiveness while exporting a real capture backlog. See
 `docs/manual-qa.md` §§38–39. No full connected OCR suite was run in this repair pass; no release
 AAB/APK was created and no Play upload was made. The debug APK is ready for the owner's retest.
+
+### Verified — tutorial tap-anywhere completion pass (2026-09-09)
+
+Full debug JVM suite, `--rerun-tasks`: **1944/1944** (0 failures, 0 errors, 0 skipped, counted from
+204 JUnit XML files) — unchanged from the last-recorded figure, confirming no regression while the
+`CalloutPlacementTest` cases changed shape. `:app:lintDebug`: exit 0, **22 findings, 0 errors** —
+unchanged baseline. `:app:assembleDebug` BUILD SUCCESSFUL.
+
+Instrumented, the tutorial-affected classes together on the `carbscan` emulator —
+`TutorialScreenTest`, `TutorialNavigationTest`, `HomeTutorialReminderTest`,
+`WelcomeCarouselScreenTest` — **47/47, 0 skipped, 0 failed**, in one combined run.
+
+**Not verified on physical hardware.** Everything above is JVM plus, for the instrumented classes,
+the emulator. `docs/manual-qa.md` §41's new/rewritten rows (41.5a–c, the CLAMPED-placement note in
+41.21, and the TalkBack accessibility-action check in 41.24) are unchecked on a device.
 
 ## 1.0.5 (versionCode 6) — released to closed testing 2026-09-07, available to selected testers
 

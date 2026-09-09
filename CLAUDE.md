@@ -51,6 +51,111 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Tap-anywhere tutorial: completion pass (2026-09-09) — READ FIRST
+
+Surgical follow-up closing an implementation miss and two real defects in the tap-anywhere tutorial
+redesign (`fbf8169`/`deffff1`/`f058f09`) before any visual V2 work starts. No change to tutorial
+persistence, navigation, the welcome carousel, OCR/scanners/search/calculations, or versioning.
+Still `versionCode 7` / `1.0.6`, unchanged.
+
+**1 — the visible Next/Finish button is gone; TalkBack still gets a real action.** The redesign's
+own commits describe tap-anywhere as the sighted-user model, but `CalloutCard` still rendered a
+Material `Button` reading Next/Finish (`TUTORIAL_PRIMARY_TAG`) — a second, competing way to advance
+that the design explicitly argues against. It is removed. In its place: a restrained, purely visual
+"Tap anywhere to continue" / final-step "Tap anywhere to finish" line
+(`tutorial_tap_to_continue` / `tutorial_tap_to_finish`), and a `Modifier.semantics { onClick(...) }`
+on the card's own Row (tagged `TUTORIAL_CALLOUT_TAG`) that fires `onNext`/`onFinish`. `onClick` on
+`Modifier.semantics` installs an **accessibility action only** — it adds no pointer-input gesture
+handler, so a sighted user's tap on the card still falls through to the tap-anywhere surface beneath
+it exactly as before, and TalkBack's explore-by-touch/double-tap reaches the same `tutorial_next` /
+`tutorial_finish` strings the old button used as the action's label. `TUTORIAL_PRIMARY_TAG` and its
+tests (`theFinalStepsPrimaryButtonAlsoFinishes`, the button branch of
+`everyTutorialControlMeetsTheTouchTargetFloor`) are deleted; `TutorialScreenTest` gained
+`theCardsAccessibilityActionAlsoFinishesOnTheFinalStep` / `theCardsAccessibilityActionAdvancesOnAn‑
+OrdinaryStep` (driving the semantics action directly via `performSemanticsAction(SemanticsActions
+.OnClick)`) and `noVisiblePrimaryButtonExistsAnywhereInTheTutorial` (asserts `tutorial_next` /
+`tutorial_finish` render as text nowhere, on every step).
+
+**2 — the spotlight's one-frame flash is fixed, by removing the state split that caused it, not by
+reordering.** The old animation held two separate pieces of state: a `previous: Rect?` read
+eagerly at the top of composition, and an `Animatable<Float> progress` driven from a
+`LaunchedEffect(target)`. On the frame `target` first changed to a new step, composition ran
+*before* the effect did, so `previous.value` and `progress.value` still both reflected the *old*
+step (`progress` left at `1f` from the last completed animation) while `target` already named the
+*new* one — the `progress.value >= 1f` branch fired early and rendered the new rect outright, one
+frame before the effect had even snapped `progress` back to `0f`. The next recomposition then
+jumped **back** to the old rect and animated forward from there: a visible flash-then-rewind.
+
+The fix is structural rather than a reordering fix: a single `Animatable<Rect>` (via a small custom
+`TwoWayConverter<Rect, AnimationVector4D>`, since `Rect` has no built-in vector converter) now holds
+the *rendered* rectangle directly. There is only one piece of state, so there is no stale
+combination of two separately-updated fields to observe mid-recomposition — the bug's precondition
+is gone, not merely made less likely. `lerpRect` is deleted; the Animatable's own interpolation
+replaces it (still per-edge under the hood, so a target that changes shape stays a rectangle
+throughout, exactly as before). The animate-only-between-two-known-targets rule is unchanged: a
+`null` target still snaps in the direction it always did, decided by the same `LaunchedEffect(target)`
+shape as before.
+
+**3 — a new `CalloutSide.CLAMPED` emergency case, layered strictly after the normal two-tier
+decision.** `calloutSideFor`'s ordinary rule — bottom-default, top-fallback only when bottom
+genuinely does not fit — is **unchanged**; nothing about the "roomier side" comparison this function
+exists to avoid was reintroduced. What changed is what happens when *top also does not fit*: the old
+code fell back to `ABOVE` unconditionally whenever bottom failed, which is unsafe for a large
+accessibility font on a small screen — a six-word body can measure taller than either clear zone
+once wrapped and scaled, and `ABOVE` in that state still overlaps the spotlight it was meant to
+avoid. `calloutSideFor` now checks top explicitly before returning `ABOVE`, and returns the new
+`CLAMPED` value only when *both* real zones were measured and rejected — never as a substitute for
+the ordinary decision, only as a third check after it. `OnboardingScreen` places a `CLAMPED` card by
+clamping its `y` into `[0, maxHeight - height]`, so it is guaranteed fully on screen rather than
+picked by comparing two rejected options. `CalloutPlacementTest`'s old "fits neither zone resolves
+to top" case asserted the removed unsafe fallback for a scenario that, arithmetically, does **not**
+fit top either (`spotlightTop=1100` against a `cardHeight=1150`) — it is replaced by a genuine
+top-fits case plus a genuine `CLAMPED` case, so no coverage was lost, only mis-labelled.
+
+**4 — new instrumented coverage, using the real measured card, not an estimate.**
+`TutorialScreenTest` gained: `tappingDirectlyOverTheHighlightedControlStillAdvances` (a tap at
+coordinates inside the drawn spotlight still advances — the backdrop is entirely non-interactive);
+`tappingNearTheScreenEdgesStillAdvances` (taps a few px inside each of three screen corners);
+`theCalloutFitsOnANarrowViewport` (a 320dp-wide `Box`, the historical Android minimum width, rather
+than the emulator's own default); `theCalloutStaysFullyOnScreenAtALargeFontScale` (drives the real
+screen at `fontScale = 2.0f` via a `LocalDensity` override and asserts the card's own measured
+bounds stay within the root's bounds top and bottom — this is what exercises `CLAMPED` end to end,
+using the actual measured `CalloutCard`, never a hardcoded height).
+
+**5 — copy contract.** Step bodies were already one sentence each (unchanged by this pass — see
+`strings.xml`'s `tutorial_body_*`). The new affordance strings are the only copy addition:
+`tutorial_tap_to_continue` ("Tap anywhere to continue") and `tutorial_tap_to_finish` ("Tap anywhere
+to finish"), each purely visual (`clearAndSetSemantics { testTag = TUTORIAL_TAP_AFFORDANCE_TAG }`
+on its own `Text`) so TalkBack is not told about the affordance twice — once from the card's
+`onClick` label, once from the line itself.
+
+**A `clearAndSetSemantics {}` trap, worth not rediscovering.** The first version of the affordance
+`Text` chained `.testTag(TAG)` *before* `.clearAndSetSemantics {}`, on the (wrong) assumption that a
+tag set earlier in the modifier chain would survive a later semantics wipe on the same node. It does
+not: `clearAndSetSemantics {}` replaces the whole semantics config for that node, tag included, so
+`onNodeWithTag` — with or without `useUnmergedTree` — could find nothing and both new instrumented
+tests failed with "is not displayed" (Compose's test error for "matched zero nodes" is worded
+identically to "matched but invisible", which is what made this look at first like a visibility bug
+rather than a missing-node one). `SearchScreen.kt`'s `SEARCH_REFRESH_PROGRESS_TAG` already documents
+the fix for the identical shape: **set the tag *inside* the `clearAndSetSemantics` block**
+(`clearAndSetSemantics { testTag = TUTORIAL_TAP_AFFORDANCE_TAG }`), which is what ships. Confirmed
+empirically via a `printToLog` semantics-tree dump before reaching for the fix, not guessed.
+
+### Verified this pass
+
+Full debug JVM suite, `--rerun-tasks`: **1944/1944** (0 failures, 0 errors, 0 skipped, counted from
+204 JUnit XML files) — the exact figure recorded for the prior pass, confirming no regression while
+`CalloutPlacementTest`'s cases changed shape. `:app:lintDebug`: exit 0, **22 findings, 0 errors** —
+unchanged baseline. `:app:assembleDebug` BUILD SUCCESSFUL (89.8 MB).
+
+Instrumented, the four tutorial-affected classes together on the `carbscan` emulator —
+`TutorialScreenTest`, `TutorialNavigationTest`, `HomeTutorialReminderTest`, `WelcomeCarouselScreenTest`
+— **47/47, 0 skipped, 0 failed**, in one combined run.
+
+**Not verified on physical hardware.** Everything above is JVM plus the emulator.
+`docs/manual-qa.md` §41 rows for the removed button (41.5a-c), the tap-to-continue affordance and
+the large-font clamped placement (41.21) are new and unchecked on a device.
+
 ## Scanner shutter haptic feedback (2026-09-08) — READ FIRST
 
 `1.0.6` / `versionCode 7` — see "Version and track state" further down this file for the single
@@ -188,6 +293,14 @@ reach a preview control that would do nothing.
 
 ### The overlay's presentation (2026-09-08) — owner: "it dims the screen, too boxy, too much dimming"
 
+**Corrected 2026-09-09 (see the tap-anywhere completion pass further down this file): the halo
+pulse, the arrow, the progress-dot row and the "returns CENTERED when neither side fits" placement
+rule described in this subsection were all removed or replaced in a later pass and no longer exist.**
+This subsection is kept for its reasoning about the dim, the feather and the `IntrinsicSize.Min`
+spine — which are all still true — but its claims about the ring's motion, an arrow, a dot row and
+`CalloutSide.CENTERED` as the no-room fallback are historical. See the tap-anywhere completion pass
+for what replaced each one.
+
 Presentation only; no step, wording, navigation or flag behaviour changed.
 
 **The dim is graded, not flat.** `BASE_SCRIM` is **0.42**, down from a flat 0.78 everywhere. A single
@@ -203,15 +316,19 @@ wrong** — a band of uniform alpha reads on the device as a pale ring drawn aro
 a second edge, which is exactly the boxiness the feather exists to remove. Only a screenshot showed
 it.
 
-**Only the halo pulses, never the ring.** `TutorialSpotlightDecoration(pulse=)` scales three
-concentric halo strokes; the ring itself stays exactly on the control's bounds. A border that grows
-and shrinks around a button reads as the button changing size, and on this screen the ring is a claim
-about *which* control the words describe.
+**~~Only the halo pulses, never the ring~~ — SUPERSEDED 2026-09-09.** `TutorialSpotlightDecoration`
+no longer takes a `pulse` parameter at all. The tap-anywhere completion pass simplified it to a
+single static ring with no motion of its own — see that pass below for why (a tap-anywhere overlay
+needs no arrow telling the user where to press, and a static ring is quieter). Do not re-add a pulse
+without re-reading that reasoning.
 
-**The spotlight travels between steps, but only between two known targets.** `lerpRect` interpolates
-per edge (not centre-plus-size, so a target changing shape stays a rectangle). Animating into or out
-of null is deliberately excluded: it would slide the hole from the screen's origin, or leave it
-briefly over a control the current step is not talking about.
+**The spotlight travels between steps, but only between two known targets.** This is still true, but
+`lerpRect` no longer exists — the tap-anywhere completion pass replaced the separate
+rect-plus-progress-float state it belonged to with a single `Animatable<Rect>` (see that pass for
+the one-frame-flash bug the split state produced and why the single-state fix closes it structurally
+rather than by ordering). Animating into or out of null is still deliberately excluded: it would
+slide the hole from the screen's origin, or leave it briefly over a control the current step is not
+talking about.
 
 **`IntrinsicSize.Min` on the callout Row is load-bearing.** The accent spine asks to
 `fillMaxHeight()`, and in a parent offering unbounded height that takes all of it and drags the card
@@ -219,17 +336,21 @@ with it — **measured on the device, the card filled the screen top to bottom**
 stopped being a callout at all. The suite was green throughout; nothing in it looks at how tall a
 card is.
 
-**The progress dots use `hideFromAccessibility()`, not `clearAndSetSemantics {}`.** The latter
-removes the whole subtree *including the test tag*, so `TUTORIAL_PROGRESS_TAG` became unfindable and
-`progressIsRenderedForEveryStep` failed. The node must stay findable; it just must not be spoken —
-the card's "Step 2 of 6" eyebrow now carries that in words.
+**~~The progress dots use `hideFromAccessibility()`~~ — there was never a dot row.** This entry
+described a design that was not in fact built: the card's "Step 2 of 6" eyebrow text has been the
+*only* progress indicator since the tap-anywhere redesign, and no `TUTORIAL_PROGRESS_TAG` or dot
+composable exists anywhere in the source. Kept only as a record that a dot row was once planned;
+do not go looking for it.
 
 **Geometry, not coordinates.** `TutorialAnchors` records `boundsInRoot()` via `onGloballyPositioned`;
-an absent or zero-size rect returns null and the overlay renders a **centred callout with no arrow**
-rather than pointing at the origin. Anchors are cleared on backdrop change so a stale rectangle from
-the previous preview is never pointed at. `CalloutPlacement` (pure, 9 JVM cases) decides which side
-the card sits on and returns `CENTERED` when neither side fits — an overlapping card would hide the
-control the step is describing.
+an absent or zero-size rect returns null and the overlay renders a **centred callout** rather than
+pointing at the origin (there has been no arrow since the tap-anywhere redesign — the ring and the
+words are the only pointer). Anchors are cleared on backdrop change so a stale rectangle from the
+previous preview is never pointed at. `CalloutPlacement` (pure) decides which side the card sits on.
+**Its `CENTERED` fallback for "neither side fits" is superseded** — see the tap-anywhere completion
+pass below, which replaced it with a dedicated `CLAMPED` case: `CENTERED` is reserved for the
+no-spotlight step alone, and a card that fits neither the bottom nor the top zone is now clamped
+fully on screen by the caller rather than centred over the spotlight it would otherwise still cover.
 
 ### Verified (the two-introductions pass)
 

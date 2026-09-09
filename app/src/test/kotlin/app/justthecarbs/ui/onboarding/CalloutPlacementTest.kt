@@ -110,17 +110,44 @@ class CalloutPlacementTest {
     }
 
     @Test
-    fun `a very tall card that fits neither zone still resolves to top rather than centering`() {
-        // Bottom disqualified (does not fit); top is the only remaining on-target position, so it
-        // is used even though it is also tight -- there is no third "give up and center" outcome
-        // once a real spotlight exists. CENTERED is reserved for the no-spotlight case, decided by
-        // the caller, not by this function choosing it as a fallback.
+    fun `bottom disqualified but top has room still resolves to top`() {
+        // Bottom does not fit (1100px available, card needs 1150); top has 1600px and the card
+        // fits there -- the ordinary two-tier fallback, unchanged by the emergency case below.
+        val side = calloutSideFor(
+            spotlightTop = 1600f,
+            spotlightBottom = 1300f,
+            screenHeight = screen,
+            cardHeight = 1150f,
+        )
+        assertEquals(CalloutSide.ABOVE, side)
+    }
+
+    @Test
+    fun `a card that fits neither zone returns the emergency CLAMPED case, never a third comparison`() {
+        // Bottom disqualified (1100px available, needs 1150) AND top disqualified (also 1100px
+        // available, needs 1150) -- both real zones were measured and rejected, which is the one
+        // situation CLAMPED exists for. This is not "pick whichever is less bad": the function
+        // makes no comparison between the two rejected zones at all, it simply reports that
+        // neither held, and leaves placement to the caller (see OnboardingScreen).
         val side = calloutSideFor(
             spotlightTop = 1100f,
             spotlightBottom = 1300f,
             screenHeight = screen,
             cardHeight = 1150f,
         )
-        assertEquals(CalloutSide.ABOVE, side)
+        assertEquals(CalloutSide.CLAMPED, side)
+    }
+
+    @Test
+    fun `CLAMPED is reserved for a genuine double miss, not a close call on one side`() {
+        // Bottom exactly fits (1100px available, card needs exactly 1100) -- BELOW wins outright,
+        // the ordinary deterministic default, with no need to even consider CLAMPED.
+        val side = calloutSideFor(
+            spotlightTop = 1300f,
+            spotlightBottom = 1300f,
+            screenHeight = screen,
+            cardHeight = 1100f,
+        )
+        assertEquals(CalloutSide.BELOW, side)
     }
 }

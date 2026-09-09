@@ -688,8 +688,13 @@
         - Never promise the label reader is always right — step 4 says the user stays in control.
     -->
     <string name="tutorial_skip" tools:ignore="MissingTranslation">Skip</string>
+    <!-- Accessible action labels only — TalkBack announces these as the double-tap action on the
+         callout, since sighted users advance by tapping anywhere and see no button. -->
     <string name="tutorial_next" tools:ignore="MissingTranslation">Next</string>
     <string name="tutorial_finish" tools:ignore="MissingTranslation">Got it — start using Just the Carbs</string>
+    <!-- The restrained on-card affordance sighted users actually see, replacing a visible button. -->
+    <string name="tutorial_tap_to_continue" tools:ignore="MissingTranslation">Tap anywhere to continue</string>
+    <string name="tutorial_tap_to_finish" tools:ignore="MissingTranslation">Tap anywhere to finish</string>
     <string name="tutorial_progress" tools:ignore="MissingTranslation">Step %1$d of %2$d</string>
     <string name="tutorial_pane_title" tools:ignore="MissingTranslation">Tutorial</string>
     <string name="tutorial_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>

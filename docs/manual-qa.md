@@ -2331,7 +2331,7 @@ pins *which* cue is chosen; it says nothing about how any of them feel.
 
 ---
 
-## §41 — First-launch tutorial (1.0.6, 2026-09-08)
+## §41 — First-launch tutorial (1.0.6, 2026-09-08, revised 2026-09-09)
 
 **Revised 2026-09-08 (same day):** the app now has **two** introductions. The three-slide **welcome
 carousel** opens by itself on a genuine first launch; the **coach-mark tutorial** is still offered,
@@ -2339,11 +2339,25 @@ never imposed, as a card on Home for the first launch and the five after it. Row
 rewritten accordingly — an earlier revision of this section said the app always opens on Home, which
 is no longer true of a fresh install.
 
+**Revised 2026-09-09 (tap-anywhere completion pass):** the tutorial has **no visible Next/Finish
+button, no arrow and no Back control** — none of that is new to this revision, but this section
+still described all three as though they existed, from an earlier draft of the redesign that never
+shipped that way. Rewritten below to match the actual tap-anywhere contract: a tap almost anywhere
+on screen advances (Skip is the one exception), the spotlight is a single static ring with no arrow
+and no pulse, and the card carries a restrained "Tap anywhere to continue" / "Tap anywhere to
+finish" line rather than a button. Rows 41.5, 41.6, 41.9, 41.21, 41.22, 41.35 and 41.36 are rewritten
+or removed accordingly; three new rows (41.5a-c) cover what only a device can settle about
+tap-anywhere hit-testing.
+
 Automated coverage: `TutorialStepTest`, `CalloutPlacementTest`, `TutorialReminderTest`,
 `OnboardingViewModelTest`, `WelcomeCarouselViewModelTest` (pure JVM) plus `TutorialScreenTest`,
 `TutorialNavigationTest`, `HomeTutorialReminderTest` and `WelcomeCarouselScreenTest` (instrumented).
-What no test settles is **where the arrows actually point** on real hardware (41.5) and **whether the
-dim now reads correctly** (41.30-41.34).
+`TutorialScreenTest` now includes coordinate-based taps on the highlighted region and near the
+screen edges, a narrow-viewport render, and a large-font-scale render that exercises the
+`CalloutSide.CLAMPED` emergency placement — but all of that runs on the emulator's fixed screen size
+and default touch behaviour. What no test settles is **whether a tap actually lands correctly on a
+real device's touchscreen** at the sizes and font scales a real user has set (41.5a-c) and **whether
+the dim now reads correctly** (41.30-41.34).
 
 ### Fresh install
 
@@ -2358,22 +2372,34 @@ dim now reads correctly** (41.30-41.34).
       run is the point** — if finishing the carousel removed the card, the two flags have been
       collapsed into one.
 - [ ] 41.3 Tap *Show me*: the tutorial opens on step 1 of 6.
-- [ ] 41.4 Walk all six steps with *Next*. Each has its own title, one sentence, and a progress
-      indicator. The whole run takes roughly 30-45 seconds at a normal reading pace.
-- [ ] 41.5 **Every arrow points at the control its words name**, on each of steps 2-6: *Scan
+- [ ] 41.4 Walk all six steps by **tapping anywhere on screen** — not a button, just the screen.
+      Each step has its own title, one sentence, and a "Step N of 6" progress line. The whole run
+      takes roughly 30-45 seconds at a normal reading pace.
+- [ ] 41.5 On each of steps 2-6, the highlighted ring sits on the control its words name: *Scan
       barcode*, the search field, *Scan nutrition label*, *Add to meal*, *Meal Total*. A callout must
-      never cover the control it is describing, and no arrow may point at the screen corner.
-- [ ] 41.6 The final step's button reads *Start using Just the Carbs* and returns to Home.
+      never cover the control it is describing. There is **no arrow** — pressing anywhere advances,
+      so nothing points at where to press.
+- [ ] 41.5a **A tap landing directly on top of the highlighted control still advances.** The
+      backdrop is a drawing, not a real button — tapping the highlighted "Scan barcode" card itself
+      must behave exactly like tapping open scrim, not do nothing and not open the real scanner.
+- [ ] 41.5b **A tap near any screen edge (a thumb reaching around a large phone) still advances.**
+      Try all four corners and the very top/bottom edge, not just the centre of the screen.
+- [ ] 41.5c On the **final step**, the card reads "Tap anywhere to finish" rather than "Tap anywhere
+      to continue", and a tap anywhere finishes and returns to Home rather than advancing to a
+      seventh step.
+- [ ] 41.6 The final step returns to Home once tapped, and Home now says "Got it — start using Just
+      the Carbs" was the accessible action label if checked with TalkBack (41.24) — nothing about
+      this needs a visible button to work.
 - [ ] 41.7 After finishing, the *New here?* card is gone from Home and does not return on the next
       launch.
 
-### Skip, Back and dismissal
+### Skip and dismissal
 
 - [ ] 41.8 Skip works from **every** step (repeat: open the tutorial, advance to step N, tap Skip).
       It returns to Home and retires the card permanently.
-- [ ] 41.9 *Back* is absent on step 1 and present on steps 2-6, and returns one step.
-- [ ] 41.10 System Back exits the tutorial from any step — it does not step backwards — and retires
-      the card, exactly as Skip does.
+- [ ] 41.10 System Back exits the tutorial from any step — it does not step backwards, because there
+      is no backwards; the tutorial is forward-only with no Back control anywhere — and retires the
+      card, exactly as Skip does.
 - [ ] 41.11 Fresh install, tap *No thanks* instead: the tutorial does not open, the card disappears,
       and it does not return on the next launch. **This is the reinstalling-expert path.**
 - [ ] 41.12 Fresh install, ignore the card entirely and relaunch the app 6 times. The card is present
@@ -2383,7 +2409,7 @@ dim now reads correctly** (41.30-41.34).
 
 - [ ] 41.13 Settings shows *Replay tutorial* with its explanatory line, and tapping it opens the
       tutorial.
-- [ ] 41.14 Skip, system Back, and the final action from replay mode all return to **Settings**, not
+- [ ] 41.14 Skip, system Back, and a tap-to-finish from replay mode all return to **Settings**, not
       to Home.
 - [ ] 41.15 Replaying does not bring the Home card back and does not alter anything else.
 
@@ -2396,29 +2422,34 @@ dim now reads correctly** (41.30-41.34).
 - [ ] 41.18 After a full tutorial run, Home lists **no new products**, and the meal is unchanged (an
       in-progress meal is still exactly as it was; an empty one is still empty). The example foods
       shown in the previews are drawings and must never be saved.
-- [ ] 41.19 Tapping the dimmed preview behind the overlay does nothing — no control behind the scrim
-      is operable.
+- [ ] 41.19 Tapping the dimmed preview behind the overlay does nothing except advance the step (or
+      finish, on the last step) — no control behind the scrim is separately operable; the tap always
+      lands on the tap-anywhere surface, never on the drawing beneath it.
 
 ### Presentation
 
 - [ ] 41.20 Light theme and Dark theme: text is legible on the callout card in both, and the
       spotlight ring is visible against the dimmed backdrop.
-- [ ] 41.21 Largest font scale (Settings → Display → Font size): no callout text is clipped and the
-      primary action is still reachable on every step.
-- [ ] 41.22 Rotate to landscape mid-tutorial and back: the step does not reset, and the arrow still
-      points at the right control in both orientations.
+- [ ] 41.21 Largest font scale (Settings → Display → Font size): no callout text is clipped, and the
+      card stays fully on screen — check specifically that it never renders partly above the top
+      edge or spilling past the bottom edge, which is the case `CalloutSide.CLAMPED` exists for.
+- [ ] 41.22 Rotate to landscape mid-tutorial and back: the step does not reset, and the spotlight
+      still highlights the right control in both orientations.
 - [ ] 41.23 A small/narrow phone: the callout never runs off either edge.
 - [ ] 41.24 TalkBack: entering the tutorial is announced; each step's title and body are read on
       arrival; the preview's controls behind the scrim are **not** reachable by swipe navigation.
+      The card itself is reachable and its double-tap action is labelled "Next" (or, on the final
+      step, the finish string) — this is the accessible path now that there is no visible button;
+      confirm double-tapping it advances/finishes exactly as a sighted tap-anywhere does.
 
 ### Failure recovery (if practical)
 
 - [ ] 41.25 If a DataStore write failure can be induced, finishing the tutorial shows the "Could not
       save. Try again." line, **stays on the tutorial**, and the action can be tapped again and
-      succeed. The user must never be dropped onto Home as though it had saved, nor trapped with a
-      dead button.
+      succeed. The user must never be dropped onto Home as though it had saved, nor trapped unable
+      to retry.
 
-### The overlay's appearance (added 2026-09-08) — these are judgements, not assertions
+### The overlay's appearance (added 2026-09-08, revised 2026-09-09) — these are judgements, not assertions
 
 The owner's report was "it dims the screen, too boxy, too much dimming". Nothing in the automated
 suite looks at a shadow, a corner radius or a scrim alpha, so these rows are the only check on the
@@ -2438,10 +2469,10 @@ desktop monitor is not the same judgement.
       theme, where a white card on a light dim is where a missing shadow shows first.
 - [ ] 41.34 **The card is only as tall as its words.** It must not stretch to fill the screen — that
       was a real defect on the emulator and no test catches it.
-- [ ] 41.35 **Motion.** Moving between steps: the spotlight travels rather than jumping, the words
-      cross-fade, and the progress indicator slides. The halo breathes slowly and should be easy to
-      ignore — if it draws the eye away from reading, it is too fast or too large.
-- [ ] 41.36 On a **low-end device**, the halo pulse and the 12-band feather redraw every frame the
-      tutorial is on screen. Confirm no visible stutter while stepping through.
+- [ ] 41.35 **Motion.** Moving between steps: the spotlight travels rather than jumping and the words
+      cross-fade. The spotlight ring itself is a single static outline — it should not pulse, breathe
+      or otherwise move on its own; only its position between steps should animate.
+- [ ] 41.36 On a **low-end device**, the 12-band feather redraws every frame the tutorial is on
+      screen. Confirm no visible stutter while stepping through.
 
 **Result:** ____________________ **Date:** ____________
