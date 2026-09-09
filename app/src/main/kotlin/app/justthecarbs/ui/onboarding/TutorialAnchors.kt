@@ -11,7 +11,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 /**
  * Where each preview control actually landed, in root coordinates.
  *
- * The spotlight and arrow are drawn from measured geometry rather than from hardcoded coordinates or
+ * The spotlight is drawn from measured geometry rather than from hardcoded coordinates or
  * a screenshot, which is what lets them stay correct across phone sizes, rotation, system-bar insets
  * and font scale: whatever the layout does, the bounds reported here describe it.
  *
@@ -31,12 +31,11 @@ class TutorialAnchors {
      *
      * Null is a real and expected answer, not a failure: on the frame before layout completes, and
      * on any step whose backdrop does not contain that control, there is genuinely no rectangle. The
-     * caller renders a centred callout with no arrow rather than pointing at the origin.
+     * caller temporarily withholds the spotlight rather than pointing at the origin.
      *
      * An empty rectangle is treated as absent too. A composable that is measured but not placed
      * reports a zero-size rect at the origin, and drawing a spotlight there would put a circle in
-     * the screen's top-left corner and an arrow to nothing — the exact failure this returns null to
-     * avoid.
+     * the screen's top-left corner — the exact failure this returns null to avoid.
      */
     fun boundsOf(anchor: TutorialAnchor): Rect? =
         bounds[anchor]?.takeIf { it.width > 0f && it.height > 0f }

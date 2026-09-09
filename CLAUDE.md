@@ -51,6 +51,56 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Tutorial V2: Guided Light / Color Echo (2026-09-09)
+
+Owner-approved baseline was the **local, uncommitted stable-narration V1** above `4366435`,
+not a checkout of GitHub main. The older callout placement notes below remain historical.
+
+V2 keeps the measured preview/spotlight and tap-anywhere architecture. `TutorialStep` now carries
+chapter, semantic accent and focus-radius category; `TutorialStyle.kt` resolves them from the live
+theme (primary/barcode/search blue, label green, portion orange, total result red). Preview colours
+and application/navigation/persistence behaviour are unchanged. Compact previews reserve Skip space,
+use smaller existing type roles and tighter spacing at large fonts, and give each workflow item equal
+width. The rhythm labels now match the concise Scan / Portion / Carbs copy. This closes the demonstrated
+320dp/2x-font failure where the product preview ran out of height before Add to meal could be measured.
+
+The six exact headline/body pairs are in `strings.xml`. Narration uses a full-width six-part story
+rail, a visual `01 / 06 · START` counter with spoken `Step 1 of 6`, 24sp bold Space Grotesk headlines,
+and full-contrast body text. A neutral readability fade carries a 7.5%-peak accent wash that fades
+out at both ends. The aura uses progressively fading narrow bands, avoiding a hard coloured ring.
+Accent, radius and finite focus acquisition use `Motion.STANDARD_MS`; the existing authoritative
+Rect animation and short backdrop/copy fades remain. Acquisition waits for valid measured geometry.
+
+`StableTutorialCopy` measures the six copy pairs at the actual width/font scale and reserves the
+tallest block, placing only the active animated copy. This prevents headline wrapping from moving
+the reading position or the HOME preview between steps. Measurement-only copies have no semantics.
+Skip, preview exclusion, polite copy announcement and meaningful accessibility advance actions remain.
+
+`TutorialVisualTest` checks all chapters in six theme/font/width configurations. Its optional
+`-e tutorialScreenshots true` instrumentation argument writes review captures to the debug app's
+external-files `tutorial-v2` directory. These are human review evidence, not pixel-golden assertions;
+run directly with adb and pull before uninstalling the test app.
+
+Current V2 verification (2026-09-09): `:app:testDebugUnitTest :app:lintDebug
+:app:assembleDebug :app:assembleDebugAndroidTest` succeeded (including androidTest Kotlin
+compilation). JVM XML reports 1,938 tests, zero failures/errors/skips; lint has zero errors and
+22 warnings. Direct adb instrumentation passed TutorialScreenTest (26), TutorialNavigationTest
+(10), HomeTutorialReminderTest (7), WelcomeCarouselScreenTest (8): 51 total, zero failures.
+TutorialVisualTest passed all six configurations on the final build (84.125 seconds).
+
+Inspected all six chapters at 400dp in light/dark with 1x/2x fonts, plus 320dp light/1x and
+320dp dark/2x on the Android 16 emulator. Checked stable narration/headline placement, readable
+copy, Skip spacing, semantic accents, target visibility and the compact meal-row correction.
+Screenshots were pulled to the workstation temporary `tutorial-v2-delivery-captures` directory.
+A continuous emulator recording also exercised slow advance and five rapid taps in 0.969 seconds;
+both reached step 6 and finish returned to Settings. Sampled transition frames showed the spotlight
+retargeting and copy fades settling correctly, with stable narration placement. This is sampled
+visual evidence, not an exhaustive assertion about every rendered frame.
+These checks do not constitute a physical-device or live TalkBack session; accessibility semantics
+and advance/finish/Skip behavior are covered by instrumentation. No release build or publishing
+was performed. The existing local V1 edits/deletions remain; V2 adds TutorialStyle.kt and
+TutorialVisualTest.kt without deleting additional architecture files.
+
 ## Tap-anywhere tutorial: completion pass (2026-09-09) — READ FIRST
 
 Surgical follow-up closing an implementation miss and two real defects in the tap-anywhere tutorial

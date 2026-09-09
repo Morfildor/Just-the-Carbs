@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,9 +33,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.justthecarbs.BuildConfig
 import app.justthecarbs.R
 import app.justthecarbs.ui.theme.NumberType
@@ -81,25 +84,29 @@ fun TutorialBackdropContent(
 
 @Composable
 private fun HomePreview(anchors: TutorialAnchors) {
+    val accessibilityLayout = LocalDensity.current.fontScale >= ACCESSIBILITY_PREVIEW_FONT_SCALE
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
             .padding(horizontal = Space.screenEdge),
     ) {
-        Spacer(Modifier.height(Space.s))
-        Text(
-            text = BuildConfig.APP_NAME,
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(Space.m))
+        // Reserve the independent Skip row when the app title is omitted at large fonts.
+        Spacer(Modifier.height(if (accessibilityLayout) Space.minTouchTarget else Space.s))
+        if (!accessibilityLayout) {
+            Text(
+                text = BuildConfig.APP_NAME,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(Space.m))
+        }
 
         // The real Home search field's label and placeholder, drawn as a static field.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .heightIn(min = 56.dp)
                 .clip(RoundedCornerShape(Space.buttonRadius))
                 .border(
                     1.dp,
@@ -107,7 +114,7 @@ private fun HomePreview(anchors: TutorialAnchors) {
                     RoundedCornerShape(Space.buttonRadius),
                 )
                 .tutorialAnchor(anchors, TutorialAnchor.SEARCH)
-                .padding(horizontal = Space.m),
+                .padding(horizontal = Space.m, vertical = Space.s),
             contentAlignment = Alignment.CenterStart,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -119,7 +126,7 @@ private fun HomePreview(anchors: TutorialAnchors) {
                 Spacer(Modifier.width(Space.s))
                 Text(
                     text = stringResource(R.string.home_search_label),
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = if (accessibilityLayout) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -134,6 +141,7 @@ private fun HomePreview(anchors: TutorialAnchors) {
                 MaterialTheme.colorScheme.primary,
                 MaterialTheme.extendedColors.accents.indigo,
             ),
+            compact = accessibilityLayout,
             modifier = Modifier.tutorialAnchor(anchors, TutorialAnchor.SCAN_BARCODE),
         )
         Spacer(Modifier.height(Space.s))
@@ -145,14 +153,17 @@ private fun HomePreview(anchors: TutorialAnchors) {
                 MaterialTheme.extendedColors.accents.teal,
                 MaterialTheme.extendedColors.accents.green,
             ),
+            compact = accessibilityLayout,
             modifier = Modifier.tutorialAnchor(anchors, TutorialAnchor.SCAN_LABEL),
         )
 
-        Spacer(Modifier.height(Space.l))
+        Spacer(if (accessibilityLayout) Modifier.weight(1f) else Modifier.height(Space.l))
         // The find → portion → carbs rhythm the first step describes, drawn with the same three
         // icons Home's own empty state uses so the tutorial and the app agree visually.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .tutorialAnchor(anchors, TutorialAnchor.RHYTHM),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -174,7 +185,10 @@ private fun HomePreview(anchors: TutorialAnchors) {
                 ),
             )
             steps.forEachIndexed { index, (icon, labelRes, tint) ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     Box(
                         modifier = Modifier
                             .size(44.dp)
@@ -186,16 +200,17 @@ private fun HomePreview(anchors: TutorialAnchors) {
                     Spacer(Modifier.height(Space.xs))
                     Text(
                         text = stringResource(labelRes),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 if (index != steps.lastIndex) {
                     Box(
                         modifier = Modifier
-                            .padding(horizontal = Space.s)
+                            .padding(horizontal = if (accessibilityLayout) Space.xs else Space.s)
                             .padding(bottom = Space.m)
-                            .width(16.dp)
+                            .width(if (accessibilityLayout) 8.dp else 16.dp)
                             .height(2.dp)
                             .background(MaterialTheme.colorScheme.outlineVariant),
                     )
@@ -211,6 +226,7 @@ private fun PreviewActionCard(
     title: String,
     subtitle: String,
     gradient: List<Color>,
+    compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -218,31 +234,41 @@ private fun PreviewActionCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(Space.cardRadius))
             .background(Brush.linearGradient(gradient))
-            .padding(horizontal = Space.m, vertical = Space.m),
+            .padding(horizontal = Space.m, vertical = if (compact) Space.s else Space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(if (compact) 36.dp else 44.dp)
                 .background(Color.White.copy(alpha = 0.20f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
         }
         Column(modifier = Modifier.padding(horizontal = Space.m)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
-            Spacer(Modifier.height(2.dp))
             Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.82f),
+                text = title,
+                style = if (compact) MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp) else MaterialTheme.typography.titleMedium,
+                color = Color.White,
             )
+            if (!compact) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.82f),
+                )
+            }
         }
     }
 }
 
+private const val ACCESSIBILITY_PREVIEW_FONT_SCALE = 1.5f
+
 @Composable
 private fun ProductPreview(anchors: TutorialAnchors) {
+    val compact = LocalDensity.current.fontScale >= ACCESSIBILITY_PREVIEW_FONT_SCALE
+    val sectionGap = if (compact) Space.xs else Space.l
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -250,26 +276,26 @@ private fun ProductPreview(anchors: TutorialAnchors) {
             .padding(horizontal = Space.screenEdge),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(Space.s))
+        Spacer(Modifier.height(if (compact) Space.minTouchTarget else Space.s))
         Text(
             text = stringResource(R.string.tutorial_example_product),
-            style = MaterialTheme.typography.titleLarge,
+            style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(Space.xs))
         Text(
             text = stringResource(R.string.tutorial_example_per_hundred, EXAMPLE_CARBS),
-            style = MaterialTheme.typography.bodyMedium,
+            style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Spacer(Modifier.height(Space.l))
+        Spacer(Modifier.height(sectionGap))
         Text(
-            text = stringResource(R.string.product_portion_question),
-            style = MaterialTheme.typography.bodyMedium,
+            text = stringResource(if (compact) R.string.tutorial_rhythm_portion else R.string.product_portion_question),
+            style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(Space.s))
@@ -286,12 +312,12 @@ private fun ProductPreview(anchors: TutorialAnchors) {
         ) {
             Text(
                 text = "$EXAMPLE_PORTION g",
-                style = NumberType.portion,
+                style = if (compact) MaterialTheme.typography.headlineMedium else NumberType.portion,
                 color = MaterialTheme.colorScheme.onSurface,
             )
         }
 
-        Spacer(Modifier.height(Space.l))
+        Spacer(Modifier.height(sectionGap))
         Text(
             text = stringResource(R.string.product_result_label),
             style = MaterialTheme.typography.labelSmall,
@@ -305,7 +331,7 @@ private fun ProductPreview(anchors: TutorialAnchors) {
             autoSize = NumberType.resultAutoSize,
         )
 
-        Spacer(Modifier.height(Space.l))
+        Spacer(Modifier.height(sectionGap))
         // The real *Add to meal* label — the control the step tells the user to tap.
         Box(
             modifier = Modifier
@@ -327,6 +353,7 @@ private fun ProductPreview(anchors: TutorialAnchors) {
 
 @Composable
 private fun MealPreview(anchors: TutorialAnchors) {
+    val compact = LocalDensity.current.fontScale >= ACCESSIBILITY_PREVIEW_FONT_SCALE
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         Column(
             modifier = Modifier
@@ -337,7 +364,7 @@ private fun MealPreview(anchors: TutorialAnchors) {
             Spacer(Modifier.height(Space.s))
             Text(
                 text = stringResource(R.string.meal_title),
-                style = MaterialTheme.typography.titleLarge,
+                style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(Space.m))
@@ -383,30 +410,31 @@ private fun MealPreview(anchors: TutorialAnchors) {
 
 @Composable
 private fun PreviewMealRow(name: String, portion: String, carbs: String) {
+    val compact = LocalDensity.current.fontScale >= ACCESSIBILITY_PREVIEW_FONT_SCALE
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Space.cardRadius))
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(Space.cardRadius))
-            .padding(Space.m),
+            .padding(if (compact) Space.s else Space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = name,
-                style = MaterialTheme.typography.titleMedium,
+                style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = portion,
-                style = MaterialTheme.typography.bodyMedium,
+                style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Text(
             text = carbs,
-            style = MaterialTheme.typography.titleMedium,
+            style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium,
             color = MaterialTheme.extendedColors.result,
         )
     }

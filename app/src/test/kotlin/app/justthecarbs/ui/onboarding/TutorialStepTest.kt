@@ -28,7 +28,7 @@ class TutorialStepTest {
         // is the rhythm the first step describes, so the sequence must actually follow it.
         assertEquals(
             listOf(
-                TutorialAnchor.NONE,
+                TutorialAnchor.RHYTHM,
                 TutorialAnchor.SCAN_BARCODE,
                 TutorialAnchor.SEARCH,
                 TutorialAnchor.SCAN_LABEL,
@@ -41,7 +41,7 @@ class TutorialStepTest {
 
     @Test
     fun `each backdrop shows the screen its step is teaching`() {
-        // Pointing at *Add to meal* over a drawing of Home would put an arrow on a control that is
+        // Highlighting *Add to meal* over a drawing of Home would focus a control that is
         // not there. The backdrop and the anchor have to agree.
         assertEquals(TutorialBackdrop.HOME, TUTORIAL_STEPS[0].backdrop)
         assertEquals(TutorialBackdrop.HOME, TUTORIAL_STEPS[1].backdrop)
@@ -52,12 +52,10 @@ class TutorialStepTest {
     }
 
     @Test
-    fun `only the orientation step has no target`() {
-        // A teaching step with no anchor would render a centred card and teach nothing about where
-        // to tap, which is the one thing a coach mark exists to do.
+    fun `every normal tutorial step has a measured target`() {
         val anchorless = TUTORIAL_STEPS.filter { it.anchor == TutorialAnchor.NONE }
-        assertEquals(1, anchorless.size)
-        assertEquals(TUTORIAL_STEPS.first(), anchorless.single())
+        assertEquals(0, anchorless.size)
+        assertEquals(TutorialAnchor.RHYTHM, TUTORIAL_STEPS.first().anchor)
     }
 
     @Test
@@ -73,7 +71,7 @@ class TutorialStepTest {
     @Test
     fun `no anchor is taught twice`() {
         // Two steps pointing at the same control would spend two of the six moments on one lesson.
-        val targeted = TUTORIAL_STEPS.map { it.anchor }.filter { it != TutorialAnchor.NONE }
+        val targeted = TUTORIAL_STEPS.map { it.anchor }
         assertEquals(targeted.size, targeted.toSet().size)
     }
 
@@ -81,6 +79,7 @@ class TutorialStepTest {
     fun `the four teaching anchors the brief names are all covered`() {
         val anchors = TUTORIAL_STEPS.map { it.anchor }.toSet()
         listOf(
+            TutorialAnchor.RHYTHM,
             TutorialAnchor.SCAN_BARCODE,
             TutorialAnchor.SEARCH,
             TutorialAnchor.SCAN_LABEL,
@@ -88,4 +87,13 @@ class TutorialStepTest {
             TutorialAnchor.MEAL_TOTAL,
         ).forEach { assertTrue("missing $it", it in anchors) }
     }
+    @Test
+    fun `semantic accents follow features and reserve red for the total`() {
+        assertEquals(TutorialAccent.entries, TUTORIAL_STEPS.map { it.accent })
+        assertEquals(6, TUTORIAL_STEPS.map { it.chapterRes }.toSet().size)
+        TUTORIAL_STEPS.forEach { assertNotEquals(0, it.chapterRes) }
+        assertEquals(TutorialFocusStyle.CONTROL, TUTORIAL_STEPS[2].focusStyle)
+        assertEquals(TutorialFocusStyle.RESULT, TUTORIAL_STEPS.last().focusStyle)
+    }
+
 }

@@ -8,9 +8,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -49,7 +47,7 @@ fun TutorialScrim(
     modifier: Modifier = Modifier,
 ) {
     Canvas(
-        // The scrim is pure decoration: the callout carries the words, and announcing a dimming
+        // The scrim is pure decoration: narration carries the words, and announcing a dimming
         // layer would put a meaningless stop between the title and the action.
         modifier = modifier.clearAndSetSemantics { },
     ) {
@@ -113,7 +111,7 @@ fun TutorialScrim(
                             radiusPx + inset,
                             radiusPx + inset,
                         ),
-                        style = Stroke(width = bandWidth + 1f),
+                        style = Stroke(width = bandWidth * FEATHER_OVERLAP),
                         blendMode = BlendMode.DstOut,
                     )
                 }
@@ -132,7 +130,8 @@ private val FEATHER = 28.dp
  * Enough that the steps are not individually visible at this width; more would cost overdraw for no
  * difference anyone can see.
  */
-private const val FEATHER_STEPS = 12
+private const val FEATHER_STEPS = 32
+private const val FEATHER_OVERLAP = 1.05f
 
 /**
  * How much extra dim the edges of the screen carry over the base wash.
@@ -143,15 +142,13 @@ private const val FEATHER_STEPS = 12
 private const val EDGE_WEIGHT = 0.85f
 
 /**
- * The ring drawn around the spotlight.
+ * The quiet focus aura drawn around the spotlight.
  *
- * Restrained by design: one static rounded outline, nothing else. No pulse, no connector, no
- * arrowhead — the tutorial is read once and should not be the loudest thing the user ever sees the
- * app do, and a tap-anywhere overlay does not need an arrow telling the user where to press, because
- * pressing anywhere works.
+ * A hairline edge and progressively softer outer strokes reinforce the feathered hole without
+ * making the border itself the focus. There is no loop, pulse, connector, or arrowhead.
  *
  * The border is not the only cue that a control is the target: the spotlight is a hole in an
- * otherwise uniform dim, and the callout names the control in words. So the design does not rely on
+ * otherwise uniform dim, and the narration names the control in words. The design does not rely on
  * colour alone.
  */
 @Composable
@@ -161,6 +158,7 @@ fun TutorialSpotlightDecoration(
     cornerRadius: Dp,
     strokeWidth: Dp,
     modifier: Modifier = Modifier,
+    acquisition: Float = 1f,
 ) {
     Canvas(modifier = modifier.clearAndSetSemantics { }) {
         if (spotlight == null) return@Canvas
@@ -168,15 +166,36 @@ fun TutorialSpotlightDecoration(
         val radiusPx = cornerRadius.toPx()
         val strokePx = strokeWidth.toPx()
 
-        drawRoundRect(
-            color = accent,
-            topLeft = spotlight.topLeft,
-            size = spotlight.size,
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
-            style = Stroke(width = strokePx),
-        )
+        AURA_LAYERS.forEach { layer ->
+            val outset = layer.outset.toPx() + minOf(spotlight.width, spotlight.height) * 0.025f * (1f - acquisition)
+            drawRoundRect(
+                color = accent.copy(alpha = layer.alpha * (0.8f + 0.2f * acquisition)),
+                topLeft = Offset(spotlight.left - outset, spotlight.top - outset),
+                size = androidx.compose.ui.geometry.Size(
+                    spotlight.width + outset * 2f,
+                    spotlight.height + outset * 2f,
+                ),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                    radiusPx + outset,
+                    radiusPx + outset,
+                ),
+                style = Stroke(width = if (layer.width == null) strokePx else layer.width.toPx()),
+            )
+        }
     }
 }
+
+private data class AuraLayer(val outset: Dp, val alpha: Float, val width: Dp? = null)
+
+// Adjacent translucent bands fade continuously, avoiding a second outlined component.
+private val AURA_LAYERS = (0 until 20).map { index ->
+    val falloff = 1f - index / 20f
+    AuraLayer(
+        outset = (index + 0.5f).dp,
+        alpha = 0.10f * falloff * falloff,
+        width = 1.1.dp,
+    )
+} + AuraLayer(outset = 0.dp, alpha = 0.12f)
 
 /**
  * Grow [rect] by [padding] on every side, clamped to a [width] x [height] screen.

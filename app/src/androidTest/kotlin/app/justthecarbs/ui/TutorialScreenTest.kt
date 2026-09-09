@@ -2,6 +2,7 @@ package app.justthecarbs.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -13,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
@@ -31,10 +33,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.justthecarbs.domain.ThemeChoice
 import app.justthecarbs.ui.onboarding.OnboardingScreen
 import app.justthecarbs.ui.onboarding.TUTORIAL_BODY_TAG
-import app.justthecarbs.ui.onboarding.TUTORIAL_CALLOUT_TAG
 import app.justthecarbs.ui.onboarding.TUTORIAL_LAST_STEP
+import app.justthecarbs.ui.onboarding.TUTORIAL_NARRATION_TAG
 import app.justthecarbs.ui.onboarding.TUTORIAL_OVERLAY_TAG
+import app.justthecarbs.ui.onboarding.TUTORIAL_PROGRESS_TAG
 import app.justthecarbs.ui.onboarding.TUTORIAL_SKIP_TAG
+import app.justthecarbs.ui.onboarding.TUTORIAL_SPOTLIGHT_TAG
 import app.justthecarbs.ui.onboarding.TUTORIAL_STEPS
 import app.justthecarbs.ui.onboarding.TUTORIAL_TAP_AFFORDANCE_TAG
 import app.justthecarbs.ui.onboarding.TUTORIAL_TAP_SURFACE_TAG
@@ -51,7 +55,7 @@ import org.junit.Test
  * one step, including a tap directly over the highlighted control; Skip is the one deliberate
  * exception and always wins hit-testing on its own bounds; the final step's tap finishes instead of
  * advancing. There is no visible Next/Finish button anywhere on screen — see
- * [app.justthecarbs.ui.onboarding.OnboardingScreen]'s `CalloutCard` for why, and for how TalkBack
+ * [app.justthecarbs.ui.onboarding.OnboardingScreen]'s narration semantics for why, and for how TalkBack
  * still gets a real advance action through semantics rather than a pointer-input control.
  *
  * **Instrumented: needs a device or emulator.** The step machine is covered by pure JVM tests
@@ -143,22 +147,20 @@ class TutorialScreenTest {
     }
 
     @Test
-    fun theTeachingStepsNameTheAppsOwnControls() {
+    fun searchChapterUsesTheApprovedConciseCopy() {
         showTutorial(startStep = 2)
         compose.onNodeWithTag(TUTORIAL_BODY_TAG, useUnmergedTree = true)
             .assertTextEquals(string(TUTORIAL_STEPS[2].bodyRes))
-        compose.onNodeWithText(string(app.justthecarbs.R.string.home_search_label), substring = true)
-            .assertExists()
+        compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true)
+            .assertTextEquals("Know the name? Search it.")
     }
 
     @Test
-    fun tappingTheCalloutCardBackgroundAlsoAdvances() {
-        // The card has no clickable of its own on its background, so a tap there falls through to
-        // the tap surface beneath it exactly like a tap on open scrim -- pinned here because it is
-        // the specific case the spec calls out: the card must not need to reimplement "tap advances".
+    fun tappingTheNarrationBackgroundAlsoAdvances() {
         showTutorial()
 
-        compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true).performClick()
+        val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag(TUTORIAL_TAP_SURFACE_TAG).performTouchInput { click(narration.center) }
         compose.waitForIdle()
 
         compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true)
@@ -251,14 +253,14 @@ class TutorialScreenTest {
     }
 
     @Test
-    fun theCardsAccessibilityActionAlsoFinishesOnTheFinalStep() {
-        // TalkBack's path: the callout card carries a real onClick accessibility action -- labelled
+    fun theNarrationsAccessibilityActionAlsoFinishesOnTheFinalStep() {
+        // TalkBack's path: the narration carries a real onClick accessibility action -- labelled
         // from the same tutorial_finish string the old visible button used -- so explore-by-touch and
         // the double-tap gesture still reach Finish, with no visible button anywhere on screen.
         var exits = 0
         showTutorial(startStep = TUTORIAL_LAST_STEP, onExit = { exits++ })
 
-        compose.onNodeWithTag(TUTORIAL_CALLOUT_TAG)
+        compose.onNodeWithTag(TUTORIAL_NARRATION_TAG)
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.waitForIdle()
 
@@ -266,7 +268,7 @@ class TutorialScreenTest {
     }
 
     @Test
-    fun theCardsAccessibilityActionAdvancesOnAnOrdinaryStep() {
+    fun theNarrationsAccessibilityActionAdvancesOnAnOrdinaryStep() {
         var nextCalls = 0
         compose.setContent {
             var step by remember { mutableStateOf(0) }
@@ -282,7 +284,7 @@ class TutorialScreenTest {
             }
         }
 
-        compose.onNodeWithTag(TUTORIAL_CALLOUT_TAG)
+        compose.onNodeWithTag(TUTORIAL_NARRATION_TAG)
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.waitForIdle()
 
@@ -370,13 +372,46 @@ class TutorialScreenTest {
 
     @Test
     fun theStepCountTextIsExactlyStepOneOfSix() {
-        // "Step 1 of 6" is the one remaining progress indicator, asserted as the literal rendered
-        // string rather than merely "a text node exists" -- tutorial_progress is "Step %1$d of %2$d"
-        // and TUTORIAL_STEPS.size is 6 (both confirmed in strings.xml / TutorialStep.kt), so this
-        // proves the words-only replacement for the dot row actually renders, not just that some
-        // node is present.
         showTutorial(startStep = 0)
-        compose.onNodeWithText("Step 1 of 6").assertIsDisplayed()
+        compose.onNodeWithTag(TUTORIAL_PROGRESS_TAG, useUnmergedTree = true)
+            .assertContentDescriptionEquals("Step 1 of 6")
+    }
+
+    @Test
+    fun narrationKeepsOneBottomAnchoredReadingZoneAcrossAllSteps() {
+        showTutorial()
+
+        val first = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
+        TUTORIAL_STEPS.indices.forEach { index ->
+            val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
+            assertEquals("left edge moved at step $index", first.left, narration.left, 1f)
+            assertEquals("right edge moved at step $index", first.right, narration.right, 1f)
+            assertEquals("bottom edge moved at step $index", first.bottom, narration.bottom, 1f)
+            assertEquals("reading zone moved at step $index", first.top, narration.top, 1f)
+            compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag(TUTORIAL_BODY_TAG, useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag(TUTORIAL_TAP_AFFORDANCE_TAG, useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag(TUTORIAL_PROGRESS_TAG, useUnmergedTree = true)
+                .assertContentDescriptionEquals("Step ${index + 1} of ${TUTORIAL_STEPS.size}")
+            if (index != TUTORIAL_LAST_STEP) tapTapSurface()
+        }
+    }
+
+    @Test
+    fun everyStepHasARealSpotlightAboveTheNarration() {
+        showTutorial()
+
+        TUTORIAL_STEPS.indices.forEach { index ->
+            compose.onNodeWithTag(TUTORIAL_SPOTLIGHT_TAG, useUnmergedTree = true).assertIsDisplayed()
+            val target = compose.onNodeWithTag(TUTORIAL_SPOTLIGHT_TAG, useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
+            assertTrue("step $index target must have width: $target", target.width > 0f)
+            assertTrue("step $index target must have height: $target", target.height > 0f)
+            assertTrue("step $index target must not begin at Rect.Zero: $target", target.left != 0f || target.top != 0f)
+            assertTrue("step $index target $target must remain above narration $narration", target.bottom <= narration.top)
+            if (index != TUTORIAL_LAST_STEP) tapTapSurface()
+        }
     }
 
     @Test
@@ -397,15 +432,15 @@ class TutorialScreenTest {
     }
 
     @Test
-    fun theCalloutFitsOnANarrowViewport() {
+    fun theNarrationFitsOnANarrowViewport() {
         // A representative narrow phone width (320dp, the historical Android minimum) rather than
-        // the emulator's own default -- the callout must still render fully and remain tappable.
+        // the emulator's own default -- narration must still render fully and remain usable.
         compose.setContent {
             var step by remember { mutableStateOf(2) } // SEARCH: a longer body string
             JustTheCarbsTheme {
                 Box(
                     Modifier
-                        .fillMaxSize()
+                        .fillMaxHeight()
                         .width(320.dp),
                 ) {
                     OnboardingScreen(
@@ -420,35 +455,70 @@ class TutorialScreenTest {
 
         compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true).assertIsDisplayed()
         val overlay = compose.onNodeWithTag(TUTORIAL_OVERLAY_TAG).fetchSemanticsNode()
-        val card = compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode()
         assertTrue(
-            "card bounds ${card.boundsInRoot} must stay within the overlay ${overlay.boundsInRoot}",
-            card.boundsInRoot.left >= overlay.boundsInRoot.left &&
-                card.boundsInRoot.right <= overlay.boundsInRoot.right,
+            "narration bounds ${narration.boundsInRoot} must stay within the overlay ${overlay.boundsInRoot}",
+            narration.boundsInRoot.left >= overlay.boundsInRoot.left &&
+                narration.boundsInRoot.right <= overlay.boundsInRoot.right,
         )
     }
 
     @Test
-    fun theCalloutStaysFullyOnScreenAtALargeFontScale() {
-        // The emergency placement case (CalloutSide.CLAMPED): a large accessibility font scale can
-        // measure the real card taller than either the bottom or the top clear zone. It must still
-        // render fully on screen -- not clipped, not off the top or bottom edge -- using the actual
-        // measured card rather than an estimate.
+    fun theNarrationAndTargetStaySeparatedAtALargeFontScale() {
         showTutorial(startStep = 1, fontScale = 2.0f)
 
         compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag(TUTORIAL_BODY_TAG, useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag(TUTORIAL_TAP_AFFORDANCE_TAG, useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag(TUTORIAL_SKIP_TAG).assertIsDisplayed()
 
         val root = compose.onRoot().fetchSemanticsNode()
-        val cardTitle = compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true).fetchSemanticsNode()
+        val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode()
+        val target = compose.onNodeWithTag(TUTORIAL_SPOTLIGHT_TAG, useUnmergedTree = true).fetchSemanticsNode()
 
         assertTrue(
-            "card top ${cardTitle.boundsInRoot.top} must not be above the screen (root top ${root.boundsInRoot.top})",
-            cardTitle.boundsInRoot.top >= root.boundsInRoot.top,
+            "narration top ${narration.boundsInRoot.top} must not be above the screen",
+            narration.boundsInRoot.top >= root.boundsInRoot.top,
         )
         assertTrue(
-            "card bottom ${cardTitle.boundsInRoot.bottom} must not exceed the screen " +
-                "(root bottom ${root.boundsInRoot.bottom})",
-            cardTitle.boundsInRoot.bottom <= root.boundsInRoot.bottom,
+            "narration bottom ${narration.boundsInRoot.bottom} must not exceed the screen",
+            narration.boundsInRoot.bottom <= root.boundsInRoot.bottom,
         )
+        assertTrue("target $target must end above narration $narration", target.boundsInRoot.bottom <= narration.boundsInRoot.top)
     }
+
+    @Test
+    fun everyLargeFontStepKeepsItsTargetOutsideTheNarration() {
+        showTutorial(fontScale = 2.0f)
+
+        TUTORIAL_STEPS.indices.forEach { index ->
+            val target = compose.onNodeWithTag(TUTORIAL_SPOTLIGHT_TAG, useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
+            assertTrue("large-font step $index target must have area: $target", target.width > 0f && target.height > 0f)
+            assertTrue(
+                "large-font step $index target $target must remain above narration $narration",
+                target.bottom <= narration.top,
+            )
+            if (index != TUTORIAL_LAST_STEP) tapTapSurface()
+        }
+    }
+    @Test
+    fun conciseCopyAndChapterContract() {
+        val titles = listOf("Three steps. One number.", "Point. Scan. Done.", "Know the name? Search it.",
+            "No barcode? Scan the label.", "Build as you go.", "One meal. One number.")
+        val bodies = listOf("Scan. Portion. Carbs.", "Use the barcode when you have one.",
+            "Type the name. Pick the match.", "Point at the nutrition panel. We’ll look for carbs.",
+            "Set the portion. Add it.", "Your carb total updates as you add.")
+        val chapters = listOf("START", "BARCODE", "SEARCH", "LABEL", "MEAL", "TOTAL")
+        assertEquals(6, TUTORIAL_STEPS.size)
+        TUTORIAL_STEPS.forEachIndexed { index, step ->
+            assertEquals(titles[index], string(step.titleRes))
+            assertEquals(bodies[index], string(step.bodyRes))
+            assertEquals(chapters[index], string(step.chapterRes))
+            assertTrue(string(step.titleRes).length in 1..30)
+            assertTrue(string(step.bodyRes).length in 1..55)
+        }
+    }
+
 }

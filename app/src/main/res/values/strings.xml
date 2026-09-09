@@ -693,29 +693,36 @@
     <string name="tutorial_next" tools:ignore="MissingTranslation">Next</string>
     <string name="tutorial_finish" tools:ignore="MissingTranslation">Got it — start using Just the Carbs</string>
     <!-- The restrained on-card affordance sighted users actually see, replacing a visible button. -->
-    <string name="tutorial_tap_to_continue" tools:ignore="MissingTranslation">Tap anywhere to continue</string>
-    <string name="tutorial_tap_to_finish" tools:ignore="MissingTranslation">Tap anywhere to finish</string>
+    <string name="tutorial_tap_to_continue" tools:ignore="MissingTranslation">Tap anywhere</string>
+    <string name="tutorial_tap_to_finish" tools:ignore="MissingTranslation">Tap to finish</string>
     <string name="tutorial_progress" tools:ignore="MissingTranslation">Step %1$d of %2$d</string>
+    <string name="tutorial_chapter_start" tools:ignore="MissingTranslation">START</string>
+    <string name="tutorial_chapter_barcode" tools:ignore="MissingTranslation">BARCODE</string>
+    <string name="tutorial_chapter_search" tools:ignore="MissingTranslation">SEARCH</string>
+    <string name="tutorial_chapter_label" tools:ignore="MissingTranslation">LABEL</string>
+    <string name="tutorial_chapter_meal" tools:ignore="MissingTranslation">MEAL</string>
+    <string name="tutorial_chapter_total" tools:ignore="MissingTranslation">TOTAL</string>
+    <string name="tutorial_chapter_counter" tools:ignore="MissingTranslation">%1$02d / %2$02d · %3$s</string>
     <string name="tutorial_pane_title" tools:ignore="MissingTranslation">Tutorial</string>
     <string name="tutorial_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>
 
-    <string name="tutorial_title_orientation" tools:ignore="MissingTranslation">Three ways in. One clear answer.</string>
-    <string name="tutorial_body_orientation" tools:ignore="MissingTranslation">Find a food, choose a portion, and get the carbs. That\'s the whole rhythm.</string>
-    <string name="tutorial_title_barcode" tools:ignore="MissingTranslation">Barcode: the fastest route</string>
-    <string name="tutorial_body_barcode" tools:ignore="MissingTranslation">Point at a packaged-food barcode and let the app find the product.</string>
-    <string name="tutorial_title_search" tools:ignore="MissingTranslation">Search when you know the name</string>
-    <string name="tutorial_body_search" tools:ignore="MissingTranslation">Use Search products when the camera is inconvenient or the barcode is missing.</string>
-    <string name="tutorial_title_label" tools:ignore="MissingTranslation">Read the label</string>
-    <string name="tutorial_body_label" tools:ignore="MissingTranslation">Use Scan nutrition label to read the Total carbohydrate row straight from the package.</string>
-    <string name="tutorial_title_meal" tools:ignore="MissingTranslation">Build a meal as you go</string>
-    <string name="tutorial_body_meal" tools:ignore="MissingTranslation">Choose a portion, then tap Add to meal. The first item starts the current meal.</string>
-    <string name="tutorial_title_total" tools:ignore="MissingTranslation">One running total</string>
-    <string name="tutorial_body_total" tools:ignore="MissingTranslation">Meal Total combines everything you\'ve added so far.</string>
+    <string name="tutorial_title_orientation" tools:ignore="MissingTranslation">Three steps. One number.</string>
+    <string name="tutorial_body_orientation" tools:ignore="MissingTranslation">Scan. Portion. Carbs.</string>
+    <string name="tutorial_title_barcode" tools:ignore="MissingTranslation">Point. Scan. Done.</string>
+    <string name="tutorial_body_barcode" tools:ignore="MissingTranslation">Use the barcode when you have one.</string>
+    <string name="tutorial_title_search" tools:ignore="MissingTranslation">Know the name? Search it.</string>
+    <string name="tutorial_body_search" tools:ignore="MissingTranslation">Type the name. Pick the match.</string>
+    <string name="tutorial_title_label" tools:ignore="MissingTranslation">No barcode? Scan the label.</string>
+    <string name="tutorial_body_label" tools:ignore="MissingTranslation">Point at the nutrition panel. We’ll look for carbs.</string>
+    <string name="tutorial_title_meal" tools:ignore="MissingTranslation">Build as you go.</string>
+    <string name="tutorial_body_meal" tools:ignore="MissingTranslation">Set the portion. Add it.</string>
+    <string name="tutorial_title_total" tools:ignore="MissingTranslation">One meal. One number.</string>
+    <string name="tutorial_body_total" tools:ignore="MissingTranslation">Your carb total updates as you add.</string>
 
     <!-- The find → portion → carbs strip on the tutorial's first step. -->
-    <string name="tutorial_rhythm_find" tools:ignore="MissingTranslation">Find food</string>
-    <string name="tutorial_rhythm_portion" tools:ignore="MissingTranslation">Choose portion</string>
-    <string name="tutorial_rhythm_carbs" tools:ignore="MissingTranslation">See carbs</string>
+    <string name="tutorial_rhythm_find" tools:ignore="MissingTranslation">Scan</string>
+    <string name="tutorial_rhythm_portion" tools:ignore="MissingTranslation">Portion</string>
+    <string name="tutorial_rhythm_carbs" tools:ignore="MissingTranslation">Carbs</string>
 
     <!--
       The example product in the tutorial's preview. A generic food, deliberately not a real brand:

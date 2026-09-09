@@ -84,6 +84,13 @@ Opened by the scanner shutter-haptic patch, then extended by the repository-revi
 This version also corrects portion recalculation, nutrition-basis persistence, meal-save reporting,
 and scanner lifecycle handling. It remains a local development build; no Play upload has been made.
 
+### Changed
+
+- Refined the interactive tutorial with six ultra-concise chapters, stronger headlines, an integrated story rail, and semantic colour echoed through a feathered focus aura and subtle narration wash. The reading position stays fixed across copy lengths and font sizes; tap-anywhere and accessible advance actions remain.
+
+- The optional tutorial now keeps its guidance in one stable lower reading area while a softer
+  spotlight moves between measured app previews.
+
 ### Play Store release notes (draft)
 
 ```
