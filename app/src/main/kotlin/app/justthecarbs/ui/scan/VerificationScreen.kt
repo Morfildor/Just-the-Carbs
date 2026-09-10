@@ -46,6 +46,7 @@ import app.justthecarbs.ocr.CropSelectionGeometry
 import app.justthecarbs.ocr.EvidenceResolver
 import app.justthecarbs.ocr.OcrBox
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
 
 const val VERIFY_CONFIRM_TAG = "verify_confirm"
@@ -188,16 +189,20 @@ fun VerificationScreen(
     printedAmount: BigDecimal? = null,
     printedBasisLabel: String? = null,
 ) {
+    val scannerColors = MaterialTheme.extendedColors.scanner
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState()),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = Space.m, vertical = Space.s),
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
             Text(
@@ -208,7 +213,7 @@ fun VerificationScreen(
                     },
                 ),
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = stringResource(
@@ -218,7 +223,7 @@ fun VerificationScreen(
                     },
                 ),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -232,6 +237,7 @@ fun VerificationScreen(
                 .fillMaxWidth()
                 .padding(horizontal = Space.m)
                 .height(CLOSE_UP_HEIGHT)
+                .background(Color.Black)
                 // A Canvas carries no contentDescription of its own, so the label is applied through
                 // semantics — without it TalkBack announces nothing for the one element that shows
                 // the user what the app actually read.
@@ -245,6 +251,7 @@ fun VerificationScreen(
                 .fillMaxWidth()
                 .height(PHOTO_HEIGHT)
                 .padding(top = Space.s)
+                .background(Color.Black)
                 .testTag(VERIFY_PHOTO_TAG),
         ) {
             var viewSize by remember { mutableStateOf(IntSize.Zero) }
@@ -265,26 +272,25 @@ fun VerificationScreen(
             if (displayed.width > 0f && displayed.height > 0f) {
                 val scale = displayed.width / bitmap.width
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawRect(
-                        // Not a theme token: drawn over an arbitrary photograph, where a theme
-                        // colour carries no contrast guarantee.
-                        color = Color(0xFF4C8DF6),
-                        topLeft = Offset(
-                            displayed.left + rowInSourceSpace.left * scale,
-                            displayed.top + rowInSourceSpace.top * scale,
-                        ),
-                        size = Size(
-                            rowInSourceSpace.width * scale,
-                            rowInSourceSpace.height * scale,
-                        ),
-                        style = Stroke(width = 4f),
+                    val topLeft = Offset(
+                        displayed.left + rowInSourceSpace.left * scale,
+                        displayed.top + rowInSourceSpace.top * scale,
                     )
+                    val size = Size(
+                        rowInSourceSpace.width * scale,
+                        rowInSourceSpace.height * scale,
+                    )
+                    drawRect(scannerColors.darkEdge, topLeft, size, style = Stroke(width = 8f))
+                    drawRect(scannerColors.selection, topLeft, size, style = Stroke(width = 4f))
                 }
             }
         }
 
         Column(
-            modifier = Modifier.fillMaxWidth().padding(Space.m),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             // A declared-serving reading: the PRINTED pair is what the user can compare against the
@@ -299,7 +305,7 @@ fun VerificationScreen(
                         printedBasisLabel,
                     ),
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = stringResource(
@@ -308,7 +314,7 @@ fun VerificationScreen(
                         basis.unitLabel,
                     ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.75f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 Text(
@@ -318,14 +324,14 @@ fun VerificationScreen(
                         basis.unitLabel,
                     ),
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
             // Where on the label this came from. States the app's claim in the label's own words.
             Text(
                 text = stringResource(R.string.verify_found_row, rowText.trim()),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Button(
                 onClick = { onConfirm(value, basis) },
@@ -419,18 +425,21 @@ fun ConflictScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = Space.m, vertical = Space.s),
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
             Text(
                 text = stringResource(R.string.conflict_title),
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = stringResource(
@@ -438,11 +447,11 @@ fun ConflictScreen(
                     conflict.values.joinToString(", ") { it.substringBefore('/') },
                 ),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color.Black)) {
             androidx.compose.foundation.Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = null,
@@ -452,7 +461,10 @@ fun ConflictScreen(
         }
 
         Column(
-            modifier = Modifier.fillMaxWidth().padding(Space.m),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             Button(

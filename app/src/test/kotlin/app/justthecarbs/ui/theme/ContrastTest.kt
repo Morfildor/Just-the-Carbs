@@ -26,10 +26,16 @@ class ContrastTest {
 
     // --- Light tokens under test (mirrors Theme.kt) --------------------------------------------
     private val blue = 0x1B6FBF
+    private val blueDark = 0x5CA6E8
     private val red = 0xD42F2F
+    private val redDark = 0xFF7A7A
     private val onOrangeSoft = 0x965D08
     private val inkMuted = 0x6B6A72
     private val ink = 0x181A1E
+    private val chalk = 0xF2EFE8
+    private val night = 0x15140F
+    private val darkOnPrimary = 0x00243D
+    private val warmWhite = 0xFFFBF7
 
     // --- Light surfaces these are actually drawn on ---------------------------------------------
     private val cream = 0xFFF6EE          // background / surface
@@ -37,6 +43,7 @@ class ContrastTest {
     private val surfaceContainerLow = 0xFDFBF8
     private val orangeSoft = 0xFFEEDC
     private val blueSoft = 0xE4F1FC
+    private val darkSurfaceLowest = 0x0C0B08
 
     private val normalText = 4.5
 
@@ -65,10 +72,21 @@ class ContrastTest {
         )
     }
 
+    /** Compose alpha-composites text over its container before the resulting pixels are measured. */
+    private fun composite(foreground: Int, background: Int, alpha: Double): Int {
+        fun channel(shift: Int): Int {
+            val fg = (foreground shr shift) and 0xFF
+            val bg = (background shr shift) and 0xFF
+            return (fg * alpha + bg * (1.0 - alpha)).toInt()
+        }
+        return (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+    }
+
     @Test
-    fun `white button text on primary blue`() {
+    fun `primary backgrounds use their explicit paired foregrounds`() {
         // Every filled action in the app: Scan barcode, Add to meal, Get started.
-        assertContrast("onPrimary/primary", 0xFFFFFF, blue)
+        assertContrast("light onPrimary/primary", warmWhite, blue)
+        assertContrast("dark onPrimary/primary", darkOnPrimary, blueDark)
     }
 
     @Test
@@ -77,6 +95,7 @@ class ContrastTest {
         assertContrast("primary/cream", blue, cream)
         assertContrast("primary/white", blue, white)
         assertContrast("primary/surfaceContainerLow", blue, surfaceContainerLow)
+        assertContrast("dark primary/surfaceContainerLowest", blueDark, darkSurfaceLowest)
     }
 
     @Test
@@ -88,6 +107,44 @@ class ContrastTest {
         assertContrast("result/surfaceContainerLowest", red, white)
         assertContrast("result/cream", red, cream)
         assertContrast("result/surfaceContainerLow", red, surfaceContainerLow)
+        assertContrast("dark result/surfaceContainerLowest", redDark, darkSurfaceLowest)
+    }
+
+    @Test
+    fun `result filled backgrounds use the dedicated result foreground`() {
+        assertContrast("light onResult/result", warmWhite, red)
+        assertContrast("dark onResult/result", night, redDark)
+    }
+
+    @Test
+    fun `tertiary backgrounds use the tertiary foreground`() {
+        assertContrast("light onTertiary/tertiary", ink, 0xFFA94D)
+        assertContrast("dark onTertiary/tertiary", night, 0xFFB868)
+    }
+
+    @Test
+    fun `welcome supporting copy clears normal text contrast at its actual alpha`() {
+        val alpha = 0.96
+        listOf(
+            Triple("light primary slide", warmWhite, blue),
+            Triple("dark primary slide", darkOnPrimary, blueDark),
+            Triple("light result slide", warmWhite, red),
+            Triple("dark result slide", night, redDark),
+            Triple("light neutral slide", ink, cream),
+            Triple("dark neutral slide", chalk, night),
+        ).forEach { (name, foreground, background) ->
+            assertContrast(name, composite(foreground, background, alpha), background)
+        }
+
+        val welcome = java.io.File(
+            "src/main/kotlin/app/justthecarbs/ui/onboarding/WelcomeCarouselScreen.kt",
+        ).readText()
+        val declaredAlpha = Regex("""WELCOME_SUPPORTING_ALPHA\s*=\s*([0-9.]+)f""")
+            .find(welcome)?.groupValues?.get(1)?.toDouble()
+        assertTrue(
+            "welcome supporting alpha is $declaredAlpha in source but $alpha in this contrast test",
+            declaredAlpha == alpha,
+        )
     }
 
     @Test
@@ -155,21 +212,43 @@ class ContrastTest {
     }
 
     @Test
-    fun `white text on a filled accent card`() {
-        // The Home action cards render white title and subtitle over an accent gradient. The
-        // gradient's *darkest* stop is not the risk — its lightest is, so each end is checked.
-        listOf(
+    fun `accent fill content clears contrast on both ends of every home gradient`() {
+        val lightStops = mapOf(
             "blue→indigo start" to 0x1B6FBF,
             "blue→indigo end" to 0x4338CA,
             "teal→green start" to 0x0F766E,
             "teal→green end" to 0x15803D,
-        ).forEach { (name, stop) ->
-            assertContrast("white/$name", 0xFFFFFF, stop)
+        )
+        val darkStops = mapOf(
+            "blue→indigo start" to 0x5CA6E8,
+            "blue→indigo end" to 0x9496FF,
+            "teal→green start" to 0x43B1A6,
+            "teal→green end" to 0x45B56E,
+        )
+
+        lightStops.forEach { (name, stop) ->
+            assertContrast("light onAccent/$name", warmWhite, stop)
+            assertContrast("light supporting/$name", composite(warmWhite, stop, 0.96), stop)
+        }
+        darkStops.forEach { (name, stop) ->
+            assertContrast("dark onAccent/$name", night, stop)
+            assertContrast("dark supporting/$name", composite(night, stop, 0.96), stop)
+        }
+
+        mapOf(
+            "src/main/kotlin/app/justthecarbs/ui/home/HomeScreen.kt" to "ACCENT_SUPPORTING_ALPHA",
+            "src/main/kotlin/app/justthecarbs/ui/onboarding/TutorialPreview.kt" to
+                "PREVIEW_ACCENT_SUPPORTING_ALPHA",
+        ).forEach { (path, token) ->
+            val source = java.io.File(path).readText()
+            val declared = Regex("""$token\s*=\s*([0-9.]+)f""")
+                .find(source)?.groupValues?.get(1)?.toDouble()
+            assertTrue("$token is $declared in source but 0.96 in this test", declared == 0.96)
         }
     }
 
     @Test
-    fun `light tokens match the values Theme kt actually ships`() {
+    fun `contrast tokens match the values Theme kt actually ships`() {
         // Without this, the literals above could drift from the palette and every assertion would
         // keep passing while the real app regressed — the exact "green suite, broken screen" failure
         // this repo has hit before.
@@ -177,7 +256,13 @@ class ContrastTest {
 
         mapOf(
             "Blue" to blue,
+            "BlueDark" to blueDark,
             "Red" to red,
+            "RedDark" to redDark,
+            "Night" to night,
+            "Ink" to ink,
+            "Chalk" to chalk,
+            "WarmWhite" to warmWhite,
         ).forEach { (token, expected) ->
             val declared = Regex("""private val $token = Color\(0xFF([0-9A-Fa-f]{6})\)""")
                 .find(theme)
@@ -202,6 +287,17 @@ class ContrastTest {
         assertTrue(
             "onOrangeSoft is ${declaredOnOrangeSoft?.toString(16)} in Theme.kt but ${onOrangeSoft.toString(16)} here",
             declaredOnOrangeSoft == onOrangeSoft,
+        )
+
+        val darkPrimaryForeground = Regex("""onPrimary = Color\(0xFF([0-9A-Fa-f]{6})\)""")
+            .find(theme.substringAfter("private val DarkColors"))
+            ?.groupValues
+            ?.get(1)
+            ?.toInt(16)
+        assertTrue(
+            "dark onPrimary is ${darkPrimaryForeground?.toString(16)} in Theme.kt but " +
+                "${darkOnPrimary.toString(16)} here",
+            darkPrimaryForeground == darkOnPrimary,
         )
     }
 }

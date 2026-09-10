@@ -2523,3 +2523,80 @@ instrumented gate. Before release preparation, the final tutorial-specific emula
 54/54 on the same approved implementation, as recorded in `CLAUDE.md`. After restarting the AVD, a
 focused release-critical set covering tutorial/navigation, scanner UI, calculator and meal flows,
 DAOs, and migrations passed 183/183 with zero failures or skips.
+
+## §43 — Dark-mode refinement matrix (1.0.6, 2026-09-10)
+
+Run this entire section with the app explicitly set to **Dark**. Use an approximately 320dp-wide
+emulator at normal font, repeat the dense/high-risk rows at 2× font scale, and use a dark physical
+OLED device at low brightness when available. Check both gesture navigation and 3-button navigation.
+
+### Home and search
+
+- [ ] 43.1 Fresh Home: background decoration is visible but restrained; Search, Barcode, and Label
+      actions remain distinct; no bright accent outshouts a carbohydrate result.
+- [ ] 43.2 Recents, Favorites, and the tutorial reminder: card edges remain perceptible without every
+      block becoming an outlined rectangle; secondary copy remains readable.
+- [ ] 43.3 Search idle and typing: field outline, cursor, placeholder, typed text, clear action, and
+      keyboard-open layout remain clear at normal and 2× font scale.
+- [ ] 43.4 Search loading, results, empty, and initial network failure: hierarchy remains readable and
+      every recovery action is visible.
+- [ ] 43.5 Refresh/network failure with retained results: existing results remain visually primary
+      while the failure and retry affordance are still discoverable.
+
+### Calculator and modals
+
+- [ ] 43.6 Product and quick calculation, before and after entering a portion: the result panel is
+      still the dominant surface, its red is exclusive to carbohydrate information, and no dark
+      container merges into the page.
+- [ ] 43.7 Repeat 43.6 with the keyboard open and at 2× font scale: result digits, equation, fields,
+      controls, and validation text do not clip or disappear below the fold.
+- [ ] 43.8 Open Save product, manual verification, package comparison, label-handoff failure, and
+      meal/settings confirmation dialogs: each uses the same raised warm container, readable title
+      and supporting copy, restrained outline, and clear action hierarchy.
+- [ ] 43.9 Dialog scrim: underlying content remains perceptible, the modal dominates, and result red
+      beneath the scrim does not compete with the decision.
+- [ ] 43.10 Gallery loading, loaded, error, paging, disabled arrows, and close: modal and image well
+      are distinct; floating arrows remain legible over bright, dark, saturated, and reflective photos.
+
+### Scanner and photo review
+
+- [ ] 43.11 Barcode aiming on bright and dark packages: black/translucent camera chrome and controls
+      remain image-safe, the frame is visible, and manual entry is readable.
+- [ ] 43.12 Barcode accepted/product lookup: the acquired check and progress wording make the state
+      change unmistakable without presenting a premature result card.
+- [ ] 43.13 Label aiming and shutter processing: guide corners, close/torch controls, capture action,
+      frozen-frame transition, and progress wording remain clear on bright, dark, saturated, and
+      reflective packaging.
+- [ ] 43.14 OCR success, ambiguity, and not-found cards: review content is visibly raised from the
+      camera state; confirmed/ambiguous values do not use result red; every recovery action is clear.
+- [ ] 43.15 Crop default, post-attempt, and reading states: themed header/footer clearly frame the
+      black photo well; the selected rectangle remains identifiable over white tables and black or
+      saturated packages.
+- [ ] 43.16 Drag every crop corner. Blue handles retain their dark outer halo, light center, and
+      L-shaped geometry throughout the gesture; color is not the only affordance.
+- [ ] 43.17 Verification, conflict, assisted row selection, known-row correction, typed-value entry,
+      and failure recovery: the photo remains available, themed controls read as review rather than
+      camera chrome, and selection rectangles retain a dark halo on every package type.
+- [ ] 43.18 Scanner controls at 2× font scale and approximately 320dp: text and actions grow or scroll
+      without hiding the photo evidence or clipping controls.
+
+### Settings, introductions, and system UI
+
+- [ ] 43.19 Settings rows, selected/unselected chips, switches, disabled diagnostics actions, safety
+      copy, links, and failure messages remain readable with no lavender/purple default hue.
+- [ ] 43.20 Rating card: amber decoration stays secondary; the tertiary CTA uses its paired dark
+      foreground and remains clearly tappable in normal, pressed, focused, and failed-link states.
+- [ ] 43.21 Welcome slides 1–3: primary, neutral, and result-filled backgrounds use readable paired
+      content; Skip, eyebrow, body, CTA, disabled/busy state, and completion error stay clear.
+- [ ] 43.22 Tutorial representative steps at normal and 2× font scale: existing spotlight, bloom,
+      pointer, scrim, and luminance behavior remain unchanged and readable.
+- [ ] 43.23 Status/navigation bars under gesture navigation and 3-button navigation: bands stay solid
+      black with light icons, content respects insets, and Android 15+ edge-to-edge behavior remains
+      intact.
+- [ ] 43.24 Whole-app sweep: no hardcoded light-theme foreground appears on a dark theme fill, no
+      stray Material purple/lavender appears, no unintended accent glare is visible, and no ordinary
+      dark surface visually collapses into its parent.
+
+**Device/API:** ____________________ **Font scale:** ______ **Navigation:** ______________
+
+**Result:** ____________________ **Date:** ____________

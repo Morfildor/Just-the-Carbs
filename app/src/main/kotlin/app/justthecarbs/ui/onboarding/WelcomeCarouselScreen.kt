@@ -121,11 +121,15 @@ fun WelcomeCarouselScreen(
         label = "onboardingBackground",
     )
     val foreground by animateColorAsState(
-        targetValue = if (slideIndex == 1) MaterialTheme.colorScheme.onBackground else Color.White,
+        targetValue = when (slideIndex) {
+            0 -> MaterialTheme.colorScheme.onPrimary
+            1 -> MaterialTheme.colorScheme.onBackground
+            else -> MaterialTheme.extendedColors.onResult
+        },
         animationSpec = tween(280),
         label = "onboardingForeground",
     )
-    val markColor = if (slideIndex == 1) MaterialTheme.colorScheme.tertiary else Color.White
+    val markColor = if (slideIndex == 1) MaterialTheme.colorScheme.tertiary else foreground
 
     Box(modifier = Modifier.fillMaxSize().background(background).testTag(CAROUSEL_ROOT_TAG)) {
         Box(
@@ -171,7 +175,7 @@ fun WelcomeCarouselScreen(
                     ) {
                         Text(
                             text = stringResource(R.string.onboarding_skip),
-                            color = foreground.copy(alpha = 0.65f),
+                            color = foreground.copy(alpha = WELCOME_SUPPORTING_ALPHA),
                         )
                     }
                 }
@@ -200,7 +204,7 @@ fun WelcomeCarouselScreen(
                     Text(
                         text = stringResource(pageSlide.eyebrowRes),
                         style = MaterialTheme.typography.labelSmall,
-                        color = foreground.copy(alpha = 0.7f),
+                        color = foreground.copy(alpha = WELCOME_SUPPORTING_ALPHA),
                     )
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -217,7 +221,7 @@ fun WelcomeCarouselScreen(
                     Text(
                         text = stringResource(pageSlide.bodyRes),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = foreground.copy(alpha = 0.85f),
+                        color = foreground.copy(alpha = WELCOME_SUPPORTING_ALPHA),
                         modifier = Modifier.widthIn(max = 280.dp),
                     )
                 }
@@ -230,14 +234,14 @@ fun WelcomeCarouselScreen(
                 Dots(count = SLIDES.size, active = slideIndex, color = foreground)
 
                 val ctaContainer = when {
-                    last -> Color.White
+                    last -> MaterialTheme.colorScheme.surfaceContainerLowest
                     slideIndex == 1 -> MaterialTheme.colorScheme.primary
-                    else -> Color.White
+                    else -> MaterialTheme.colorScheme.surfaceContainerLowest
                 }
                 val ctaContent = when {
                     last -> MaterialTheme.extendedColors.result
-                    slideIndex == 1 -> Color.White
-                    else -> background
+                    slideIndex == 1 -> MaterialTheme.colorScheme.onPrimary
+                    else -> MaterialTheme.colorScheme.primary
                 }
 
                 Button(
@@ -266,7 +270,7 @@ fun WelcomeCarouselScreen(
                     Text(
                         text = stringResource(R.string.onboarding_completion_failed),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (slideIndex == 1) MaterialTheme.colorScheme.error else Color.White,
+                        color = foreground,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -277,6 +281,9 @@ fun WelcomeCarouselScreen(
         }
     }
 }
+
+/** Lowest alpha used for readable carousel copy; every slide pair stays at or above 4.5:1. */
+private const val WELCOME_SUPPORTING_ALPHA = 0.96f
 
 @Composable
 private fun Dots(count: Int, active: Int, color: Color) {

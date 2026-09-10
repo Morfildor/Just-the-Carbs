@@ -26,6 +26,8 @@ import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.NutritionValueValidator
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.Product
+import app.justthecarbs.ui.components.JtcDialogDefaults
+import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.ui.theme.Space
 import java.math.BigDecimal
 
@@ -62,7 +64,13 @@ fun VerifyDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(Space.cardRadius),
+        modifier = Modifier.jtcDialogOutline(),
+        shape = JtcDialogDefaults.shape,
+        containerColor = JtcDialogDefaults.containerColor,
+        iconContentColor = JtcDialogDefaults.iconContentColor,
+        titleContentColor = JtcDialogDefaults.titleContentColor,
+        textContentColor = JtcDialogDefaults.textContentColor,
+        tonalElevation = JtcDialogDefaults.tonalElevation,
         title = { Text(stringResource(R.string.verify_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Space.m)) {

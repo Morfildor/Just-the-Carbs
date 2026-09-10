@@ -46,6 +46,7 @@ import app.justthecarbs.ocr.CropSelectionGeometry
 import app.justthecarbs.ocr.NormalizedRegion
 import app.justthecarbs.ocr.ViewRect
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 
 /** Test hooks. The crop rectangle has no text of its own, so it cannot be found any other way. */
 const val CROP_SELECTION_TAG = "crop_selection"
@@ -107,12 +108,15 @@ fun CropConfirmationScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = Space.m, vertical = Space.s),
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
             // Three states, and the ordering matters (1.0.3 P4).
@@ -132,14 +136,14 @@ fun CropConfirmationScreen(
             Text(
                 text = stringResource(titleRes),
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = stringResource(
                     if (afterAutomaticAttempt) R.string.crop_body_after_attempt else R.string.crop_body,
                 ),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.75f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -147,6 +151,7 @@ fun CropConfirmationScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .background(Color.Black)
                 .onSizeChanged { viewSize = it },
         ) {
             val displayed = CropSelectionGeometry.displayedImageBounds(
@@ -173,7 +178,10 @@ fun CropConfirmationScreen(
         }
 
         Column(
-            modifier = Modifier.fillMaxWidth().padding(Space.m),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             if (reading) {
@@ -185,7 +193,7 @@ fun CropConfirmationScreen(
                     Text(
                         text = stringResource(R.string.crop_reading),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.75f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -223,6 +231,7 @@ private fun CropOverlay(
     val rect = CropSelectionGeometry.toViewRect(selection, displayed)
     val handleRadius = with(androidx.compose.ui.platform.LocalDensity.current) { CROP_HANDLE_TOUCH_DP.dp.toPx() }
     val selectionLabel = stringResource(R.string.crop_selection)
+    val scannerColors = MaterialTheme.extendedColors.scanner
 
     /**
      * The gesture's own current rectangle and grabbed handle.
@@ -291,7 +300,13 @@ private fun CropOverlay(
         )
 
         drawRect(
-            color = Color.White,
+            color = scannerColors.darkEdge,
+            topLeft = Offset(rect.left, rect.top),
+            size = Size(rect.width, rect.height),
+            style = Stroke(width = 7f),
+        )
+        drawRect(
+            color = scannerColors.lightEdge,
             topLeft = Offset(rect.left, rect.top),
             size = Size(rect.width, rect.height),
             style = Stroke(width = 3f),
@@ -310,7 +325,7 @@ private fun CropOverlay(
         ).forEach { (corner, direction) ->
             val (dx, dy) = direction
             val arm = HANDLE_ARM_PX
-            listOf(Color.Black.copy(alpha = 0.45f) to 9f, HANDLE_COLOR to 5f).forEach { (color, width) ->
+            listOf(scannerColors.darkEdge to 11f, scannerColors.handle to 6f).forEach { (color, width) ->
                 drawLine(
                     color = color,
                     start = corner,
@@ -326,8 +341,9 @@ private fun CropOverlay(
                     cap = androidx.compose.ui.graphics.StrokeCap.Round,
                 )
             }
-            drawCircle(HANDLE_COLOR, radius = HANDLE_DRAW_PX, center = corner)
-            drawCircle(Color.White, radius = HANDLE_DRAW_PX * 0.45f, center = corner)
+            drawCircle(scannerColors.darkEdge, radius = HANDLE_DRAW_PX + 3f, center = corner)
+            drawCircle(scannerColors.handle, radius = HANDLE_DRAW_PX, center = corner)
+            drawCircle(scannerColors.lightEdge, radius = HANDLE_DRAW_PX * 0.45f, center = corner)
         }
     }
 }
@@ -337,13 +353,3 @@ private const val HANDLE_DRAW_PX = 18f
 /** Length of each corner bracket arm, in px. Long enough to read as a handle, short enough not to
  * imply the selection edge continues past the rectangle. */
 private const val HANDLE_ARM_PX = 34f
-
-/**
- * The handle accent.
- *
- * A warm colour rather than white: the selection outline is white, and a white handle on a white
- * outline is exactly why the handles previously read as part of the frame rather than as controls.
- * Not taken from MaterialTheme because this screen renders over an arbitrary photograph, where a
- * theme surface colour carries no guarantee of contrast.
- */
-private val HANDLE_COLOR = Color(0xFFFFC107)

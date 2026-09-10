@@ -24,6 +24,8 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import app.justthecarbs.R
+import app.justthecarbs.ui.components.JtcDialogDefaults
+import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.ui.theme.Space
 
 /**
@@ -94,7 +96,13 @@ fun SaveQuickCalculationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(Space.cardRadius),
+        modifier = Modifier.jtcDialogOutline(),
+        shape = JtcDialogDefaults.shape,
+        containerColor = JtcDialogDefaults.containerColor,
+        iconContentColor = JtcDialogDefaults.iconContentColor,
+        titleContentColor = JtcDialogDefaults.titleContentColor,
+        textContentColor = JtcDialogDefaults.textContentColor,
+        tonalElevation = JtcDialogDefaults.tonalElevation,
         title = { Text(stringResource(R.string.quick_save_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Space.m)) {

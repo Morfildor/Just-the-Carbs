@@ -96,10 +96,11 @@ fun ProductGalleryDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.92f)
                 .padding(horizontal = Space.s)
+                .jtcDialogOutline()
                 .testTag(PRODUCT_GALLERY_TAG),
-            shape = RoundedCornerShape(Space.cardRadius),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+            shape = JtcDialogDefaults.shape,
+            color = JtcDialogDefaults.containerColor,
+            tonalElevation = JtcDialogDefaults.tonalElevation,
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 GalleryHeader(productName, onDismiss)
@@ -292,7 +293,7 @@ private fun GalleryArrow(
             // control's contrast against its own background depended on the image behind it, and
             // WCAG's 3:1 for non-text controls could not be guaranteed for a bright label. The
             // surface colour is a known quantity; the photograph is not.
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
             .testTag(if (previous) PRODUCT_GALLERY_PREVIOUS_TAG else PRODUCT_GALLERY_NEXT_TAG)
             .semantics { contentDescription = description },
     ) {

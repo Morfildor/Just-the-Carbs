@@ -205,6 +205,7 @@ private fun PreviewActionCard(
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val contentColor = MaterialTheme.extendedColors.onAccent
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -216,10 +217,10 @@ private fun PreviewActionCard(
         Box(
             Modifier
                 .size(if (compact) 32.dp else 40.dp)
-                .background(Color.White.copy(alpha = 0.20f), CircleShape),
+                .background(contentColor.copy(alpha = 0.20f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(if (compact) 20.dp else 24.dp))
+            Icon(icon, null, tint = contentColor, modifier = Modifier.size(if (compact) 20.dp else 24.dp))
         }
         Column(Modifier.padding(start = Space.m)) {
             Text(
@@ -229,20 +230,22 @@ private fun PreviewActionCard(
                 } else {
                     MaterialTheme.typography.titleMedium
                 },
-                color = Color.White,
+                color = contentColor,
             )
             if (!compact) {
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.84f),
+                    color = contentColor.copy(alpha = PREVIEW_ACCENT_SUPPORTING_ALPHA),
                     maxLines = 1,
                 )
             }
         }
     }
 }
+
+private const val PREVIEW_ACCENT_SUPPORTING_ALPHA = 0.96f
 
 @Composable
 private fun PreviewRhythm(compact: Boolean) {

@@ -696,9 +696,9 @@ private fun HomeBody(
  *
  * The two camera actions share this shape so they read as two options of one kind, and both now
  * carry their own two-stop [gradient] so they read as a matched pair rather than one filled card and
- * one outlined afterthought. The icon roundel and both text colours are white throughout — the
- * ground here is always a gradient, never a flat surface, so a theme-derived ink would be tuned for
- * the wrong background.
+ * one outlined afterthought. Their foreground comes from the explicit accent-fill pair: warm light
+ * content in Light and dark ink in Dark. An arbitrary white foreground cannot remain readable when
+ * dark-mode accents are intentionally lifted for contrast against the page.
  *
  * Semantics are merged into a single button node: without that, TalkBack announces the icon, the
  * title and the subtitle as three separate stops inside one tappable thing.
@@ -714,6 +714,7 @@ private fun HomeActionCard(
 ) {
     val shape = RoundedCornerShape(Space.cardRadius)
     val description = stringResource(R.string.home_action_description, title, subtitle)
+    val contentColor = MaterialTheme.extendedColors.onAccent
 
     Row(
         modifier = modifier
@@ -737,32 +738,32 @@ private fun HomeActionCard(
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .background(Color.White.copy(alpha = 0.20f), CircleShape),
+                .background(contentColor.copy(alpha = 0.20f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(24.dp))
         }
 
         Column(modifier = Modifier.weight(1f).padding(horizontal = Space.m)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(text = title, style = MaterialTheme.typography.titleMedium, color = contentColor)
             Spacer(Modifier.height(2.dp))
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                // White at 0.82 rather than a theme colour: the ground here is an accent gradient,
-                // not a surface, so onSurfaceVariant would be tuned for the wrong background. Both
-                // gradient stops are checked against white in ContrastTest.
-                color = Color.White.copy(alpha = 0.82f),
+                color = contentColor.copy(alpha = ACCENT_SUPPORTING_ALPHA),
             )
         }
 
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = Color.White.copy(alpha = 0.75f),
+            tint = contentColor,
         )
     }
 }
+
+/** Keeps supporting copy visibly subordinate while retaining 4.5:1 on every gradient stop. */
+private const val ACCENT_SUPPORTING_ALPHA = 0.96f
 
 /**
  * The tutorial invitation (owner instruction, 2026-09-08).

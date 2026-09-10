@@ -24,12 +24,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The internal design system (brief §38) — "Just the Carbs" pastel redesign.
+ * The internal design system (brief §38) — "Just the Carbs" colourful-chrome redesign.
  *
- * The palette is intentionally almost monochrome, with a single blue accent. On the calculator
- * screen the carbohydrate result must be the loudest thing on the display; a colourful interface
- * competes with it. Colour is therefore spent on exactly a few jobs — the primary action, and the
- * result — and everything else is a neutral (§3, §14).
+ * Blue owns interaction, destination accents identify app areas, and result red is reserved for
+ * carbohydrate figures. The result stays dominant through the tested luminance rule in
+ * [AccentPalette], not by making the rest of the interface monochrome. See DESIGN.md.
  *
  * Dynamic colour is deliberately not used. It would hand the accent (and so the visual weight of
  * the result) to whatever wallpaper the user has, which §38 only permits if hierarchy stays
@@ -60,7 +59,9 @@ private val Cream = Color(0xFFFFF6EE)
 private val Ink = Color(0xFF181A1E)
 private val InkMuted = Color(0xFF6B6A72)
 private val LineLight = Color(0xFFE4DFD3)
+private val LineStrongLight = Color(0xFF77736A)
 private val DisabledBlue = Color(0xFFDCE8F5)
+private val WarmWhite = Color(0xFFFFFBF7)
 
 // Dark palette — extrapolated from the light tokens (no dark spec exists in the handoff).
 // Cream inverts to near-black, ink inverts to off-white; accent hues held close to their light
@@ -70,6 +71,7 @@ private val NightRaised = Color(0xFF1E1D18)
 private val Chalk = Color(0xFFF2EFE8)
 private val ChalkMuted = Color(0xFFAFAEA8)
 private val LineDark = Color(0xFF39372F)
+private val LineStrongDark = Color(0xFF8B887F)
 private val BlueDark = Color(0xFF5CA6E8)
 private val BlueSoftDark = Color(0xFF16324A)
 private val RedDark = Color(0xFFFF7A7A)
@@ -84,28 +86,60 @@ private val DisabledBlueDark = Color(0xFF2A3A47)
  */
 data class ExtendedColors(
     val result: Color,
+    val onResult: Color,
+    val onAccent: Color,
     val orangeSoft: Color,
     val onOrangeSoft: Color,
     val disabledButton: Color,
+    val scanner: ScannerColors,
+    val accentBackdropAlpha: Float,
     val accents: AccentPalette,
+)
+
+/**
+ * Image-relative scanner colours. Their geometry always combines a light and dark edge, because
+ * no single hue can remain visible over white labels, black packaging and saturated photographs.
+ */
+data class ScannerColors(
+    val guide: Color,
+    val selection: Color,
+    val handle: Color,
+    val lightEdge: Color,
+    val darkEdge: Color,
+)
+
+private val ImageScannerColors = ScannerColors(
+    guide = Color(0xFFF7F4ED),
+    selection = BlueDark,
+    handle = BlueDark,
+    lightEdge = Color(0xFFF7F4ED),
+    darkEdge = Color(0xCC080807),
 )
 
 private val LightExtendedColors = ExtendedColors(
     result = Red,
+    onResult = WarmWhite,
+    onAccent = WarmWhite,
     orangeSoft = OrangeSoft,
     // Darkened from #B5710B, which scored 3.47:1 on its own container — a badge foreground that
     // failed the normal-text floor on the only background it is ever drawn on. #9B6109 cleared it
     // at 4.51:1; this sits at 4.79:1 for margin, an imperceptible further shift.
     onOrangeSoft = Color(0xFF965D08),
     disabledButton = DisabledBlue,
+    scanner = ImageScannerColors,
+    accentBackdropAlpha = 0.14f,
     accents = LightAccents,
 )
 
 private val DarkExtendedColors = ExtendedColors(
     result = RedDark,
+    onResult = Night,
+    onAccent = Night,
     orangeSoft = OrangeSoftDark,
     onOrangeSoft = OrangeDark,
     disabledButton = DisabledBlueDark,
+    scanner = ImageScannerColors,
+    accentBackdropAlpha = 0.18f,
     accents = DarkAccents,
 )
 
@@ -117,11 +151,11 @@ val LocalExtendedColors = staticCompositionLocalOf { LightExtendedColors }
 
 private val LightColors = lightColorScheme(
     primary = Blue,
-    onPrimary = Color.White,
+    onPrimary = WarmWhite,
     primaryContainer = BlueSoft,
     onPrimaryContainer = Color(0xFF0B3E63),
     secondary = InkMuted,
-    onSecondary = Color.White,
+    onSecondary = WarmWhite,
     // Selected FilterChips read from secondaryContainer. Leaving these unset falls back to
     // Material's baseline lavender, which is how a considered palette ends up with a stray purple
     // chip in the middle of it — visible on the very first run of the manual-entry screen.
@@ -138,13 +172,21 @@ private val LightColors = lightColorScheme(
     surfaceContainer = Color(0xFFF3EFE6),
     surfaceContainerHigh = Color(0xFFEBE6DA),
     surfaceContainerHighest = Color(0xFFE2DCCC),
-    outline = LineLight,
+    outline = LineStrongLight,
     outlineVariant = LineLight,
     error = Color(0xFF9B2C2C),
-    onError = Color.White,
+    onError = WarmWhite,
+    errorContainer = Color(0xFFFCE8E8),
+    onErrorContainer = Color(0xFF6C1A1A),
     tertiary = Orange,
+    onTertiary = Ink,
     tertiaryContainer = OrangeSoft,
     onTertiaryContainer = Color(0xFF7A4B0A),
+    inverseSurface = Ink,
+    inverseOnSurface = WarmWhite,
+    surfaceBright = Color.White,
+    surfaceDim = Color(0xFFE2DCCC),
+    scrim = Color.Black,
     // Snackbar action text. Left unset this falls back to Material's baseline lavender — the same
     // stray-purple trap recorded above for `secondaryContainer`, and it appeared verbatim on the
     // meal's Undo action. `BlueDark` is the app's own accent adapted for a dark surface and scores
@@ -172,13 +214,21 @@ private val DarkColors = darkColorScheme(
     surfaceContainer = Color(0xFF201E17),
     surfaceContainerHigh = Color(0xFF2A2820),
     surfaceContainerHighest = Color(0xFF34322A),
-    outline = LineDark,
+    outline = LineStrongDark,
     outlineVariant = LineDark,
     error = Color(0xFFF2999A),
     onError = Color(0xFF3A0A0B),
+    errorContainer = Color(0xFF5A2021),
+    onErrorContainer = Color(0xFFFFDAD9),
     tertiary = OrangeDark,
+    onTertiary = Night,
     tertiaryContainer = OrangeSoftDark,
     onTertiaryContainer = OrangeDark,
+    inverseSurface = Chalk,
+    inverseOnSurface = Night,
+    surfaceBright = Color(0xFF34322A),
+    surfaceDim = Color(0xFF0C0B08),
+    scrim = Color.Black,
     // Same reason as the light scheme. Dark mode's inverseSurface is light, so the action takes the
     // darker blue rather than the brightened one.
     inversePrimary = Blue,

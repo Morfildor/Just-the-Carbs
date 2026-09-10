@@ -59,8 +59,10 @@ import app.justthecarbs.domain.ThemeChoice
 import app.justthecarbs.ocr.ScanEvidenceExport
 import app.justthecarbs.ocr.ScanEvidenceRecorder
 import app.justthecarbs.ui.components.AccentBackdrop
+import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.SectionLabel
+import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.accent
@@ -431,14 +433,14 @@ fun SettingsScreen(
  * stand out and amber measured as too close in hue to the safety card immediately below it to read
  * as a distinct, inviting action. White text on that fill fails contrast badly (measured 1.9:1 in
  * light, 1.7:1 in dark — nowhere near the 4.5:1 floor every other label in this app clears), so the
- * button label uses the theme's own dark ink/chalk text instead, which clears it by a wide margin
- * (9.15:1 / 10.8:1).
+ * button label uses tertiary's explicit paired foreground, which clears it by a wide margin
+ * (9.15:1 / 10.8:1) without coupling the CTA to the page background.
  */
 @Composable
 private fun RateUsCard(failed: Boolean, onClick: () -> Unit) {
     val amber = MaterialTheme.extendedColors.accents.amber
     val gold = MaterialTheme.colorScheme.tertiary
-    val onGold = MaterialTheme.colorScheme.onBackground
+    val onGold = MaterialTheme.colorScheme.onTertiary
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -560,7 +562,13 @@ private fun SettingsAction(
 private fun ConfirmDialog(message: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(Space.cardRadius),
+        modifier = Modifier.jtcDialogOutline(),
+        shape = JtcDialogDefaults.shape,
+        containerColor = JtcDialogDefaults.containerColor,
+        iconContentColor = JtcDialogDefaults.iconContentColor,
+        titleContentColor = JtcDialogDefaults.titleContentColor,
+        textContentColor = JtcDialogDefaults.textContentColor,
+        tonalElevation = JtcDialogDefaults.tonalElevation,
         text = { Text(message) },
         confirmButton = {
             TextButton(onClick = onConfirm) { Text(stringResource(R.string.settings_confirm)) }

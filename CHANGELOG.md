@@ -87,6 +87,11 @@ and scanner lifecycle handling. It remains a local development build; no Play up
 
 ### Changed
 
+- Refined Dark mode without changing app behavior: welcome and filled-accent content now use
+  explicit foreground pairs, scanner review screens separate themed controls from the photograph,
+  OCR selection geometry remains visible over mixed packaging, dialogs share one raised-surface
+  treatment, and Settings' rating action uses its proper tertiary foreground.
+
 - Finished the tutorial release-candidate polish: START now orients around the measured Search,
   Barcode, and Nutrition Label actions; Add to meal gets a restrained warm strong-focus treatment;
   incompatible targets release and reacquire instead of stretching a spotlight through unrelated

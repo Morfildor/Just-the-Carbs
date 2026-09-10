@@ -67,6 +67,7 @@ import app.justthecarbs.ocr.OcrDocument
 import app.justthecarbs.ocr.RecoveryCandidates
 import app.justthecarbs.ocr.StatedBasis
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
 
 /** Test hooks; the tappable overlay and the inline field carry no text of their own. */
@@ -513,6 +514,8 @@ fun AssistedReadingScreen(
         onUseValue(perHundred.amount, basis)
     }
 
+    val scannerColors = MaterialTheme.extendedColors.scanner
+
     // ## Black is the photo's ground, not the screen's (thirteenth pass)
     //
     // This whole screen used to be `.background(Color.Black)` with `Color.White` text scattered
@@ -535,7 +538,10 @@ fun AssistedReadingScreen(
             .navigationBarsPadding(),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.m, vertical = Space.s),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = Space.m, vertical = Space.s),
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
             Text(
@@ -687,15 +693,16 @@ fun AssistedReadingScreen(
                 ) {
                     val scale = displayed.width / bitmap.width
                     highlighted.forEach { candidate ->
-                        drawRect(
-                            color = Color(0xFF4CAF50).copy(alpha = 0.85f),
-                            topLeft = Offset(
-                                displayed.left + candidate.box.left * scale,
-                                displayed.top + candidate.box.top * scale,
-                            ),
-                            size = Size(candidate.box.width * scale, candidate.box.height * scale),
-                            style = Stroke(width = 4f),
+                        val topLeft = Offset(
+                            displayed.left + candidate.box.left * scale,
+                            displayed.top + candidate.box.top * scale,
                         )
+                        val size = Size(candidate.box.width * scale, candidate.box.height * scale)
+                        // Shape plus a dark/light double edge remains identifiable on white tables,
+                        // black packages and saturated photography. Blue means selection, not
+                        // success; the rectangle itself carries the state without colour alone.
+                        drawRect(scannerColors.darkEdge, topLeft, size, style = Stroke(width = 8f))
+                        drawRect(scannerColors.selection, topLeft, size, style = Stroke(width = 4f))
                     }
                 }
             }
@@ -709,18 +716,16 @@ fun AssistedReadingScreen(
             ) {
                 val scale = displayed.width / bitmap.width
                 Canvas(modifier = Modifier.fillMaxSize().testTag(ASSIST_CORRECTION_HIGHLIGHT_TAG)) {
-                    drawRect(
-                        color = Color(0xFF4C8DF6),
-                        topLeft = Offset(
-                            displayed.left + correctionTarget.rowInSourceSpace.left * scale,
-                            displayed.top + correctionTarget.rowInSourceSpace.top * scale,
-                        ),
-                        size = Size(
-                            correctionTarget.rowInSourceSpace.width * scale,
-                            correctionTarget.rowInSourceSpace.height * scale,
-                        ),
-                        style = Stroke(width = 4f),
+                    val topLeft = Offset(
+                        displayed.left + correctionTarget.rowInSourceSpace.left * scale,
+                        displayed.top + correctionTarget.rowInSourceSpace.top * scale,
                     )
+                    val size = Size(
+                        correctionTarget.rowInSourceSpace.width * scale,
+                        correctionTarget.rowInSourceSpace.height * scale,
+                    )
+                    drawRect(scannerColors.darkEdge, topLeft, size, style = Stroke(width = 8f))
+                    drawRect(scannerColors.selection, topLeft, size, style = Stroke(width = 4f))
                 }
             }
         }
@@ -728,6 +733,7 @@ fun AssistedReadingScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(Space.m)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Space.s),

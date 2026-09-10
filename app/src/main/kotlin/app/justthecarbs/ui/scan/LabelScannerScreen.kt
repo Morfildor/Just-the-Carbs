@@ -16,6 +16,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -114,6 +115,7 @@ import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.product.kindLabel
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -1999,8 +2001,7 @@ private fun LabelCamera(
  */
 @Composable
 private fun ScanRegionOverlay(modifier: Modifier = Modifier) {
-    val strokeColor = Color.White.copy(alpha = 0.85f)
-    val shadowColor = Color.Black.copy(alpha = 0.35f)
+    val scannerColors = MaterialTheme.extendedColors.scanner
     Canvas(modifier = modifier.aspectRatio(0.8f)) {
         val bracket = size.minDimension * 0.14f
         val corners = listOf(
@@ -2012,7 +2013,7 @@ private fun ScanRegionOverlay(modifier: Modifier = Modifier) {
         corners.forEach { (origin, direction) ->
             val (ox, oy) = origin
             val (dx, dy) = direction
-            listOf(shadowColor to 6f, strokeColor to 3f).forEach { (color, width) ->
+            listOf(scannerColors.darkEdge to 6f, scannerColors.guide to 3f).forEach { (color, width) ->
                 drawLine(
                     color = color,
                     start = Offset(ox, oy),
@@ -2050,7 +2051,7 @@ private fun SearchingCard(
     onCapture: () -> Unit,
     onEdit: () -> Unit,
 ) {
-    ScannerCard {
+    ScannerCard(review = false) {
         Text(stringResource(R.string.ocr_align_title), style = MaterialTheme.typography.titleMedium)
         Row(
             horizontalArrangement = Arrangement.spacedBy(Space.s),
@@ -2111,7 +2112,7 @@ private fun ProposalCard(
     onSavePortionUnit: (PortionUnitKind, PortionConversion) -> Unit = { _, _ -> },
     saveState: PortionSaveState = PortionSaveState.Idle,
 ) {
-    ScannerCard {
+    ScannerCard(review = true) {
         CandidateChoice(candidate, onUse, onCorrect = onCorrect)
         savablePortion?.let { (descriptor, carbsPerServing) ->
             SavePortionUnitAction(
@@ -2216,7 +2217,7 @@ private fun AmbiguousCard(
     onEdit: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    ScannerCard {
+    ScannerCard(review = true) {
         Text(stringResource(R.string.ocr_ambiguous_title), style = MaterialTheme.typography.titleMedium)
         Text(
             stringResource(R.string.ocr_ambiguous_body),
@@ -2362,7 +2363,7 @@ private fun CandidateChoice(
  */
 @Composable
 private fun NotFoundCard(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () -> Unit) {
-    ScannerCard {
+    ScannerCard(review = true) {
         Text(stringResource(R.string.ocr_not_found_title), style = MaterialTheme.typography.titleMedium)
         Text(
             stringResource(R.string.ocr_not_found_body),
@@ -2415,11 +2416,26 @@ private fun CaptureButton(onClick: () -> Unit, enabled: Boolean = true) {
 }
 
 @Composable
-private fun ScannerCard(content: @Composable ColumnScope.() -> Unit) {
+private fun ScannerCard(review: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(Space.cardRadius)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(Space.cardRadius))
+            .background(
+                if (review) {
+                    MaterialTheme.colorScheme.surfaceContainerHigh
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerLow
+                },
+                shape,
+            )
+            .then(
+                if (review) {
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                } else {
+                    Modifier
+                },
+            )
             .padding(Space.m),
         verticalArrangement = Arrangement.spacedBy(Space.s),
         content = content,

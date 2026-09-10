@@ -49,8 +49,10 @@ import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.ui.components.AccentBackdrop
+import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
+import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.accent
@@ -113,6 +115,13 @@ fun MealScreen(
     if (state.showClearConfirmation) {
         AlertDialog(
             onDismissRequest = { onShowClearConfirmation(false) },
+            modifier = Modifier.jtcDialogOutline(),
+            shape = JtcDialogDefaults.shape,
+            containerColor = JtcDialogDefaults.containerColor,
+            iconContentColor = JtcDialogDefaults.iconContentColor,
+            titleContentColor = JtcDialogDefaults.titleContentColor,
+            textContentColor = JtcDialogDefaults.textContentColor,
+            tonalElevation = JtcDialogDefaults.tonalElevation,
             title = { Text(stringResource(R.string.meal_clear)) },
             text = { Text(stringResource(R.string.meal_clear_confirm)) },
             confirmButton = {

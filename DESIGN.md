@@ -41,12 +41,14 @@ looked wrong.
 | Blue (primary) | `#1B6FBF` | `#5CA6E8` | Every interactive control, active state, favourite |
 | Blue soft | `#E4F1FC` | `#16324A` | Accent tint, selected chips, verified badge |
 | **Red (result)** | `#D42F2F` | `#FF7A7A` | **Exactly one thing per screen: the carb number** |
+| Result foreground | `#FFFBF7` | `#15140F` | Content on a result-filled welcome surface |
 | Orange (tertiary) | `#FFA94D` | `#FFB868` | Soft informational surfaces, label-scan accent |
 | Orange soft | `#FFEEDC` | `#4A3418` | Safety card, unverified-source badge |
 | Cream (background) | `#FFF6EE` | `#15140F` | Page ground |
 | Ink | `#181A1E` | `#F2EFE8` | Primary text |
 | Ink muted | `#6B6A72` | `#AFAEA8` | Secondary text |
 | Line | `#E4DFD3` | `#39372F` | Borders, dividers |
+| Strong line | `#77736A` | `#8B887F` | Material control outlines requiring non-text contrast |
 
 Blue and red are the *measured* values `Theme.kt` ships, not the original handoff tokens
 (`#2F8FE0` / `#FF5C5C`), which scored 3.43:1 and 2.84:1 on the surfaces they are actually drawn on
@@ -81,6 +83,18 @@ hue would imply it belongs to the scan → portion → carbs workflow the other 
 Dynamic colour is deliberately unused: it would hand the accent, and therefore the visual weight of
 the result, to the user's wallpaper.
 
+Full accent fills use an explicit paired foreground: warm near-white in Light and warm near-black
+in Dark. Supporting copy on those fills uses 96% opacity, with every actual gradient stop and both
+welcome fills pinned at ≥4.5:1 by `ContrastTest`.
+
+The decorative destination backdrop remains restrained but theme-aware: 14% accent alpha on cream,
+18% on the warm dark page where the lower value visually disappeared.
+
+Material roles used by current components are owned explicitly, including tertiary content,
+inverse surface/content, surface bright/dim, error containers, and both outline strengths. Fixed
+roles are intentionally not manufactured because no component in the current Material3 set uses
+them.
+
 ## Typography
 
 - **Space Grotesk** (variable, weights 500/600/700) — headlines, numbers, buttons, labels.
@@ -107,12 +121,24 @@ Two numbers get sizes nothing else competes with (`NumberType`):
 
 ## Surfaces
 
-Cards are outlined (`surfaceContainerLowest` + 1dp `outlineVariant`), not elevated. The **only**
-elevated surface is the pinned result panel, whose shadow is load-bearing: without it the panel was
-~1% different from the page and the most important element on screen had no edge at all.
+Page ground is `background`; ordinary cards use `surfaceContainerLowest`/`surfaceContainerLow` with
+a selective 1dp `outlineVariant`; important review and modal chrome uses `surfaceContainerHigh`.
+Cards are not mechanically bordered or elevated. The **only** ordinary app-content surface with a
+shadow is the pinned result panel, whose shadow is load-bearing: without it the panel was ~1%
+different from the page and the most important element on screen had no edge at all.
 
 The same pinned surface treatment carries the calculator result and the meal total, so the same kind
 of number appears in the same place and the app reads as one thing.
+
+Scanner capture remains image-relative: black/translucent chrome and light controls over the live
+preview. Frozen crop, assisted, conflict, and verification states use raised themed header/footer
+chrome around a black photo well, making the transition to review visible without brightening the
+photograph. Selection rectangles and crop handles use semantic blue plus contrasting dark/light
+halos and distinct geometry; no scanner state relies on hue alone.
+
+Dialogs share `JtcDialogDefaults`: `surfaceContainerHigh`, `onSurface` title,
+`onSurfaceVariant` body, the standard 18dp shape, a subtle `outlineVariant`, and no extra tonal tint.
+The platform modal scrim remains intentional so underlying context stays perceptible.
 
 ## Motion (`Motion`)
 

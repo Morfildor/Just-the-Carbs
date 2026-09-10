@@ -114,10 +114,12 @@ import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.VerificationStatus
 import app.justthecarbs.ui.components.FavoriteButton
+import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.components.SourceBadge
+import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.domain.PortionUsage
 import app.justthecarbs.ui.meal.MealActions
 import app.justthecarbs.ui.meal.MealBarIfPresent
@@ -241,6 +243,13 @@ fun ProductScreen(
     if (state.labelHandoffFailed) {
         AlertDialog(
             onDismissRequest = onDismissLabelHandoffFailure,
+            modifier = Modifier.jtcDialogOutline(),
+            shape = JtcDialogDefaults.shape,
+            containerColor = JtcDialogDefaults.containerColor,
+            iconContentColor = JtcDialogDefaults.iconContentColor,
+            titleContentColor = JtcDialogDefaults.titleContentColor,
+            textContentColor = JtcDialogDefaults.textContentColor,
+            tonalElevation = JtcDialogDefaults.tonalElevation,
             confirmButton = {
                 TextButton(onClick = onDismissLabelHandoffFailure) {
                     Text(stringResource(R.string.ocr_confirm))
