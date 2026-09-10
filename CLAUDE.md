@@ -51,6 +51,75 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Final Tutorial V2 polish (owner correction, 2026-09-10) — READ FIRST
+
+### Release preparation (2026-09-10)
+
+The owner physically reviewed and accepted the current debug build and final tutorial before the
+release-preparation pass. No product or UI behavior changed in that pass. Version `1.0.6` /
+`versionCode 7` remains the correct next Play artifact: codes 1–6 are spent and 7 has not been
+uploaded.
+
+Fresh release-preparation evidence: JVM **1955/1955** (zero failures/errors/skips,
+`--rerun-tasks`), debug lint **0 errors, 28 warnings, 3 hints**, debug APK and debug test APK green;
+minified release APK and signed AAB green with the same production certificate as versions 1–6;
+release R8 diagnostic/evidence barriers green; no evidence `FileProvider` in the merged release
+manifest; and 226 release-runtime artifacts scanned with no known OSV.dev vulnerabilities.
+
+The attempted full Android 16 emulator gate received 226/379 results before `carbscan` went offline.
+Six OCR failures were the exact pre-existing kinder/grated-cheese ML Kit set already controlled
+against clean code in this version's changelog. The next UI test was interrupted by the disconnect,
+so it is not classified as a product failure and the full instrumented gate is not claimed. The
+final tutorial-specific run immediately preceding release preparation remains 54/54 green. After
+restarting the AVD, a focused release-critical set covering tutorial/navigation, scanner UI,
+calculator and meal flows, DAOs, and migrations passed **183/183**, zero failures or skips. No
+physical-device run was performed by the agent, and nothing was uploaded, tagged or pushed.
+
+This fresh owner brief supersedes the earlier no-arrow, single-ring, bottom-narration, left-aligned,
+dark-pocket, and stronger-narration-wash treatments below. Preserve their interaction and safety
+architecture, not their obsolete decoration. The approved baseline is the current uncommitted V2
+work above `8b43ab5`; do not reset it to GitHub.
+
+The final overlay keeps one authoritative `Animatable<Rect>`, stable centered teaching near 60% of
+the usable portrait height, deterministic previews, tap-anywhere, independent Skip, and existing
+accessibility. START now measures the whole Search / Barcode / Nutrition Label action cluster and
+uses an `ORIENTATION` presentation: lighter scrim, broad borderless blue lift, no cleared giant union,
+and no pointer. The Scan / Portion / Carbs rhythm remains visible only as context. MEAL is a `STRONG`
+case with a crisp unchanged blue button, tonal definition, warm orange bloom, mild alpha-respecting
+local scrim relief, and a shorter inset route when geometry permits.
+
+`TutorialStep` owns focus-emphasis and pointer metadata. Feature pointers use measured headline/body
+and target bounds plus pure cubic geometry. Progress, tap copy, Skip, other measured controls, the
+viewport, and length bounds are collision gates. An unsafe route returns null; TOTAL therefore may
+omit its pointer when the tap affordance occupies the route. The Canvas stroke fades from a quiet
+tail to a small open arrowhead outside the target. It is decorative and has no semantics.
+
+`tutorialSpotlightTransition` selects direct interpolation only for meaningfully overlapping targets
+with compatible aspect ratios. Other moves release focus for 70 ms, snap the single authoritative
+Rect while suppressed, and acquire the new valid target over 160 ms; its light-on peak settles by
+220 ms. Teaching copy fades through (60 ms out, 120 ms in) without translation or scale. An immutable
+`TutorialPresentation` supplies the displayed step, and presentation identity keys the Subcompose
+narration and preview. Copy, progress, chapter, backdrop, accent, pointer metadata, and Next/Finish
+semantics therefore switch together; backdrops no longer crossfade or overlap. Cancellable effects
+make the latest requested step win after rapid interruption. Settled screens are static.
+
+Final release-candidate verification (2026-09-10): `:app:testDebugUnitTest :app:lintDebug
+:app:assembleDebug :app:assembleDebugAndroidTest` succeeded in one fresh run. JVM XML reports 1,955
+tests with zero failures, errors, or skips; lint reports zero errors and 28 warnings. One direct ADB
+run on the Android 16 emulator passed TutorialScreenTest (30), TutorialNavigationTest (10),
+HomeTutorialReminderTest (7), and TutorialVisualTest (7): 54 total, zero failures in 106.966 seconds.
+New coverage pins START orientation, MEAL strong focus, direct versus release/acquire selection,
+atomic MEAL/TOTAL content and final affordance, and rapid convergence on the latest requested step.
+
+The final 61-image review set contains every settled chapter in light/dark, 1x/2x font scale, and
+400dp/320dp widths plus 25 synchronized in-motion captures (35/75/150/230/310 ms for every chapter
+transition). Human inspection checked START and MEAL hierarchy, text/context, calm settlement,
+pointer restraint, and the absence of stretched apertures, overlapping backdrops, black flashes, or
+mixed final affordances. Screenshot-enabled light plus transition tests passed in 24.416 seconds;
+the other five matrices passed in 58.489 seconds. This remains emulator evidence, not a new physical-
+device recording or live TalkBack session. No release build, commit, push, version change, signing,
+or publishing action was performed.
+
 ## Tutorial V2: Guided Light / Color Echo (2026-09-09)
 
 Owner-approved baseline was the **local, uncommitted stable-narration V1** above `4366435`,
@@ -340,6 +409,18 @@ ViewModel, no repository, no camera, no network, nothing that can write Room or 
 is no state there to mutate, so "the tutorial cannot affect real data" is a property of the code
 rather than a rule to remember. The whole backdrop is `clearAndSetSemantics {}`, so TalkBack cannot
 reach a preview control that would do nothing.
+
+### Central teaching stage (owner correction, 2026-09-10)
+
+The V2.2 central-stage add-on supersedes the bottom-narration instructions. Measure the tallest
+copy slot, keep a compact left-aligned teaching column near 57% of usable portrait height, and
+reframe only synthetic previews above its safe region. There is no bottom minimum-height region
+or narration surface. A soft scrim pocket supplies contrast for white tutorial text; Space Grotesk
+is used for the tutorial body as explicitly allowed by the owner. Production typography is unchanged.
+The latest six copy pairs teach barcode/search/label decisions, then adding portions and the meal
+total. START illustrates the three entry points rather than the former portion rhythm. Chapter
+colours remain blue/blue/blue/green/orange/red, with distinct blue light fields and subdued completed
+rail segments. Measured anchors, tap-anywhere, Skip, live-region and progress semantics still apply.
 
 ### The overlay's presentation (2026-09-08) — owner: "it dims the screen, too boxy, too much dimming"
 

@@ -131,6 +131,23 @@ No decorative entrance animation anywhere.
 
 ## Accessibility floor
 
+### Tutorial presentation exception (owner, 2026-09-10)
+
+The optional tutorial uses a stable centered teaching stage, a maximum 320dp column, and no card or
+identifiable text background. Headlines use Space Grotesk SemiBold at 30sp/34sp (24sp/28sp at large
+font scale); tutorial body copy uses Space Grotesk Medium at 16.5sp/22sp. Theme foreground colours
+retain readable contrast. A light contextual scrim, one-dp tonal target edge, broad semantic bloom,
+and optional collision-aware pointer establish context, focus, and explanation. These choices apply
+only to the tutorial. Its measured synthetic previews reframe around the stage; real app screens
+retain their typography and layout. Pointer, bloom, scrim, edge, and visual progress remain excluded
+from accessibility.
+
+START is the sole orientation treatment: one broad, borderless blue lift relates Search, Barcode,
+and Nutrition Label while leaving the Scan / Portion / Carbs rhythm as context. Targeted chapters use
+either a safe direct retarget or a short release/acquire selected from measured overlap and aspect
+ratio. The displayed chapter is atomic across preview, copy, progress, accent, pointer metadata, and
+advance semantics; only focus visibility and the short fade-through animate around that switch.
+
 - 48dp minimum touch target, enforced by `Space.minTouchTarget`.
 - The result is a polite live region so TalkBack reads the new value as the portion changes.
 - Composite tappable rows merge their descendants into one node with one description, rather than

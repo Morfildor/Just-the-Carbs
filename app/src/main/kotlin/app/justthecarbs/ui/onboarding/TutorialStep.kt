@@ -32,7 +32,7 @@ enum class TutorialBackdrop {
  */
 enum class TutorialAnchor {
     NONE,
-    RHYTHM,
+    FIND_ACTIONS,
     SCAN_BARCODE,
     SEARCH,
     SCAN_LABEL,
@@ -44,7 +44,13 @@ enum class TutorialAnchor {
 enum class TutorialAccent { PRIMARY, BARCODE, SEARCH, LABEL, PORTION, RESULT }
 
 /** Rounded aperture categories, independent of measured target geometry. */
-enum class TutorialFocusStyle { GROUP, CARD, CONTROL, RESULT }
+enum class TutorialFocusStyle { ORIENTATION, CARD, CONTROL, RESULT }
+
+/** Perceptual help for targets whose own surface does not separate clearly from the overlay. */
+enum class TutorialFocusEmphasis { STANDARD, STRONG }
+
+/** Whether narration should carry a decorative editorial pointer to the measured feature. */
+enum class TutorialPointer { NONE, FEATURE }
 
 /**
  * One instructional moment.
@@ -61,6 +67,8 @@ data class TutorialStep(
     val chapterRes: Int,
     val accent: TutorialAccent,
     val focusStyle: TutorialFocusStyle,
+    val focusEmphasis: TutorialFocusEmphasis,
+    val pointer: TutorialPointer,
 )
 
 /**
@@ -72,15 +80,17 @@ data class TutorialStep(
  * added to one without the other seeing it.
  */
 val TUTORIAL_STEPS: List<TutorialStep> = listOf(
-    // The orientation step illuminates the complete Find -> Portion -> Carbs rhythm.
+    // Orientation keeps all three real ways to find a product visible as one broad region.
     TutorialStep(
         titleRes = R.string.tutorial_title_orientation,
         bodyRes = R.string.tutorial_body_orientation,
         backdrop = TutorialBackdrop.HOME,
-        anchor = TutorialAnchor.RHYTHM,
+        anchor = TutorialAnchor.FIND_ACTIONS,
         chapterRes = R.string.tutorial_chapter_start,
         accent = TutorialAccent.PRIMARY,
-        focusStyle = TutorialFocusStyle.GROUP,
+        focusStyle = TutorialFocusStyle.ORIENTATION,
+        focusEmphasis = TutorialFocusEmphasis.STRONG,
+        pointer = TutorialPointer.NONE,
     ),
     TutorialStep(
         titleRes = R.string.tutorial_title_barcode,
@@ -90,6 +100,8 @@ val TUTORIAL_STEPS: List<TutorialStep> = listOf(
         chapterRes = R.string.tutorial_chapter_barcode,
         accent = TutorialAccent.BARCODE,
         focusStyle = TutorialFocusStyle.CARD,
+        focusEmphasis = TutorialFocusEmphasis.STANDARD,
+        pointer = TutorialPointer.FEATURE,
     ),
     TutorialStep(
         titleRes = R.string.tutorial_title_search,
@@ -99,6 +111,8 @@ val TUTORIAL_STEPS: List<TutorialStep> = listOf(
         chapterRes = R.string.tutorial_chapter_search,
         accent = TutorialAccent.SEARCH,
         focusStyle = TutorialFocusStyle.CONTROL,
+        focusEmphasis = TutorialFocusEmphasis.STRONG,
+        pointer = TutorialPointer.FEATURE,
     ),
     TutorialStep(
         titleRes = R.string.tutorial_title_label,
@@ -108,6 +122,8 @@ val TUTORIAL_STEPS: List<TutorialStep> = listOf(
         chapterRes = R.string.tutorial_chapter_label,
         accent = TutorialAccent.LABEL,
         focusStyle = TutorialFocusStyle.CARD,
+        focusEmphasis = TutorialFocusEmphasis.STRONG,
+        pointer = TutorialPointer.FEATURE,
     ),
     TutorialStep(
         titleRes = R.string.tutorial_title_meal,
@@ -117,6 +133,8 @@ val TUTORIAL_STEPS: List<TutorialStep> = listOf(
         chapterRes = R.string.tutorial_chapter_meal,
         accent = TutorialAccent.PORTION,
         focusStyle = TutorialFocusStyle.CONTROL,
+        focusEmphasis = TutorialFocusEmphasis.STRONG,
+        pointer = TutorialPointer.FEATURE,
     ),
     TutorialStep(
         titleRes = R.string.tutorial_title_total,
@@ -126,8 +144,26 @@ val TUTORIAL_STEPS: List<TutorialStep> = listOf(
         chapterRes = R.string.tutorial_chapter_total,
         accent = TutorialAccent.RESULT,
         focusStyle = TutorialFocusStyle.RESULT,
+        focusEmphasis = TutorialFocusEmphasis.STANDARD,
+        pointer = TutorialPointer.NONE,
     ),
 )
 
 /** Index of the final step. Derived, so adding a step cannot leave a stale constant behind. */
 val TUTORIAL_LAST_STEP: Int = TUTORIAL_STEPS.lastIndex
+
+/** Every visible teaching field is resolved from this one immutable step snapshot. */
+internal data class TutorialPresentation(
+    val index: Int,
+    val step: TutorialStep,
+    val isLast: Boolean,
+)
+
+internal fun tutorialPresentation(index: Int): TutorialPresentation {
+    val bounded = index.coerceIn(0, TUTORIAL_LAST_STEP)
+    return TutorialPresentation(
+        index = bounded,
+        step = TUTORIAL_STEPS[bounded],
+        isLast = bounded == TUTORIAL_LAST_STEP,
+    )
+}

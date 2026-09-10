@@ -28,7 +28,7 @@ class TutorialStepTest {
         // is the rhythm the first step describes, so the sequence must actually follow it.
         assertEquals(
             listOf(
-                TutorialAnchor.RHYTHM,
+                TutorialAnchor.FIND_ACTIONS,
                 TutorialAnchor.SCAN_BARCODE,
                 TutorialAnchor.SEARCH,
                 TutorialAnchor.SCAN_LABEL,
@@ -55,7 +55,7 @@ class TutorialStepTest {
     fun `every normal tutorial step has a measured target`() {
         val anchorless = TUTORIAL_STEPS.filter { it.anchor == TutorialAnchor.NONE }
         assertEquals(0, anchorless.size)
-        assertEquals(TutorialAnchor.RHYTHM, TUTORIAL_STEPS.first().anchor)
+        assertEquals(TutorialAnchor.FIND_ACTIONS, TUTORIAL_STEPS.first().anchor)
     }
 
     @Test
@@ -79,7 +79,7 @@ class TutorialStepTest {
     fun `the four teaching anchors the brief names are all covered`() {
         val anchors = TUTORIAL_STEPS.map { it.anchor }.toSet()
         listOf(
-            TutorialAnchor.RHYTHM,
+            TutorialAnchor.FIND_ACTIONS,
             TutorialAnchor.SCAN_BARCODE,
             TutorialAnchor.SEARCH,
             TutorialAnchor.SCAN_LABEL,
@@ -94,6 +94,47 @@ class TutorialStepTest {
         TUTORIAL_STEPS.forEach { assertNotEquals(0, it.chapterRes) }
         assertEquals(TutorialFocusStyle.CONTROL, TUTORIAL_STEPS[2].focusStyle)
         assertEquals(TutorialFocusStyle.RESULT, TUTORIAL_STEPS.last().focusStyle)
+    }
+
+    @Test
+    fun `four instructional features use pointers while orientation and total stay calm`() {
+        assertEquals(
+            listOf(
+                TutorialPointer.NONE,
+                TutorialPointer.FEATURE,
+                TutorialPointer.FEATURE,
+                TutorialPointer.FEATURE,
+                TutorialPointer.FEATURE,
+                TutorialPointer.NONE,
+            ),
+            TUTORIAL_STEPS.map { it.pointer },
+        )
+    }
+
+    @Test
+    fun `orientation search label and meal receive their required focus treatments`() {
+        assertEquals(
+            listOf(
+                TutorialFocusEmphasis.STRONG,
+                TutorialFocusEmphasis.STANDARD,
+                TutorialFocusEmphasis.STRONG,
+                TutorialFocusEmphasis.STRONG,
+                TutorialFocusEmphasis.STRONG,
+                TutorialFocusEmphasis.STANDARD,
+            ),
+            TUTORIAL_STEPS.map { it.focusEmphasis },
+        )
+    }
+
+    @Test
+    fun `visible presentation derives finish state from the same displayed step`() {
+        val meal = tutorialPresentation(TUTORIAL_LAST_STEP - 1)
+        val total = tutorialPresentation(TUTORIAL_LAST_STEP)
+
+        assertEquals(TUTORIAL_STEPS[TUTORIAL_LAST_STEP - 1], meal.step)
+        assertEquals(false, meal.isLast)
+        assertEquals(TUTORIAL_STEPS[TUTORIAL_LAST_STEP], total.step)
+        assertEquals(true, total.isLast)
     }
 
 }

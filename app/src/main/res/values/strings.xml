@@ -702,22 +702,22 @@
     <string name="tutorial_chapter_label" tools:ignore="MissingTranslation">LABEL</string>
     <string name="tutorial_chapter_meal" tools:ignore="MissingTranslation">MEAL</string>
     <string name="tutorial_chapter_total" tools:ignore="MissingTranslation">TOTAL</string>
-    <string name="tutorial_chapter_counter" tools:ignore="MissingTranslation">%1$02d / %2$02d · %3$s</string>
+    <string name="tutorial_chapter_counter" tools:ignore="MissingTranslation">%1$d / %2$d · %3$s</string>
     <string name="tutorial_pane_title" tools:ignore="MissingTranslation">Tutorial</string>
     <string name="tutorial_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>
 
-    <string name="tutorial_title_orientation" tools:ignore="MissingTranslation">Three steps. One number.</string>
-    <string name="tutorial_body_orientation" tools:ignore="MissingTranslation">Scan. Portion. Carbs.</string>
-    <string name="tutorial_title_barcode" tools:ignore="MissingTranslation">Point. Scan. Done.</string>
-    <string name="tutorial_body_barcode" tools:ignore="MissingTranslation">Use the barcode when you have one.</string>
-    <string name="tutorial_title_search" tools:ignore="MissingTranslation">Know the name? Search it.</string>
-    <string name="tutorial_body_search" tools:ignore="MissingTranslation">Type the name. Pick the match.</string>
-    <string name="tutorial_title_label" tools:ignore="MissingTranslation">No barcode? Scan the label.</string>
-    <string name="tutorial_body_label" tools:ignore="MissingTranslation">Point at the nutrition panel. We’ll look for carbs.</string>
-    <string name="tutorial_title_meal" tools:ignore="MissingTranslation">Build as you go.</string>
-    <string name="tutorial_body_meal" tools:ignore="MissingTranslation">Set the portion. Add it.</string>
-    <string name="tutorial_title_total" tools:ignore="MissingTranslation">One meal. One number.</string>
-    <string name="tutorial_body_total" tools:ignore="MissingTranslation">Your carb total updates as you add.</string>
+    <string name="tutorial_title_orientation" tools:ignore="MissingTranslation">Three ways to get started</string>
+    <string name="tutorial_body_orientation" tools:ignore="MissingTranslation">Scan a barcode, search by name, or scan the nutrition label.</string>
+    <string name="tutorial_title_barcode" tools:ignore="MissingTranslation">Scan the barcode</string>
+    <string name="tutorial_body_barcode" tools:ignore="MissingTranslation">Fastest when the package has one.</string>
+    <string name="tutorial_title_search" tools:ignore="MissingTranslation">Search by name</string>
+    <string name="tutorial_body_search" tools:ignore="MissingTranslation">Can\'t scan? Type the product name and choose a match.</string>
+    <string name="tutorial_title_label" tools:ignore="MissingTranslation">Scan the nutrition label</string>
+    <string name="tutorial_body_label" tools:ignore="MissingTranslation">Can\'t find the product? We\'ll look for the carb value on the package.</string>
+    <string name="tutorial_title_meal" tools:ignore="MissingTranslation">Add it to your meal</string>
+    <string name="tutorial_body_meal" tools:ignore="MissingTranslation">Set the portion, then add it to the running total.</string>
+    <string name="tutorial_title_total" tools:ignore="MissingTranslation">See your meal total</string>
+    <string name="tutorial_body_total" tools:ignore="MissingTranslation">Everything you add is combined here.</string>
 
     <!-- The find → portion → carbs strip on the tutorial's first step. -->
     <string name="tutorial_rhythm_find" tools:ignore="MissingTranslation">Scan</string>

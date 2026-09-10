@@ -6,7 +6,8 @@ most recent released one; every uploaded version is copied into
 artifact's hash, size and signer.
 
 **Latest closed-testing release: `1.0.5` / `versionCode 6`**, released to selected testers
-2026-09-07. `1.0.6` / `versionCode 7` is now in development, open below.
+2026-09-07. `1.0.6` / `versionCode 7` is prepared for upload and remains open below until it
+reaches Play.
 
 ## Versioning rule — one version per uploaded artifact (owner, resolved 2026-08-30)
 
@@ -78,7 +79,7 @@ work after
 Nothing yet. `1.0.6` / `versionCode 7` is open below; a documentation-only change opens nothing
 further and lands directly under that heading.
 
-## 1.0.6 (versionCode 7) — in development, not uploaded
+## 1.0.6 (versionCode 7) — 2026-09-10 — prepared for upload, not uploaded
 
 Opened by the scanner shutter-haptic patch, then extended by the repository-review fixes below.
 This version also corrects portion recalculation, nutrition-basis persistence, meal-save reporting,
@@ -86,25 +87,48 @@ and scanner lifecycle handling. It remains a local development build; no Play up
 
 ### Changed
 
+- Finished the tutorial release-candidate polish: START now orients around the measured Search,
+  Barcode, and Nutrition Label actions; Add to meal gets a restrained warm strong-focus treatment;
+  incompatible targets release and reacquire instead of stretching a spotlight through unrelated
+  UI; and copy, progress, backdrop, accent, pointer metadata, and Next/Finish semantics switch as one
+  presentation. The app context, tap-anywhere flow, accessible actions, Search, Label, and Total
+  compositions remain intact.
+
+- Finished the tutorial's central guided-light presentation: a light contextual scrim, measured tonal target edge, broad semantic bloom, and collision-aware editorial pointer now connect each concise explanation to the real feature without hiding the surrounding app. Search and Nutrition Label receive stronger perceptual separation; cramped layouts omit unsafe pointers.
+
+- Replaced tutorial slogans with direct guidance explaining scanning, search, portions, and the meal total. Space Grotesk headlines and body copy remain centered in one stable teaching stage while the measured focus moves.
+
 - Refined the interactive tutorial with six ultra-concise chapters, stronger headlines, an integrated story rail, and semantic colour echoed through a feathered focus aura and subtle narration wash. The reading position stays fixed across copy lengths and font sizes; tap-anywhere and accessible advance actions remain.
 
 - The optional tutorial now keeps its guidance in one stable lower reading area while a softer
   spotlight moves between measured app previews.
 
-### Play Store release notes (draft)
+### Play Store release notes
 
 ```
-New: a short welcome on first launch, plus an optional tutorial showing how scanning, portions and
-meals work. Take the tutorial or dismiss it from the home screen, or replay it any time from
-Settings.
-
-Nutrition-label capture now gives brief tactile feedback as you scan. Fixed portion calculations
-after product edits and online-value resets, improved meal-save feedback, and made manual barcode
-entry and crop selection more reliable.
+• A clearer welcome and optional guided tutorial show how scanning, portions and meal totals work.
+• Improved nutrition-label guidance and scan feedback.
+• Fixed portion recalculation, meal-save feedback, manual barcode entry and crop selection.
 ```
 
-The draft describes observable changes without a health or accuracy claim. Physical-phone testing
-of this combined build is still pending.
+The owner physically reviewed and accepted the current debug build and final tutorial before release
+preparation. The release artifact was not installed on physical hardware during this preparation.
+
+### Release preparation verification — 2026-09-10
+
+- Fresh JVM suite: **1955/1955**, zero failures, errors or skips (`--rerun-tasks`, 206 XML files).
+- Debug lint: **0 errors, 28 warnings, 3 hints**. Debug APK and debug test APK assembled.
+- Minified release APK and signed release AAB assembled with the established production certificate.
+  R8 removed the four release-forbidden OCR diagnostic/evidence classes, and the merged release
+  manifest contains no evidence `FileProvider`.
+- Release dependency scan: **226 artifacts**, no known vulnerabilities reported by OSV.dev.
+- The Android 16 emulator run received **226 of 379** tests before the AVD went offline. Six known
+  real-image OCR fixture failures matched the exact pre-existing `carbscan` set already controlled
+  against clean code below; the test interrupted at disconnect is not classified as an app failure.
+  The complete instrumented gate was therefore not established in this preparation run. The final
+  tutorial-specific emulator run recorded in `CLAUDE.md` remains **54/54** green. After restarting
+  the AVD, a focused release-critical set covering tutorial/navigation, scanner UI, calculator and
+  meal flows, DAOs, and migrations passed **183/183**, zero failures or skips.
 
 ### Added
 
@@ -199,9 +223,9 @@ Presentation only. No step, no wording, no navigation and no flag behaviour chan
   anywhere on screen; a tap almost anywhere on screen advances (Skip is the one exception, and
   always wins on its own bounds). The card carries a restrained "Tap anywhere to continue" /
   "Tap anywhere to finish" line instead, and still exposes a real accessibility action so TalkBack
-  reaches the same advance behaviour through explore-by-touch. The spotlight ring is a single
-  static outline with no motion of its own and there is no arrow — pressing anywhere works, so
-  nothing needs to point at where to press.
+  reaches the same advance behaviour through explore-by-touch. The later final-polish pass adds a
+  decorative pointer from the explanation to the feature; it explains the relationship and does not
+  change the tap-anywhere interaction.
 
 ### Fixed
 

@@ -40,6 +40,13 @@ class TutorialAnchors {
     fun boundsOf(anchor: TutorialAnchor): Rect? =
         bounds[anchor]?.takeIf { it.width > 0f && it.height > 0f }
 
+    /** Other measured controls, used only as decorative pointer collision obstacles. */
+    fun boundsExcept(anchor: TutorialAnchor, ignored: Set<TutorialAnchor> = emptySet()): List<Rect> =
+        bounds
+            .filterKeys { it != anchor && it !in ignored }
+            .values
+            .filter { it.width > 0f && it.height > 0f }
+
     /** Forget every measurement. Used when the backdrop changes, so a stale rectangle from the
      *  previous preview cannot be pointed at while the new one is still being laid out. */
     fun clear() {

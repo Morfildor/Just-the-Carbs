@@ -2349,6 +2349,11 @@ finish" line rather than a button. Rows 41.5, 41.6, 41.9, 41.21, 41.22, 41.35 an
 or removed accordingly; three new rows (41.5a-c) cover what only a device can settle about
 tap-anywhere hit-testing.
 
+**Revised 2026-09-10 (final V2 polish):** the no-arrow and single-ring presentation is superseded.
+Tap-anywhere is unchanged, but feature steps may show a decorative editorial pointer connecting the
+explanation to the measured target. The final focus uses a contextual scrim, subtle tonal target
+edge, and broad semantic bloom. Pointers are omitted when measured geometry cannot route them safely.
+
 Automated coverage: `TutorialStepTest`, `CalloutPlacementTest`, `TutorialReminderTest`,
 `OnboardingViewModelTest`, `WelcomeCarouselViewModelTest` (pure JVM) plus `TutorialScreenTest`,
 `TutorialNavigationTest`, `HomeTutorialReminderTest` and `WelcomeCarouselScreenTest` (instrumented).
@@ -2375,10 +2380,10 @@ the dim now reads correctly** (41.30-41.34).
 - [ ] 41.4 Walk all six steps by **tapping anywhere on screen** — not a button, just the screen.
       Each step has its own title, one sentence, and a "Step N of 6" progress line. The whole run
       takes roughly 30-45 seconds at a normal reading pace.
-- [ ] 41.5 On each of steps 2-6, the highlighted ring sits on the control its words name: *Scan
-      barcode*, the search field, *Scan nutrition label*, *Add to meal*, *Meal Total*. A callout must
-      never cover the control it is describing. There is **no arrow** — pressing anywhere advances,
-      so nothing points at where to press.
+- [ ] 41.5 On each of steps 2-6, focus sits on the control its words name: *Scan barcode*, the search
+      field, *Scan nutrition label*, *Add to meal*, *Meal Total*. The target is unmistakable while
+      neighboring controls remain readable. A pointer may connect the explanation to the feature,
+      but it never enters target content and does not imply that only the target can be tapped.
 - [ ] 41.5a **A tap landing directly on top of the highlighted control still advances.** The
       backdrop is a drawing, not a real button — tapping the highlighted "Scan barcode" card itself
       must behave exactly like tapping open scrim, not do nothing and not open the real scanner.
@@ -2428,17 +2433,17 @@ the dim now reads correctly** (41.30-41.34).
 
 ### Presentation
 
-- [ ] 41.20 Light theme and Dark theme: text is legible on the callout card in both, and the
-      spotlight ring is visible against the dimmed backdrop.
-- [ ] 41.21 Largest font scale (Settings → Display → Font size): no callout text is clipped, and the
-      card stays fully on screen — check specifically that it never renders partly above the top
-      edge or spilling past the bottom edge, which is the case `CalloutSide.CLAMPED` exists for.
+- [ ] 41.20 Light theme and Dark theme: centered teaching text is immediately legible without a
+      visible backing card, and the measured target separates clearly from the contextual scrim.
+- [ ] 41.21 At font scale 2.0, no teaching text is clipped, the measured target remains visible, and
+      any pointer avoids the text; omission is correct when no clean route remains.
 - [ ] 41.22 Rotate to landscape mid-tutorial and back: the step does not reset, and the spotlight
       still highlights the right control in both orientations.
-- [ ] 41.23 A small/narrow phone: the callout never runs off either edge.
+- [ ] 41.23 At approximately 320dp width, teaching copy wraps without overflow and any pointer stays
+      fully on screen or is omitted.
 - [ ] 41.24 TalkBack: entering the tutorial is announced; each step's title and body are read on
       arrival; the preview's controls behind the scrim are **not** reachable by swipe navigation.
-      The card itself is reachable and its double-tap action is labelled "Next" (or, on the final
+      The teaching group is reachable and its double-tap action is labelled "Next" (or, on the final
       step, the finish string) — this is the accessible path now that there is no visible button;
       confirm double-tapping it advances/finishes exactly as a sighted tap-anywhere does.
 
@@ -2449,7 +2454,7 @@ the dim now reads correctly** (41.30-41.34).
       succeed. The user must never be dropped onto Home as though it had saved, nor trapped unable
       to retry.
 
-### The overlay's appearance (added 2026-09-08, revised 2026-09-09) — these are judgements, not assertions
+### The overlay's appearance (added 2026-09-08, revised 2026-09-10) — these are judgements, not assertions
 
 The owner's report was "it dims the screen, too boxy, too much dimming". Nothing in the automated
 suite looks at a shadow, a corner radius or a scrim alpha, so these rows are the only check on the
@@ -2461,18 +2466,60 @@ desktop monitor is not the same judgement.
       legible. If it looks like a black sheet with a hole in it, `BASE_SCRIM` is too high.
 - [ ] 41.31 **The dim is graded.** It should be lightest around the highlighted control and heaviest
       at the screen's far corners, with no visible boundary between the two.
-- [ ] 41.32 **No ring of lighter dim around the spotlight.** The edge should fade smoothly. A
-      distinct pale band around the hole is the feather rendering as a second edge — the exact defect
-      a single thick stroke produced before it was split into steps.
-- [ ] 41.33 **The callout does not read as a plain box.** It should have a visible drop shadow, a
-      soft corner, and the accent spine down its left edge. Check the shadow specifically in **Light**
-      theme, where a white card on a light dim is where a missing shadow shows first.
-- [ ] 41.34 **The card is only as tall as its words.** It must not stretch to fill the screen — that
-      was a real defect on the emulator and no test catches it.
-- [ ] 41.35 **Motion.** Moving between steps: the spotlight travels rather than jumping and the words
-      cross-fade. The spotlight ring itself is a single static outline — it should not pulse, breathe
-      or otherwise move on its own; only its position between steps should animate.
-- [ ] 41.36 On a **low-end device**, the 12-band feather redraws every frame the tutorial is on
-      screen. Confirm no visible stutter while stepping through.
+- [ ] 41.32 **Target definition is precise, not outlined.** Search and Nutrition Label separate
+      immediately through a restrained one-dp tonal edge. If it reads as a border, reduce it.
+- [ ] 41.33 **Bloom is atmosphere, not another card.** Its outer edge is broad and elliptical, with
+      no repeated rounded-rectangle contours or visible gradient boundary.
+- [ ] 41.34 **Teaching copy is an open composition.** No card, panel edge, shadow, accent spine, or
+      identifiable local background surrounds it; headline, body, progress, and tap affordance read
+      as one compact group.
+- [ ] 41.35 **Pointer.** It reads as a fine contemporary editorial annotation, never crosses copy,
+      progress, Skip, another control, or target content, and never becomes more prominent than the
+      target. A missing pointer is correct when geometry is poor.
+- [ ] 41.36 **Motion and cost.** Walk slowly, then tap rapidly through all six steps. Focus, colour,
+      pointer, copy, progress, and backdrop retarget as one 200–320ms gesture with no stale frame,
+      flash, bounce, pulse, or stutter. Once acquired, the Canvas-only decoration is still.
+- [ ] 41.37 **START orientation.** Without reading its body, Search, Scan barcode, and Scan nutrition
+      label read as one important region; the Scan / Portion / Carbs rhythm is secondary. There is no
+      pointer, giant outlined union, or unusually dark first frame.
+- [ ] 41.38 **MEAL focus.** The real Add to meal button remains blue and crisp, a restrained orange
+      atmosphere is visible around it, and the 16.8 g result remains part of the same understandable
+      chain. There is no pale/orange oval or dominant arrow.
+- [ ] 41.39 **Transition frames.** Record or slow each chapter change. Unrelated targets release then
+      reacquire; no aperture stretches through other controls, two backdrops overlap, or old/new copy
+      remains readable together. `Tap to finish` appears only with TOTAL.
+- [ ] 41.40 **Rapid interruption.** Tap through several steps quickly, then stop. The latest requested
+      chapter wins with matching copy, progress, backdrop, accent, pointer, and advance affordance;
+      no obsolete animation completes afterward.
 
 **Result:** ____________________ **Date:** ____________
+
+## 42. Release preparation record — 2026-09-10
+
+### Owner physical-device approval
+
+The owner reported the current debug build and final tutorial visually and functionally accepted
+before release preparation. This is owner evidence; the agent did not repeat or claim a physical-
+device run, and no product or UI behavior changed during release preparation.
+
+### Agent automated verification
+
+- `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+  --rerun-tasks`: passed. JVM 1955/1955, zero failures/errors/skips; lint 0 errors, 28 warnings and
+  3 hints.
+- `:app:assembleRelease :app:bundleRelease --no-daemon`: passed with the established production
+  signer. Release APK and AAB produced; R8 privacy barriers and absence of the release evidence
+  `FileProvider` rechecked.
+- `tools/dependency-scan.sh`: 226 release-runtime artifacts scanned; OSV.dev reported no known
+  vulnerabilities.
+
+### Agent emulator verification
+
+The Android 16 `carbscan` AVD began the full non-experimental 379-test gate. Gradle received 226
+results before the emulator went offline. Six real-image OCR failures were the exact known
+emulator/ML Kit set already documented and controlled against clean code in the 1.0.6 record; the
+next UI test was interrupted by the disconnect. This run does not establish a complete green
+instrumented gate. Before release preparation, the final tutorial-specific emulator suites passed
+54/54 on the same approved implementation, as recorded in `CLAUDE.md`. After restarting the AVD, a
+focused release-critical set covering tutorial/navigation, scanner UI, calculator and meal flows,
+DAOs, and migrations passed 183/183 with zero failures or skips.

@@ -7,20 +7,20 @@ import org.junit.Test
 class TutorialSafeLayoutTest {
 
     @Test
-    fun `preview ends exactly where narration begins`() {
-        assertEquals(1_760, tutorialPreviewHeight(viewportHeight = 2_400, narrationHeight = 640))
+    fun `teaching stage centers at sixty percent of usable viewport`() {
+        assertEquals(1_120, tutorialStageTop(viewportHeight = 2_400, narrationHeight = 640))
     }
 
     @Test
-    fun `larger narration grows upward by reducing only the preview viewport`() {
-        val ordinary = tutorialPreviewHeight(viewportHeight = 2_400, narrationHeight = 640)
-        val largeText = tutorialPreviewHeight(viewportHeight = 2_400, narrationHeight = 960)
+    fun `larger narration expands equally around the same visual center`() {
+        val ordinary = tutorialStageTop(viewportHeight = 2_400, narrationHeight = 640)
+        val largeText = tutorialStageTop(viewportHeight = 2_400, narrationHeight = 960)
 
-        assertEquals(320, ordinary - largeText)
+        assertEquals(160, ordinary - largeText)
     }
 
     @Test
     fun `narration can consume the viewport without producing negative preview geometry`() {
-        assertEquals(0, tutorialPreviewHeight(viewportHeight = 800, narrationHeight = 900))
+        assertEquals(0, tutorialStageTop(viewportHeight = 800, narrationHeight = 900))
     }
 }

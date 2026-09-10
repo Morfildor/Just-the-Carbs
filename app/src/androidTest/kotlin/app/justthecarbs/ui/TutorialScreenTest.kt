@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -152,7 +153,7 @@ class TutorialScreenTest {
         compose.onNodeWithTag(TUTORIAL_BODY_TAG, useUnmergedTree = true)
             .assertTextEquals(string(TUTORIAL_STEPS[2].bodyRes))
         compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true)
-            .assertTextEquals("Know the name? Search it.")
+            .assertTextEquals("Search by name")
     }
 
     @Test
@@ -250,6 +251,107 @@ class TutorialScreenTest {
         tapTapSurface()
 
         assertEquals(1, exits)
+    }
+
+    @Test
+    fun advancingIntoTheFinalStepDoesNotDropTheFinishTap() {
+        var exits = 0
+        showTutorial(startStep = TUTORIAL_LAST_STEP - 1, onExit = { exits++ })
+
+        tapTapSurface()
+        tapTapSurface()
+
+        assertEquals(1, exits)
+    }
+
+    @Test
+    fun finalAffordanceAndProgressSwitchAtomicallyWithTotalCopy() {
+        compose.mainClock.autoAdvance = false
+        lateinit var requestStep: (Int) -> Unit
+        compose.setContent {
+            var step by remember { mutableStateOf(TUTORIAL_LAST_STEP - 1) }
+            requestStep = { step = it }
+            JustTheCarbsTheme {
+                OnboardingScreen(
+                    stepIndex = step,
+                    mode = TutorialMode.FIRST_RUN,
+                    onNext = { step = (step + 1).coerceAtMost(TUTORIAL_LAST_STEP) },
+                    onExit = {},
+                )
+            }
+        }
+
+        compose.runOnIdle { requestStep(TUTORIAL_LAST_STEP) }
+        compose.mainClock.advanceTimeBy(65)
+        compose.waitForIdle()
+
+        assertMealOrTotalPresentationIsInternallyConsistent()
+
+        compose.mainClock.advanceTimeBy(20)
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true)
+            .assertTextEquals(string(TUTORIAL_STEPS[TUTORIAL_LAST_STEP].titleRes))
+        compose.onNodeWithTag(TUTORIAL_PROGRESS_TAG, useUnmergedTree = true)
+            .assertContentDescriptionEquals("Step 6 of 6")
+        assertEquals(
+            string(app.justthecarbs.R.string.tutorial_finish),
+            compose.onNodeWithTag(TUTORIAL_NARRATION_TAG)
+                .fetchSemanticsNode().config[SemanticsActions.OnClick].label,
+        )
+    }
+
+    @Test
+    fun rapidRequestedStepsConvergeOnTheLatestAtomicPresentation() {
+        compose.mainClock.autoAdvance = false
+        lateinit var requestStep: (Int) -> Unit
+        compose.setContent {
+            var step by remember { mutableStateOf(0) }
+            requestStep = { step = it }
+            JustTheCarbsTheme {
+                OnboardingScreen(step, TutorialMode.FIRST_RUN, onNext = {}, onExit = {})
+            }
+        }
+        compose.mainClock.advanceTimeBy(310)
+        compose.waitForIdle()
+
+        for (requested in 1..TUTORIAL_LAST_STEP) {
+            compose.runOnIdle { requestStep(requested) }
+            compose.mainClock.advanceTimeBy(25)
+            compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(400)
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true)
+            .assertTextEquals(string(TUTORIAL_STEPS[TUTORIAL_LAST_STEP].titleRes))
+        compose.onNodeWithTag(TUTORIAL_PROGRESS_TAG, useUnmergedTree = true)
+            .assertContentDescriptionEquals("Step 6 of 6")
+        assertEquals(
+            string(app.justthecarbs.R.string.tutorial_finish),
+            compose.onNodeWithTag(TUTORIAL_NARRATION_TAG)
+                .fetchSemanticsNode().config[SemanticsActions.OnClick].label,
+        )
+    }
+
+    private fun assertMealOrTotalPresentationIsInternallyConsistent() {
+        val title = compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true)
+            .fetchSemanticsNode().config[SemanticsProperties.Text].single().text
+        val progress = compose.onNodeWithTag(TUTORIAL_PROGRESS_TAG, useUnmergedTree = true)
+            .fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single()
+        val action = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG)
+            .fetchSemanticsNode().config[SemanticsActions.OnClick].label
+        when (title) {
+            string(TUTORIAL_STEPS[TUTORIAL_LAST_STEP - 1].titleRes) -> {
+                assertEquals("Step 5 of 6", progress)
+                assertEquals(string(app.justthecarbs.R.string.tutorial_next), action)
+            }
+            string(TUTORIAL_STEPS[TUTORIAL_LAST_STEP].titleRes) -> {
+                assertEquals("Step 6 of 6", progress)
+                assertEquals(string(app.justthecarbs.R.string.tutorial_finish), action)
+            }
+            else -> throw AssertionError("Unexpected transition title: $title")
+        }
     }
 
     @Test
@@ -378,10 +480,14 @@ class TutorialScreenTest {
     }
 
     @Test
-    fun narrationKeepsOneBottomAnchoredReadingZoneAcrossAllSteps() {
+    fun narrationKeepsOneCentralReadingZoneAcrossAllSteps() {
         showTutorial()
 
         val first = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
+        val viewport = compose.onNodeWithTag(TUTORIAL_OVERLAY_TAG).fetchSemanticsNode().boundsInRoot
+        // The stage is centered at 60% of the usable app height. Root bounds also include the
+        // emulator's system-bar area, so its root-relative center lands slightly above 60%.
+        assertTrue("teaching stage must live near visual center: $first", first.center.y / viewport.height in 0.55f..0.61f)
         TUTORIAL_STEPS.indices.forEach { index ->
             val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
             assertEquals("left edge moved at step $index", first.left, narration.left, 1f)
@@ -398,7 +504,7 @@ class TutorialScreenTest {
     }
 
     @Test
-    fun everyStepHasARealSpotlightAboveTheNarration() {
+    fun everyStepHasARealSpotlightOutsideTheNarration() {
         showTutorial()
 
         TUTORIAL_STEPS.indices.forEach { index ->
@@ -409,7 +515,10 @@ class TutorialScreenTest {
             assertTrue("step $index target must have width: $target", target.width > 0f)
             assertTrue("step $index target must have height: $target", target.height > 0f)
             assertTrue("step $index target must not begin at Rect.Zero: $target", target.left != 0f || target.top != 0f)
-            assertTrue("step $index target $target must remain above narration $narration", target.bottom <= narration.top)
+            assertTrue(
+                "step $index target $target must not overlap narration $narration",
+                target.bottom <= narration.top || target.top >= narration.bottom,
+            )
             if (index != TUTORIAL_LAST_STEP) tapTapSurface()
         }
     }
@@ -484,7 +593,11 @@ class TutorialScreenTest {
             "narration bottom ${narration.boundsInRoot.bottom} must not exceed the screen",
             narration.boundsInRoot.bottom <= root.boundsInRoot.bottom,
         )
-        assertTrue("target $target must end above narration $narration", target.boundsInRoot.bottom <= narration.boundsInRoot.top)
+        assertTrue(
+            "target $target must not overlap narration $narration",
+            target.boundsInRoot.bottom <= narration.boundsInRoot.top ||
+                target.boundsInRoot.top >= narration.boundsInRoot.bottom,
+        )
     }
 
     @Test
@@ -497,27 +610,61 @@ class TutorialScreenTest {
             val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
             assertTrue("large-font step $index target must have area: $target", target.width > 0f && target.height > 0f)
             assertTrue(
-                "large-font step $index target $target must remain above narration $narration",
-                target.bottom <= narration.top,
+                "large-font step $index target $target must remain outside narration $narration",
+                target.bottom <= narration.top || target.top >= narration.bottom,
             )
             if (index != TUTORIAL_LAST_STEP) tapTapSurface()
         }
     }
     @Test
     fun conciseCopyAndChapterContract() {
-        val titles = listOf("Three steps. One number.", "Point. Scan. Done.", "Know the name? Search it.",
-            "No barcode? Scan the label.", "Build as you go.", "One meal. One number.")
-        val bodies = listOf("Scan. Portion. Carbs.", "Use the barcode when you have one.",
-            "Type the name. Pick the match.", "Point at the nutrition panel. We’ll look for carbs.",
-            "Set the portion. Add it.", "Your carb total updates as you add.")
+        val titles = listOf("Three ways to get started", "Scan the barcode", "Search by name",
+            "Scan the nutrition label", "Add it to your meal", "See your meal total")
+        val bodies = listOf("Scan a barcode, search by name, or scan the nutrition label.",
+            "Fastest when the package has one.", "Can't scan? Type the product name and choose a match.",
+            "Can't find the product? We'll look for the carb value on the package.",
+            "Set the portion, then add it to the running total.", "Everything you add is combined here.")
         val chapters = listOf("START", "BARCODE", "SEARCH", "LABEL", "MEAL", "TOTAL")
         assertEquals(6, TUTORIAL_STEPS.size)
         TUTORIAL_STEPS.forEachIndexed { index, step ->
             assertEquals(titles[index], string(step.titleRes))
             assertEquals(bodies[index], string(step.bodyRes))
             assertEquals(chapters[index], string(step.chapterRes))
-            assertTrue(string(step.titleRes).length in 1..30)
-            assertTrue(string(step.bodyRes).length in 1..55)
+            assertTrue(string(step.titleRes).length in 1..40)
+            assertTrue(string(step.bodyRes).length in 1..75)
+        }
+    }
+
+    @Test
+    fun copyStaysCenteredAt320dpWithNormalAndLargeFonts() {
+        var index by mutableStateOf(0)
+        var fontScale by mutableStateOf(1f)
+        compose.setContent {
+            JustTheCarbsTheme {
+                CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
+                    Box(Modifier.fillMaxHeight().width(320.dp)) {
+                        OnboardingScreen(index, TutorialMode.REPLAY, onNext = {}, onExit = {})
+                    }
+                }
+            }
+        }
+        for (scale in listOf(1f, 2f)) {
+            compose.runOnIdle { fontScale = scale; index = 0 }
+            var firstCenter: Float? = null
+            var firstTop: Float? = null
+            for (step in TUTORIAL_STEPS.indices) {
+                compose.runOnIdle { index = step }
+                val title = compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true)
+                    .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+                val body = compose.onNodeWithTag(TUTORIAL_BODY_TAG, useUnmergedTree = true)
+                    .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+                val narration = compose.onNodeWithTag(TUTORIAL_NARRATION_TAG).fetchSemanticsNode().boundsInRoot
+                val center = (title.top + body.bottom) / 2f
+                if (firstCenter == null) { firstCenter = center; firstTop = narration.top }
+                assertEquals("copy center moved at $scale / $step", firstCenter, center, 2f)
+                assertEquals("narration moved at $scale / $step", firstTop!!, narration.top, 1f)
+                compose.onNodeWithTag(TUTORIAL_TAP_AFFORDANCE_TAG, useUnmergedTree = true).assertIsDisplayed()
+            }
         }
     }
 

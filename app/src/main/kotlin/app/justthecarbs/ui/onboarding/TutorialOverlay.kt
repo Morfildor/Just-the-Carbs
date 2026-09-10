@@ -7,6 +7,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.Paint
@@ -27,17 +30,16 @@ import androidx.compose.ui.unit.dp
  * light and a soft radial gradient adds the rest of the weight towards the edges, fading to nothing
  * as it approaches the spotlight. The user can still see the app they are being taught.
  *
- * **The hole is feathered, not cut.** The clear-blended hole is followed by a soft ring that eases
- * the dim back in over [FEATHER] rather than stopping at a hard edge, which is what stops the
- * spotlight reading as a rectangle stuck on top of the screen.
+ * **The aperture remains exact.** The moderate veil is removed over the target. A separate broad
+ * elliptical colour field guides the eye, while a restrained tonal hairline defines same-hue
+ * targets without reading as another rounded control.
  *
- * Drawn as one layer with [BlendMode.Clear] punching the hole, rather than as four rectangles around
+ * Drawn as one layer with [BlendMode.DstOut] punching the hole, rather than as four rectangles around
  * the target: four rectangles leave hairline seams at their joins on fractional pixel boundaries,
- * which reads as a cross through the dim. The `saveLayer` is required — a clear blend needs its own
+ * which reads as a cross through the dim. The `saveLayer` is required — an erasing blend needs its own
  * layer or it erases everything beneath it, including the preview.
  *
- * A null [spotlight] dims the whole screen evenly, which is the orientation step and the
- * target-unavailable fallback.
+ * A null [spotlight] dims the whole screen evenly, which is the target-unavailable fallback.
  */
 @Composable
 fun TutorialScrim(
@@ -45,6 +47,11 @@ fun TutorialScrim(
     cornerRadius: Dp,
     scrimColor: Color,
     modifier: Modifier = Modifier,
+    edgeAlpha: Float = 0.055f,
+    localAlpha: Float = 0f,
+    localRelief: Float = 0f,
+    apertureVisibility: Float = 1f,
+    clearAperture: Boolean = true,
 ) {
     Canvas(
         // The scrim is pure decoration: narration carries the words, and announcing a dimming
@@ -52,8 +59,6 @@ fun TutorialScrim(
         modifier = modifier.clearAndSetSemantics { },
     ) {
         val radiusPx = cornerRadius.toPx()
-        val featherPx = FEATHER.toPx()
-
         drawIntoCanvas { canvas ->
             canvas.saveLayer(Rect(Offset.Zero, size), Paint())
 
@@ -73,45 +78,64 @@ fun TutorialScrim(
                 drawRect(
                     brush = Brush.radialGradient(
                         0f to Color.Transparent,
-                        0.35f to Color.Transparent,
-                        1f to scrimColor.copy(alpha = scrimColor.alpha * EDGE_WEIGHT),
+                        0.32f to Color.Transparent,
+                        0.72f to scrimColor.copy(alpha = edgeAlpha * 0.55f),
+                        1f to scrimColor.copy(alpha = edgeAlpha),
                         center = spotlight.center,
                         radius = furthest.coerceAtLeast(1f),
                     ),
                 )
 
-                drawRoundRect(
-                    color = Color.Black,
-                    topLeft = spotlight.topLeft,
-                    size = spotlight.size,
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
-                    blendMode = BlendMode.Clear,
-                )
+                if (localAlpha > 0f) {
+                    val localSpread = 72.dp.toPx()
+                    val horizontalRadius = spotlight.width / 2f + localSpread * 1.25f
+                    val verticalRadius = spotlight.height / 2f + localSpread
+                    val radius = maxOf(horizontalRadius, verticalRadius).coerceAtLeast(1f)
+                    scale(horizontalRadius / radius, verticalRadius / radius, spotlight.center) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                0f to scrimColor.copy(alpha = localAlpha),
+                                0.58f to scrimColor.copy(alpha = localAlpha * 0.62f),
+                                1f to Color.Transparent,
+                                center = spotlight.center,
+                                radius = radius,
+                            ),
+                            radius = radius,
+                            center = spotlight.center,
+                        )
+                    }
+                }
 
-                // Ease the dim back in around the hole, so there is no line where clear meets dim.
-                //
-                // Built from many thin strokes of increasing alpha rather than one thick one: a
-                // single stroke is a band of uniform strength, which on the device read as a pale
-                // ring drawn around the spotlight — a second edge, exactly the boxiness the feather
-                // exists to remove. Stepping the alpha approximates the gradient a blur would give.
-                val steps = FEATHER_STEPS
-                val bandWidth = featherPx / steps
-                repeat(steps) { i ->
-                    // Nearest the hole clears the most dim, tailing to nothing at the outer edge.
-                    val strength = (1f - i / steps.toFloat())
-                    val inset = bandWidth * (i + 0.5f)
+                if (localRelief > 0f) {
+                    val reliefCenter = spotlight.center.copy(y = spotlight.center.y - 20.dp.toPx())
+                    val horizontalRadius = spotlight.width / 2f + 36.dp.toPx()
+                    val verticalRadius = spotlight.height / 2f + 40.dp.toPx()
+                    val radius = maxOf(horizontalRadius, verticalRadius).coerceAtLeast(1f)
+                    scale(horizontalRadius / radius, verticalRadius / radius, reliefCenter) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                0f to Color.Black.copy(alpha = localRelief),
+                                0.52f to Color.Black.copy(alpha = localRelief * 0.48f),
+                                1f to Color.Transparent,
+                                center = reliefCenter,
+                                radius = radius,
+                            ),
+                            radius = radius,
+                            center = reliefCenter,
+                            // DstOut respects the radial alpha; Clear would erase the scrim at
+                            // full strength anywhere the brush is non-transparent.
+                            blendMode = BlendMode.DstOut,
+                        )
+                    }
+                }
+
+                if (clearAperture) {
                     drawRoundRect(
-                        color = scrimColor.copy(alpha = scrimColor.alpha * strength),
-                        topLeft = Offset(spotlight.left - inset, spotlight.top - inset),
-                        size = androidx.compose.ui.geometry.Size(
-                            spotlight.width + inset * 2f,
-                            spotlight.height + inset * 2f,
-                        ),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                            radiusPx + inset,
-                            radiusPx + inset,
-                        ),
-                        style = Stroke(width = bandWidth * FEATHER_OVERLAP),
+                        color = Color.Black.copy(alpha = apertureVisibility.coerceIn(0f, 1f)),
+                        topLeft = spotlight.topLeft,
+                        size = spotlight.size,
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
+                        // Acquisition is intentionally partial until visibility reaches one.
                         blendMode = BlendMode.DstOut,
                     )
                 }
@@ -121,81 +145,180 @@ fun TutorialScrim(
     }
 }
 
-/** How far the dim takes to come back in around the spotlight. */
-private val FEATHER = 28.dp
-
 /**
- * How many bands the feather is drawn in.
- *
- * Enough that the steps are not individually visible at this width; more would cost overdraw for no
- * difference anyone can see.
- */
-private const val FEATHER_STEPS = 32
-private const val FEATHER_OVERLAP = 1.05f
-
-/**
- * How much extra dim the edges of the screen carry over the base wash.
- *
- * The base wash is deliberately light. This is what makes the far corners recede without flattening
- * the area around the target — see [TutorialScrim].
- */
-private const val EDGE_WEIGHT = 0.85f
-
-/**
- * The quiet focus aura drawn around the spotlight.
- *
- * A hairline edge and progressively softer outer strokes reinforce the feathered hole without
- * making the border itself the focus. There is no loop, pulse, connector, or arrowhead.
- *
- * The border is not the only cue that a control is the target: the spotlight is a hole in an
- * otherwise uniform dim, and the narration names the control in words. The design does not rely on
- * colour alone.
+ * A single broad elliptical atmosphere around the aperture. Its shape deliberately does not trace
+ * the target's rounded rectangle, and the target is cleared from the layer so the real control
+ * stays crisp. The finite acquisition settles once; geometry remains owned by the same animated
+ * spotlight Rect as the scrim.
  */
 @Composable
 fun TutorialSpotlightDecoration(
     spotlight: Rect?,
     accent: Color,
+    edgeColor: Color,
     cornerRadius: Dp,
-    strokeWidth: Dp,
     modifier: Modifier = Modifier,
     acquisition: Float = 1f,
+    intensity: Float = 1f,
+    spreadScale: Float = 1f,
+    bloomAlpha: Float = 0.26f,
+    edgeAlpha: Float = 0.48f,
+    edgeWidth: Dp = 1.dp,
+    arrivalBoost: Float = 0f,
+    visibility: Float = 1f,
+    drawEdge: Boolean = true,
+    clearCenter: Boolean = true,
 ) {
     Canvas(modifier = modifier.clearAndSetSemantics { }) {
-        if (spotlight == null) return@Canvas
-
-        val radiusPx = cornerRadius.toPx()
-        val strokePx = strokeWidth.toPx()
-
-        AURA_LAYERS.forEach { layer ->
-            val outset = layer.outset.toPx() + minOf(spotlight.width, spotlight.height) * 0.025f * (1f - acquisition)
+        if (spotlight == null || spotlight.width <= 0f || spotlight.height <= 0f) return@Canvas
+        val settled = acquisition.coerceIn(0f, 1f)
+        val visible = visibility.coerceIn(0f, 1f)
+        val arrival = tutorialFocusArrival(settled, arrivalBoost)
+        val spreadArrival = tutorialFocusArrivalSpread(settled, arrivalBoost)
+        val spread = 54.dp.toPx() * spreadScale * spreadArrival
+        val horizontalRadius = spotlight.width / 2f + spread * 1.25f
+        val verticalRadius = spotlight.height / 2f + spread
+        val radius = maxOf(horizontalRadius, verticalRadius).coerceAtLeast(1f)
+        drawIntoCanvas { canvas ->
+            canvas.saveLayer(Rect(Offset.Zero, size), Paint())
+            scale(horizontalRadius / radius, verticalRadius / radius, spotlight.center) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0f to accent.copy(alpha = (bloomAlpha * intensity * arrival * visible).coerceAtMost(1f)),
+                        0.38f to accent.copy(
+                            alpha = (bloomAlpha * intensity * arrival * visible * 0.50f).coerceAtMost(1f),
+                        ),
+                        0.72f to accent.copy(alpha = bloomAlpha * intensity * visible * 0.12f),
+                        1f to Color.Transparent,
+                        center = spotlight.center,
+                        radius = radius,
+                    ),
+                    radius = radius,
+                    center = spotlight.center,
+                )
+            }
+            if (clearCenter) {
+                drawRoundRect(
+                    color = Color.Black,
+                    topLeft = spotlight.topLeft,
+                    size = spotlight.size,
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                        cornerRadius.toPx(),
+                        cornerRadius.toPx(),
+                    ),
+                    blendMode = BlendMode.Clear,
+                )
+            }
+            canvas.restore()
+        }
+        if (drawEdge) {
             drawRoundRect(
-                color = accent.copy(alpha = layer.alpha * (0.8f + 0.2f * acquisition)),
-                topLeft = Offset(spotlight.left - outset, spotlight.top - outset),
-                size = androidx.compose.ui.geometry.Size(
-                    spotlight.width + outset * 2f,
-                    spotlight.height + outset * 2f,
+                color = edgeColor.copy(
+                    alpha = (edgeAlpha * arrival * visible).coerceIn(0f, 1f),
                 ),
+                topLeft = spotlight.topLeft,
+                size = spotlight.size,
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                    radiusPx + outset,
-                    radiusPx + outset,
+                    cornerRadius.toPx(),
+                    cornerRadius.toPx(),
                 ),
-                style = Stroke(width = if (layer.width == null) strokePx else layer.width.toPx()),
+                style = Stroke(width = edgeWidth.toPx()),
             )
         }
     }
 }
 
-private data class AuraLayer(val outset: Dp, val alpha: Float, val width: Dp? = null)
+/** Decorative, finite editorial annotation. Geometry has already passed collision checks. */
+@Composable
+internal fun TutorialPointerDecoration(
+    geometry: TutorialPointerGeometry?,
+    accent: Color,
+    casingColor: Color,
+    acquisition: Float,
+    visibility: Float = 1f,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier.clearAndSetSemantics { }) {
+        val pointer = geometry ?: return@Canvas
+        val reveal = ((acquisition - 0.08f) / 0.74f).coerceIn(0f, 1f)
+        val visible = visibility.coerceIn(0f, 1f)
+        if (reveal <= 0f) return@Canvas
 
-// Adjacent translucent bands fade continuously, avoiding a second outlined component.
-private val AURA_LAYERS = (0 until 20).map { index ->
-    val falloff = 1f - index / 20f
-    AuraLayer(
-        outset = (index + 0.5f).dp,
-        alpha = 0.10f * falloff * falloff,
-        width = 1.1.dp,
-    )
-} + AuraLayer(outset = 0.dp, alpha = 0.12f)
+        val path = Path().apply {
+            moveTo(pointer.start.x, pointer.start.y)
+            val stepCount = (POINTER_DRAW_SEGMENTS * reveal).toInt().coerceAtLeast(1)
+            repeat(stepCount) { index ->
+                val fraction = minOf(reveal, (index + 1f) / POINTER_DRAW_SEGMENTS)
+                val point = cubicPoint(pointer, fraction)
+                lineTo(point.x, point.y)
+            }
+        }
+        val opacity = (0.90f + 0.06f * acquisition.coerceIn(0f, 1f)) * visible
+        val tip = cubicPoint(pointer, reveal)
+        drawPath(
+            path = path,
+            color = casingColor.copy(alpha = POINTER_CASING_ALPHA * visible),
+            style = Stroke(width = 3.6.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
+        )
+        drawPath(
+            path = path,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    accent.copy(alpha = 0.78f * visible),
+                    accent.copy(alpha = opacity),
+                ),
+                start = pointer.start,
+                end = tip,
+            ),
+            style = Stroke(width = 2.2.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round),
+        )
+
+        val tangent = cubicTangent(pointer, reveal)
+        val tangentLength = kotlin.math.hypot(tangent.x, tangent.y).coerceAtLeast(0.001f)
+        val unitX = tangent.x / tangentLength
+        val unitY = tangent.y / tangentLength
+        val headLength = 8.5.dp.toPx()
+        val headWidth = 3.dp.toPx()
+        val backX = -unitX * headLength
+        val backY = -unitY * headLength
+        val sideX = -unitY * headWidth
+        val sideY = unitX * headWidth
+        val headProgress = ((reveal - 0.74f) / 0.26f).coerceIn(0f, 1f)
+        if (headProgress <= 0f) return@Canvas
+        val head = Path().apply {
+            moveTo(
+                tip.x + (backX + sideX) * headProgress,
+                tip.y + (backY + sideY) * headProgress,
+            )
+            lineTo(tip.x, tip.y)
+            lineTo(
+                tip.x + (backX - sideX) * headProgress,
+                tip.y + (backY - sideY) * headProgress,
+            )
+        }
+        drawPath(
+            path = head,
+            color = casingColor.copy(alpha = POINTER_CASING_ALPHA * visible),
+            style = Stroke(
+                width = 3.6.dp.toPx(),
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = StrokeJoin.Round,
+            ),
+        )
+        drawPath(
+            path = head,
+            color = accent.copy(alpha = opacity),
+            style = Stroke(
+                width = 2.2.dp.toPx(),
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = StrokeJoin.Round,
+            ),
+        )
+    }
+}
+
+private const val POINTER_DRAW_SEGMENTS = 40
+private const val POINTER_CASING_ALPHA = 0.42f
 
 /**
  * Grow [rect] by [padding] on every side, clamped to a [width] x [height] screen.
