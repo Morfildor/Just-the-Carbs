@@ -11,6 +11,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import app.justthecarbs.ui.components.ProductHeroImage
 import app.justthecarbs.ui.components.ProductGalleryDialog
+import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -125,6 +126,7 @@ import app.justthecarbs.ui.meal.MealActions
 import app.justthecarbs.ui.meal.MealBarIfPresent
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -274,7 +276,7 @@ fun ProductScreen(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Doc's decorative blue-soft circle, bleeding off the top-right corner (result.html).
         // Purely decorative — sits behind all content, never intercepts touches.
         Box(
@@ -288,7 +290,6 @@ fun ProductScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
                 .statusBarsPadding()
                 .imePadding(),
         ) {
@@ -343,6 +344,22 @@ fun ProductScreen(
     }
 }
 
+/**
+ * Product's own top bar — deliberately not [app.justthecarbs.ui.components.JtcTopBar].
+ *
+ * Sharing the *visual system* is not the same as sharing the *component*, and forcing this screen
+ * onto `JtcTopBar` as written costs the two things that were fixed here on purpose: a product name
+ * can run to two lines (`maxLines = 2`, see the comment below) where `JtcTopBar` is hard-locked to
+ * one, and this bar's height is intrinsic to its content rather than a fixed 64dp — a two-line name
+ * at a large font scale needs to grow the bar, not clip inside it. Rendering both forms at 2x font
+ * scale on a 320dp width showed the shared 64dp bar clipping a two-line title mid-glyph; the
+ * intrinsic-height bar simply grew.
+ *
+ * What *is* shared, so the screen still reads as one system: the destination spine (the same 4dp
+ * device Home's recent cards and every `JtcTopBar` screen use, here in [Destination.PRODUCT]'s
+ * blue), the back icon's ordinary-ink tint (never the accent — same reasoning as `JtcTopBar`), and
+ * the horizontal spacing around the spine and title.
+ */
 @Composable
 private fun ProductTopBar(
     product: Product?,
@@ -353,17 +370,30 @@ private fun ProductTopBar(
     onResetOnline: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val accent = Destination.PRODUCT.accent()
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = Space.s, vertical = Space.xs),
+            .padding(vertical = Space.xs)
+            .padding(start = Space.m, end = Space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(
+            modifier = Modifier
+                .height(22.dp)
+                .width(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(accent),
+        )
+
         IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(R.string.product_back),
+                // Ordinary foreground ink, not the accent — the spine already carries the
+                // destination's colour, matching JtcTopBar's back-arrow rule exactly.
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
 
@@ -382,7 +412,7 @@ private fun ProductTopBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = Space.s)
+                .padding(horizontal = Space.xs)
                 .semantics { heading() },
         )
 

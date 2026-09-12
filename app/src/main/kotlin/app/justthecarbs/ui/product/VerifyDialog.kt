@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -105,13 +105,13 @@ fun VerifyDialog(
                         selected = basis == NutritionBasis.PER_100_G,
                         onClick = { basis = NutritionBasis.PER_100_G },
                         label = { Text(stringResource(R.string.manual_basis_g)) },
-                        modifier = Modifier.height(Space.minTouchTarget),
+                        modifier = Modifier.heightIn(min = Space.minTouchTarget),
                     )
                     FilterChip(
                         selected = basis == NutritionBasis.PER_100_ML,
                         onClick = { basis = NutritionBasis.PER_100_ML },
                         label = { Text(stringResource(R.string.manual_basis_ml)) },
-                        modifier = Modifier.height(Space.minTouchTarget),
+                        modifier = Modifier.heightIn(min = Space.minTouchTarget),
                     )
                 }
             }

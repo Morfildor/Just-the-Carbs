@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -336,7 +337,7 @@ fun VerificationScreen(
             Button(
                 onClick = { onConfirm(value, basis) },
                 shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight).testTag(VERIFY_CONFIRM_TAG),
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight).testTag(VERIFY_CONFIRM_TAG),
             ) {
                 Text(
                     stringResource(
@@ -350,7 +351,7 @@ fun VerificationScreen(
             OutlinedButton(
                 onClick = onReject,
                 shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget).testTag(VERIFY_REJECT_TAG),
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget).testTag(VERIFY_REJECT_TAG),
             ) { Text(stringResource(R.string.verify_found_reject)) }
             TextButton(
                 onClick = onRetake,
@@ -470,7 +471,7 @@ fun ConflictScreen(
             Button(
                 onClick = onAssist,
                 shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight).testTag(CONFLICT_ASSIST_TAG),
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight).testTag(CONFLICT_ASSIST_TAG),
             ) { Text(stringResource(R.string.conflict_assist)) }
             TextButton(onClick = onRetake, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.crop_retake))

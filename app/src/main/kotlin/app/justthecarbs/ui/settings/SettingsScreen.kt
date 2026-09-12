@@ -100,7 +100,7 @@ fun SettingsScreen(
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AccentBackdrop(
             accent = Destination.SETTINGS.accent(),
             modifier = Modifier.align(Alignment.TopEnd),
@@ -108,8 +108,7 @@ fun SettingsScreen(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .fillMaxSize(),
         ) {
             JtcTopBar(
                 title = stringResource(R.string.settings_title),
@@ -152,7 +151,7 @@ fun SettingsScreen(
                                     ),
                                 )
                             },
-                            modifier = Modifier.height(Space.minTouchTarget),
+                            modifier = Modifier.heightIn(min = Space.minTouchTarget),
                         )
                     }
                 }
@@ -175,7 +174,7 @@ fun SettingsScreen(
                                     ),
                                 )
                             },
-                            modifier = Modifier.height(Space.minTouchTarget),
+                            modifier = Modifier.heightIn(min = Space.minTouchTarget),
                         )
                     }
                 }
@@ -528,7 +527,7 @@ private fun SettingsAction(
             color = MaterialTheme.colorScheme.primary,
             modifier = modifier
                 .fillMaxWidth()
-                .height(Space.minTouchTarget)
+                .heightIn(min = Space.minTouchTarget)
                 .clickable(enabled = enabled, onClick = onClick)
                 .semantics { role = Role.Button }
                 .padding(vertical = 12.dp),

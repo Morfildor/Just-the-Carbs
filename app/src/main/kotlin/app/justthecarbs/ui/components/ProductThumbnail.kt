@@ -26,6 +26,7 @@ import app.justthecarbs.domain.ProductImageSelector
 import app.justthecarbs.domain.ProductImageUrlValidator
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -63,7 +64,13 @@ fun ProductThumbnail(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.primaryContainer)
+            // Matches ProductHeroImage: a loaded photo sits on the same neutral media ground the
+            // hero uses, not the tinted monogram container — the monogram keeps its own colour so
+            // the fallback state stays a deliberate, recognisable plate.
+            .background(
+                if (imageLoaded) MaterialTheme.extendedColors.mediaSurface
+                else MaterialTheme.colorScheme.primaryContainer,
+            )
             // Purely decorative: the product name sits next to it, so announcing it again would
             // make a screen reader say everything twice (§39).
             .clearAndSetSemantics { },
@@ -123,7 +130,10 @@ fun SearchThumbnail(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.primaryContainer)
+            .background(
+                if (imageLoaded) MaterialTheme.extendedColors.mediaSurface
+                else MaterialTheme.colorScheme.primaryContainer,
+            )
             .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {

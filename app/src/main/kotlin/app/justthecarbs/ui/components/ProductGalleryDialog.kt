@@ -52,6 +52,7 @@ import app.justthecarbs.domain.ProductImage
 import app.justthecarbs.domain.ProductImageType
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 import coil3.compose.AsyncImage
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
@@ -225,7 +226,9 @@ private fun GalleryImagePage(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 60.dp, vertical = Space.s)
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(Space.mediaRadius)),
+            // Same media ground as ProductHeroImage: a neutral plate the photo's own baked-in
+            // white background sits on, not surfaceContainerLowest (near-black in Dark).
+            .background(MaterialTheme.extendedColors.mediaSurface, RoundedCornerShape(Space.mediaRadius)),
         contentAlignment = Alignment.Center,
     ) {
         key(retry) {

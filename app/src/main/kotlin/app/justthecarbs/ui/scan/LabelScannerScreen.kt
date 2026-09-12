@@ -26,7 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1536,7 +1536,7 @@ private fun LabelCamera(
             Button(
                 // The camera never started, so nothing was read and no basis exists to carry.
                 onClick = { onEditManually(null) },
-                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                 shape = RoundedCornerShape(Space.buttonRadius),
             ) { Text(stringResource(R.string.permission_manual)) }
             TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
@@ -2092,7 +2092,7 @@ private fun SearchingCard(
             )
         }
         CaptureButton(onCapture, enabled = captureState == CaptureState.IDLE)
-        TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+        TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
             Text(stringResource(R.string.ocr_enter_manually))
         }
     }
@@ -2302,12 +2302,12 @@ private fun CandidateChoice(
             ) {
                 OutlinedButton(
                     onClick = { onCorrect(candidate.value, basis) },
-                    modifier = Modifier.weight(1f).height(Space.primaryButtonHeight),
+                    modifier = Modifier.weight(1f).heightIn(min = Space.primaryButtonHeight),
                     shape = RoundedCornerShape(Space.buttonRadius),
                 ) { Text(stringResource(R.string.ocr_correct)) }
                 Button(
                     onClick = { onUse(candidate.value, basis) },
-                    modifier = Modifier.weight(1f).height(Space.primaryButtonHeight),
+                    modifier = Modifier.weight(1f).heightIn(min = Space.primaryButtonHeight),
                     shape = RoundedCornerShape(Space.buttonRadius),
                 ) { Text(stringResource(R.string.ocr_confirm)) }
             }
@@ -2315,7 +2315,7 @@ private fun CandidateChoice(
             Button(
                 onClick = { onUse(candidate.value, basis) },
                 shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
             ) { Text(stringResource(R.string.ocr_use, display)) }
         }
     } else {
@@ -2345,7 +2345,7 @@ private fun CandidateChoice(
             // package in hand, which is the whole point of this path: nothing here is a reading.
             onClick = { onCorrect(candidate.value, null) },
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
         ) { Text(stringResource(R.string.ocr_basis_unknown_correct)) }
     }
 }
@@ -2373,14 +2373,14 @@ private fun NotFoundCard(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () 
         Button(
             onClick = onRetry,
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
         ) { Text(stringResource(R.string.ocr_try_again)) }
         OutlinedButton(
             onClick = onEdit,
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+            modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
         ) { Text(stringResource(R.string.ocr_enter_manually)) }
-        TextButton(onClick = onCapture, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+        TextButton(onClick = onCapture, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
             Text(stringResource(R.string.ocr_capture_label))
         }
     }
@@ -2392,15 +2392,15 @@ private fun SecondaryScannerActions(onCapture: () -> Unit, onEdit: () -> Unit, o
         OutlinedButton(
             onClick = onCapture,
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+            modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
         ) { Text(stringResource(R.string.ocr_capture_label)) }
         OutlinedButton(
             onClick = onEdit,
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+            modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
         ) { Text(stringResource(R.string.ocr_edit)) }
     }
-    TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+    TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
         Text(stringResource(R.string.ocr_scan_again))
     }
 }
@@ -2411,7 +2411,7 @@ private fun CaptureButton(onClick: () -> Unit, enabled: Boolean = true) {
         onClick = onClick,
         enabled = enabled,
         shape = RoundedCornerShape(Space.buttonRadius),
-        modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+        modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
     ) { Text(stringResource(R.string.ocr_capture_label)) }
 }
 

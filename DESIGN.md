@@ -87,8 +87,13 @@ Full accent fills use an explicit paired foreground: warm near-white in Light an
 in Dark. Supporting copy on those fills uses 96% opacity, with every actual gradient stop and both
 welcome fills pinned at ≥4.5:1 by `ContrastTest`.
 
-The decorative destination backdrop remains restrained but theme-aware: 14% accent alpha on cream,
-18% on the warm dark page where the lower value visually disappeared.
+The decorative destination backdrop remains restrained but theme-aware: 6% accent alpha on cream,
+18% on the warm dark page where the lower value visually disappeared. `ContrastTest` composites
+each actual destination accent over its page ground and verifies supporting copy against the washed
+pixel colour, rather than treating the alpha literal itself as evidence.
+
+Dark snackbar actions use a private `#1B6EBF` inverse-primary token. Its one-channel adjustment is
+scoped to the light inverse surface; the application's normal primary blue remains unchanged.
 
 Material roles used by current components are owned explicitly, including tertiary content,
 inverse surface/content, surface bright/dim, error containers, and both outline strengths. Fixed
@@ -127,6 +132,20 @@ Cards are not mechanically bordered or elevated. The **only** ordinary app-conte
 shadow is the pinned result panel, whose shadow is load-bearing: without it the panel was ~1%
 different from the page and the most important element on screen had no edge at all.
 
+**Root layering contract.** Every screen paints the opaque page `background` on its own root `Box`,
+never on an inner `Column` layered above a decorative backdrop — a child painted after `AccentBackdrop`
+in composition order covers it outright. `ThemeRoleOwnershipTest`'s `page ground is painted before
+every decorative backdrop` pins the exact structure for every `AccentBackdrop`-using screen so this
+cannot regress silently again.
+
+**Media surface.** A loaded product photograph gets its own token, `extendedColors.mediaSurface` —
+white in Light, a soft near-white plate in Dark — distinct from `surfaceContainerLowest`, which is
+near-black in Dark and produced a white-JPEG-in-a-black-frame effect on `ProductHeroImage`,
+`ProductThumbnail`, `SearchThumbnail` and the gallery viewer before this token existed. It is scoped
+to the *loaded-photo* ground only: the monogram/fallback plate keeps its own `primaryContainer`
+colour in every one of those components, because that plate is a deliberate, recognisable placeholder
+and not photography needing a neutral ground.
+
 The same pinned surface treatment carries the calculator result and the meal total, so the same kind
 of number appears in the same place and the app reads as one thing.
 
@@ -140,20 +159,47 @@ Dialogs share `JtcDialogDefaults`: `surfaceContainerHigh`, `onSurface` title,
 `onSurfaceVariant` body, the standard 18dp shape, a subtle `outlineVariant`, and no extra tonal tint.
 The platform modal scrim remains intentional so underlying context stays perceptible.
 
+**Top bars.** `JtcTopBar` is the shared bar — a fixed 64dp row, a `titleLarge` single-line title, and
+a 4dp destination-accent spine — used by Settings, Search, Meal and Manual Entry. Home and Product are
+deliberate exceptions, each for its own reason: Home's title is a brand wordmark with no back
+affordance, not a navigation label. Product's own `ProductTopBar` keeps a two-line `titleMedium` title
+and an intrinsic (non-fixed) height, because a product name can run to two lines and a shared 64dp bar
+clipped that at large font scales on a narrow screen. What Product's bar *does* share with the rest of
+the system — deliberately, so the screen still reads as one thing rather than an unrelated exception —
+is the same destination spine (in `Destination.PRODUCT`'s blue) and the same ordinary-ink back-icon
+tint. Sharing the visual system does not require sharing the component when the two screens' content
+genuinely differ in shape.
+
 ## Motion (`Motion`)
 
 `QUICK_MS 120` · `STANDARD_MS 220`. Short and unshowy — this app is used standing in a kitchen, and
 animation that delays a number makes the app worse. The result cross-fades on digit change only.
-No decorative entrance animation anywhere.
+Welcome pager/content motion remains intact, but its tested foreground/background semantic pair
+switches atomically at the settled slide instead of interpolating through low-contrast colours. No
+decorative entrance animation anywhere.
 
 ## Component vocabulary
 
-- Primary action: filled `Button`, 56dp, `buttonRadius`.
-- Secondary action: `TextButton`, full width, 48dp.
+- Primary action: filled `Button`, `heightIn(min = 56dp)`, `buttonRadius`.
+- Secondary action: `TextButton`, full width, `heightIn(min = 48dp)`.
 - Recovery from any failure: `RecoveryPanel` (title + body + at least one action). A message with no
   way forward is a dead end and is forbidden.
-- Selection: `FilterChip`, pill-shaped.
+- Selection: `FilterChip`, pill-shaped, `heightIn(min = 48dp)`.
 - Provenance: `SourceBadge` — always carries meaning in words, never colour alone.
+
+**Scalable controls.** `Space.primaryButtonHeight` and `Space.minTouchTarget` are floors, not
+ceilings — every text-bearing button and chip in the app uses `heightIn(min = …)` rather than a hard
+`.height(…)`, so a label can grow at large font scales instead of clipping. A hard `.height()` on a
+text control is a defect class this app measured concretely: at 2× font on a narrow device, several
+paired scanner buttons and the welcome carousel's primary CTA (previously a stray `60.dp` literal)
+would otherwise clip mid-glyph. Fixed heights remain correct only for non-text media containers
+(photo wells, decorative dots) and for controls with no growable text at all.
+
+**Disabled-state ownership.** A disabled control's foreground is its own paired token, never another
+state's foreground borrowed with an alpha — `extendedColors.disabledButton` pairs with
+`extendedColors.onDisabledButton`, not with `onPrimary` (the filled *active* button's foreground).
+The bug this replaced read as a washed-out active button rather than a genuinely disabled one,
+because `onPrimary.copy(alpha = 0.6f)` is still recognisably the primary button's own colour.
 
 ## Accessibility floor
 

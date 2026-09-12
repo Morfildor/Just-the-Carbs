@@ -51,6 +51,9 @@ val SpaceGrotesk = FontFamily(
 // hue that clears 4.5:1 on every surface each is really used on; hue and saturation are otherwise
 // preserved, so the identity is unchanged. ContrastTest pins the pairs. See DESIGN.md.
 private val Blue = Color(0xFF1B6FBF)
+// Snackbar action blue for DarkColors.inversePrimary only. The one-channel shift preserves the
+// product blue while clearing normal-text contrast against the light inverseSurface.
+private val InverseBlue = Color(0xFF1B6EBF)
 private val BlueSoft = Color(0xFFE4F1FC)
 private val Red = Color(0xFFD42F2F)
 private val Orange = Color(0xFFFFA94D)
@@ -61,7 +64,16 @@ private val InkMuted = Color(0xFF6B6A72)
 private val LineLight = Color(0xFFE4DFD3)
 private val LineStrongLight = Color(0xFF77736A)
 private val DisabledBlue = Color(0xFFDCE8F5)
+// Paired foreground for disabledButton, not onPrimary — onPrimary belongs to the filled primary
+// button, an accidental coupling that read as a washed-out active button rather than a disabled
+// one. A muted ink tone on the disabled container reads as unmistakably off.
+private val OnDisabledBlue = Color(0xFF7C8B9C)
 private val WarmWhite = Color(0xFFFFFBF7)
+// A loaded product photo's ground. Open Food Facts photography is shot on white and carries that
+// background in the JPEG, so this matches it directly rather than making a tinted card fight the
+// picture. Distinct from surfaceContainerLowest, which is near-black in Dark and produced the
+// white-photo-on-black-frame effect this token exists to remove.
+private val MediaSurfaceLight = Color.White
 
 // Dark palette — extrapolated from the light tokens (no dark spec exists in the handoff).
 // Cream inverts to near-black, ink inverts to off-white; accent hues held close to their light
@@ -78,6 +90,10 @@ private val RedDark = Color(0xFFFF7A7A)
 private val OrangeDark = Color(0xFFFFB868)
 private val OrangeSoftDark = Color(0xFF4A3418)
 private val DisabledBlueDark = Color(0xFF2A3A47)
+private val OnDisabledBlueDark = Color(0xFF6E7C8A)
+// A neutral light-but-not-white plate: soft enough to avoid becoming a nighttime glare source,
+// still light enough to stay compatible with a photo whose own background is baked-in white.
+private val MediaSurfaceDark = Color(0xFFE7E3D9)
 
 /**
  * The result red and a few tokens Material's ColorScheme has no matching role for (brief: "Why
@@ -91,9 +107,11 @@ data class ExtendedColors(
     val orangeSoft: Color,
     val onOrangeSoft: Color,
     val disabledButton: Color,
+    val onDisabledButton: Color,
     val scanner: ScannerColors,
     val accentBackdropAlpha: Float,
     val accents: AccentPalette,
+    val mediaSurface: Color,
 )
 
 /**
@@ -126,9 +144,11 @@ private val LightExtendedColors = ExtendedColors(
     // at 4.51:1; this sits at 4.79:1 for margin, an imperceptible further shift.
     onOrangeSoft = Color(0xFF965D08),
     disabledButton = DisabledBlue,
+    onDisabledButton = OnDisabledBlue,
     scanner = ImageScannerColors,
-    accentBackdropAlpha = 0.14f,
+    accentBackdropAlpha = 0.06f,
     accents = LightAccents,
+    mediaSurface = MediaSurfaceLight,
 )
 
 private val DarkExtendedColors = ExtendedColors(
@@ -138,9 +158,11 @@ private val DarkExtendedColors = ExtendedColors(
     orangeSoft = OrangeSoftDark,
     onOrangeSoft = OrangeDark,
     disabledButton = DisabledBlueDark,
+    onDisabledButton = OnDisabledBlueDark,
     scanner = ImageScannerColors,
     accentBackdropAlpha = 0.18f,
     accents = DarkAccents,
+    mediaSurface = MediaSurfaceDark,
 )
 
 /**
@@ -229,9 +251,9 @@ private val DarkColors = darkColorScheme(
     surfaceBright = Color(0xFF34322A),
     surfaceDim = Color(0xFF0C0B08),
     scrim = Color.Black,
-    // Same reason as the light scheme. Dark mode's inverseSurface is light, so the action takes the
-    // darker blue rather than the brightened one.
-    inversePrimary = Blue,
+    // Same reason as the light scheme. This private one-channel adjustment is reserved for the
+    // light inverseSurface; normal primary blue remains unchanged.
+    inversePrimary = InverseBlue,
 )
 
 /**

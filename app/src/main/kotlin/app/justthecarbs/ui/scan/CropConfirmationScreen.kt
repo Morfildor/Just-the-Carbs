@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -203,13 +203,13 @@ fun CropConfirmationScreen(
                 shape = RoundedCornerShape(Space.buttonRadius),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(Space.primaryButtonHeight)
+                    .heightIn(min = Space.primaryButtonHeight)
                     .testTag(CROP_READ_TAG),
             ) { Text(stringResource(R.string.crop_read)) }
             OutlinedButton(
                 onClick = onRetake,
                 shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
             ) { Text(stringResource(R.string.crop_retake)) }
         }
     }

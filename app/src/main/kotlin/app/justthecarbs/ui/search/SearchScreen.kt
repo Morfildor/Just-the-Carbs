@@ -89,7 +89,7 @@ fun SearchScreen(
 ) {
     val focusManager = LocalFocusManager.current
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AccentBackdrop(
             accent = Destination.SEARCH.accent(),
             modifier = Modifier.align(Alignment.TopEnd),
@@ -97,8 +97,7 @@ fun SearchScreen(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .fillMaxSize(),
         ) {
             JtcTopBar(
                 title = stringResource(R.string.search_title),

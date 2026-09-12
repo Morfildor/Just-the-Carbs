@@ -2586,8 +2586,9 @@ OLED device at low brightness when available. Check both gesture navigation and 
       copy, links, and failure messages remain readable with no lavender/purple default hue.
 - [ ] 43.20 Rating card: amber decoration stays secondary; the tertiary CTA uses its paired dark
       foreground and remains clearly tappable in normal, pressed, focused, and failed-link states.
-- [ ] 43.21 Welcome slides 1–3: primary, neutral, and result-filled backgrounds use readable paired
-      content; Skip, eyebrow, body, CTA, disabled/busy state, and completion error stay clear.
+- [ ] 43.21 Welcome slides 1–3 in both directions: primary, neutral, and result-filled backgrounds
+      switch atomically to readable paired content while pager/content motion remains smooth; Skip,
+      eyebrow, body, CTA, disabled/busy state, and completion error stay clear.
 - [ ] 43.22 Tutorial representative steps at normal and 2× font scale: existing spotlight, bloom,
       pointer, scrim, and luminance behavior remain unchanged and readable.
 - [ ] 43.23 Status/navigation bars under gesture navigation and 3-button navigation: bands stay solid
@@ -2596,6 +2597,26 @@ OLED device at low brightness when available. Check both gesture navigation and 
 - [ ] 43.24 Whole-app sweep: no hardcoded light-theme foreground appears on a dark theme fill, no
       stray Material purple/lavender appears, no unintended accent glare is visible, and no ordinary
       dark surface visually collapses into its parent.
+
+### Light + Dark visual refinement pass
+
+- [ ] 43.25 A loaded product photo (hero, both thumbnail families, and the gallery) sits on the same
+      neutral `mediaSurface` ground in both themes — a light-but-not-white plate in Dark, never the
+      near-black `surfaceContainerLowest` a white product JPEG previously sat inside. The monogram
+      fallback plate keeps its own `primaryContainer` colour unchanged in both states.
+- [ ] 43.26 Product's top bar shows the same destination-spine device every other screen's `JtcTopBar`
+      uses, in `Destination.PRODUCT`'s blue, with the back icon in ordinary ink (never the accent) —
+      confirmed on a real device, not only the instrumented render.
+- [ ] 43.27 A long two-line product name on Product, at 2× font scale and ~320dp width, still fits: the
+      bar grows with the content instead of clipping, in both Light and Dark.
+- [ ] 43.28 Manual Entry's Save button, disabled (blank name/carbs), reads unmistakably "off" in both
+      themes — legible muted text on a muted container, never the washed-out-primary look the old
+      `onPrimary`-paired disabled colour produced.
+- [ ] 43.29 Every text-bearing button/chip converted from a fixed height to `heightIn(min = …)` this
+      pass (scanner review actions, camera-permission actions, Settings/Manual/VerifyDialog basis
+      chips, the welcome carousel's primary CTA) survives 2× font scale on a narrow device without
+      clipped labels — spot-check the scan-family screens in particular, since they were not covered
+      by the instrumented visual test added this pass.
 
 **Device/API:** ____________________ **Font scale:** ______ **Navigation:** ______________
 

@@ -38,6 +38,7 @@ import app.justthecarbs.domain.ProductImageSelector
 import app.justthecarbs.R
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -140,11 +141,12 @@ private fun ProductHeroImageContent(
             // put a hard white rectangle inside a grey box: the frame fought the photo instead of
             // holding it. Matching the photos' own background makes the image sit on the page.
             //
-            // In dark mode the same reasoning gives a light-but-not-white plate: a pure white slab
-            // is a glare source at night, while a dark plate would still clash with the baked-in
-            // white of the photo itself.
+            // `mediaSurface` (not surfaceContainerLowest, which is near-black in Dark) gives the
+            // same treatment in dark mode: a light-but-not-white plate, soft enough to avoid
+            // becoming a nighttime glare source while staying compatible with the photo's own
+            // baked-in white background.
             .background(
-                if (loaded) MaterialTheme.colorScheme.surfaceContainerLowest
+                if (loaded) MaterialTheme.extendedColors.mediaSurface
                 else MaterialTheme.colorScheme.primaryContainer,
             )
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)

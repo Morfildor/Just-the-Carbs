@@ -1,6 +1,5 @@
 package app.justthecarbs.ui.onboarding
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -111,24 +110,19 @@ fun WelcomeCarouselScreen(
         if (pagerState.currentPage != slideIndex) pagerState.animateScrollToPage(slideIndex)
     }
 
-    val background by animateColorAsState(
-        targetValue = when (slideIndex) {
-            0 -> MaterialTheme.colorScheme.primary
-            1 -> MaterialTheme.colorScheme.background
-            else -> MaterialTheme.extendedColors.result
-        },
-        animationSpec = tween(280),
-        label = "onboardingBackground",
-    )
-    val foreground by animateColorAsState(
-        targetValue = when (slideIndex) {
-            0 -> MaterialTheme.colorScheme.onPrimary
-            1 -> MaterialTheme.colorScheme.onBackground
-            else -> MaterialTheme.extendedColors.onResult
-        },
-        animationSpec = tween(280),
-        label = "onboardingForeground",
-    )
+    // Switch each tested semantic pair as one unit. Independently tweening foreground and
+    // background creates intermediate frames where neither endpoint's contrast guarantee holds.
+    // Pager/content motion remains owned by HorizontalPager below.
+    val background = when (slideIndex) {
+        0 -> MaterialTheme.colorScheme.primary
+        1 -> MaterialTheme.colorScheme.background
+        else -> MaterialTheme.extendedColors.result
+    }
+    val foreground = when (slideIndex) {
+        0 -> MaterialTheme.colorScheme.onPrimary
+        1 -> MaterialTheme.colorScheme.onBackground
+        else -> MaterialTheme.extendedColors.onResult
+    }
     val markColor = if (slideIndex == 1) MaterialTheme.colorScheme.tertiary else foreground
 
     Box(modifier = Modifier.fillMaxSize().background(background).testTag(CAROUSEL_ROOT_TAG)) {
@@ -182,9 +176,8 @@ fun WelcomeCarouselScreen(
             }
 
             // Only the slide content pages. The background colour, Skip and the CTA are shared
-            // chrome that cross-fades with `slideIndex` instead of sliding, so a swipe moves the
-            // words while the screen itself stays put — which is what makes the colour transition
-            // read as one screen changing rather than three screens scrolling past.
+            // chrome that switches semantic colour pairs with `slideIndex` instead of sliding, so
+            // a swipe moves the words while the screen itself stays put.
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.weight(1f),
@@ -252,7 +245,7 @@ fun WelcomeCarouselScreen(
                         containerColor = ctaContainer,
                         contentColor = ctaContent,
                     ),
-                    modifier = Modifier.fillMaxWidth().height(60.dp).testTag(CAROUSEL_PRIMARY_TAG),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight).testTag(CAROUSEL_PRIMARY_TAG),
                 ) {
                     Text(
                         text = stringResource(if (last) R.string.onboarding_get_started else R.string.onboarding_next),

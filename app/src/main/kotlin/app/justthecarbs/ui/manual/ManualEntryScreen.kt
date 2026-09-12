@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -69,7 +70,7 @@ fun ManualEntryScreen(
     onSave: () -> Unit,
     onBack: () -> Unit,
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AccentBackdrop(
             accent = Destination.MANUAL.accent(),
             modifier = Modifier.align(Alignment.TopEnd),
@@ -78,7 +79,6 @@ fun ManualEntryScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
                 .imePadding(),
         ) {
             JtcTopBar(
@@ -166,13 +166,13 @@ fun ManualEntryScreen(
                             selected = state.basis == NutritionBasis.PER_100_G,
                             onClick = { onBasisChanged(NutritionBasis.PER_100_G) },
                             label = { Text(stringResource(R.string.manual_basis_g)) },
-                            modifier = Modifier.height(Space.minTouchTarget),
+                            modifier = Modifier.heightIn(min = Space.minTouchTarget),
                         )
                         FilterChip(
                             selected = state.basis == NutritionBasis.PER_100_ML,
                             onClick = { onBasisChanged(NutritionBasis.PER_100_ML) },
                             label = { Text(stringResource(R.string.manual_basis_ml)) },
-                            modifier = Modifier.height(Space.minTouchTarget),
+                            modifier = Modifier.heightIn(min = Space.minTouchTarget),
                         )
                     }
                     if (state.basis == null) {
@@ -225,10 +225,12 @@ fun ManualEntryScreen(
                     enabled = state.canSave,
                     shape = RoundedCornerShape(Space.buttonRadius),
                     colors = ButtonDefaults.buttonColors(
+                        // Paired disabled foreground, not onPrimary (a filled-button colour that
+                        // read as a washed-out active button rather than a genuinely disabled one).
                         disabledContainerColor = MaterialTheme.extendedColors.disabledButton,
-                        disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
+                        disabledContentColor = MaterialTheme.extendedColors.onDisabledButton,
                     ),
-                    modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                 ) { Text(stringResource(R.string.manual_save)) }
             }
         }

@@ -135,7 +135,7 @@ fun MealScreen(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AccentBackdrop(
             accent = Destination.MEAL.accent(),
             modifier = Modifier.align(Alignment.TopEnd),
@@ -143,8 +143,7 @@ fun MealScreen(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .fillMaxSize(),
         ) {
             JtcTopBar(
                 title = stringResource(R.string.meal_title),

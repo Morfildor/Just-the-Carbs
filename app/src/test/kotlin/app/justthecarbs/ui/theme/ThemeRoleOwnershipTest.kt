@@ -63,6 +63,10 @@ class ThemeRoleOwnershipTest {
         assertTrue(welcome.contains("MaterialTheme.colorScheme.onPrimary"))
         assertTrue(welcome.contains("MaterialTheme.extendedColors.onResult"))
         assertFalse(welcome.contains("Color.White"))
+        assertFalse(
+            "semantic foreground/background pairs must switch atomically",
+            welcome.contains("animateColorAsState"),
+        )
     }
 
     @Test
@@ -82,12 +86,43 @@ class ThemeRoleOwnershipTest {
     fun `extended visual roles are explicit in both schemes`() {
         assertEquals(1, Regex("""onResult\s*=\s*WarmWhite""").findAll(theme).count())
         assertEquals(1, Regex("""onResult\s*=\s*Night""").findAll(theme).count())
-        assertEquals(1, Regex("""accentBackdropAlpha\s*=\s*0\.14f""").findAll(theme).count())
+        assertEquals(1, Regex("""accentBackdropAlpha\s*=\s*0\.06f""").findAll(theme).count())
         assertEquals(1, Regex("""accentBackdropAlpha\s*=\s*0\.18f""").findAll(theme).count())
 
         val backdrop = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/components/AccentBackdrop.kt",
         ).readText()
         assertTrue(backdrop.contains("MaterialTheme.extendedColors.accentBackdropAlpha"))
+    }
+
+    @Test
+    fun `page ground is painted before every decorative backdrop`() {
+        listOf(
+            "home/HomeScreen.kt",
+            "manual/ManualEntryScreen.kt",
+            "meal/MealScreen.kt",
+            "search/SearchScreen.kt",
+            "settings/SettingsScreen.kt",
+        ).forEach { relativePath ->
+            val source = java.io.File("src/main/kotlin/app/justthecarbs/ui/$relativePath")
+                .readText()
+                .replace(Regex("""\s+"""), " ")
+            assertTrue(
+                "$relativePath must paint the opaque page ground below AccentBackdrop",
+                source.contains(
+                    "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { AccentBackdrop(",
+                ),
+            )
+        }
+
+        val product = java.io.File(
+            "src/main/kotlin/app/justthecarbs/ui/product/ProductScreen.kt",
+        ).readText().replace(Regex("""\s+"""), " ")
+        assertTrue(
+            "ProductScreen must paint the opaque page ground below its decorative circle",
+            product.contains(
+                "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { // Doc's decorative",
+            ),
+        )
     }
 }

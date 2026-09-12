@@ -151,7 +151,7 @@ fun HomeScreen(
         onSearchQueryChanged("")
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AccentBackdrop(
             accent = MaterialTheme.colorScheme.primary,
             modifier = Modifier.align(Alignment.TopEnd),
@@ -160,7 +160,6 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
                 .statusBarsPadding(),
         ) {
             Row(

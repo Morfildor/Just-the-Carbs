@@ -26,6 +26,7 @@ class ContrastTest {
 
     // --- Light tokens under test (mirrors Theme.kt) --------------------------------------------
     private val blue = 0x1B6FBF
+    private val inverseBlue = 0x1B6EBF
     private val blueDark = 0x5CA6E8
     private val red = 0xD42F2F
     private val redDark = 0xFF7A7A
@@ -36,6 +37,9 @@ class ContrastTest {
     private val night = 0x15140F
     private val darkOnPrimary = 0x00243D
     private val warmWhite = 0xFFFBF7
+    private val mediaSurfaceDark = 0xE7E3D9
+    private val onDisabledBlue = 0x7C8B9C
+    private val onDisabledBlueDark = 0x6E7C8A
 
     // --- Light surfaces these are actually drawn on ---------------------------------------------
     private val cream = 0xFFF6EE          // background / surface
@@ -80,6 +84,18 @@ class ContrastTest {
             return (fg * alpha + bg * (1.0 - alpha)).toInt()
         }
         return (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+    }
+
+    private fun backdropAlpha(scheme: String): Double {
+        val theme = java.io.File("src/main/kotlin/app/justthecarbs/ui/theme/Theme.kt").readText()
+        val block = theme.substringAfter("private val ${scheme}ExtendedColors")
+            .substringBefore("private val", missingDelimiterValue = theme)
+        return Regex("""accentBackdropAlpha\s*=\s*([0-9.]+)f""")
+            .find(block)
+            ?.groupValues
+            ?.get(1)
+            ?.toDouble()
+            ?: error("Could not read $scheme accentBackdropAlpha from Theme.kt")
     }
 
     @Test
@@ -159,6 +175,79 @@ class ContrastTest {
         assertContrast("onSurface/cream", ink, cream)
         assertContrast("onSurfaceVariant/cream", inkMuted, cream)
         assertContrast("onSurfaceVariant/white", inkMuted, white)
+    }
+
+    @Test
+    fun `supporting text clears contrast on the actual accent-washed page backgrounds`() {
+        val lightAlpha = backdropAlpha("Light")
+        val darkAlpha = backdropAlpha("Dark")
+
+        mapOf(
+            "home blue" to blue,
+            "meal amber" to 0x92400E,
+            "search indigo" to 0x4338CA,
+            "settings neutral" to inkMuted,
+            "manual teal" to 0x0F766E,
+        ).forEach { (name, accent) ->
+            assertContrast("light $name wash", inkMuted, composite(accent, cream, lightAlpha))
+        }
+
+        mapOf(
+            "home blue" to blueDark,
+            "meal amber" to 0xD49425,
+            "search indigo" to 0x9496FF,
+            "settings neutral" to 0xAFAEA8,
+            "manual teal" to 0x43B1A6,
+        ).forEach { (name, accent) ->
+            assertContrast("dark $name wash", 0xAFAEA8, composite(accent, night, darkAlpha))
+        }
+    }
+
+    @Test
+    fun `product supporting text clears contrast on its actual decorative wash`() {
+        assertContrast("light product wash", inkMuted, composite(blueSoft, cream, 0.7))
+        assertContrast("dark product wash", 0xAFAEA8, composite(0x16324A, night, 0.7))
+    }
+
+    @Test
+    fun `snackbar action clears contrast against inverse surface in both schemes`() {
+        assertContrast("light snackbar action", blueDark, ink)
+        assertContrast("dark snackbar action", inverseBlue, chalk)
+    }
+
+    @Test
+    fun `media surface stays light in both schemes, never the near-black surfaceContainerLowest`() {
+        // The defect this token exists to fix: surfaceContainerLowest is 0x0C0B08 in Dark, so a
+        // loaded photo on it read as a white JPEG sitting inside a black frame. mediaSurface must
+        // stay well above that in luminance in both schemes, and the two schemes must not collapse
+        // onto the same value (an unthemed constant would defeat the point of having a dark variant).
+        val lightLuminance = luminance(0xFFFFFF) // Color.White, the Light mediaSurface value
+        val darkLuminance = luminance(mediaSurfaceDark)
+        assertTrue("light mediaSurface must be light", lightLuminance > 0.9)
+        assertTrue(
+            "dark mediaSurface luminance $darkLuminance must stay well clear of surfaceContainerLowest's near-black " +
+                "${luminance(darkSurfaceLowest)}",
+            darkLuminance > 0.5,
+        )
+        assertTrue(
+            "dark mediaSurface must be distinct from a pure white glare panel",
+            darkLuminance < lightLuminance,
+        )
+    }
+
+    @Test
+    fun `disabled button foreground is distinct from the filled-button foreground it was accidentally paired with`() {
+        // The accidental coupling this test guards: disabledContentColor = onPrimary.copy(alpha)
+        // read as a washed-out ACTIVE button rather than a disabled one, because onPrimary belongs
+        // to the filled primary button's own foreground, not to a disabled state.
+        assertTrue(
+            "light onDisabledButton must differ from onPrimary (warmWhite)",
+            onDisabledBlue != warmWhite,
+        )
+        assertTrue(
+            "dark onDisabledButton must differ from onPrimary (darkOnPrimary)",
+            onDisabledBlueDark != darkOnPrimary,
+        )
     }
 
     @Test
@@ -256,6 +345,7 @@ class ContrastTest {
 
         mapOf(
             "Blue" to blue,
+            "InverseBlue" to inverseBlue,
             "BlueDark" to blueDark,
             "Red" to red,
             "RedDark" to redDark,
@@ -263,6 +353,9 @@ class ContrastTest {
             "Ink" to ink,
             "Chalk" to chalk,
             "WarmWhite" to warmWhite,
+            "MediaSurfaceDark" to mediaSurfaceDark,
+            "OnDisabledBlue" to onDisabledBlue,
+            "OnDisabledBlueDark" to onDisabledBlueDark,
         ).forEach { (token, expected) ->
             val declared = Regex("""private val $token = Color\(0xFF([0-9A-Fa-f]{6})\)""")
                 .find(theme)

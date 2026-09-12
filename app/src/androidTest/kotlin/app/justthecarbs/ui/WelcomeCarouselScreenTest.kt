@@ -12,9 +12,13 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import app.justthecarbs.R
+import app.justthecarbs.domain.ThemeChoice
 import app.justthecarbs.ui.onboarding.CAROUSEL_PRIMARY_TAG
 import app.justthecarbs.ui.onboarding.CAROUSEL_ROOT_TAG
 import app.justthecarbs.ui.onboarding.CAROUSEL_SKIP_TAG
@@ -48,11 +52,11 @@ class WelcomeCarouselScreenTest {
     private var getStartedCount = 0
 
     /** Drives the real screen with real state, so Next and Skip actually move it. */
-    private fun show(initialSlide: Int = 0) {
+    private fun show(initialSlide: Int = 0, themeChoice: ThemeChoice = ThemeChoice.LIGHT) {
         getStartedCount = 0
         compose.setContent {
             var slide by remember { mutableIntStateOf(initialSlide) }
-            JustTheCarbsTheme {
+            JustTheCarbsTheme(themeChoice = themeChoice) {
                 WelcomeCarouselScreen(
                     slideIndex = slide,
                     onNext = { slide = (slide + 1).coerceAtMost(2) },
@@ -167,6 +171,37 @@ class WelcomeCarouselScreenTest {
             compose.waitForIdle()
             assertTitleRendered()
         }
+    }
+
+    @Test
+    fun pagerGesturesRemainBidirectionalInLightTheme() {
+        assertBidirectionalPagerMotion(ThemeChoice.LIGHT)
+    }
+
+    @Test
+    fun pagerGesturesRemainBidirectionalInDarkTheme() {
+        assertBidirectionalPagerMotion(ThemeChoice.DARK)
+    }
+
+    private fun assertBidirectionalPagerMotion(themeChoice: ThemeChoice) {
+        show(themeChoice = themeChoice)
+        val root = compose.onNodeWithTag(CAROUSEL_ROOT_TAG)
+
+        root.performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        compose.onNodeWithText(string(R.string.onboarding_title_2)).assertIsDisplayed()
+
+        root.performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        compose.onNodeWithText(string(R.string.onboarding_title_3)).assertIsDisplayed()
+
+        root.performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        compose.onNodeWithText(string(R.string.onboarding_title_2)).assertIsDisplayed()
+
+        root.performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        compose.onNodeWithText(string(R.string.onboarding_title_1)).assertIsDisplayed()
     }
 
     private fun assertTitleRendered() {

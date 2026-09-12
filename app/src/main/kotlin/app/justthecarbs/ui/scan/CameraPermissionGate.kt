@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -245,7 +246,7 @@ fun CameraPermissionRationale(
             CameraPermissionState.PermanentlyDenied -> {
                 Button(
                     onClick = onOpenSettings,
-                    modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                     shape = RoundedCornerShape(Space.buttonRadius),
                 ) { Text(stringResource(R.string.permission_open_settings)) }
                 Spacer(Modifier.height(Space.s))
@@ -253,7 +254,7 @@ fun CameraPermissionRationale(
             CameraPermissionState.NotRequested, CameraPermissionState.DeniedCanAskAgain -> {
                 Button(
                     onClick = onAllow,
-                    modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                     shape = RoundedCornerShape(Space.buttonRadius),
                 ) { Text(stringResource(R.string.permission_allow)) }
                 Spacer(Modifier.height(Space.s))
@@ -263,11 +264,11 @@ fun CameraPermissionRationale(
 
         Button(
             onClick = onEnterManually,
-            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
             shape = RoundedCornerShape(Space.buttonRadius),
         ) { Text(stringResource(R.string.permission_manual)) }
 
-        TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget)) {
+        TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
             Text(stringResource(R.string.action_close))
         }
     }

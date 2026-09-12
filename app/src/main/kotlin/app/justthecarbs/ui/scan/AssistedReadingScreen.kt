@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -295,7 +295,7 @@ private fun BasisActions(
         offered.forEach { basis ->
             Button(
                 onClick = { onUseValue(value, basis) },
-                modifier = Modifier.weight(1f).height(Space.minTouchTarget),
+                modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
                 shape = RoundedCornerShape(Space.buttonRadius),
             ) {
                 Text(
@@ -364,7 +364,7 @@ private fun LabelledChoices(
             Button(
                 onClick = { onAccept(candidate) },
                 shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
             ) {
                 Text(
                     if (converted) {
@@ -773,7 +773,7 @@ fun AssistedReadingScreen(
                         Button(
                             onClick = { step = AssistStep.TypingFocusedAmount },
                             shape = RoundedCornerShape(Space.buttonRadius),
-                            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                         ) {
                             Text(
                                 stringResource(
@@ -792,7 +792,7 @@ fun AssistedReadingScreen(
                         OutlinedButton(
                             onClick = { step = AssistStep.PickingLabelled },
                             shape = RoundedCornerShape(Space.buttonRadius),
-                            modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
                         ) { Text(stringResource(R.string.assist_pick_labelled)) }
                     }
                     // Tapping a row stays available and stays *primary* in the ordinary case. It is
@@ -804,19 +804,19 @@ fun AssistedReadingScreen(
                         OutlinedButton(
                             onClick = { step = AssistStep.PickingRow },
                             shape = RoundedCornerShape(Space.buttonRadius),
-                            modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
                         ) { Text(stringResource(R.string.assist_pick_row)) }
                     } else {
                         Button(
                             onClick = { step = AssistStep.PickingRow },
                             shape = RoundedCornerShape(Space.buttonRadius),
-                            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                         ) { Text(stringResource(R.string.assist_pick_row)) }
                     }
                     OutlinedButton(
                         onClick = { step = AssistStep.TypingValue },
                         shape = RoundedCornerShape(Space.buttonRadius),
-                        modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
                     ) { Text(stringResource(R.string.assist_type_it)) }
                     TextButton(onClick = onRetake, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.crop_retake))
@@ -862,7 +862,7 @@ fun AssistedReadingScreen(
                         Button(
                             onClick = { step = AssistStep.TypingFocusedAmount },
                             shape = RoundedCornerShape(Space.buttonRadius),
-                            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                         ) {
                             Text(
                                 stringResource(
@@ -886,7 +886,7 @@ fun AssistedReadingScreen(
                         Button(
                             onClick = { step = AssistStep.TypingValue },
                             shape = RoundedCornerShape(Space.buttonRadius),
-                            modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                         ) { Text(stringResource(R.string.assist_type_it)) }
                     }
                     TextButton(onClick = { step = AssistStep.Choosing }, modifier = Modifier.fillMaxWidth()) {
@@ -931,7 +931,7 @@ fun AssistedReadingScreen(
                             Button(
                                 onClick = { onUseValue(parsed, focusedTarget.basis) },
                                 shape = RoundedCornerShape(Space.buttonRadius),
-                                modifier = Modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                             ) {
                                 Text(
                                     stringResource(
@@ -1043,7 +1043,7 @@ fun AssistedReadingScreen(
                             shape = RoundedCornerShape(Space.buttonRadius),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(Space.primaryButtonHeight)
+                                .heightIn(min = Space.primaryButtonHeight)
                                 .testTag(ASSIST_CORRECTION_SUBMIT_TAG),
                         ) {
                             Text(

@@ -5,7 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
@@ -195,7 +195,9 @@ fun PrimaryAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
     Button(
         onClick = onClick,
         shape = RoundedCornerShape(Space.buttonRadius),
-        modifier = modifier.fillMaxWidth().height(Space.primaryButtonHeight),
+        // heightIn, not height: primaryButtonHeight is a floor, not a ceiling. A hard height
+        // clips the label at large font scales; a growing button costs nothing here.
+        modifier = modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
     ) { Text(text) }
 }
 
@@ -203,7 +205,7 @@ fun PrimaryAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
 fun SecondaryAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     TextButton(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(Space.minTouchTarget),
+        modifier = modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
     ) { Text(text) }
 }
 

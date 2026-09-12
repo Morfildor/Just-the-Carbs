@@ -90,7 +90,24 @@ and scanner lifecycle handling. It remains a local development build; no Play up
 - Refined Dark mode without changing app behavior: welcome and filled-accent content now use
   explicit foreground pairs, scanner review screens separate themed controls from the photograph,
   OCR selection geometry remains visible over mixed packaging, dialogs share one raised-surface
-  treatment, and Settings' rating action uses its proper tertiary foreground.
+  treatment, and Settings' rating action uses its proper tertiary foreground. Page backdrops now
+  paint above the opaque ground at contrast-tested Light/Dark strengths; welcome colours switch as
+  atomic semantic pairs while pager motion remains; and the dark snackbar action has a narrowly
+  scoped contrast-safe inverse blue.
+
+- Continued the Light/Dark visual refinement pass: every text-bearing button and chip now uses a
+  minimum height instead of a fixed one, so labels survive large font scales instead of clipping
+  (scanner review actions, camera-permission actions, Settings/Manual Entry/VerifyDialog basis
+  chips, and the welcome carousel's primary CTA, which also lost a stray `60.dp` literal in favour
+  of the shared token). A loaded product photograph — hero, both thumbnail families, and the
+  gallery — now sits on a dedicated `mediaSurface` ground rather than the near-black
+  `surfaceContainerLowest` Dark previously gave it; the monogram fallback keeps its existing colour
+  unchanged. A disabled Save button's foreground is now its own paired token instead of the active
+  button's foreground worn at reduced alpha, which previously read as washed-out rather than off.
+  Product's top bar gained the same destination spine and back-icon tint every other screen's shared
+  top bar uses, while deliberately keeping its own two-line title and growable height rather than
+  adopting the shared component's fixed one. Verified rendered on device in both themes; new
+  composited-contrast and on-device layout tests guard the changes.
 
 - Finished the tutorial release-candidate polish: START now orients around the measured Search,
   Barcode, and Nutrition Label actions; Add to meal gets a restrained warm strong-focus treatment;

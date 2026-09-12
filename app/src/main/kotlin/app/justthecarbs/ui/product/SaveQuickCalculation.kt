@@ -3,7 +3,7 @@ package app.justthecarbs.ui.product
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -50,7 +50,7 @@ fun SaveQuickCalculationAction(
             // Disabled only while a write is actually in flight. A second tap in that window would
             // otherwise mint a second synthetic barcode and store the same product twice.
             enabled = !saving,
-            modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+            modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
             shape = RoundedCornerShape(Space.buttonRadius),
         ) {
             Text(stringResource(R.string.quick_save))
