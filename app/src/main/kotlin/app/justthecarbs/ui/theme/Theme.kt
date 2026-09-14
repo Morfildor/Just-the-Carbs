@@ -371,7 +371,7 @@ object NumberType {
         letterSpacing = (-0.5).sp,
     )
 
- /** The portion being edited. */
+    /** The portion being edited. */
     val portion = TextStyle(
         fontFamily = SpaceGrotesk,
         fontSize = 52.sp,
