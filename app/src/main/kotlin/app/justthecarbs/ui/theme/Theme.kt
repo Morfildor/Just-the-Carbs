@@ -24,14 +24,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The internal design system — a warm, editorial utility built around the carbohydrate answer.
+ * The internal design system â€” a warm, editorial utility built around the carbohydrate answer.
  *
  * Blue owns interaction, destination accents identify app areas, and result red is reserved for
  * carbohydrate figures. The result stays dominant through scale, placement, reserved colour and
  * an intentionally quieter set of supporting surfaces. See DESIGN.md.
  *
  * Dynamic colour is deliberately not used. It would hand the accent (and so the visual weight of
- * the result) to whatever wallpaper the user has, which §38 only permits if hierarchy stays
+ * the result) to whatever wallpaper the user has, which Â§38 only permits if hierarchy stays
  * excellent. It cannot be guaranteed to.
  */
 
@@ -58,7 +58,7 @@ private val InkMuted = Color(0xFF61616C)
 private val LineLight = Color(0xFFDED8CB)
 private val LineStrongLight = Color(0xFF75716A)
 private val DisabledBlue = Color(0xFFDCE3F5)
-// Paired foreground for disabledButton, not onPrimary — onPrimary belongs to the filled primary
+// Paired foreground for disabledButton, not onPrimary â€” onPrimary belongs to the filled primary
 // button, an accidental coupling that read as a washed-out active button rather than a disabled
 // one. A muted ink tone on the disabled container reads as unmistakably off.
 private val OnDisabledBlue = Color(0xFF6C7890)
@@ -69,7 +69,7 @@ private val WarmWhite = Color(0xFFFFFCF7)
 // white-photo-on-black-frame effect this token exists to remove.
 private val MediaSurfaceLight = Color.White
 
-// Dark palette — extrapolated from the light tokens (no dark spec exists in the handoff).
+// Dark palette â€” extrapolated from the light tokens (no dark spec exists in the handoff).
 // Cream inverts to near-black, ink inverts to off-white; accent hues held close to their light
 // values, brightened only enough to hold contrast on a dark ground.
 private val Night = Color(0xFF111318)
@@ -91,8 +91,8 @@ private val MediaSurfaceDark = Color(0xFFE8E4DC)
 
 /**
  * The result red and a few tokens Material's ColorScheme has no matching role for (brief: "Why
- * red here and blue elsewhere"). `result` is spent on exactly one thing per screen — the
- * carbohydrate number — never on `error`, which is semantically a fault state this app doesn't have.
+ * red here and blue elsewhere"). `result` is spent on exactly one thing per screen â€” the
+ * carbohydrate number â€” never on `error`, which is semantically a fault state this app doesn't have.
  */
 data class ExtendedColors(
     val result: Color,
@@ -133,7 +133,7 @@ private val LightExtendedColors = ExtendedColors(
     onResult = WarmWhite,
     onAccent = WarmWhite,
     orangeSoft = OrangeSoft,
-    // Darkened from #B5710B, which scored 3.47:1 on its own container — a badge foreground that
+    // Darkened from #B5710B, which scored 3.47:1 on its own container â€” a badge foreground that
     // failed the normal-text floor on the only background it is ever drawn on. #9B6109 cleared it
     // at 4.51:1; this sits at 4.79:1 for margin, an imperceptible further shift.
     onOrangeSoft = Color(0xFF90530A),
@@ -160,7 +160,7 @@ private val DarkExtendedColors = ExtendedColors(
 )
 
 /**
- * Follows `themeChoice`, not the system — so it is provided once in [JustTheCarbsTheme] rather than
+ * Follows `themeChoice`, not the system â€” so it is provided once in [JustTheCarbsTheme] rather than
  * derived independently from `isSystemInDarkTheme()`. Read via [extendedColors].
  */
 val LocalExtendedColors = staticCompositionLocalOf { LightExtendedColors }
@@ -201,7 +201,7 @@ private val LightColors = lightColorScheme(
     surfaceBright = Color.White,
     surfaceDim = Color(0xFFDED7CB),
     scrim = Color.Black,
-    // Snackbar action text. Left unset this falls back to Material's baseline lavender — the same
+    // Snackbar action text. Left unset this falls back to Material's baseline lavender â€” the same
     // stray-purple trap recorded above for `secondaryContainer`, and it appeared verbatim on the
     // meal's Undo action. `BlueDark` is the app's own accent adapted for a dark surface and scores
     // 5.04:1 on Material's inverseSurface.
@@ -249,8 +249,8 @@ private val DarkColors = darkColorScheme(
 )
 
 /**
- * Spacing, radii and touch targets in one place, so screens cannot drift apart (§38).
- * Touch targets are never below 48dp (§39).
+ * Spacing, radii and touch targets in one place, so screens cannot drift apart (Â§38).
+ * Touch targets are never below 48dp (Â§39).
  */
 object Space {
     val xs = 4.dp
@@ -269,7 +269,7 @@ object Space {
     /** Product imagery. */
     val mediaRadius = 20.dp
 
-    /** Chips stay pill-shaped — their whole affordance is "chip", and it should not be diluted. */
+    /** Chips stay pill-shaped â€” their whole affordance is "chip", and it should not be diluted. */
     val chipRadius = 999.dp
 
     val minTouchTarget = 48.dp
@@ -277,7 +277,7 @@ object Space {
     /**
      * A primary action's height.
      *
-     * Already the de facto standard — 56dp was written as a literal at sixteen call sites across
+     * Already the de facto standard â€” 56dp was written as a literal at sixteen call sites across
      * seven screens, which is a convention held by hand rather than by the design system, and the
      * kind that drifts the moment someone types 48 or 60. Comfortably above [minTouchTarget]
      * because the primary action on these screens is routinely tapped one-handed while holding a
@@ -287,7 +287,7 @@ object Space {
 
     val screenEdge = 20.dp
 
-    /** Product thumbnails — big enough to recognise a packet, small enough to stay secondary (§7). */
+    /** Product thumbnails â€” big enough to recognise a packet, small enough to stay secondary (Â§7). */
     val thumbnail = 52.dp
 
     /** The result surface. Lifted off the page so it reads as the answer, not as another row. */
@@ -299,7 +299,7 @@ object Space {
 }
 
 /**
- * Motion (§38). Short and unshowy: this app is used standing in a kitchen, and animation that
+ * Motion (Â§38). Short and unshowy: this app is used standing in a kitchen, and animation that
  * delays a number is animation that makes the app worse.
  */
 object Motion {
@@ -311,13 +311,13 @@ object Motion {
      *
      * Not motion so much as persistence: long enough to survive looking away at the phone you are
      * pasting into and back, short enough that it cannot be mistaken for the button's resting
-     * state. Deliberately much longer than [STANDARD_MS] — this is a confirmation, not a transition.
+     * state. Deliberately much longer than [STANDARD_MS] â€” this is a confirmation, not a transition.
      */
     const val COPIED_STATE_MS = 2500L
 }
 
 /**
- * Typography for the two numbers that matter (§3): the portion the user types, and the
+ * Typography for the two numbers that matter (Â§3): the portion the user types, and the
  * carbohydrate result. Both are given weights and sizes nothing else on the screen competes with.
  */
 object NumberType {
@@ -332,20 +332,38 @@ object NumberType {
     )
 
     /**
+     * The unit beside the dominant result, e.g. the g in 31.2 g.
+     *
+     * Deliberately smaller than [result] rather than a plain trailing string in the same style —
+     * the number is the answer; the unit is a label on it. Same family and weight as [result] so
+     * the pairing still reads as one object, not two different typefaces glued together.
+     *
+     * Space Grotesk's bundled instance does not expose tabular figures (tnum) — verified 2026-09-14,
+     * not applied. Digits may shift width slightly during the AnimatedContent cross-fade; this is a
+     * font limitation, not a missed feature.
+     */
+    val resultUnit = TextStyle(
+        fontFamily = SpaceGrotesk,
+        fontSize = 26.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = (-0.5).sp,
+    )
+
+    /**
      * How the result is allowed to shrink so it always fits on one line.
      *
      * The result is rendered with `maxLines = 1`, so without this it does not wrap when it runs
-     * out of room — it is clipped, and `125.3 g` becomes `125.3` or `125`. A carbohydrate figure
+     * out of room â€” it is clipped, and `125.3 g` becomes `125.3` or `125`. A carbohydrate figure
      * that silently loses digits while still looking like a finished number is the worst failure
      * this screen has, so the size gives way instead of the value.
      *
      * This is not hypothetical: at the largest font scale on a dense narrow phone, a three-digit
-     * result overflowed its box by a fraction of a pixel — measured, not estimated. The margin at
+     * result overflowed its box by a fraction of a pixel â€” measured, not estimated. The margin at
      * the default scale was never more than that one string.
      *
      * The ceiling matches [result]'s own 64.sp (updated for the Just the Carbs redesign); the
      * floor, 36.sp, is still far larger than any other text on the screen, so the result keeps its
-     * place in the hierarchy (§3) even in the worst case.
+     * place in the hierarchy (Â§3) even in the worst case.
      */
     val resultAutoSize = TextAutoSize.StepBased(
         minFontSize = 36.sp,
@@ -363,7 +381,7 @@ object NumberType {
         textAlign = TextAlign.Center,
     )
 
-    /** The supporting decimal, e.g. `31.3 g calculated` — legible, not a whisper (design 3.2). */
+    /** The supporting decimal, e.g. `31.3 g calculated` â€” legible, not a whisper (design 3.2). */
     val supporting = TextStyle(
         fontSize = 15.sp,
         lineHeight = 20.sp,
@@ -406,7 +424,7 @@ private val JustTheCarbsTypography = Typography().run {
  * The single authoritative rule turning a [ThemeChoice] into an effective dark-theme state.
  *
  * Pure and system-free on purpose. The colour scheme and the system bars must never disagree about
- * which theme is in force — a user who picks Light on a dark phone got dark status-bar icons over a
+ * which theme is in force â€” a user who picks Light on a dark phone got dark status-bar icons over a
  * cream app, and light icons vanished entirely on the light background. Both now read this one
  * function, so the two cannot drift: the only system input is [systemInDarkTheme], supplied by the
  * caller, which keeps the rule JVM-testable without an emulator.
@@ -433,7 +451,7 @@ fun JustTheCarbsTheme(
             // Material3's `Surface` is what normally provides `LocalContentColor`; this app draws
             // its screens with a plain `Modifier.background(...)`, which paints a colour but
             // provides nothing. Every Icon/Text that did not name a colour therefore inherited
-            // `LocalContentColor`'s default of `Color.Black` — invisible on the dark scheme's
+            // `LocalContentColor`'s default of `Color.Black` â€” invisible on the dark scheme's
             // near-black background, which is exactly the Settings back arrow, the Settings title,
             // the "Haptic feedback" row and Home's gear icon. Provided here rather than by wrapping
             // every screen in a `Surface`, which would add a second background paint under screens
@@ -442,7 +460,7 @@ fun JustTheCarbsTheme(
             CompositionLocalProvider(
                 LocalContentColor provides (if (dark) DarkColors else LightColors).onBackground,
             ) {
-                // The scrim is drawn here, once, rather than by each screen — eleven screens each
+                // The scrim is drawn here, once, rather than by each screen â€” eleven screens each
                 // remembering to paint two bands is eleven chances to forget one, and the one that
                 // forgets is invisible until someone looks at that screen on a device.
                 Box {
@@ -454,6 +472,7 @@ fun JustTheCarbsTheme(
     }
 }
 
-/** The extended tokens Material's ColorScheme has no role for — see [ExtendedColors]. */
+/** The extended tokens Material's ColorScheme has no role for â€” see [ExtendedColors]. */
 val MaterialTheme.extendedColors: ExtendedColors
     @Composable get() = LocalExtendedColors.current
+
