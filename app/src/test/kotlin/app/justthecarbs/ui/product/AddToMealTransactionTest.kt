@@ -34,6 +34,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -363,6 +364,43 @@ class AddToMealTransactionTest {
         assertTrue("the failure must be reported", viewModel.state.value.mealAddFailed)
         assertTrue("a failed write must never navigate", events.isEmpty())
         collector.cancel()
+    }
+
+    // ---- success signal: the screen's brief "Added" confirmation --------------------------------
+
+    /**
+     * [ProductUiState.lastMealAddSucceeded] is what [MealActions]' `rememberSuccessPulse` consumes
+     * to show a brief confirmation — it must be non-null only once persistence has genuinely landed,
+     * the same rule [ProductUiState.mealAddFailed] already follows for the failure side.
+     */
+    @Test
+    fun `a successful add-to-meal records a success signal the screen can consume`() = runTest(dispatcher) {
+        val meal = DelayedMeal(delayMs = 100L)
+        val viewModel = viewModelWith(meal)
+        viewModel.load(barcode)
+        advanceUntilIdle()
+        viewModel.onPortionChanged("65")
+
+        assertEquals(null, viewModel.state.value.lastMealAddSucceeded)
+        viewModel.addCurrentToMeal("65 g", scanNext = false)
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.state.value.lastMealAddSucceeded)
+    }
+
+    /** Failure must not leave a stray success signal behind for the screen to misread. */
+    @Test
+    fun `a failed add-to-meal does not record a success signal`() = runTest(dispatcher) {
+        val viewModel = viewModelWith(FailingMeal())
+        viewModel.load(barcode)
+        advanceUntilIdle()
+        viewModel.onPortionChanged("65")
+
+        viewModel.addCurrentToMeal("65 g", scanNext = false)
+        advanceUntilIdle()
+
+        assertEquals(null, viewModel.state.value.lastMealAddSucceeded)
+        assertTrue(viewModel.state.value.mealAddFailed)
     }
 
 }

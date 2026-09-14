@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -18,6 +19,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,9 +29,11 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.CarbResult
 import app.justthecarbs.domain.ResultFormatter
+import app.justthecarbs.ui.components.rememberSuccessPulse
 import app.justthecarbs.ui.theme.Space
 
 /** Stable handles for instrumented tests. */
@@ -60,7 +64,15 @@ fun MealActions(
      * second insert — two rows in the meal for one user action.
      */
     enabled: Boolean = true,
+    /**
+     * A distinct value each time a meal-add write has just succeeded (see
+     * `ProductUiState.lastMealAddSucceeded`). Null means no recent success to show. Drives a brief
+     * "✓ Added" label on *Add to meal* via `rememberSuccessPulse` — the same confirmation grammar
+     * as the result's copy button, generalized rather than reinvented.
+     */
+    justAdded: Any? = null,
 ) {
+    val showAdded = rememberSuccessPulse(justAdded)
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
@@ -71,7 +83,17 @@ fun MealActions(
             shape = RoundedCornerShape(Space.buttonRadius),
             modifier = Modifier.weight(1f).testTag(MEAL_ADD_TAG),
         ) {
-            Text(stringResource(R.string.meal_add))
+            if (showAdded) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(Space.xs))
+            }
+            Text(
+                if (showAdded) stringResource(R.string.meal_added) else stringResource(R.string.meal_add),
+            )
         }
         // Filled, because in a multi-item meal this is the button the user presses repeatedly: it
         // is the loop. One tap records the item and reopens the scanner, which is the difference

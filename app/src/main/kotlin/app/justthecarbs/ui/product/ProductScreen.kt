@@ -2095,6 +2095,7 @@ private fun ResultPanel(
                 onAdd = onAddToMeal,
                 onAddAndScanNext = onAddToMealAndScanNext,
                 enabled = !state.addingToMeal,
+                justAdded = state.lastMealAddSucceeded,
             )
             // Reported rather than merely survived, same rule as `quickSaveFailed`: the result is
             // still on screen and still correct, so silence here reads as success and the user would

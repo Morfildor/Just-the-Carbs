@@ -199,6 +199,9 @@
       archived, because the app adds up a plate — it does not keep a food diary (§28).
     -->
     <string name="meal_add" tools:ignore="MissingTranslation">Add to meal</string>
+    <!-- Brief success label on *Add to meal*, shown for a few seconds right after a successful
+         add — see rememberSuccessPulse. -->
+    <string name="meal_added" tools:ignore="MissingTranslation">Added</string>
     <string name="meal_add_and_scan" tools:ignore="MissingTranslation">Add &amp; scan next</string>
     <string name="meal_add_failed" tools:ignore="MissingTranslation">Could not add this to the meal. Your calculation is unchanged.</string>
     <string name="meal_bar_summary" tools:ignore="MissingTranslation">Meal · %1$s · %2$s g carbs</string>

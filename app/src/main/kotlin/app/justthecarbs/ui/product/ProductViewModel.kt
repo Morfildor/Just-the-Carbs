@@ -141,6 +141,14 @@ data class ProductUiState(
      */
     val mealAddFailed: Boolean = false,
     /**
+     * Non-null immediately after a meal-add write actually lands — never set before persistence
+     * returns, per the same rule [mealAddFailed] follows for the failure side. A plain `Long`
+     * (`System.currentTimeMillis()` or a simple counter) rather than a `Boolean`, because a
+     * *second* add straight after the first must be its own distinct signal — the success feedback
+     * (see `rememberSuccessPulse`) restarts on a new value, not on a value going from true to true.
+     */
+    val lastMealAddSucceeded: Long? = null,
+    /**
      * A label reading waiting to be compared against the current value (§12).
      *
      * Held as a *verdict*, never applied. Same rule as [newerRemoteCarbs]: the calculator's figure
@@ -834,7 +842,9 @@ class ProductViewModel(
                 // stronger than the debounced typing signal — so it counts towards *Usual* too
                 // (§13). Await completion, but report history failure separately from the committed meal.
                 writeUsageSnapshot(usage)
-                _state.update { it.copy(addingToMeal = false) }
+                _state.update {
+                    it.copy(addingToMeal = false, lastMealAddSucceeded = System.currentTimeMillis())
+                }
                 if (scanNext) {
                     _navigationEvents.send(ProductNavigationEvent.ScanNext)
                 }

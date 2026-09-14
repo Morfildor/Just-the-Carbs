@@ -45,6 +45,7 @@ import app.justthecarbs.domain.ProductImage
 import app.justthecarbs.domain.ProductImageType
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.VerificationStatus
+import app.justthecarbs.ui.meal.MEAL_ADD_TAG
 import app.justthecarbs.ui.product.PRODUCT_RESULT_TAG
 import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
@@ -58,7 +59,10 @@ import java.io.IOException
 import coil3.ImageLoader
 import coil3.fetch.Fetcher
 import coil3.request.Options
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 
 /**
  * §60 workflow tests for the calculator.
@@ -821,6 +825,93 @@ class ProductScreenTest {
 
         compose.onNode(portionField()).performTextReplacement("32,5")
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams")
+    }
+
+    // ---- Add-to-meal success confirmation ------------------------------------------------------
+
+    /**
+     * Renders the calculator with a controllable *Add to meal* write: `onAddToMeal` suspends on
+     * [gate] before landing, mirroring how [ProductUiState.lastMealAddSucceeded] is only ever set
+     * once persistence has genuinely returned (see `ProductViewModel.addCurrentToMeal`'s success
+     * branch). `ProductScreen` itself is purely state-driven — it has no ViewModel or repository of
+     * its own — so the write is simulated here with the same local-mutable-state pattern
+     * [showCalculator] already uses for the portion field, rather than a fake repository.
+     */
+    private fun showCalculatorWithControllableMealAdd(gate: CompletableDeferred<Unit>) {
+        compose.setContent {
+            var portion by remember { mutableStateOf("65") }
+            var addingToMeal by remember { mutableStateOf(false) }
+            var lastMealAddSucceeded by remember { mutableStateOf<Long?>(null) }
+            val scope = rememberCoroutineScope()
+            val parsed = app.justthecarbs.domain.PortionParser.parse(portion)
+            val product = product()
+
+            JustTheCarbsTheme {
+                ProductScreen(
+                    state = ProductUiState(
+                        loading = false,
+                        product = product,
+                        portionText = portion,
+                        result = parsed?.let {
+                            CarbCalculator.calculate(product.carbsPer100, it, product.basis)
+                        },
+                        barcode = product.barcode,
+                        addingToMeal = addingToMeal,
+                        lastMealAddSucceeded = lastMealAddSucceeded,
+                    ),
+                    settings = AppSettings(),
+                    onPortionChanged = { portion = it },
+                    onAdjust = {},
+                    onSetPortion = {},
+                    onToggleFavorite = {},
+                    onBack = {},
+                    onVerify = {},
+                    onDismissVerify = {},
+                    onConfirmVerification = { _, _, _ -> },
+                    onResetOnline = {},
+                    onScanLabel = {},
+                    onEnterManually = {},
+                    onRetry = {},
+                    onAddToMeal = { _, _ ->
+                        addingToMeal = true
+                        scope.launch {
+                            gate.await()
+                            addingToMeal = false
+                            lastMealAddSucceeded = System.currentTimeMillis()
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    /** The confirmation appears once the write behind *Add to meal* has actually landed. */
+    @Test
+    fun addToMealShowsABriefSuccessLabelAfterAConfirmedWrite() {
+        val gate = CompletableDeferred<Unit>()
+        showCalculatorWithControllableMealAdd(gate)
+
+        compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
+        gate.complete(Unit)
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Added").assertExists()
+    }
+
+    /**
+     * The negative half of the same guarantee: while the write is still in flight, nothing has
+     * landed yet, so the success label must not appear — a naive implementation might show it
+     * optimistically the instant the button is tapped.
+     */
+    @Test
+    fun addToMealNeverShowsSuccessBeforeTheWriteCompletes() {
+        val gate = CompletableDeferred<Unit>()
+        showCalculatorWithControllableMealAdd(gate)
+
+        compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Added").assertDoesNotExist()
     }
 
     /** The portion field is the only text input on this screen. */
