@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -400,10 +401,20 @@ private fun ScanFrame(acquired: Boolean, modifier: Modifier = Modifier) {
         animationSpec = tween(Motion.QUICK_MS),
         label = "scanFrameFill",
     )
+    // A brief outward pulse on acceptance only — never on the resting/searching state, and never
+    // repeating. Existing infra (the fill/check-icon above) already says "got it"; this adds a
+    // small sense of the frame actually reacting to the moment of acceptance rather than merely
+    // switching state.
+    val scale by animateFloatAsState(
+        targetValue = if (acquired) 1.03f else 1f,
+        animationSpec = tween(Motion.STANDARD_MS),
+        label = "scanFrameScale",
+    )
     Box(
         modifier = modifier
             .fillMaxWidth(0.68f)
             .height(176.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .background(accent.copy(alpha = fillAlpha), RoundedCornerShape(Space.cardRadius))
             .border(2.dp, accent, RoundedCornerShape(Space.cardRadius)),
         contentAlignment = Alignment.Center,
