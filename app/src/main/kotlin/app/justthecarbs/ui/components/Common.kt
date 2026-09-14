@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ import app.justthecarbs.R
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.ProductSearchHit
+import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 
@@ -284,17 +286,20 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
  * failure this app is built to avoid.
  *
  * The same applies to a value whose **basis** is unknown, which is why the number and the unit are
- * read together rather than the unit being defaulted: `search_carbs` renders "48.2 g / 100 g", so
- * with no established basis there is no honest way to fill the second half. The data source already
- * drops the figure in that case; reading both here means a hit built any other way degrades to
- * "no value" instead of printing a unit nothing supports.
+ * read together rather than the unit being defaulted: with no established basis there is no honest
+ * way to fill the second half. The data source already drops the figure in that case; reading both
+ * here means a hit built any other way degrades to "no value" instead of printing a unit nothing
+ * supports. See [SearchNutritionColumn] for the trailing value/basis rendering itself.
  */
 @Composable
 fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val basis = hit.basis
+    // Built once and reused for the row's own accessible description below, so the row's spoken
+    // summary keeps the carbohydrate figure even though the visible text is now rendered in two
+    // lines by SearchNutritionColumn rather than as one string here.
     val carbsText = if (hit.carbsPer100 != null && basis != null) {
         stringResource(
-            R.string.search_carbs,
+            R.string.product_per_100,
             hit.carbsPer100.stripTrailingZeros().toPlainString(),
             basis.unitLabel,
         )
@@ -337,17 +342,51 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
         }
 
         Spacer(Modifier.width(Space.s))
-        Text(
-            text = carbsText,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (hit.carbsPer100 != null && basis != null) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.End,
-            maxLines = 2,
-        )
+        SearchNutritionColumn(hit)
+    }
+}
+
+/**
+ * The trailing carbohydrate summary in a search result row — a small value/basis pair in a
+ * reserved-width column so rows compare cleanly down a list, the way a price column would.
+ *
+ * Deliberately its own composable rather than [ResultValue]: this is a *preview* figure attached
+ * to an unselected search hit, never a confirmed calculated result, so it must never borrow
+ * result-red (design system rule) even though the two-line value/basis shape looks similar.
+ */
+@Composable
+private fun SearchNutritionColumn(hit: ProductSearchHit, modifier: Modifier = Modifier) {
+    val value = hit.carbsPer100
+    val basis = hit.basis
+    Column(
+        modifier = modifier.widthIn(min = 90.dp, max = 105.dp),
+        horizontalAlignment = Alignment.End,
+    ) {
+        if (value != null && basis != null) {
+            val carbsSuffix = stringResource(R.string.product_unit_carbs_suffix)
+            Text(
+                text = "${ResultFormatter.quantity(value)} $carbsSuffix",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                textAlign = TextAlign.End,
+            )
+            Text(
+                text = stringResource(R.string.search_carbs_basis, basis.unitLabel),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                textAlign = TextAlign.End,
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.search_no_carbs),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                textAlign = TextAlign.End,
+            )
+        }
     }
 }

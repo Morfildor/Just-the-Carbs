@@ -105,7 +105,8 @@ class SearchScreenTest {
 
         compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
         compose.onNodeWithText("De Ruijter · 390 gram").assertIsDisplayed()
-        compose.onNodeWithText("67 g carbs / 100 g").assertIsDisplayed()
+        compose.onNodeWithText("67 g carbs").assertIsDisplayed()
+        compose.onNodeWithText("/ 100 g").assertIsDisplayed()
     }
 
     /**
@@ -132,7 +133,33 @@ class SearchScreenTest {
         show(SearchUiState(query = "x", hits = listOf(hit(carbs = null))))
 
         compose.onNodeWithText("No carbohydrate value — check the package").assertIsDisplayed()
-        compose.onNodeWithText("0 g carbs / 100 g").assertDoesNotExist()
+        compose.onNodeWithText("0 g carbs").assertDoesNotExist()
+    }
+
+    /**
+     * Defense in depth against `SearchNutritionColumn` rendering a bare, unlabelled number.
+     *
+     * `ProductSearchHit`'s own data layer null-links [ProductSearchHit.carbsPer100] and
+     * [ProductSearchHit.basis] at the one place hits are built, so a non-null value with a null
+     * basis should not be constructible in practice — but the component checks both fields anyway,
+     * exactly as [SearchResultRow]'s own KDoc describes, so a future construction path that broke
+     * that invariant would still degrade to "no value" instead of a number nothing supports.
+     */
+    @Test
+    fun searchRowsPairValueAndBasisAndSuppressAnUnknownBasis() {
+        val unknownBasisHit = hit(carbs = "67").copy(basis = null)
+        show(SearchUiState(query = "hagelslag", hits = listOf(unknownBasisHit)))
+
+        compose.onNodeWithText("No carbohydrate value — check the package").assertIsDisplayed()
+        compose.onNodeWithText("67 g carbs").assertDoesNotExist()
+    }
+
+    /** A missing carbohydrate figure renders the quiet "no value" text, not a fake zero. */
+    @Test
+    fun searchRowsShowAQuietNoValueStateForAMissingCarbFigure() {
+        show(SearchUiState(query = "hagelslag", hits = listOf(hit(carbs = null))))
+
+        compose.onNodeWithText("No carbohydrate value — check the package").assertIsDisplayed()
     }
 
     @Test
