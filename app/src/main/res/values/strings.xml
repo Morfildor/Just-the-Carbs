@@ -26,6 +26,10 @@
     <string name="home_search_label">Search products</string>
     <string name="home_action_barcode_subtitle">Fastest way to find a packaged product</string>
     <string name="home_action_label_subtitle">Read carbs straight from the package</string>
+    <!-- Primary barcode action's label while a meal is already in progress — same tile, same icon,
+         contextual copy only (2026-09-14 interaction pass, item 7). -->
+    <string name="home_scan_next_button">Scan next item</string>
+    <string name="home_action_barcode_subtitle_mid_meal">Add another item to your meal</string>
     <!-- Spoken as one announcement per card: "<title>. <subtitle>". -->
     <string name="home_action_description">%1$s. %2$s</string>
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,8 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -63,6 +62,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -244,6 +244,7 @@ fun HomeScreen(
                     showTutorialReminder = showTutorialReminder,
                     onStartTutorial = onStartTutorial,
                     onDismissTutorialReminder = onDismissTutorialReminder,
+                    mealInProgress = mealItems.isNotEmpty(),
                     modifier = Modifier.weight(1f).navigationBarsPadding(),
                 )
             }
@@ -306,39 +307,66 @@ private fun EmptyStateStepStrip(modifier: Modifier = Modifier) {
         Triple(Icons.Filled.Calculate, R.string.home_empty_step_carbs, MaterialTheme.extendedColors.result),
     )
 
-    // Scrolls rather than clips: the strip is a fixed-width row of roundels, and at 1.8x font scale
-    // on a narrow display it otherwise runs past the screen edge with the third step cut in half.
-    Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        steps.forEachIndexed { index, (icon, labelRes, tint) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(tint.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+    // Replaces the previous horizontalScroll fallback, which the code's own prior comment admitted
+    // ran the third step past the screen edge at 1.8x font scale on a narrow display. BoxWithConstraints
+    // measures the actual available width and switches to a compact vertical arrangement below the
+    // threshold, so all three steps are always fully readable without scrolling to see them.
+    BoxWithConstraints(modifier = modifier) {
+        // 320dp is this repo's own documented historical minimum Android width (see
+        // CLAUDE.md's tap-anywhere-tutorial completion pass, which uses the same figure for its
+        // own narrow-viewport test) — a plain, already-established threshold rather than a new
+        // guess.
+        val compact = maxWidth < 320.dp
+        if (compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                steps.forEach { (icon, labelRes, tint) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StepRoundel(icon, tint)
+                        Spacer(Modifier.width(Space.s))
+                        Text(
+                            text = stringResource(labelRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                Spacer(Modifier.width(Space.s))
-                Text(
-                    text = stringResource(labelRes),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
-            if (index != steps.lastIndex) {
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = Space.xs)
-                        .width(16.dp)
-                        .height(2.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant),
-                )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                steps.forEachIndexed { index, (icon, labelRes, tint) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StepRoundel(icon, tint)
+                        Spacer(Modifier.width(Space.s))
+                        Text(
+                            text = stringResource(labelRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (index != steps.lastIndex) {
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = Space.xs)
+                                .width(16.dp)
+                                .height(2.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant),
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun StepRoundel(icon: ImageVector, tint: Color) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .background(tint.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -572,6 +600,7 @@ private fun HomeBody(
     showTutorialReminder: Boolean,
     onStartTutorial: () -> Unit,
     onDismissTutorialReminder: () -> Unit,
+    mealInProgress: Boolean,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -599,8 +628,16 @@ private fun HomeBody(
         item(key = "action_barcode") {
             HomeActionCard(
                 icon = Icons.Filled.QrCodeScanner,
-                title = stringResource(R.string.home_scan_button),
-                subtitle = stringResource(R.string.home_action_barcode_subtitle),
+                title = stringResource(
+                    if (mealInProgress) R.string.home_scan_next_button else R.string.home_scan_button,
+                ),
+                subtitle = stringResource(
+                    if (mealInProgress) {
+                        R.string.home_action_barcode_subtitle_mid_meal
+                    } else {
+                        R.string.home_action_barcode_subtitle
+                    },
+                ),
                 accent = MaterialTheme.colorScheme.primary,
                 filled = true,
                 onClick = onScan,

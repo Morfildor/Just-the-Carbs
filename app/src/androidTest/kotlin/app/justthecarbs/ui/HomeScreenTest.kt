@@ -1,6 +1,10 @@
 package app.justthecarbs.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.Role
@@ -16,6 +20,7 @@ import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.CarbCalculator
 import app.justthecarbs.domain.LookupError
@@ -418,6 +423,27 @@ class HomeScreenTest {
         compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertIsDisplayed()
     }
 
+    /**
+     * The barcode action's copy is context-aware (2026-09-14 interaction pass, item 7): with a meal
+     * already in progress, the same tile offers to scan the *next* item rather than repeating the
+     * ordinary first-scan invitation.
+     */
+    @Test
+    fun theBarcodeActionOffersToScanNextWhenAMealIsInProgress() {
+        show(recents = emptyList(), mealItems = listOf(mealItem()))
+
+        compose.onNodeWithText("Scan next item").assertIsDisplayed()
+        compose.onNodeWithText("Scan barcode").assertDoesNotExist()
+    }
+
+    @Test
+    fun theBarcodeActionShowsOrdinaryScanCopyWithNoMealInProgress() {
+        show(recents = emptyList(), mealItems = emptyList())
+
+        compose.onNodeWithText("Scan barcode").assertIsDisplayed()
+        compose.onNodeWithText("Scan next item").assertDoesNotExist()
+    }
+
     // ---- Accessibility ----------------------------------------------------------------------
 
     /**
@@ -452,6 +478,52 @@ class HomeScreenTest {
         compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Enter manually").performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * The empty-state step strip's previous `horizontalScroll` fallback ran the third step ("Carbs")
+     * off past the strip's own right edge at a narrow width, reachable only by scrolling the strip
+     * itself *sideways* — a gesture nothing on screen hinted at, and a second, independent scroll
+     * axis nested inside the page's own vertical one. 320dp is this repo's own documented historical
+     * minimum Android width (see the tap-anywhere-tutorial completion pass in CLAUDE.md, and
+     * `ThemeRefinementVisualTest`/`TutorialScreenTest`'s existing `Box(Modifier.width(320.dp)...)`
+     * convention for narrow-viewport tests) — this test uses 300dp, just below the strip's own
+     * compact threshold.
+     *
+     * At that width the strip switches to a vertical arrangement (see `EmptyStateStepStrip`), which
+     * is itself taller than the horizontal row and can push "Carbs" below the harness's own
+     * (necessarily finite) viewport — an ordinary page-scroll, reached the same way every other item
+     * in `HomeBody`'s `LazyColumn` is reached elsewhere in this file (`performScrollTo`, see e.g.
+     * `largeFontKeepsEveryEntryPointReachable` above). What this test actually pins is that scrolling
+     * the *page* to the last step is enough on its own: no second, horizontal scroll inside the strip
+     * is needed to bring "Scan" and "Portion" onto screen at the same time as "Carbs" once there —
+     * exactly the guarantee the removed `horizontalScroll` fallback could not make.
+     */
+    @Test
+    fun theEmptyStateStepStripHasNoHorizontalScrollAtANarrowWidth() {
+        compose.setContent {
+            JustTheCarbsTheme {
+                Box(
+                    Modifier
+                        .width(300.dp)
+                        .fillMaxHeight(),
+                ) {
+                    HomeScreen(
+                        recents = emptyList(),
+                        settings = AppSettings(),
+                        onScan = {},
+                        onManualEntry = {},
+                        onOpenProduct = {},
+                        onToggleFavorite = {},
+                        onOpenSettings = {},
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithText("Carbs").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Scan").assertIsDisplayed()
+        compose.onNodeWithText("Portion").assertIsDisplayed()
     }
 
     // ---- The carbohydrate figure on a recent card --------------------------------------------
