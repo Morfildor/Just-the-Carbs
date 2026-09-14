@@ -641,7 +641,19 @@ private fun HomeBody(
 
         if (recents.isEmpty()) {
             item(key = "starter") {
-                EmptyState(modifier = Modifier.padding(top = Space.m, bottom = Space.m))
+                // `fillParentMaxHeight()` sizes this item to the LazyColumn's own viewport, not to
+                // its content — without it EmptyState packs at its natural height from the top and
+                // leaves several hundred dp of bare page beneath it on a first launch, which is
+                // exactly the unfinished-dashboard look this composable's own KDoc says it exists to
+                // avoid. Centering only here (never for a populated Recents list, which should still
+                // pack from the top and scroll normally) is why this lives at the item call site
+                // rather than as a general LazyColumn default.
+                Box(
+                    modifier = Modifier.fillParentMaxHeight(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EmptyState(modifier = Modifier.padding(top = Space.m, bottom = Space.m))
+                }
             }
         } else {
             // Favourites are the repeat-use path: a product the user has already told the app they

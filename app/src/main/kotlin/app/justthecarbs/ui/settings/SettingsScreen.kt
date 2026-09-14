@@ -197,10 +197,12 @@ fun SettingsScreen(
                 SectionLabel(stringResource(R.string.settings_data))
                 SettingsAction(
                     text = stringResource(R.string.settings_clear_recents),
+                    destructive = true,
                     onClick = { confirmClearRecents = true },
                 )
                 SettingsAction(
                     text = stringResource(R.string.settings_clear_products),
+                    destructive = true,
                     onClick = { confirmClearProducts = true },
                 )
 
@@ -557,13 +559,21 @@ private fun SettingsAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     supporting: String? = null,
+    // "Clear recent history" and "Clear saved products" rendered identically to "Replay tutorial" —
+    // same primary-blue label, same row shape — despite one group deleting data and the other only
+    // navigating. DESIGN.md's own rule ("destructive/non-destructive semantics are clear") wasn't
+    // met: colour was the only signal available on this row shape, and every action used it the same
+    // way. Both destructive rows already gate behind a confirmation dialog; this is a legibility
+    // addition on top of that safety net, not a replacement for it.
+    destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val labelColor = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     if (supporting == null) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.primary,
+            color = labelColor,
             modifier = modifier
                 .fillMaxWidth()
                 .heightIn(min = Space.minTouchTarget)
@@ -586,7 +596,7 @@ private fun SettingsAction(
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.primary,
+            color = labelColor,
         )
         Text(
             text = supporting,

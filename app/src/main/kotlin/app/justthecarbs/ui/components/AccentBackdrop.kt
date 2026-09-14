@@ -36,7 +36,12 @@ fun AccentBackdrop(accent: Color, modifier: Modifier = Modifier) {
     val alpha = MaterialTheme.extendedColors.accentBackdropAlpha
     Row(
         modifier = modifier
-            .offset(x = 24.dp, y = (-8).dp)
+            // Aligned TopEnd by every caller, so the row's right edge already sits flush with the
+            // screen edge — any positive x-offset from there pushes bars off-screen. Measured on
+            // device: the rightmost 1-2 bars were clipped on every one of the six screens that call
+            // this. y stays negative to let the tallest bar bleed slightly above the row's own
+            // bounds, which is vertical-only and never clips horizontally.
+            .offset(y = (-8).dp)
             .width(92.dp)
             .height(96.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

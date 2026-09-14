@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -162,43 +161,50 @@ fun MealScreen(
                 }
             }
 
-            if (state.items.isEmpty()) {
-                EmptyMeal(modifier = Modifier.weight(1f))
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = Space.screenEdge),
-                ) {
-                    items(state.items, key = { it.id }) { item ->
-                        MealItemRow(item = item, onRemove = { onRemoveItem(item) })
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            // A sibling Box (not the outer one) so the Snackbar below is TopCenter-aligned to the
+            // space starting right after JtcTopBar, rather than to the whole screen.
+            //
+            // A bottom-anchored Snackbar sat directly over the meal total — the one number this
+            // screen exists to show — for its whole four-second life, so removing an item hid the
+            // figure the user was removing it to correct. Aligning it to the *screen's* top instead
+            // fixed that but created the same class of bug one layer up: it landed on top of
+            // JtcTopBar, because `statusBarsPadding()` clears the status bar but knows nothing about
+            // the bar's own height — which is itself not fixed (it grows past its 64dp minimum at a
+            // large font scale). Nesting the Snackbar in this Box, a sibling of JtcTopBar rather than
+            // of the whole screen, gets the correct offset from the layout system directly instead of
+            // a guessed dp figure that would work on this device and fail on a shorter or
+            // larger-font one — the exact trap the original bottom-anchor fix already named.
+            Box(modifier = Modifier.weight(1f)) {
+                if (state.items.isEmpty()) {
+                    EmptyMeal(modifier = Modifier.fillMaxSize())
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = Space.screenEdge),
+                    ) {
+                        items(state.items, key = { it.id }) { item ->
+                            MealItemRow(item = item, onRemove = { onRemoveItem(item) })
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
                     }
+                }
+
+                // The Undo action's colour comes from `inversePrimary`, which `Theme.kt` now sets —
+                // left to Material's default it rendered as a lavender that appears nowhere else in
+                // the app.
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = Space.s, start = Space.screenEdge, end = Space.screenEdge)
+                        .testTag(MEAL_SNACKBAR_TAG),
+                ) { data ->
+                    Snackbar(snackbarData = data, shape = RoundedCornerShape(Space.buttonRadius))
                 }
             }
 
             MealTotalPanel(state = state, settings = settings, onScanNext = onScanNext)
-        }
-
-        // Anchored to the *top* of the screen, not the bottom.
-        //
-        // A bottom-anchored Snackbar sat directly over the meal total — the one number this screen
-        // exists to show — for its whole four-second life, so removing an item hid the figure the
-        // user was removing it to correct. Only visible by looking at the screen; every assertion
-        // still passed. Raising it above the panel instead would work on this device and fail on a
-        // shorter one, because the panel's height depends on the total's font scale.
-        //
-        // The Undo action's colour comes from `inversePrimary`, which `Theme.kt` now sets — left to
-        // Material's default it rendered as a lavender that appears nowhere else in the app.
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(horizontal = Space.screenEdge)
-                .testTag(MEAL_SNACKBAR_TAG),
-        ) { data ->
-            Snackbar(snackbarData = data, shape = RoundedCornerShape(Space.buttonRadius))
         }
     }
 }

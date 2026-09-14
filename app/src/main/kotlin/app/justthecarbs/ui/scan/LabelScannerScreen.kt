@@ -1692,6 +1692,7 @@ private fun LabelCamera(
                 afterAutomaticAttempt = autoAttempted,
                 onReadTable = { region -> readSelectedTable(region) },
                 onRetake = ::resumeLive,
+                onClose = onClose,
             )
         }
         return

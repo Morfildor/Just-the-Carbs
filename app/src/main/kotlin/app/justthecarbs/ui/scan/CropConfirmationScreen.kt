@@ -16,8 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -99,6 +103,9 @@ fun CropConfirmationScreen(
     afterAutomaticAttempt: Boolean = false,
     onReadTable: (NormalizedRegion) -> Unit,
     onRetake: () -> Unit,
+    // Optional so every existing call site keeps compiling; every real caller now supplies it (see
+    // the completion-pass note below).
+    onClose: (() -> Unit)? = null,
 ) {
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
     // Held in image fractions, not view pixels: a rotation or a window resize changes the displayed
@@ -112,39 +119,60 @@ fun CropConfirmationScreen(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(horizontal = Space.m, vertical = Space.s),
-            verticalArrangement = Arrangement.spacedBy(Space.xs),
+                .padding(start = Space.m, end = Space.s, top = Space.s, bottom = Space.s),
+            verticalAlignment = Alignment.Top,
         ) {
-            // Three states, and the ordering matters (1.0.3 P4).
-            //
-            // `reading` is checked FIRST because while a pass is running the user is not being asked
-            // for anything — telling them to drag the corners while the app is already reading the
-            // table asks for work that is about to be thrown away, and on the automatic path that
-            // instruction would appear before they had done anything at all. It becomes a statement
-            // of what is happening instead.
-            //
-            // Then the post-attempt wording, then the ordinary first-time wording.
-            val titleRes = when {
-                reading -> R.string.crop_reading
-                afterAutomaticAttempt -> R.string.crop_title_after_attempt
-                else -> R.string.crop_title
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Space.xs),
+            ) {
+                // Three states, and the ordering matters (1.0.3 P4).
+                //
+                // `reading` is checked FIRST because while a pass is running the user is not being
+                // asked for anything — telling them to drag the corners while the app is already
+                // reading the table asks for work that is about to be thrown away, and on the
+                // automatic path that instruction would appear before they had done anything at all.
+                // It becomes a statement of what is happening instead.
+                //
+                // Then the post-attempt wording, then the ordinary first-time wording.
+                val titleRes = when {
+                    reading -> R.string.crop_reading
+                    afterAutomaticAttempt -> R.string.crop_title_after_attempt
+                    else -> R.string.crop_title
+                }
+                Text(
+                    text = stringResource(titleRes),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(
+                        if (afterAutomaticAttempt) R.string.crop_body_after_attempt else R.string.crop_body,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Text(
-                text = stringResource(titleRes),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(
-                    if (afterAutomaticAttempt) R.string.crop_body_after_attempt else R.string.crop_body,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+
+            // Every other state in the scanner flow — live camera, ambiguous, conflicted, not-found —
+            // offers a direct one-tap way out. This screen only had Retake (back to live camera,
+            // which itself has the X) and Read table, so leaving the scanner from here cost two taps
+            // through a screen the user did not choose. Measured on device: the only other route out
+            // was the Android system back gesture, which is not a visible affordance and, from this
+            // screen, does not return to Home — it exits the app.
+            if (onClose != null) {
+                IconButton(onClick = onClose, modifier = Modifier.size(Space.minTouchTarget)) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.scanner_close),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
         }
 
         Box(
