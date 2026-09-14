@@ -1,4 +1,4 @@
-﻿package app.justthecarbs.ui.components
+package app.justthecarbs.ui.components
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer

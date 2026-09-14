@@ -1,4 +1,4 @@
-﻿package app.justthecarbs.ui.components
+package app.justthecarbs.ui.components
 
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertContentDescriptionEquals
