@@ -51,12 +51,12 @@ import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
+import app.justthecarbs.ui.components.ResultValue
 import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.Space
-import app.justthecarbs.ui.theme.extendedColors
 
 /** Stable handles for instrumented tests. */
 const val MEAL_TOTAL_TAG = "meal_total"
@@ -306,24 +306,34 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
         )
         Spacer(Modifier.height(Space.xs))
 
-        // Both figures derive from the exact sum independently, exactly as the calculator does —
-        // the whole-gram line is never rounded from the decimal one (§17).
-        val dominant = when (settings.resultStyle) {
-            ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(total?.exact ?: java.math.BigDecimal.ZERO)} g"
-            ResultStyle.WHOLE_DOMINANT -> "${ResultFormatter.whole(total?.wholeGrams ?: 0)} g"
-        }
+        if (state.items.isEmpty()) {
+            // No calculation has happened — this must not look like one. A dominant tomato-red
+            // "0.0 g" here previously claimed a result the app had not computed; an em dash makes
+            // no such claim.
+            Text(
+                text = stringResource(R.string.meal_total_empty_placeholder),
+                style = NumberType.result,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.testTag(MEAL_TOTAL_TAG),
+            )
+        } else {
+            // Both figures derive from the exact sum independently, exactly as the calculator does —
+            // the whole-gram line is never rounded from the decimal one (§17).
+            val dominantNumeral = when (settings.resultStyle) {
+                ResultStyle.DECIMAL_DOMINANT -> ResultFormatter.decimal(total?.exact ?: java.math.BigDecimal.ZERO)
+                ResultStyle.WHOLE_DOMINANT -> ResultFormatter.whole(total?.wholeGrams ?: 0)
+            }
+            val resultUnit = stringResource(R.string.result_unit_grams)
+            val accessibleResult = stringResource(R.string.result_accessible_grams, dominantNumeral)
 
-        Text(
-            text = dominant,
-            style = NumberType.result,
-            color = MaterialTheme.extendedColors.result,
-            maxLines = 1,
-            // Same reason as the calculator's result, and more pressing here: a meal total is the
-            // sum of several portions, so it reaches three and four digits sooner than any single
-            // product's result does.
-            autoSize = NumberType.resultAutoSize,
-            modifier = Modifier.testTag(MEAL_TOTAL_TAG),
-        )
+            ResultValue(
+                dominant = dominantNumeral,
+                unit = resultUnit,
+                accessibleLabel = accessibleResult,
+                testTag = MEAL_TOTAL_TAG,
+            )
+        }
 
         Text(
             text = when (settings.resultStyle) {

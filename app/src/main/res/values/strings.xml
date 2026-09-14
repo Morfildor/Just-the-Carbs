@@ -207,6 +207,9 @@
     <string name="meal_bar_summary" tools:ignore="MissingTranslation">Meal · %1$s · %2$s g carbs</string>
     <string name="meal_title" tools:ignore="MissingTranslation">Meal total</string>
     <string name="meal_total_label" tools:ignore="MissingTranslation">MEAL TOTAL</string>
+    <!-- Shown in place of a calculated total when the meal has no items yet — an em dash, never a
+         claimed "0.0 g" result (see the empty-meal placeholder work, 2026-09-14 interaction pass). -->
+    <string name="meal_total_empty_placeholder" tools:ignore="MissingTranslation">—</string>
     <string name="meal_empty_title" tools:ignore="MissingTranslation">No items yet</string>
     <string name="meal_empty_body" tools:ignore="MissingTranslation">Calculate a portion, then tap Add to meal.</string>
     <string name="meal_clear" tools:ignore="MissingTranslation">Clear meal</string>

@@ -26,10 +26,12 @@ class AccentRecessionTest {
 
     @Test
     fun `calculation surfaces pair result typography with the reserved result color`() {
-        // ProductScreen composes the shared ResultValue rather than styling the calculated figure
-        // directly (interaction-polish task 3) — ResultValue.kt is where NumberType.result and
-        // MaterialTheme.extendedColors.result now live for that screen, so it is checked instead.
-        // MealScreen still styles its result inline and is checked directly, as before.
+        // Both ProductScreen (interaction-polish task 3) and MealScreen's populated total
+        // (interaction-polish task 5) compose the shared ResultValue rather than styling the
+        // calculated figure directly — ResultValue.kt is where NumberType.result and
+        // MaterialTheme.extendedColors.result now live for both screens, so it is checked instead.
+        // MealScreen's empty-meal placeholder deliberately does NOT use the reserved result color
+        // (it must not look like a calculated result at all) and is not covered by this test.
         val productScreenSource = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/product/ProductScreen.kt",
         ).readText()
@@ -52,10 +54,9 @@ class AccentRecessionTest {
         val mealScreenSource = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/meal/MealScreen.kt",
         ).readText()
-        assertTrue("MealScreen.kt must use the result type", mealScreenSource.contains("NumberType.result"))
         assertTrue(
-            "MealScreen.kt must use the reserved result color",
-            mealScreenSource.contains("MaterialTheme.extendedColors.result"),
+            "MealScreen.kt must render its populated total via ResultValue",
+            mealScreenSource.contains("ResultValue("),
         )
     }
 

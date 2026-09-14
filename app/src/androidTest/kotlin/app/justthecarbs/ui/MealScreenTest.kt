@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
@@ -133,6 +134,32 @@ class MealScreenTest {
         compose.onNodeWithText("No items yet").assertIsDisplayed()
     }
 
+    /**
+     * The empty meal's total slot must not look like a calculated result (interaction-polish
+     * task 5). Previously a dominant tomato-red "0.0 g" sat where the total goes, claiming an
+     * answer the app had never computed; it is now a neutral em dash.
+     */
+    @Test
+    fun anEmptyMealShowsThePlaceholderNotACalculatedZero() {
+        showMeal(emptyList())
+
+        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertIsDisplayed()
+        compose.onNodeWithText("—").assertIsDisplayed()
+    }
+
+    /**
+     * Once the meal has an item, the total renders via the shared `ResultValue` component rather
+     * than the em-dash placeholder — a real merged accessible description carrying the actual
+     * figure, same as [theTotalSumsUnroundedValuesRatherThanTheDisplayedOnes] below.
+     */
+    @Test
+    fun aPopulatedMealShowsARealResultViaResultValue() {
+        showMeal(listOf(item(1, "Bread", "2 slices", "48.2", "34.704")))
+
+        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertExists()
+        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertContentDescriptionEquals("34.7 grams")
+    }
+
     @Test
     fun eachItemShowsThePortionInTheWordsTheUserChose() {
         showMeal(listOf(item(1, "Bread", "2 slices", "48.2", "34.704")))
@@ -156,8 +183,10 @@ class MealScreenTest {
             ),
         )
 
-        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertIsDisplayed()
-        compose.onNodeWithText("40.3 g").assertIsDisplayed()
+        // The total now renders as a split numeral + unit (ResultValue, interaction-polish task 5),
+        // so "40.3 g" no longer exists as one text node — asserted on the merged accessible
+        // description instead, same convention as ProductScreenTest's PRODUCT_RESULT_TAG.
+        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertContentDescriptionEquals("40.3 grams")
     }
 
     @Test
@@ -461,8 +490,9 @@ class MealScreenTest {
 
         compose.onNodeWithText("Undo").performClick()
 
-        // Back to the unrounded sum, not 18.7 + 21.7.
-        compose.onNodeWithText("40.3 g").assertIsDisplayed()
+        // Back to the unrounded sum, not 18.7 + 21.7. The total renders via ResultValue
+        // (interaction-polish task 5), so the merged accessible description carries the figure.
+        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertContentDescriptionEquals("40.3 grams")
     }
 
     @Test
