@@ -1,228 +1,143 @@
 # Just the Carbs — design system
 
-> Transcribed from the implemented source of truth: `app/src/main/kotlin/app/justthecarbs/ui/theme/Theme.kt`
-> and `docs/design_handoff_just_the_carbs/README.md`. **Theme.kt is authoritative** — if this file
-> and the code disagree, the code is right and this file is stale.
+> This describes the implemented UI. `Theme.kt` and `AccentPalette.kt` remain authoritative when
+> code and prose differ.
 
-## Colour strategy
+## Product scene and visual direction
 
-**Colourful chrome, protected result** (2026-09-04). Colour is spent freely on navigation,
-actions, sections and empty states. The carbohydrate result keeps its exclusive red and its
-prominence on the calculator.
+The app is for someone holding food in one hand under imperfect kitchen or shop lighting who needs
+a trustworthy carbohydrate answer in seconds. The interface is a **warm editorial utility**: paper
+and ink surfaces, decisive cobalt interaction, a tomato-red answer, solid task tiles, and a small
+barcode/nutrition-rule motif. It should feel authored and energetic without becoming a food diary.
 
-This section previously said the palette was near-monochrome **because** "a colourful interface
-competes with [the result]". That rationale is withdrawn: the app is now colourful and the result
-is still the loudest thing on the calculator, because the guarantee moved from *the absence of
-colour elsewhere* to **arithmetic**.
+Three hierarchy rules govern every screen:
 
-### The luminance rule — what protects the result now
+1. The current task and next action are obvious at a glance.
+2. Provenance, verification, and ambiguity stay explicit but visually secondary.
+3. A calculated carbohydrate result is the dominant object through scale, placement, whitespace,
+   contrast, and reserved colour — not through colour luminance alone.
 
-Result red `#D42F2F` has WCAG relative luminance **0.162**. Every destination accent is *darker*,
-so it recedes behind the carbohydrate figure rather than competing with it:
+Visual variance is intentionally high (7/10), information density is compact but breathable
+(6/10), and motion is restrained (3/10). Decorative gradients, generic hero circles, glass effects,
+dashboard grids, excessive pills, and stacks of interchangeable rounded cards are outside the
+system.
 
-```
-teal 0.142 · green 0.159 · magenta 0.124 · violet 0.098 · amber 0.098 · indigo 0.083
-```
+## Colour roles
 
-`AccentRecessionTest` asserts this over the whole palette in both schemes, so a new accent that
-breaks it **fails the build**. `ContrastTest` separately pins every accent at ≥4.5:1 on every
-surface it is drawn on. Neither is a style preference; both are computed from the live tokens.
+Dynamic colour is not used; wallpaper colour must not change the hierarchy.
 
-**A worked example of why the rule is a test and not a paragraph.** The dark accents were first
-drafted as ordinary bright tints (`#5EEAD4`, `#C4B5FD`, `#86EFAC` …) — the values any dark theme
-reaches for. Computed, **all six failed**: `#5EEAD4` measures 0.660 against the dark result red's
-0.366, nearly twice as bright as the number it must not out-shout. Nothing about those swatches
-looked wrong.
+| Role | Light | Dark | Use |
+|---|---:|---:|---|
+| Primary cobalt | `#2856C5` | `#82A2FF` | Primary action, links, selected state |
+| Primary container | `#E6ECFF` | `#263454` | Selected and supporting interaction surfaces |
+| Result tomato | `#C13C2D` | `#FF8A75` | Confirmed carbohydrate figures only |
+| Tertiary orange | `#F4A261` | `#FFC078` | Warm information and scanner context |
+| Page | `#F7F2E8` | `#111318` | Root ground |
+| Primary ink | `#191B23` | `#F3F0E8` | Main text |
+| Muted ink | `#61616C` | `#B7B2A8` | Supporting text |
+| Divider | `#DED8CB` | `#353943` | Quiet structure |
 
-### Core roles
+Destination accents identify areas but never carry meaning alone: teal for label/manual work,
+indigo for search, amber for meal, violet for favourites, and neutral ink for settings. The light
+green is `#147C3B`; the other exact accent values live in `AccentPalette.kt`.
 
-| Role | Light | Dark | Spent on |
-|---|---|---|---|
-| Blue (primary) | `#1B6FBF` | `#5CA6E8` | Every interactive control, active state, favourite |
-| Blue soft | `#E4F1FC` | `#16324A` | Accent tint, selected chips, verified badge |
-| **Red (result)** | `#D42F2F` | `#FF7A7A` | **Exactly one thing per screen: the carb number** |
-| Result foreground | `#FFFBF7` | `#15140F` | Content on a result-filled welcome surface |
-| Orange (tertiary) | `#FFA94D` | `#FFB868` | Soft informational surfaces, label-scan accent |
-| Orange soft | `#FFEEDC` | `#4A3418` | Safety card, unverified-source badge |
-| Cream (background) | `#FFF6EE` | `#15140F` | Page ground |
-| Ink | `#181A1E` | `#F2EFE8` | Primary text |
-| Ink muted | `#6B6A72` | `#AFAEA8` | Secondary text |
-| Line | `#E4DFD3` | `#39372F` | Borders, dividers |
-| Strong line | `#77736A` | `#8B887F` | Material control outlines requiring non-text contrast |
+Result red is not the error colour. Unverified data uses a worded warm badge. Scanner guidance uses
+paired light and dark edges because no single colour survives every package image. Loaded product
+photos use a near-white media plate in both schemes so white-background photography never appears
+inside a black frame.
 
-Blue and red are the *measured* values `Theme.kt` ships, not the original handoff tokens
-(`#2F8FE0` / `#FF5C5C`), which scored 3.43:1 and 2.84:1 on the surfaces they are actually drawn on
-— the result failing even the 3:1 large-text floor. This table listed the handoff values until
-2026-09-04; it was stale, and `ContrastTest`'s `light tokens match the values Theme kt actually
-ships` exists to stop the *code* drifting the same way.
+`ContrastTest` pins text/background pairs at the normal-text floor, including prominent large text.
 
-### Destination accents (`AccentPalette.kt`)
+## Typography and numerical hierarchy
 
-| Accent | Light | Dark | Spent on |
-|---|---|---|---|
-| Teal | `#0F766E` | `#43B1A6` | Label scanner, manual entry |
-| Violet | `#6D28D9` | `#A997D3` | Favourites |
-| Green | `#15803D` | `#45B56E` | Label-scan gradient tail |
-| Magenta | `#BE185D` | `#E481B3` | Reserved for list variety |
-| Indigo | `#4338CA` | `#9496FF` | Search, barcode-scan gradient tail |
-| Amber | `#92400E` | `#D49425` | Meal |
+Space Grotesk Medium/SemiBold/Bold is bundled for headings, actions, labels, and numbers; body copy
+uses the platform sans. The compact scale is deliberate:
 
-Settings deliberately takes a **neutral**, not an accent: it is pure configuration and giving it a
-hue would imply it belongs to the scan → portion → carbs workflow the other colours mark out.
+- Page heading: 32sp/36sp.
+- Section/card title: 18–24sp with tight line height.
+- Body: 17sp/24sp; supporting body: 15sp/22sp.
+- Editable portion: 52sp/58sp bold.
+- Confirmed result: 72sp/76sp bold, tightened tracking, auto-sizing down instead of clipping.
 
-### Where colour is never spent
+The label and unit remain readable when a result auto-sizes. A scanner proposal awaiting user
+confirmation must not use confirmed-result styling.
 
-- **On or behind the result number.** The result panel stays `surfaceContainerLowest`.
-- **On card grounds.** Colour goes on the 4dp accent spine and the icon roundel, so product names
-  keep full contrast against white.
-- **As the sole carrier of meaning.** The `CARBS` label is text, the favourite marker is a star,
-  provenance stays worded. Unchanged rule, and it binds the new palette identically.
+## Spacing, shape, and surfaces
 
-`error` is a genuine fault state and is **not** the result red — the result is not an error.
+Spacing uses the 4/8/16/24/32/48dp scale. Screens use a 20dp horizontal edge. Touch targets are at
+least 48dp and primary text actions use a 56dp minimum, never a fixed text-bearing height.
 
-Dynamic colour is deliberately unused: it would hand the accent, and therefore the visual weight of
-the result, to the user's wallpaper.
+- Cards: 22dp radius, normally tonal or bordered rather than elevated.
+- Buttons and fields: 14dp radius.
+- Media: 20dp radius.
+- Sheets/result docks: 28dp top radius.
+- Chips: pill-shaped only when the affordance is genuinely a compact chip.
+- Result dock: 6dp elevation; ordinary cards: flat.
 
-Full accent fills use an explicit paired foreground: warm near-white in Light and warm near-black
-in Dark. Supporting copy on those fills uses 96% opacity, with every actual gradient stop and both
-welcome fills pinned at ≥4.5:1 by `ContrastTest`.
-
-The decorative destination backdrop remains restrained but theme-aware: 6% accent alpha on cream,
-18% on the warm dark page where the lower value visually disappeared. `ContrastTest` composites
-each actual destination accent over its page ground and verifies supporting copy against the washed
-pixel colour, rather than treating the alpha literal itself as evidence.
-
-Dark snackbar actions use a private `#1B6EBF` inverse-primary token. Its one-channel adjustment is
-scoped to the light inverse surface; the application's normal primary blue remains unchanged.
-
-Material roles used by current components are owned explicitly, including tertiary content,
-inverse surface/content, surface bright/dim, error containers, and both outline strengths. Fixed
-roles are intentionally not manufactured because no component in the current Material3 set uses
-them.
-
-## Typography
-
-- **Space Grotesk** (variable, weights 500/600/700) — headlines, numbers, buttons, labels.
-- **Roboto** (Material default) — body copy, supporting text, form input.
-
-Two numbers get sizes nothing else competes with (`NumberType`):
-
-- `result` — 64sp Bold, letter-spacing −2, auto-sizing down to 36sp so a long figure **shrinks
-  rather than clips**. A result that silently loses digits while still looking finished is this
-  screen's worst failure.
-- `portion` — 48sp Bold, letter-spacing −1.5.
-- `supporting` — 15sp Normal. Legible, not a whisper.
-
-## Spacing, radius, targets (`Space`)
-
-`xs 4` · `s 8` · `m 16` · `l 24` · `xl 32` · `xxl 48` (dp)
-
-- `screenEdge` 20dp — standard horizontal margin, every screen.
-- `cardRadius` 18dp · `buttonRadius` 16dp · `mediaRadius` 16dp · `chipRadius` 999dp (pills stay pills).
-- `sheetTopRadius` 32dp — the pinned result/total surface.
-- `minTouchTarget` 48dp — never below, §39.
-- `thumbnail` 52dp.
-- `resultElevation` 3dp; `cardElevation` 0dp — cards are defined by border + surface tone, not shadow.
-
-## Surfaces
-
-Page ground is `background`; ordinary cards use `surfaceContainerLowest`/`surfaceContainerLow` with
-a selective 1dp `outlineVariant`; important review and modal chrome uses `surfaceContainerHigh`.
-Cards are not mechanically bordered or elevated. The **only** ordinary app-content surface with a
-shadow is the pinned result panel, whose shadow is load-bearing: without it the panel was ~1%
-different from the page and the most important element on screen had no edge at all.
-
-**Root layering contract.** Every screen paints the opaque page `background` on its own root `Box`,
-never on an inner `Column` layered above a decorative backdrop — a child painted after `AccentBackdrop`
-in composition order covers it outright. `ThemeRoleOwnershipTest`'s `page ground is painted before
-every decorative backdrop` pins the exact structure for every `AccentBackdrop`-using screen so this
-cannot regress silently again.
-
-**Media surface.** A loaded product photograph gets its own token, `extendedColors.mediaSurface` —
-white in Light, a soft near-white plate in Dark — distinct from `surfaceContainerLowest`, which is
-near-black in Dark and produced a white-JPEG-in-a-black-frame effect on `ProductHeroImage`,
-`ProductThumbnail`, `SearchThumbnail` and the gallery viewer before this token existed. It is scoped
-to the *loaded-photo* ground only: the monogram/fallback plate keeps its own `primaryContainer`
-colour in every one of those components, because that plate is a deliberate, recognisable placeholder
-and not photography needing a neutral ground.
-
-The same pinned surface treatment carries the calculator result and the meal total, so the same kind
-of number appears in the same place and the app reads as one thing.
-
-Scanner capture remains image-relative: black/translucent chrome and light controls over the live
-preview. Frozen crop, assisted, conflict, and verification states use raised themed header/footer
-chrome around a black photo well, making the transition to review visible without brightening the
-photograph. Selection rectangles and crop handles use semantic blue plus contrasting dark/light
-halos and distinct geometry; no scanner state relies on hue alone.
-
-Dialogs share `JtcDialogDefaults`: `surfaceContainerHigh`, `onSurface` title,
-`onSurfaceVariant` body, the standard 18dp shape, a subtle `outlineVariant`, and no extra tonal tint.
-The platform modal scrim remains intentional so underlying context stays perceptible.
-
-**Top bars.** `JtcTopBar` is the shared bar — a fixed 64dp row, a `titleLarge` single-line title, and
-a 4dp destination-accent spine — used by Settings, Search, Meal and Manual Entry. Home and Product are
-deliberate exceptions, each for its own reason: Home's title is a brand wordmark with no back
-affordance, not a navigation label. Product's own `ProductTopBar` keeps a two-line `titleMedium` title
-and an intrinsic (non-fixed) height, because a product name can run to two lines and a shared 64dp bar
-clipped that at large font scales on a narrow screen. What Product's bar *does* share with the rest of
-the system — deliberately, so the screen still reads as one thing rather than an unrelated exception —
-is the same destination spine (in `Destination.PRODUCT`'s blue) and the same ordinary-ink back-icon
-tint. Sharing the visual system does not require sharing the component when the two screens' content
-genuinely differ in shape.
-
-## Motion (`Motion`)
-
-`QUICK_MS 120` · `STANDARD_MS 220`. Short and unshowy — this app is used standing in a kitchen, and
-animation that delays a number makes the app worse. The result cross-fades on digit change only.
-Welcome pager/content motion remains intact, but its tested foreground/background semantic pair
-switches atomically at the settled slide instead of interpolating through low-contrast colours. No
-decorative entrance animation anywhere.
+Warm surface steps separate page, field, card, and modal layers. The result dock is the one ordinary
+content surface allowed a meaningful shadow because its separation is functional. Root screens
+paint an opaque page before the decorative motif; the motif is a compact 92×96dp set of unequal
+nutrition bars, not a full-page tint.
 
 ## Component vocabulary
 
-- Primary action: filled `Button`, `heightIn(min = 56dp)`, `buttonRadius`.
-- Secondary action: `TextButton`, full width, `heightIn(min = 48dp)`.
-- Recovery from any failure: `RecoveryPanel` (title + body + at least one action). A message with no
-  way forward is a dead end and is forbidden.
-- Selection: `FilterChip`, pill-shaped, `heightIn(min = 48dp)`.
-- Provenance: `SourceBadge` — always carries meaning in words, never colour alone.
+- `JtcTopBar`: flexible 64dp minimum, ordinary-ink navigation, one-line title, and compact
+  nutrition-bar destination marker. Product keeps a two-line intrinsic-height variant.
+- Home task tile: one solid cobalt primary tile for barcode scanning and one quieter outlined teal
+  tile for label scanning. No decorative gradients.
+- `SearchResultRow`: a 76dp minimum row with product identity on the left and carb summary aligned
+  on the right; the full row is the touch target.
+- `SourceBadge`: compact worded provenance, never colour-only.
+- Settings segment: full-width radio semantics, equal options, clear selected container; it replaces
+  a loose collection of oversized filter pills.
+- `RecoveryPanel`: every failure state provides plain language and at least one next action.
+- Scanner chrome: black translucent top/bottom docks and light controls over live photography;
+  themed raised chrome around frozen review states.
+- Dialogs: shared tonal surface, subtle border, standard title/body hierarchy, and visible context
+  behind the scrim.
 
-**Scalable controls.** `Space.primaryButtonHeight` and `Space.minTouchTarget` are floors, not
-ceilings — every text-bearing button and chip in the app uses `heightIn(min = …)` rather than a hard
-`.height(…)`, so a label can grow at large font scales instead of clipping. A hard `.height()` on a
-text control is a defect class this app measured concretely: at 2× font on a narrow device, several
-paired scanner buttons and the welcome carousel's primary CTA (previously a stray `60.dp` literal)
-would otherwise clip mid-glyph. Fixed heights remain correct only for non-text media containers
-(photo wells, decorative dots) and for controls with no growable text at all.
+States must be visibly distinct: pressed/selected uses the paired container, disabled uses dedicated
+foreground and background roles, progress stays attached to the action that caused it, empty states
+are compact and instructive, and errors include recovery. Text fields own their background and
+focused/unfocused borders instead of falling back to unrelated Material defaults.
 
-**Disabled-state ownership.** A disabled control's foreground is its own paired token, never another
-state's foreground borrowed with an alpha — `extendedColors.disabledButton` pairs with
-`extendedColors.onDisabledButton`, not with `onPrimary` (the filled *active* button's foreground).
-The bug this replaced read as a washed-out active button rather than a genuinely disabled one,
-because `onPrimary.copy(alpha = 0.6f)` is still recognisably the primary button's own colour.
+## Screen composition
 
-## Accessibility floor
+Home opens with search, then the two highest-value scan actions, then a compact three-step rhythm
+and recent items. It does not imitate a dashboard and does not reserve a large empty hero area.
 
-### Tutorial presentation exception (owner, 2026-09-10)
+Product/calculator is the hero experience: product identity and provenance lead into a prominent
+portion input and a left-aligned answer dock. The answer remains stable and legible while changing;
+verification and recovery never silently replace its inputs.
 
-The optional tutorial uses a stable centered teaching stage, a maximum 320dp column, and no card or
-identifiable text background. Headlines use Space Grotesk SemiBold at 30sp/34sp (24sp/28sp at large
-font scale); tutorial body copy uses Space Grotesk Medium at 16.5sp/22sp. Theme foreground colours
-retain readable contrast. A light contextual scrim, one-dp tonal target edge, broad semantic bloom,
-and optional collision-aware pointer establish context, focus, and explanation. These choices apply
-only to the tutorial. Its measured synthetic previews reframe around the stage; real app screens
-retain their typography and layout. Pointer, bloom, scrim, edge, and visual progress remain excluded
-from accessibility.
+Search prioritises typing and scanning. Loading, empty, offline, retry, and fallback routes remain
+close to the query. Rows are dense enough to compare quickly without shrinking touch targets.
 
-START is the sole orientation treatment: one broad, borderless blue lift relates Search, Barcode,
-and Nutrition Label while leaving the Scan / Portion / Carbs rhythm as context. Targeted chapters use
-either a safe direct retarget or a short release/acquire selected from measured overlap and aspect
-ratio. The displayed chapter is atomic across preview, copy, progress, accent, pointer metadata, and
-advance semantics; only focus visibility and the short fade-through animate around that switch.
+Barcode and nutrition-label scanning deliberately share image-relative chrome but communicate
+different tasks. Live capture, frozen review, ambiguity, conflict, no-result, and permission states
+must never blur into one another.
 
-- 48dp minimum touch target, enforced by `Space.minTouchTarget`.
-- The result is a polite live region so TalkBack reads the new value as the portion changes.
-- Composite tappable rows merge their descendants into one node with one description, rather than
-  leaving a screen-reader user to reassemble fragments.
-- Never colour alone for meaning.
-- Text wraps and controls grow (`heightIn`) rather than clipping at large font scale.
+Onboarding teaches Scan → Portion → Carbs with one focused idea per page. Its richer illustration
+and gradient treatments are an intentional contained exception, not a pattern for utility screens.
+
+## Dark mode, motion, and accessibility
+
+Dark mode uses graphite layers rather than inverted cream. Primary and result colours are retuned
+for dark surfaces; dividers remain visible, disabled controls remain recognisable, and camera chrome
+continues to work over unpredictable imagery.
+
+Motion uses 120ms quick and 220ms standard timings. It clarifies state change without delaying the
+answer: result digits cross-fade, page teaching transitions remain short, and no utility screen has
+decorative entrance choreography. Existing haptics stay reserved for meaningful capture,
+confirmation, or failure events.
+
+All text-bearing controls grow rather than clip. Long product names ellipsise or wrap according to
+context. The result is a polite live region, composite rows expose one coherent accessibility node,
+and colour is always accompanied by text, iconography, geometry, or position.
+
+## Change discipline
+
+UI changes must preserve exact arithmetic, nutrition basis, provenance, verification, observation
+identity, cancellation, scanner/OCR safety, and session immutability. Visual tests should protect
+the current hierarchy and semantics rather than freeze obsolete pixels. Verify representative light,
+dark, loading, empty, error, permission, keyboard, and large-font states in proportion to the change.

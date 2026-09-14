@@ -11,6 +11,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import app.justthecarbs.ui.components.ProductHeroImage
 import app.justthecarbs.ui.components.ProductGalleryDialog
+import app.justthecarbs.ui.components.AccentBackdrop
+import app.justthecarbs.ui.components.DestinationMarker
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Motion
 import androidx.compose.foundation.background
@@ -29,14 +31,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -277,14 +277,10 @@ fun ProductScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // Doc's decorative blue-soft circle, bleeding off the top-right corner (result.html).
-        // Purely decorative — sits behind all content, never intercepts touches.
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 70.dp, y = (-90).dp)
-                .size(220.dp)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f), CircleShape),
+        // Compact nutrition-bar motif: decorative, behind content, and never touch-interactive.
+        AccentBackdrop(
+            accent = Destination.PRODUCT.accent(),
+            modifier = Modifier.align(Alignment.TopEnd),
         )
 
         Column(
@@ -355,10 +351,9 @@ fun ProductScreen(
  * scale on a 320dp width showed the shared 64dp bar clipping a two-line title mid-glyph; the
  * intrinsic-height bar simply grew.
  *
- * What *is* shared, so the screen still reads as one system: the destination spine (the same 4dp
- * device Home's recent cards and every `JtcTopBar` screen use, here in [Destination.PRODUCT]'s
- * blue), the back icon's ordinary-ink tint (never the accent — same reasoning as `JtcTopBar`), and
- * the horizontal spacing around the spine and title.
+ * What *is* shared, so the screen still reads as one system: the compact nutrition-bar destination
+ * marker in [Destination.PRODUCT]'s blue, the back icon's ordinary-ink tint (never the accent —
+ * same reasoning as `JtcTopBar`), and the horizontal spacing around the marker and title.
  */
 @Composable
 private fun ProductTopBar(
@@ -376,26 +371,20 @@ private fun ProductTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = Space.xs)
-            .padding(start = Space.m, end = Space.s),
+            .padding(start = Space.s, end = Space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .height(22.dp)
-                .width(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(accent),
-        )
-
         IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(R.string.product_back),
-                // Ordinary foreground ink, not the accent — the spine already carries the
+                // Ordinary foreground ink, not the accent — the marker already carries the
                 // destination's colour, matching JtcTopBar's back-arrow rule exactly.
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
+
+        DestinationMarker(accent = accent, modifier = Modifier.padding(end = Space.s))
 
         Text(
             // A scanned label states a carbohydrate figure, not a product name — so an unnamed
@@ -1833,7 +1822,7 @@ private fun ResultPanel(
                 top = if (state.mealItems.isEmpty() && !showsProvenanceLine) Space.l else Space.s,
                 bottom = if (showsProvenanceLine) Space.m else Space.l,
             ),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = Alignment.Start,
     ) {
         // The running meal total, present only while a meal is actually in progress (§10). An
         // always-visible "0 items" strip would make the app look like a tracker with a permanent
@@ -1893,9 +1882,9 @@ private fun ResultPanel(
             // would be the worst possible confusion on this screen.
             Box(
                 modifier = Modifier.height(96.dp).fillMaxWidth(),
-                contentAlignment = Alignment.Center,
+                contentAlignment = Alignment.CenterStart,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(horizontalAlignment = Alignment.Start) {
                     state.product?.let { product ->
                         Text(
                             text = stringResource(
@@ -1932,7 +1921,7 @@ private fun ResultPanel(
             }
 
             Row(
-                modifier = Modifier.height(96.dp),
+                modifier = Modifier.fillMaxWidth().height(96.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Animated only on the digits changing, not on every recomposition, and only for
@@ -1943,6 +1932,7 @@ private fun ResultPanel(
                         (fadeIn(tween(Motion.QUICK_MS)) togetherWith fadeOut(tween(Motion.QUICK_MS)))
                     },
                     label = "result",
+                    modifier = Modifier.weight(1f),
                 ) { value ->
                     Text(
                         text = value,
@@ -1952,9 +1942,11 @@ private fun ResultPanel(
                         // Shrinks rather than clips. See [NumberType.resultAutoSize] — a result
                         // that loses digits still looks like a finished number.
                         autoSize = NumberType.resultAutoSize,
+                        textAlign = TextAlign.Start,
                         // Announced as a live region so TalkBack reads the new result as the
                         // portion changes, instead of leaving a blind user to hunt for it (§39).
                         modifier = Modifier
+                            .fillMaxWidth()
                             .testTag(PRODUCT_RESULT_TAG)
                             .semantics { liveRegion = LiveRegionMode.Polite },
                     )
@@ -2065,7 +2057,7 @@ private fun ResultPanel(
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                 )
             }
 

@@ -272,13 +272,24 @@ private fun CameraPreview(
 
         // Top row: close only. Nothing essential lives up here (§40).
         Row(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(Space.s),
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .background(Color.Black.copy(alpha = 0.58f))
+                .padding(horizontal = Space.s, vertical = Space.s),
             horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             ScrimIconButton(
                 onClick = { leave(onClose) },
                 icon = Icons.Filled.Close,
                 description = stringResource(R.string.scanner_close),
+            )
+            Spacer(Modifier.width(Space.s))
+            Text(
+                text = stringResource(R.string.home_scan_button),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
             )
         }
 
@@ -287,6 +298,8 @@ private fun CameraPreview(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
+                .padding(horizontal = Space.m, vertical = Space.s)
+                .background(Color.Black.copy(alpha = 0.66f), RoundedCornerShape(Space.cardRadius))
                 .padding(Space.m),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -344,15 +357,22 @@ private fun CameraPreview(
                     // A lookup is already under way and this screen is about to be replaced;
                     // opening the manual dialog on top of it would start a second, competing one.
                     enabled = !acquired,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(Space.buttonRadius),
                     modifier = Modifier
-                        .height(52.dp)
-                        .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                        .heightIn(min = Space.minTouchTarget)
+                        .border(
+                            1.dp,
+                            Color.White.copy(alpha = 0.32f),
+                            RoundedCornerShape(Space.buttonRadius),
+                        )
+                        .background(
+                            Color.White.copy(alpha = 0.08f),
+                            RoundedCornerShape(Space.buttonRadius),
+                        ),
                 ) {
                     Text(
                         text = stringResource(R.string.scanner_enter_manually),
-                        color = Color.White,
+                        color = Color.White.copy(alpha = if (acquired) 0.38f else 1f),
                     )
                 }
             }
@@ -376,16 +396,16 @@ private fun ScanFrame(acquired: Boolean, modifier: Modifier = Modifier) {
     // tick appears; the change is confirmation, not decoration, so it is a single short crossfade
     // rather than anything that delays the result behind an animation.
     val fillAlpha by animateFloatAsState(
-        targetValue = if (acquired) 0.30f else 0.08f,
+        targetValue = if (acquired) 0.24f else 0.04f,
         animationSpec = tween(Motion.QUICK_MS),
         label = "scanFrameFill",
     )
     Box(
         modifier = modifier
             .fillMaxWidth(0.68f)
-            .height(180.dp)
-            .background(accent.copy(alpha = fillAlpha), RoundedCornerShape(26.dp))
-            .border(3.dp, accent, RoundedCornerShape(26.dp)),
+            .height(176.dp)
+            .background(accent.copy(alpha = fillAlpha), RoundedCornerShape(Space.cardRadius))
+            .border(2.dp, accent, RoundedCornerShape(Space.cardRadius)),
         contentAlignment = Alignment.Center,
     ) {
         // Never colour alone (§39): the hint line below states the same fact in words, and the tick

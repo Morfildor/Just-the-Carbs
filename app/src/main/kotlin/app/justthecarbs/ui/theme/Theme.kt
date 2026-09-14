@@ -24,11 +24,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The internal design system (brief §38) — "Just the Carbs" colourful-chrome redesign.
+ * The internal design system — a warm, editorial utility built around the carbohydrate answer.
  *
  * Blue owns interaction, destination accents identify app areas, and result red is reserved for
- * carbohydrate figures. The result stays dominant through the tested luminance rule in
- * [AccentPalette], not by making the rest of the interface monochrome. See DESIGN.md.
+ * carbohydrate figures. The result stays dominant through scale, placement, reserved colour and
+ * an intentionally quieter set of supporting surfaces. See DESIGN.md.
  *
  * Dynamic colour is deliberately not used. It would hand the accent (and so the visual weight of
  * the result) to whatever wallpaper the user has, which §38 only permits if hierarchy stays
@@ -42,33 +42,27 @@ val SpaceGrotesk = FontFamily(
     Font(R.font.space_grotesk, weight = FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
 
-// Light palette (design doc "Design tokens" section).
-//
-// Blue and Red are darkened from the original handoff tokens (#2F8FE0 / #FF5C5C) because measured
-// contrast, not appearance, decided them: the handoff values scored 3.43:1 and 2.84:1 against the
-// surfaces they are actually drawn on, so the app's single most-read element — the carbohydrate
-// result — failed even the 3:1 large-text floor. Both are the smallest darkening along their own
-// hue that clears 4.5:1 on every surface each is really used on; hue and saturation are otherwise
-// preserved, so the identity is unchanged. ContrastTest pins the pairs. See DESIGN.md.
-private val Blue = Color(0xFF1B6FBF)
+// Light palette (DESIGN.md). Cobalt owns interaction; tomato red is reserved for carb results.
+// Each text/background pair is pinned by ContrastTest rather than accepted by eye.
+private val Blue = Color(0xFF2856C5)
 // Snackbar action blue for DarkColors.inversePrimary only. The one-channel shift preserves the
 // product blue while clearing normal-text contrast against the light inverseSurface.
-private val InverseBlue = Color(0xFF1B6EBF)
-private val BlueSoft = Color(0xFFE4F1FC)
-private val Red = Color(0xFFD42F2F)
-private val Orange = Color(0xFFFFA94D)
-private val OrangeSoft = Color(0xFFFFEEDC)
-private val Cream = Color(0xFFFFF6EE)
-private val Ink = Color(0xFF181A1E)
-private val InkMuted = Color(0xFF6B6A72)
-private val LineLight = Color(0xFFE4DFD3)
-private val LineStrongLight = Color(0xFF77736A)
-private val DisabledBlue = Color(0xFFDCE8F5)
+private val InverseBlue = Color(0xFF2855C2)
+private val BlueSoft = Color(0xFFE6ECFF)
+private val Red = Color(0xFFC13C2D)
+private val Orange = Color(0xFFF4A261)
+private val OrangeSoft = Color(0xFFFFE8CC)
+private val Cream = Color(0xFFF7F2E8)
+private val Ink = Color(0xFF191B23)
+private val InkMuted = Color(0xFF61616C)
+private val LineLight = Color(0xFFDED8CB)
+private val LineStrongLight = Color(0xFF75716A)
+private val DisabledBlue = Color(0xFFDCE3F5)
 // Paired foreground for disabledButton, not onPrimary — onPrimary belongs to the filled primary
 // button, an accidental coupling that read as a washed-out active button rather than a disabled
 // one. A muted ink tone on the disabled container reads as unmistakably off.
-private val OnDisabledBlue = Color(0xFF7C8B9C)
-private val WarmWhite = Color(0xFFFFFBF7)
+private val OnDisabledBlue = Color(0xFF6C7890)
+private val WarmWhite = Color(0xFFFFFCF7)
 // A loaded product photo's ground. Open Food Facts photography is shot on white and carries that
 // background in the JPEG, so this matches it directly rather than making a tinted card fight the
 // picture. Distinct from surfaceContainerLowest, which is near-black in Dark and produced the
@@ -78,22 +72,22 @@ private val MediaSurfaceLight = Color.White
 // Dark palette — extrapolated from the light tokens (no dark spec exists in the handoff).
 // Cream inverts to near-black, ink inverts to off-white; accent hues held close to their light
 // values, brightened only enough to hold contrast on a dark ground.
-private val Night = Color(0xFF15140F)
-private val NightRaised = Color(0xFF1E1D18)
-private val Chalk = Color(0xFFF2EFE8)
-private val ChalkMuted = Color(0xFFAFAEA8)
-private val LineDark = Color(0xFF39372F)
-private val LineStrongDark = Color(0xFF8B887F)
-private val BlueDark = Color(0xFF5CA6E8)
-private val BlueSoftDark = Color(0xFF16324A)
-private val RedDark = Color(0xFFFF7A7A)
-private val OrangeDark = Color(0xFFFFB868)
-private val OrangeSoftDark = Color(0xFF4A3418)
-private val DisabledBlueDark = Color(0xFF2A3A47)
-private val OnDisabledBlueDark = Color(0xFF6E7C8A)
+private val Night = Color(0xFF111318)
+private val NightRaised = Color(0xFF191C22)
+private val Chalk = Color(0xFFF3F0E8)
+private val ChalkMuted = Color(0xFFB7B2A8)
+private val LineDark = Color(0xFF353943)
+private val LineStrongDark = Color(0xFF848997)
+private val BlueDark = Color(0xFF82A2FF)
+private val BlueSoftDark = Color(0xFF263454)
+private val RedDark = Color(0xFFFF8A75)
+private val OrangeDark = Color(0xFFFFC078)
+private val OrangeSoftDark = Color(0xFF49321E)
+private val DisabledBlueDark = Color(0xFF2B3240)
+private val OnDisabledBlueDark = Color(0xFF7F8798)
 // A neutral light-but-not-white plate: soft enough to avoid becoming a nighttime glare source,
 // still light enough to stay compatible with a photo whose own background is baked-in white.
-private val MediaSurfaceDark = Color(0xFFE7E3D9)
+private val MediaSurfaceDark = Color(0xFFE8E4DC)
 
 /**
  * The result red and a few tokens Material's ColorScheme has no matching role for (brief: "Why
@@ -142,11 +136,11 @@ private val LightExtendedColors = ExtendedColors(
     // Darkened from #B5710B, which scored 3.47:1 on its own container — a badge foreground that
     // failed the normal-text floor on the only background it is ever drawn on. #9B6109 cleared it
     // at 4.51:1; this sits at 4.79:1 for margin, an imperceptible further shift.
-    onOrangeSoft = Color(0xFF965D08),
+    onOrangeSoft = Color(0xFF90530A),
     disabledButton = DisabledBlue,
     onDisabledButton = OnDisabledBlue,
     scanner = ImageScannerColors,
-    accentBackdropAlpha = 0.06f,
+    accentBackdropAlpha = 0.16f,
     accents = LightAccents,
     mediaSurface = MediaSurfaceLight,
 )
@@ -160,7 +154,7 @@ private val DarkExtendedColors = ExtendedColors(
     disabledButton = DisabledBlueDark,
     onDisabledButton = OnDisabledBlueDark,
     scanner = ImageScannerColors,
-    accentBackdropAlpha = 0.18f,
+    accentBackdropAlpha = 0.26f,
     accents = DarkAccents,
     mediaSurface = MediaSurfaceDark,
 )
@@ -175,39 +169,37 @@ private val LightColors = lightColorScheme(
     primary = Blue,
     onPrimary = WarmWhite,
     primaryContainer = BlueSoft,
-    onPrimaryContainer = Color(0xFF0B3E63),
+    onPrimaryContainer = Color(0xFF17336F),
     secondary = InkMuted,
     onSecondary = WarmWhite,
-    // Selected FilterChips read from secondaryContainer. Leaving these unset falls back to
-    // Material's baseline lavender, which is how a considered palette ends up with a stray purple
-    // chip in the middle of it — visible on the very first run of the manual-entry screen.
+    // Explicit ownership also prevents Material defaults from introducing unrelated hues.
     secondaryContainer = BlueSoft,
-    onSecondaryContainer = Color(0xFF0B3E63),
+    onSecondaryContainer = Color(0xFF17336F),
     background = Cream,
     onBackground = Ink,
     surface = Cream,
     onSurface = Ink,
-    surfaceVariant = Color.White,
+    surfaceVariant = Color(0xFFFBF8F1),
     onSurfaceVariant = InkMuted,
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFFDFBF8),
-    surfaceContainer = Color(0xFFF3EFE6),
-    surfaceContainerHigh = Color(0xFFEBE6DA),
-    surfaceContainerHighest = Color(0xFFE2DCCC),
+    surfaceContainerLowest = Color(0xFFFFFEFB),
+    surfaceContainerLow = Color(0xFFFBF8F1),
+    surfaceContainer = Color(0xFFF0EBE1),
+    surfaceContainerHigh = Color(0xFFE8E2D7),
+    surfaceContainerHighest = Color(0xFFDED7CB),
     outline = LineStrongLight,
     outlineVariant = LineLight,
-    error = Color(0xFF9B2C2C),
+    error = Color(0xFF9E2F2F),
     onError = WarmWhite,
     errorContainer = Color(0xFFFCE8E8),
     onErrorContainer = Color(0xFF6C1A1A),
     tertiary = Orange,
     onTertiary = Ink,
     tertiaryContainer = OrangeSoft,
-    onTertiaryContainer = Color(0xFF7A4B0A),
+    onTertiaryContainer = Color(0xFF6E420B),
     inverseSurface = Ink,
     inverseOnSurface = WarmWhite,
     surfaceBright = Color.White,
-    surfaceDim = Color(0xFFE2DCCC),
+    surfaceDim = Color(0xFFDED7CB),
     scrim = Color.Black,
     // Snackbar action text. Left unset this falls back to Material's baseline lavender — the same
     // stray-purple trap recorded above for `secondaryContainer`, and it appeared verbatim on the
@@ -218,7 +210,7 @@ private val LightColors = lightColorScheme(
 
 private val DarkColors = darkColorScheme(
     primary = BlueDark,
-    onPrimary = Color(0xFF00243D),
+    onPrimary = Color(0xFF0B1730),
     primaryContainer = BlueSoftDark,
     onPrimaryContainer = BlueDark,
     secondary = ChalkMuted,
@@ -231,14 +223,14 @@ private val DarkColors = darkColorScheme(
     onSurface = Chalk,
     surfaceVariant = NightRaised,
     onSurfaceVariant = ChalkMuted,
-    surfaceContainerLowest = Color(0xFF0C0B08),
-    surfaceContainerLow = Color(0xFF19180F),
-    surfaceContainer = Color(0xFF201E17),
-    surfaceContainerHigh = Color(0xFF2A2820),
-    surfaceContainerHighest = Color(0xFF34322A),
+    surfaceContainerLowest = Color(0xFF0C0E12),
+    surfaceContainerLow = Color(0xFF171A20),
+    surfaceContainer = Color(0xFF1E222A),
+    surfaceContainerHigh = Color(0xFF272C35),
+    surfaceContainerHighest = Color(0xFF303641),
     outline = LineStrongDark,
     outlineVariant = LineDark,
-    error = Color(0xFFF2999A),
+    error = Color(0xFFFFA0A0),
     onError = Color(0xFF3A0A0B),
     errorContainer = Color(0xFF5A2021),
     onErrorContainer = Color(0xFFFFDAD9),
@@ -248,8 +240,8 @@ private val DarkColors = darkColorScheme(
     onTertiaryContainer = OrangeDark,
     inverseSurface = Chalk,
     inverseOnSurface = Night,
-    surfaceBright = Color(0xFF34322A),
-    surfaceDim = Color(0xFF0C0B08),
+    surfaceBright = Color(0xFF303641),
+    surfaceDim = Color(0xFF0C0E12),
     scrim = Color.Black,
     // Same reason as the light scheme. This private one-channel adjustment is reserved for the
     // light inverseSurface; normal primary blue remains unchanged.
@@ -269,13 +261,13 @@ object Space {
     val xxl = 48.dp
 
     /** Card radius (design tokens: 16-22px, 18 most common). */
-    val cardRadius = 18.dp
+    val cardRadius = 22.dp
 
     /** Buttons and inputs (design tokens: 14-18px). */
-    val buttonRadius = 16.dp
+    val buttonRadius = 14.dp
 
     /** Product imagery. */
-    val mediaRadius = 16.dp
+    val mediaRadius = 20.dp
 
     /** Chips stay pill-shaped — their whole affordance is "chip", and it should not be diluted. */
     val chipRadius = 999.dp
@@ -299,11 +291,11 @@ object Space {
     val thumbnail = 52.dp
 
     /** The result surface. Lifted off the page so it reads as the answer, not as another row. */
-    val resultElevation = 3.dp
+    val resultElevation = 6.dp
     val cardElevation = 0.dp
 
     /** Pinned bottom sheet top corners (design tokens: 32px). */
-    val sheetTopRadius = 32.dp
+    val sheetTopRadius = 28.dp
 }
 
 /**
@@ -332,8 +324,8 @@ object NumberType {
     /** The dominant result, e.g. `31 g`. */
     val result = TextStyle(
         fontFamily = SpaceGrotesk,
-        fontSize = 64.sp,
-        lineHeight = 68.sp,
+        fontSize = 72.sp,
+        lineHeight = 76.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = (-2).sp,
         textAlign = TextAlign.Center,
@@ -357,15 +349,15 @@ object NumberType {
      */
     val resultAutoSize = TextAutoSize.StepBased(
         minFontSize = 36.sp,
-        maxFontSize = 64.sp,
+        maxFontSize = 72.sp,
         stepSize = 1.sp,
     )
 
     /** The portion being edited. */
     val portion = TextStyle(
         fontFamily = SpaceGrotesk,
-        fontSize = 48.sp,
-        lineHeight = 54.sp,
+        fontSize = 52.sp,
+        lineHeight = 58.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = (-1.5).sp,
         textAlign = TextAlign.Center,
@@ -381,11 +373,30 @@ object NumberType {
 
 private val JustTheCarbsTypography = Typography().run {
     copy(
-        headlineMedium = headlineMedium.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
-        titleLarge = titleLarge.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold),
-        titleMedium = titleMedium.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold),
+        headlineMedium = headlineMedium.copy(
+            fontFamily = SpaceGrotesk,
+            fontSize = 32.sp,
+            lineHeight = 36.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.8).sp,
+        ),
+        titleLarge = titleLarge.copy(
+            fontFamily = SpaceGrotesk,
+            fontSize = 24.sp,
+            lineHeight = 30.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.3).sp,
+        ),
+        titleMedium = titleMedium.copy(
+            fontFamily = SpaceGrotesk,
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+        ),
         titleSmall = titleSmall.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold),
-        labelLarge = labelLarge.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold, letterSpacing = 0.4.sp),
+        bodyLarge = bodyLarge.copy(fontSize = 17.sp, lineHeight = 24.sp),
+        bodyMedium = bodyMedium.copy(fontSize = 15.sp, lineHeight = 22.sp),
+        labelLarge = labelLarge.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold, letterSpacing = 0.2.sp),
         labelMedium = labelMedium.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.SemiBold),
         labelSmall = labelSmall.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp),
     )

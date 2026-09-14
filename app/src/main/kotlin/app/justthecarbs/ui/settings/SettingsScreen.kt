@@ -3,6 +3,7 @@ package app.justthecarbs.ui.settings
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -135,49 +135,35 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(Space.m),
             ) {
                 SectionLabel(stringResource(R.string.settings_appearance))
-                Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                    ThemeChoice.entries.forEach { choice ->
-                        FilterChip(
-                            selected = settings.theme == choice,
-                            onClick = { onThemeChanged(choice) },
-                            label = {
-                                Text(
-                                    stringResource(
-                                        when (choice) {
-                                            ThemeChoice.SYSTEM -> R.string.settings_theme_system
-                                            ThemeChoice.LIGHT -> R.string.settings_theme_light
-                                            ThemeChoice.DARK -> R.string.settings_theme_dark
-                                        },
-                                    ),
-                                )
+                SettingsChoiceSegment(
+                    labels = ThemeChoice.entries.map { choice ->
+                        stringResource(
+                            when (choice) {
+                                ThemeChoice.SYSTEM -> R.string.settings_theme_system
+                                ThemeChoice.LIGHT -> R.string.settings_theme_light
+                                ThemeChoice.DARK -> R.string.settings_theme_dark
                             },
-                            modifier = Modifier.heightIn(min = Space.minTouchTarget),
                         )
-                    }
-                }
+                    },
+                    selectedIndex = ThemeChoice.entries.indexOf(settings.theme),
+                    onSelected = { onThemeChanged(ThemeChoice.entries[it]) },
+                )
 
                 HorizontalDivider()
 
                 SectionLabel(stringResource(R.string.settings_results))
-                Column(verticalArrangement = Arrangement.spacedBy(Space.s)) {
-                    ResultStyle.entries.forEach { style ->
-                        FilterChip(
-                            selected = settings.resultStyle == style,
-                            onClick = { onResultStyleChanged(style) },
-                            label = {
-                                Text(
-                                    stringResource(
-                                        when (style) {
-                                            ResultStyle.DECIMAL_DOMINANT -> R.string.settings_results_decimal_first
-                                            ResultStyle.WHOLE_DOMINANT -> R.string.settings_results_whole_first
-                                        },
-                                    ),
-                                )
+                SettingsChoiceSegment(
+                    labels = ResultStyle.entries.map { style ->
+                        stringResource(
+                            when (style) {
+                                ResultStyle.DECIMAL_DOMINANT -> R.string.settings_results_decimal_first
+                                ResultStyle.WHOLE_DOMINANT -> R.string.settings_results_whole_first
                             },
-                            modifier = Modifier.heightIn(min = Space.minTouchTarget),
                         )
-                    }
-                }
+                    },
+                    selectedIndex = ResultStyle.entries.indexOf(settings.resultStyle),
+                    onSelected = { onResultStyleChanged(ResultStyle.entries[it]) },
+                )
 
                 HorizontalDivider()
 
@@ -435,6 +421,59 @@ fun SettingsScreen(
  * button label uses tertiary's explicit paired foreground, which clears it by a wide margin
  * (9.15:1 / 10.8:1) without coupling the CTA to the page background.
  */
+@Composable
+private fun SettingsChoiceSegment(
+    labels: List<String>,
+    selectedIndex: Int,
+    onSelected: (Int) -> Unit,
+) {
+    val outerShape = RoundedCornerShape(Space.buttonRadius)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(outerShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, outerShape)
+            .padding(Space.xs),
+        horizontalArrangement = Arrangement.spacedBy(Space.xs),
+    ) {
+        labels.forEachIndexed { index, label ->
+            val selected = index == selectedIndex
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = Space.primaryButtonHeight)
+                    .clip(RoundedCornerShape(Space.buttonRadius - Space.xs))
+                    .background(
+                        if (selected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            androidx.compose.ui.graphics.Color.Transparent
+                        },
+                    )
+                    .selectable(
+                        selected = selected,
+                        role = Role.RadioButton,
+                        onClick = { onSelected(index) },
+                    )
+                    .padding(horizontal = Space.s, vertical = Space.s),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun RateUsCard(failed: Boolean, onClick: () -> Unit) {
     val amber = MaterialTheme.extendedColors.accents.amber

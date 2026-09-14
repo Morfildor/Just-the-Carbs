@@ -622,4 +622,57 @@ class SearchScreenTest {
          */
         const val SECOND_REQUEST_TIMEOUT_MS = 15_000L
     }
+
+    // ---- Keyboard dismissal over live results ------------------------------------------------
+
+    /**
+     * Selecting a product from the list is still ONE tap.
+     *
+     * The touch-to-dismiss gesture added to the results list sits on the same nodes as the rows,
+     * so the hazard it introduces is a tap being spent dismissing the keyboard instead of opening
+     * the product. This pins the shipped behaviour: the handler observes on
+     * [androidx.compose.ui.input.pointer.PointerEventPass.Initial] with `requireUnconsumed = false`
+     * and consumes nothing, so selection is unaffected.
+     *
+     * **This test does not discriminate between the Initial and Main passes.** A control run with
+     * `Main` passes it too — `performClick` injects a synthetic down/up that does not reproduce the
+     * consumption ordering a real finger produces. Measured, not assumed, so nobody reads a green
+     * result here as proof that the pass choice is load-bearing; only hardware can show that.
+     */
+    @Test
+    fun tappingAResultStillSelectsItOnTheFirstTap() {
+        var selected: ProductSearchHit? = null
+        show(
+            SearchUiState(query = "hagelslag", hits = listOf(hit())),
+            onSelect = { selected = it },
+        )
+
+        compose.onNodeWithText("Chocoladehagel puur").performClick()
+
+        assertEquals("one tap must select, not merely dismiss the keyboard", "8710496979125", selected?.barcode)
+    }
+
+    /**
+     * The gesture must not interfere with the list itself.
+     *
+     * A pointer handler on a scrollable container is the classic way to break scrolling, so this
+     * asserts the list still renders and still holds every row after the handler is attached —
+     * the cheap structural check that the modifier did not swallow the list's own input.
+     */
+    @Test
+    fun theResultsListStillRendersEveryRowWithTheDismissalGestureAttached() {
+        show(
+            SearchUiState(
+                query = "hagelslag",
+                hits = listOf(
+                    hit(barcode = "1111111111111", name = "Hagelslag puur"),
+                    hit(barcode = "2222222222222", name = "Hagelslag melk"),
+                ),
+            ),
+        )
+
+        compose.onNodeWithTag(SEARCH_RESULTS_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Hagelslag puur").assertIsDisplayed()
+        compose.onNodeWithText("Hagelslag melk").assertIsDisplayed()
+    }
 }

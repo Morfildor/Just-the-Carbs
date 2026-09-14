@@ -69,10 +69,10 @@ const val PRODUCT_HERO_TAG = "product_hero_image"
 @Composable
 fun ProductHeroImage(
     product: Product,
+    modifier: Modifier = Modifier,
     /** True while the IME is open, so the image yields room to the portion controls. */
     compact: Boolean = false,
     onClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
     // A product with no photo has nothing to identify: the monogram is derived from the name shown
     // directly above it, so a full-height slab spends ~150 dp restating two letters the user has

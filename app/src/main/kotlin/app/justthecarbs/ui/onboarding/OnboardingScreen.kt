@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -101,7 +102,7 @@ fun OnboardingScreen(
     busy: Boolean = false,
 ) {
     val boundedIndex = stepIndex.coerceIn(0, TUTORIAL_LAST_STEP)
-    var presentedIndex by remember { mutableStateOf(boundedIndex) }
+    var presentedIndex by remember { mutableIntStateOf(boundedIndex) }
     val contentVisibility = remember { Animatable(1f) }
     val focusVisibility = remember { Animatable(0f) }
     val focusSettle = remember { Animatable(1f) }
@@ -116,8 +117,8 @@ fun OnboardingScreen(
     var bodyBounds by remember { mutableStateOf<Pair<Int, Rect>?>(null) }
     var progressBounds by remember { mutableStateOf<Pair<Int, Rect>?>(null) }
     var tapAffordanceBounds by remember { mutableStateOf<Pair<Int, Rect>?>(null) }
-    var viewportWidth by remember { mutableStateOf(0) }
-    var viewportHeight by remember { mutableStateOf(0) }
+    var viewportWidth by remember { mutableIntStateOf(0) }
+    var viewportHeight by remember { mutableIntStateOf(0) }
 
     BackHandler(enabled = !busy) { onExit() }
 

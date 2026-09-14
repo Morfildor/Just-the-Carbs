@@ -28,7 +28,7 @@ import androidx.compose.ui.graphics.Color
  */
 private val LightTeal = Color(0xFF0F766E)
 private val LightViolet = Color(0xFF6D28D9)
-private val LightGreen = Color(0xFF15803D)
+private val LightGreen = Color(0xFF147C3B)
 private val LightMagenta = Color(0xFFBE185D)
 private val LightIndigo = Color(0xFF4338CA)
 private val LightAmber = Color(0xFF92400E)

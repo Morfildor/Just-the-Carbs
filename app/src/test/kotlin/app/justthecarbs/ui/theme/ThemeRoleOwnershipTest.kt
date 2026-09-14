@@ -74,20 +74,22 @@ class ThemeRoleOwnershipTest {
         assertEquals(1, Regex("""onAccent\s*=\s*WarmWhite""").findAll(theme).count())
         assertEquals(1, Regex("""onAccent\s*=\s*Night""").findAll(theme).count())
 
-        listOf(
-            "src/main/kotlin/app/justthecarbs/ui/home/HomeScreen.kt",
+        val home = java.io.File("src/main/kotlin/app/justthecarbs/ui/home/HomeScreen.kt").readText()
+        assertTrue(home.contains("MaterialTheme.colorScheme.onPrimary"))
+        assertFalse("Home actions are solid task tiles, not ornamental gradients", home.contains("Brush.linearGradient"))
+
+        val tutorial = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/onboarding/TutorialPreview.kt",
-        ).forEach { path ->
-            assertTrue(java.io.File(path).readText().contains("MaterialTheme.extendedColors.onAccent"))
-        }
+        ).readText()
+        assertTrue(tutorial.contains("MaterialTheme.extendedColors.onAccent"))
     }
 
     @Test
     fun `extended visual roles are explicit in both schemes`() {
         assertEquals(1, Regex("""onResult\s*=\s*WarmWhite""").findAll(theme).count())
         assertEquals(1, Regex("""onResult\s*=\s*Night""").findAll(theme).count())
-        assertEquals(1, Regex("""accentBackdropAlpha\s*=\s*0\.06f""").findAll(theme).count())
-        assertEquals(1, Regex("""accentBackdropAlpha\s*=\s*0\.18f""").findAll(theme).count())
+        assertEquals(1, Regex("""accentBackdropAlpha\s*=\s*0\.16f""").findAll(theme).count())
+        assertEquals(1, Regex("""accentBackdropAlpha\s*=\s*0\.26f""").findAll(theme).count())
 
         val backdrop = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/components/AccentBackdrop.kt",
@@ -119,10 +121,10 @@ class ThemeRoleOwnershipTest {
             "src/main/kotlin/app/justthecarbs/ui/product/ProductScreen.kt",
         ).readText().replace(Regex("""\s+"""), " ")
         assertTrue(
-            "ProductScreen must paint the opaque page ground below its decorative circle",
-            product.contains(
-                "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { // Doc's decorative",
-            ),
+            "ProductScreen must paint the opaque page ground below its decorative motif",
+            product.indexOf(
+                "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))",
+            ) in 0 until product.indexOf("AccentBackdrop("),
         )
     }
 }

@@ -1,16 +1,16 @@
 package app.justthecarbs.ui.components
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -20,7 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -42,13 +42,12 @@ import app.justthecarbs.ui.theme.accent
  * together. This is the same failure `Space.primaryButtonHeight` was extracted to stop, where
  * `56.dp` had been typed by hand at sixteen call sites.
  *
- * ## The accent spine
+ * ## The destination marker
  *
- * The 4dp coloured edge is how a destination gets identity now that titles are one size. It is
- * deliberately the *same* device as the accent spine on Home's recent cards, so the app reads as
- * one system rather than as a screen that happens to have a stripe.
+ * Three compact bars borrowed from a nutrition label identify the destination without resembling
+ * another control. The same motif appears, at a larger scale, in the page backdrop.
  *
- * It never carries meaning on its own — the title says where you are, and the spine only
+ * It never carries meaning on its own — the title says where you are, and the marker only
  * reinforces it. That is this app's existing accessibility rule, and it binds the new palette
  * exactly as it bound the old one.
  *
@@ -76,26 +75,12 @@ fun JtcTopBar(
             // immediately under the title — measured on Settings, where "Appearance" touched the
             // bar. Putting it in the component is the whole reason the component exists: four
             // screens each adding their own top padding is four chances to pick a different value.
-            .height(64.dp)
+            .heightIn(min = 64.dp)
             .padding(bottom = Space.s)
-            // Left inset is the spine's own margin — at Space.s (8dp) the spine sat almost against
-            // the screen edge and read as a clipped rendering artefact rather than as a deliberate
-            // accent. Only visible by looking at the device; every assertion passed either way.
-            .padding(start = Space.m, end = Space.s),
+            // The outer inset belongs to the bar, while the marker has its own gap from the title.
+            .padding(start = Space.s, end = Space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                // A short centred bar sized against the title's cap height, rather than one
-                // filling the row. Filling it made the spine's ends land at whatever the row's
-                // padding happened to leave, which looked arbitrary next to the text; 22dp reads
-                // as deliberately paired with the title.
-                .height(22.dp)
-                .width(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(accent),
-        )
-
         if (onBack != null) {
             IconButton(onClick = onBack, modifier = Modifier.size(Space.minTouchTarget)) {
                 Icon(
@@ -104,7 +89,7 @@ fun JtcTopBar(
                     // Ordinary foreground ink, NOT the accent. Tinting it accent-coloured makes the
                     // one control on the bar inherit whatever hue the destination happens to carry
                     // — on Settings that is a muted neutral, which rendered the back arrow as the
-                    // faintest thing on a screen where it is the only way out. The spine carries
+                    // faintest thing on a screen where it is the only way out. The marker carries
                     // the destination's colour; the control carries contrast.
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
@@ -112,6 +97,8 @@ fun JtcTopBar(
         } else {
             Box(Modifier.width(Space.s))
         }
+
+        DestinationMarker(accent = accent, modifier = Modifier.padding(end = Space.s))
 
         Text(
             text = title,
@@ -127,5 +114,28 @@ fun JtcTopBar(
         )
 
         trailing()
+    }
+}
+
+/** Three compact rules borrowed from a nutrition label and echoed by [AccentBackdrop]. */
+@Composable
+fun DestinationMarker(accent: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.width(16.dp).height(24.dp)) {
+        val ruleWidth = size.width / 5f
+        drawRect(
+            color = accent,
+            topLeft = androidx.compose.ui.geometry.Offset(0f, size.height * 0.36f),
+            size = androidx.compose.ui.geometry.Size(ruleWidth, size.height * 0.64f),
+        )
+        drawRect(
+            color = accent.copy(alpha = 0.72f),
+            topLeft = androidx.compose.ui.geometry.Offset(ruleWidth * 2f, 0f),
+            size = androidx.compose.ui.geometry.Size(ruleWidth, size.height),
+        )
+        drawRect(
+            color = accent,
+            topLeft = androidx.compose.ui.geometry.Offset(ruleWidth * 4f, size.height * 0.18f),
+            size = androidx.compose.ui.geometry.Size(ruleWidth, size.height * 0.82f),
+        )
     }
 }

@@ -36,7 +36,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
@@ -81,9 +80,9 @@ fun SourceBadge(
                     } else {
                         MaterialTheme.extendedColors.orangeSoft
                     },
-                    shape = RoundedCornerShape(50),
+                    shape = RoundedCornerShape(Space.chipRadius),
                 )
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = Space.s + Space.xs, vertical = Space.xs),
         ) {
             Text(
                 text = label,
@@ -306,8 +305,9 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 76.dp)
             .clickable(onClick = onClick)
-            .padding(vertical = Space.s)
+            .padding(vertical = Space.s + Space.xs)
             .semantics {
                 contentDescription = "${hit.name}. ${hit.brand.orEmpty()} $carbsText"
             },
@@ -319,7 +319,7 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = hit.name,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
             )
@@ -334,11 +334,20 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
                     maxLines = 1,
                 )
             }
-            Text(
-                text = carbsText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
+
+        Spacer(Modifier.width(Space.s))
+        Text(
+            text = carbsText,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (hit.carbsPer100 != null && basis != null) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.End,
+            maxLines = 2,
+        )
     }
 }

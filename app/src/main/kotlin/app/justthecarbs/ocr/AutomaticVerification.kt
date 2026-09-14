@@ -298,5 +298,14 @@ internal object AutomaticVerification {
         return confident.size >= 2 && confident.all { it.fullyAgreesWith(primary) }
     }
 
-    private fun format(ratio: Double): String = String.format("%.3f", ratio)
+    /**
+     * Formats a ratio for a human-readable rejection reason.
+     *
+     * [java.util.Locale.ROOT] rather than the default locale: this string is diagnostic evidence
+     * read while debugging a scan, and on a Dutch device the default locale renders `0,313` — a
+     * decimal comma in text whose whole purpose is to be compared against other recorded ratios.
+     * It never reaches the user and never takes part in a comparison, so the locale is chosen for
+     * the reader of the evidence bundle rather than for the device.
+     */
+    private fun format(ratio: Double): String = String.format(java.util.Locale.ROOT, "%.3f", ratio)
 }

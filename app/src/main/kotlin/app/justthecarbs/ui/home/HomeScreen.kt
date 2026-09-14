@@ -46,6 +46,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -62,8 +63,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,7 +92,6 @@ import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
-import kotlin.math.absoluteValue
 
 /** Stable handles for instrumented tests. */
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
@@ -154,7 +152,10 @@ fun HomeScreen(
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AccentBackdrop(
             accent = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.align(Alignment.TopEnd),
+            // Keep the decorative nutrition bars clear of the Settings touch target.
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = Space.xxl + Space.l),
         )
 
         Column(
@@ -262,10 +263,11 @@ fun HomeScreen(
 private fun EmptyState(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = Space.m),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .fillMaxWidth(),
+        horizontalAlignment = Alignment.Start,
     ) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(Space.m))
         // The launcher mark used to be rendered here and it did not survive the move: it is a 108 dp
         // adaptive-icon vector whose two paths are white shapes designed to read against the
         // launcher's own coloured background, drawn inside a 72 dp safe zone. Tinted dark and placed
@@ -275,20 +277,18 @@ private fun EmptyState(modifier: Modifier = Modifier) {
         // headline now leads and the strip does the visual work.
         Text(
             text = stringResource(R.string.home_empty_headline),
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(Space.s))
         Text(
             text = stringResource(R.string.home_empty_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(max = 300.dp),
+            modifier = Modifier.widthIn(max = 360.dp),
         )
 
-        Spacer(Modifier.height(Space.l))
+        Spacer(Modifier.height(Space.m))
         EmptyStateStepStrip()
     }
 }
@@ -313,16 +313,16 @@ private fun EmptyStateStepStrip(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         steps.forEachIndexed { index, (icon, labelRes, tint) ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
-                        .background(tint.copy(alpha = 0.14f), CircleShape),
+                        .size(36.dp)
+                        .background(tint.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
                 }
-                Spacer(Modifier.height(Space.xs))
+                Spacer(Modifier.width(Space.s))
                 Text(
                     text = stringResource(labelRes),
                     style = MaterialTheme.typography.labelSmall,
@@ -333,8 +333,7 @@ private fun EmptyStateStepStrip(modifier: Modifier = Modifier) {
                 Box(
                     modifier = Modifier
                         .padding(horizontal = Space.xs)
-                        .padding(bottom = Space.l)
-                        .width(20.dp)
+                        .width(16.dp)
                         .height(2.dp)
                         .background(MaterialTheme.colorScheme.outlineVariant),
                 )
@@ -406,6 +405,12 @@ private fun HomeSearchField(
             }
         },
         shape = RoundedCornerShape(Space.buttonRadius),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+        ),
         modifier = modifier.fillMaxWidth().testTag(HOME_SEARCH_FIELD_TAG),
     )
 }
@@ -596,10 +601,8 @@ private fun HomeBody(
                 icon = Icons.Filled.QrCodeScanner,
                 title = stringResource(R.string.home_scan_button),
                 subtitle = stringResource(R.string.home_action_barcode_subtitle),
-                gradient = listOf(
-                    MaterialTheme.colorScheme.primary,
-                    MaterialTheme.extendedColors.accents.indigo,
-                ),
+                accent = MaterialTheme.colorScheme.primary,
+                filled = true,
                 onClick = onScan,
                 modifier = Modifier.testTag(HOME_SCAN_BARCODE_TAG),
             )
@@ -609,10 +612,7 @@ private fun HomeBody(
                 icon = Icons.Filled.DocumentScanner,
                 title = stringResource(R.string.home_empty_scan_label),
                 subtitle = stringResource(R.string.home_action_label_subtitle),
-                gradient = listOf(
-                    MaterialTheme.extendedColors.accents.teal,
-                    MaterialTheme.extendedColors.accents.green,
-                ),
+                accent = MaterialTheme.extendedColors.accents.teal,
                 onClick = onScanLabel,
                 modifier = Modifier.testTag(HOME_SCAN_LABEL_TAG),
             )
@@ -693,11 +693,9 @@ private fun HomeBody(
 /**
  * One way into the app: an icon, what it does, and why you'd pick it over the other one.
  *
- * The two camera actions share this shape so they read as two options of one kind, and both now
- * carry their own two-stop [gradient] so they read as a matched pair rather than one filled card and
- * one outlined afterthought. Their foreground comes from the explicit accent-fill pair: warm light
- * content in Light and dark ink in Dark. An arbitrary white foreground cannot remain readable when
- * dark-mode accents are intentionally lifted for contrast against the page.
+ * The barcode path is the fastest common case, so it owns Home's one filled action. Label scan is
+ * equally discoverable through size and placement but quieter through a paper surface and accent
+ * edge. Hierarchy now comes from role instead of two unrelated gradients competing at full volume.
  *
  * Semantics are merged into a single button node: without that, TalkBack announces the icon, the
  * title and the subtitle as three separate stops inside one tappable thing.
@@ -707,37 +705,50 @@ private fun HomeActionCard(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    gradient: List<Color>,
+    accent: androidx.compose.ui.graphics.Color,
+    filled: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(Space.cardRadius)
     val description = stringResource(R.string.home_action_description, title, subtitle)
-    val contentColor = MaterialTheme.extendedColors.onAccent
+    val containerColor = if (filled) accent else MaterialTheme.colorScheme.surfaceContainerLowest
+    val contentColor = if (filled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    val supportingColor = if (filled) {
+        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.88f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 10.dp,
+                elevation = if (filled) 5.dp else 0.dp,
                 shape = shape,
-                ambientColor = gradient.last().copy(alpha = 0.30f),
-                spotColor = gradient.last().copy(alpha = 0.30f),
+                ambientColor = accent.copy(alpha = 0.18f),
+                spotColor = accent.copy(alpha = 0.18f),
             )
             .clip(shape)
-            .background(Brush.linearGradient(gradient))
+            .background(containerColor)
+            .then(
+                if (filled) Modifier else Modifier.border(1.dp, accent.copy(alpha = 0.52f), shape),
+            )
             .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 contentDescription = description
             }
-            .padding(horizontal = Space.m, vertical = Space.m),
+            .padding(horizontal = Space.m, vertical = Space.m + Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(44.dp)
-                .background(contentColor.copy(alpha = 0.20f), CircleShape),
+                .size(Space.minTouchTarget)
+                .background(
+                    if (filled) contentColor.copy(alpha = 0.16f) else accent.copy(alpha = 0.12f),
+                    RoundedCornerShape(12.dp),
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(24.dp))
@@ -749,7 +760,7 @@ private fun HomeActionCard(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = contentColor.copy(alpha = ACCENT_SUPPORTING_ALPHA),
+                color = supportingColor,
             )
         }
 
@@ -760,9 +771,6 @@ private fun HomeActionCard(
         )
     }
 }
-
-/** Keeps supporting copy visibly subordinate while retaining 4.5:1 on every gradient stop. */
-private const val ACCENT_SUPPORTING_ALPHA = 0.96f
 
 /**
  * The tutorial invitation (owner instruction, 2026-09-08).
@@ -850,8 +858,8 @@ private fun TutorialReminderCard(onStart: () -> Unit, onDismiss: () -> Unit) {
 private fun SectionHeading(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier
             .padding(top = Space.m, bottom = Space.xs)
             .semantics { heading() },
@@ -909,14 +917,13 @@ private fun RecentCard(
         }
     }
 
-    // One accent per card, derived from the barcode so a given product keeps the same colour
-    // between launches. Decoration only — it encodes nothing, and the card is fully legible in
-    // greyscale.
-    val accents = MaterialTheme.extendedColors.accents
-    val spine = listOf(
-        accents.teal, accents.violet, accents.green,
-        accents.magenta, accents.indigo, accents.amber,
-    )[(product.barcode.hashCode().absoluteValue) % 6]
+    // Recent items share the primary spine; favourites use violet alongside the visible star.
+    // Colour reinforces hierarchy but never carries the favourite state alone.
+    val spine = if (product.favorite) {
+        MaterialTheme.extendedColors.accents.violet
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
 
     Row(
         modifier = Modifier
