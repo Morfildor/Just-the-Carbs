@@ -53,6 +53,12 @@ in the repo as publicly readable. Nothing signed and no keystore is committed, a
 
 ## Final Tutorial V2 polish (owner correction, 2026-09-10) — READ FIRST
 
+**Superseded by "Current release and branch state" further down this file: `1.0.6` / `versionCode 7`
+described below as "not yet uploaded" has since been built from this pass's evidence and uploaded to
+Google Play's Production track (source `fa9d9e8`, tag `play-1.0.6-submitted`), where it is under
+review. `versionCode 7` is spent; development now targets `1.0.7` / `versionCode 8`. The test and
+build evidence below remains an accurate historical record of the release-preparation pass itself.**
+
 ### Release preparation (2026-09-10)
 
 The owner physically reviewed and accepted the current debug build and final tutorial before the
@@ -4499,10 +4505,40 @@ diagnostic deliberately bypasses `SearchALiciousDataSource` — the escaper esca
 can only be built by appending it *after* escaping, and going through the data source would measure
 the escaper instead of the service.
 
-## Version and track state (updated 2026-09-08) — THE AUTHORITATIVE ANSWER, READ BEFORE ANY RELEASE CLAIM
+## Current release and branch state — 2026-09-14
+
+This section supersedes every older statement in this file and in `docs/` saying that
+`versionCode 7` / `1.0.6` has not yet been uploaded, remains a local development build, or is "the
+next Play artifact" still to be built — including the "Version and track state (updated
+2026-09-08)" table immediately below, which was accurate when written and is now historical.
+
+**Production:**
+- `1.0.6` / `versionCode 7`
+- uploaded to Google Play's **Production** track
+- currently **under Play review**
+- frozen source branch: `release/1.0.6`
+- source commit: `fa9d9e8e18c340ecae3dc0f14d7a225e9813ae2c` (tag `play-1.0.6-submitted`)
+- `versionCode 7` is **spent** — never rebuild or re-upload it, whatever happens to the review
+
+**Development:**
+- branch `main`
+- `1.0.7` / `versionCode 8`
+- the **first Production update**
+- not uploaded
+
+`branding.gradle.kts` on `main` now names `8` / `"1.0.7"`; on `release/1.0.6` it still correctly
+names `7` / `"1.0.6"` and must stay that way — that branch is the frozen record of what was
+submitted. Do not merge `main` back into `release/1.0.6`, do not force-update it, and do not create
+`release/1.0.7` until there is a concrete upload candidate for `1.0.7`.
+
+## Version and track state (updated 2026-09-08) — HISTORICAL, describes 1.0.5→1.0.6; see above for current state
 
 Everything else in this file and in `docs/` is subordinate to this section. Where an older passage
 disagrees, this one is right — and fix the older passage rather than working around it.
+
+*(The table and rule text below describe the 1.0.5→1.0.6 development cycle and are kept for their
+general reasoning, which is still correct. For which version is current now, see "Current release
+and branch state" above — do not read this table as naming the current version.)*
 
 | Question | Answer |
 |---|---|
@@ -4527,18 +4563,19 @@ Play acceptance/review completion is **not** the gate for opening the next numbe
 Play finished reviewing it, and `5` was still permanently consumed. The corrective release that
 followed opened the *next* number (`6`), never a rebuilt `5`. Do not read an older passage's "do not
 bump until the open version has been uploaded **and accepted**" as still correct; acceptance is not
-required, only upload.
+required, only upload. **The same rule applied again to open `1.0.7` / `versionCode 8` once `1.0.6`
+/ `versionCode 7` reached Play's Production track — see "Current release and branch state" above.**
 
-This is what 1.0.0 through 1.0.5 actually did — 1.0.2 alone accumulated five separate passes (live
+This is what 1.0.0 through 1.0.6 actually did — 1.0.2 alone accumulated five separate passes (live
 search, the Search-a-licious migration, search hardening, search accuracy, the theme fixes) under
 one number before its single upload.
 
 Documentation-only changes open nothing: prose that changes no code produces no artifact.
 
-**`versionCode 1` through `6` are all spent** (`5` by upload-then-withdrawal, not by a completed
-release — see above). None is to be rebuilt or re-uploaded — Play refuses a duplicate code
-regardless of what happened to that code's review. The next number is **7**, already open as `1.0.6`
-above.
+**`versionCode 1` through `7` are all spent** (`5` by upload-then-withdrawal, not by a completed
+release). None is to be rebuilt or re-uploaded — Play refuses a duplicate code regardless of what
+happened to that code's review. The next number is **8**, open as `1.0.7` — see "Current release and
+branch state" above.
 
 **A version belongs in `docs/version-history.md` once it has reached Play** — uploaded to a track —
 whether or not review has since completed and whether or not it was later withdrawn. `1.0.4`'s

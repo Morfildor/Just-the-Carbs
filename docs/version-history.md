@@ -55,6 +55,41 @@ reader, and the granularity gap is deliberate.
 
 ---
 
+## 1.0.6 (versionCode 7)
+
+**First Production release.** Opened 2026-09-10 by a scanner shutter-haptic patch, then extended by
+repository-review fixes, tutorial polish and Dark-mode refinement. Built from `fa9d9e8` (tagged
+`play-1.0.6-submitted`), uploaded to Google Play's **Production** track; review in progress as of
+this entry. Full change list is in `CHANGELOG.md`'s `1.0.6` section; this entry records the
+build/artifact facts.
+
+| | |
+|---|---|
+| Track | **Production — uploaded, under review** |
+| Built from | `fa9d9e8e18c340ecae3dc0f14d7a225e9813ae2c` (tag `play-1.0.6-submitted`), frozen on branch `release/1.0.6` |
+| AAB | *not recorded in this repository — no hash/size was captured at upload time* |
+| AAB SHA-256 | *not recorded* |
+| Signer | *not independently re-verified against the uploaded artifact in this repository; prior versions used `CN=Tunc Bilen, O=JustTheCarbs, OU=Release, C=NL, L=Haarlem`, SHA-256 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — assumed unchanged since Play requires the same signer for an update, but not re-confirmed here* |
+
+**Release preparation verification (2026-09-10, from `CHANGELOG.md`):** fresh JVM suite
+**1955/1955**, zero failures/errors/skips (`--rerun-tasks`, 206 XML files); debug lint **0 errors,
+28 warnings, 3 hints**; minified release APK and signed release AAB assembled with the established
+production certificate, R8 removed the four release-forbidden OCR diagnostic/evidence classes, no
+evidence `FileProvider` in the merged manifest; release dependency scan **226 artifacts, 0 known
+vulnerabilities** (OSV.dev). The Android 16 emulator run reached 226/379 tests before the AVD went
+offline (six known pre-existing OCR fixture failures, not a regression); after restarting, a focused
+release-critical set (tutorial/navigation, scanner UI, calculator, meal flows, DAOs, migrations)
+passed **183/183**. The owner physically reviewed and accepted the debug build and final tutorial
+before release preparation; the release artifact itself was not installed on physical hardware
+during that preparation pass.
+
+**Not recorded here and not reconstructable from this repository:** the exact upload timestamp, the
+uploaded AAB's byte size and SHA-256, and independent re-verification of the signer certificate
+against the uploaded bundle. If these facts exist in Play Console or the owner's local build output,
+they should be added to the table above.
+
+---
+
 ## 1.0.5 (versionCode 6)
 
 Corrective release for the withdrawn `1.0.4` / `versionCode 5` below. Opened and built

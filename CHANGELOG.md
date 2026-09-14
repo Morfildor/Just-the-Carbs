@@ -5,9 +5,10 @@ most recent released one; every uploaded version is copied into
 [`docs/version-history.md`](docs/version-history.md), the append-only archive that records each
 artifact's hash, size and signer.
 
-**Latest closed-testing release: `1.0.5` / `versionCode 6`**, released to selected testers
-2026-09-07. `1.0.6` / `versionCode 7` is prepared for upload and remains open below until it
-reaches Play.
+**Latest Production submission: `1.0.6` / `versionCode 7`**, built from `fa9d9e8` (tag
+`play-1.0.6-submitted`), uploaded to Google Play's **Production** track and currently under review.
+`1.0.7` / `versionCode 8` is the first Production update and is open below, accumulating changes
+made after that submission.
 
 ## Versioning rule — one version per uploaded artifact (owner, resolved 2026-08-30)
 
@@ -61,10 +62,11 @@ work after
   defect line says what the user would have seen, not which function moved.
 - `versionCode` is unique per upload and **never reused** — Play rejects a duplicate. It is bumped
   when a version section is opened, then left alone until that build ships.
-- **`versionCode 1` through `6` are spent** — none is to be rebuilt or re-uploaded; the next number
-  is `7`, which `1.0.6` has open below. Code `5` was consumed by the withdrawn closed-testing
+- **`versionCode 1` through `7` are spent** — none is to be rebuilt or re-uploaded; the next number
+  is `8`, which `1.0.7` has open below. Code `5` was consumed by the withdrawn closed-testing
   submission (see its section below) and never became a released closed-track artifact; `1`, `2`,
-  `3`, `4` and `6` reached the closed track as recorded in `docs/version-history.md`.
+  `3`, `4` and `6` reached the closed track and `7` reached the **Production** track, as recorded in
+  `docs/version-history.md`.
 - When a version is uploaded, copy its section verbatim into `docs/version-history.md`. Nothing is
   rewritten on the way across, so the record of what shipped stays what it said at the time.
 - Every version also carries a **Play Store release notes** block — the *What's new* text, written
@@ -76,24 +78,16 @@ work after
 
 ## Unreleased
 
-Nothing yet. `1.0.6` / `versionCode 7` is open below; a documentation-only change opens nothing
+Nothing yet. `1.0.7` / `versionCode 8` is open below; a documentation-only change opens nothing
 further and lands directly under that heading.
 
-## 1.0.6 (versionCode 7) — 2026-09-10 — prepared for upload, not uploaded
+## 1.0.7 (versionCode 8) — Unreleased
 
-Opened by the scanner shutter-haptic patch, then extended by the repository-review fixes below.
-This version also corrects portion recalculation, nutrition-basis persistence, meal-save reporting,
-and scanner lifecycle handling. It remains a local development build; no Play upload has been made.
+The first Production update. Opened by the first code change made after the `1.0.6` submission
+below (source `fa9d9e8`, tag `play-1.0.6-submitted`): a continuation of the Light/Dark visual
+refinement pass, a full visual overhaul, and an adversarial-review fixes pass. Not yet uploaded.
 
 ### Changed
-
-- Refined Dark mode without changing app behavior: welcome and filled-accent content now use
-  explicit foreground pairs, scanner review screens separate themed controls from the photograph,
-  OCR selection geometry remains visible over mixed packaging, dialogs share one raised-surface
-  treatment, and Settings' rating action uses its proper tertiary foreground. Page backdrops now
-  paint above the opaque ground at contrast-tested Light/Dark strengths; welcome colours switch as
-  atomic semantic pairs while pager motion remains; and the dark snackbar action has a narrowly
-  scoped contrast-safe inverse blue.
 
 - Continued the Light/Dark visual refinement pass: every text-bearing button and chip now uses a
   minimum height instead of a fixed one, so labels survive large font scales instead of clipping
@@ -106,8 +100,43 @@ and scanner lifecycle handling. It remains a local development build; no Play up
   button's foreground worn at reduced alpha, which previously read as washed-out rather than off.
   Product's top bar gained the same destination spine and back-icon tint every other screen's shared
   top bar uses, while deliberately keeping its own two-line title and growable height rather than
-  adopting the shared component's fixed one. Verified rendered on device in both themes; new
+  adopting the shared component's fixed one. Also extends `1.0.6`'s Dark-mode refinement: page
+  backdrops now paint above the opaque ground at contrast-tested Light/Dark strengths, welcome
+  colours switch as atomic semantic pairs while pager motion remains, and the dark snackbar action
+  has a narrowly scoped contrast-safe inverse blue. Verified rendered on device in both themes; new
   composited-contrast and on-device layout tests guard the changes.
+
+- **Complete visual overhaul and final UI polish** (`48c29a5`). Rebuilt the light and dark visual
+  hierarchy around faster scan, search, and calculator flows. Refreshed shared components, scanner
+  chrome, accessibility behavior, design documentation, and regression coverage.
+
+### Fixed
+
+- **Adversarial review of the visual overhaul found five concrete defects, each reproduced and
+  fixed** (`c101739`): `AccentBackdrop` clipped on every screen that draws it (a positive offset
+  pushed an already edge-aligned element off screen); Meal's Undo snackbar overlapped `JtcTopBar`
+  instead of landing below it; the nutrition-label crop screen had no way to leave the scanner in
+  one tap; Home's empty states left dead space where content was shorter than the viewport;
+  Settings rendered destructive and navigational actions identically. Verified on device in Light
+  and Dark. JVM 1971/1971, lint clean, targeted instrumented suites green (Meal, Home, Settings,
+  crop selection).
+
+---
+
+## 1.0.6 (versionCode 7) — 2026-09-10 — uploaded to Google Play Production, under review
+
+Built from `fa9d9e8` (tag `play-1.0.6-submitted`) and uploaded to Google Play's **Production**
+track; review in progress. This is the first Production release. Opened by the scanner
+shutter-haptic patch, then extended by the repository-review fixes below. This version also
+corrects portion recalculation, nutrition-basis persistence, meal-save reporting, and scanner
+lifecycle handling.
+
+### Changed
+
+- Refined Dark mode without changing app behavior: welcome and filled-accent content now use
+  explicit foreground pairs, scanner review screens separate themed controls from the photograph,
+  OCR selection geometry remains visible over mixed packaging, dialogs share one raised-surface
+  treatment, and Settings' rating action uses its proper tertiary foreground.
 
 - Finished the tutorial release-candidate polish: START now orients around the measured Search,
   Barcode, and Nutrition Label actions; Add to meal gets a restrained warm strong-focus treatment;
