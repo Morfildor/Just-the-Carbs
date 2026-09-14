@@ -13,6 +13,7 @@ import app.justthecarbs.ui.components.ProductHeroImage
 import app.justthecarbs.ui.components.ProductGalleryDialog
 import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.DestinationMarker
+import app.justthecarbs.ui.components.ResultValue
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Motion
 import androidx.compose.foundation.background
@@ -139,6 +140,9 @@ const val ADD_PORTION_UNIT_FIELD_TAG = "add_portion_unit_amount"
 
 /** Stable handle for the dominant carbohydrate result, used by instrumented tests. */
 const val PRODUCT_RESULT_TAG = "product_result"
+
+/** Stable handle for the inline Verify action beside the per-100 figure, used by instrumented tests. */
+const val PRODUCT_VERIFY_INLINE_TAG = "product_verify_inline"
 
 /**
  * The calculator — the screen §14 says deserves the majority of the UI attention.
@@ -324,6 +328,8 @@ fun ProductScreen(
                     onShowAddPortionUnitForm = onShowAddPortionUnitForm,
                     onAddPortionUnit = onAddPortionUnit,
                     onVerifyPortionUnit = onVerifyPortionUnit,
+                    onVerify = onVerify,
+                    onVerifyByTyping = onVerifyByTyping,
                     onApplyNewerRemotePortionUnit = onApplyNewerRemotePortionUnit,
                     onDismissNewerRemotePortionUnit = onDismissNewerRemotePortionUnit,
                     onCorrectPortionUnit = onCorrectPortionUnit,
@@ -575,6 +581,8 @@ private fun CalculatorBody(
     onShowAddPortionUnitForm: (Boolean) -> Unit = {},
     onAddPortionUnit: (PortionUnitKind, PortionConversion, String?) -> Unit = { _, _, _ -> },
     onVerifyPortionUnit: () -> Unit = {},
+    onVerify: () -> Unit = {},
+    onVerifyByTyping: () -> Unit = {},
     onApplyNewerRemotePortionUnit: () -> Unit = {},
     onDismissNewerRemotePortionUnit: () -> Unit = {},
     onCorrectPortionUnit: (PortionConversion) -> Unit = {},
@@ -628,6 +636,8 @@ private fun CalculatorBody(
         ProductSummary(
             product = product,
             compact = imeVisible,
+            onVerify = onVerify,
+            onVerifyByTyping = onVerifyByTyping,
             modifier = Modifier.padding(horizontal = Space.screenEdge),
         )
 
@@ -909,6 +919,8 @@ private fun ProductSummary(
     product: Product,
     /** True while the IME is open — drops the badge's advisory line to give the room back. */
     compact: Boolean = false,
+    onVerify: () -> Unit = {},
+    onVerifyByTyping: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Stacked rather than side by side. The badge is itself a two-part block (a pill plus, for
@@ -938,6 +950,28 @@ private fun ProductSummary(
         )
         Spacer(Modifier.height(Space.xs))
         SourceBadge(product, showHint = !compact)
+        // Discoverable verification, not just buried in the overflow menu. Only when it is
+        // actually relevant: a value the app itself never checked against the package, and not
+        // user-authored (isRemoteRefreshable is exactly "not user-authored AND unverified" —
+        // the same condition the app already uses to decide whether a background refresh may
+        // touch this product, so this reuses an existing fact rather than inventing a new one).
+        //
+        // Deliberately worded and styled as a neutral action, not a warning: SourceBadge's own
+        // orange-soft badge already carries the "not verified" signal, so this must not repeat
+        // or escalate it.
+        if (!compact && product.isRemoteRefreshable) {
+            Spacer(Modifier.height(Space.xs))
+            TextButton(
+                onClick = onVerify,
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = Space.xs),
+                modifier = Modifier.heightIn(min = Space.minTouchTarget).testTag(PRODUCT_VERIFY_INLINE_TAG),
+            ) {
+                Text(
+                    text = stringResource(R.string.product_verify_inline),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
     }
 }
 
@@ -1915,10 +1949,12 @@ private fun ResultPanel(
             // Both figures come from `exact`, independently. Neither is derived from the other,
             // so swapping which one dominates cannot introduce a double rounding (§17).
             val wholeGrams = ResultFormatter.wholeGrams(exact)
-            val dominant = when (settings.resultStyle) {
-                ResultStyle.DECIMAL_DOMINANT -> "${ResultFormatter.decimal(exact)} g"
-                ResultStyle.WHOLE_DOMINANT -> "${ResultFormatter.whole(wholeGrams)} g"
+            val dominantNumeral = when (settings.resultStyle) {
+                ResultStyle.DECIMAL_DOMINANT -> ResultFormatter.decimal(exact)
+                ResultStyle.WHOLE_DOMINANT -> ResultFormatter.whole(wholeGrams)
             }
+            val resultUnit = stringResource(R.string.result_unit_grams)
+            val accessibleResult = stringResource(R.string.result_accessible_grams, dominantNumeral)
 
             Row(
                 modifier = Modifier.fillMaxWidth().height(96.dp),
@@ -1927,28 +1963,19 @@ private fun ResultPanel(
                 // Animated only on the digits changing, not on every recomposition, and only for
                 // 120ms — long enough to notice the number moved, short enough that nobody waits.
                 AnimatedContent(
-                    targetState = dominant,
+                    targetState = dominantNumeral,
                     transitionSpec = {
                         (fadeIn(tween(Motion.QUICK_MS)) togetherWith fadeOut(tween(Motion.QUICK_MS)))
                     },
                     label = "result",
                     modifier = Modifier.weight(1f),
                 ) { value ->
-                    Text(
-                        text = value,
-                        style = NumberType.result,
-                        color = MaterialTheme.extendedColors.result,
-                        maxLines = 1,
-                        // Shrinks rather than clips. See [NumberType.resultAutoSize] — a result
-                        // that loses digits still looks like a finished number.
-                        autoSize = NumberType.resultAutoSize,
-                        textAlign = TextAlign.Start,
-                        // Announced as a live region so TalkBack reads the new result as the
-                        // portion changes, instead of leaving a blind user to hunt for it (§39).
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(PRODUCT_RESULT_TAG)
-                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    ResultValue(
+                        dominant = value,
+                        unit = resultUnit,
+                        accessibleLabel = accessibleResult,
+                        testTag = PRODUCT_RESULT_TAG,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
 

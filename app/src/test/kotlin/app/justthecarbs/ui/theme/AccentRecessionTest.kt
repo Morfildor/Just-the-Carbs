@@ -26,17 +26,37 @@ class AccentRecessionTest {
 
     @Test
     fun `calculation surfaces pair result typography with the reserved result color`() {
-        listOf(
+        // ProductScreen composes the shared ResultValue rather than styling the calculated figure
+        // directly (interaction-polish task 3) — ResultValue.kt is where NumberType.result and
+        // MaterialTheme.extendedColors.result now live for that screen, so it is checked instead.
+        // MealScreen still styles its result inline and is checked directly, as before.
+        val productScreenSource = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/product/ProductScreen.kt",
+        ).readText()
+        val resultValueSource = java.io.File(
+            "src/main/kotlin/app/justthecarbs/ui/components/ResultValue.kt",
+        ).readText()
+        assertTrue(
+            "ProductScreen.kt must render the result via ResultValue",
+            productScreenSource.contains("ResultValue("),
+        )
+        assertTrue(
+            "ResultValue.kt must use the result type",
+            resultValueSource.contains("NumberType.result"),
+        )
+        assertTrue(
+            "ResultValue.kt must use the reserved result color",
+            resultValueSource.contains("MaterialTheme.extendedColors.result"),
+        )
+
+        val mealScreenSource = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/meal/MealScreen.kt",
-        ).forEach { path ->
-            val source = java.io.File(path).readText()
-            assertTrue("$path must use the result type", source.contains("NumberType.result"))
-            assertTrue(
-                "$path must use the reserved result color",
-                source.contains("MaterialTheme.extendedColors.result"),
-            )
-        }
+        ).readText()
+        assertTrue("MealScreen.kt must use the result type", mealScreenSource.contains("NumberType.result"))
+        assertTrue(
+            "MealScreen.kt must use the reserved result color",
+            mealScreenSource.contains("MaterialTheme.extendedColors.result"),
+        )
     }
 
     @Test

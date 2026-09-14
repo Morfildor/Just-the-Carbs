@@ -125,6 +125,10 @@
     <!-- Shown in the result slot before a portion exists: the figure the result will be scaled
          from. Marked as the per-100 basis so it can never be mistaken for a computed result. -->
     <string name="product_result_basis_preview" tools:ignore="MissingTranslation">%1$s g per 100 %2$s</string>
+    <!-- The unit beside a split-typography result (see ResultValue), e.g. the "g" in "31.2 g". -->
+    <string name="result_unit_grams">g</string>
+    <!-- Spoken form for TalkBack: reads the numeral and unit as one phrase, e.g. "31.2 grams". -->
+    <string name="result_accessible_grams">%1$s grams</string>
     <string name="product_quarter_pack">¼ pack</string>
     <string name="product_half_pack">½ pack</string>
     <string name="product_full_pack">Full pack</string>
@@ -132,6 +136,10 @@
     <string name="product_copied">%1$s copied</string>
     <string name="product_more_actions">More actions</string>
     <string name="product_verify">Verify label</string>
+    <!-- Inline verify action beside the per-100 figure, for an online value never checked against
+         the package. Shorter than the overflow menu's "Verify against package" — this sits right
+         next to the number it is about. -->
+    <string name="product_verify_inline">Verify</string>
     <string name="product_reset_online">Reset to online value</string>
     <string name="product_scan_label">Scan nutrition label</string>
 

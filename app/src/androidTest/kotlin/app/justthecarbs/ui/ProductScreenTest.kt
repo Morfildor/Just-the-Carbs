@@ -7,9 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -48,6 +46,7 @@ import app.justthecarbs.domain.ProductImageType
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.VerificationStatus
 import app.justthecarbs.ui.product.PRODUCT_RESULT_TAG
+import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
@@ -152,7 +151,10 @@ class ProductScreenTest {
 
         // The brief's own worked example: 48.2 x 65 / 100 = 31.33.
         // Default hierarchy is decimal-dominant (correction #6).
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        //
+        // The result now renders as a split numeral + unit (ResultValue), so "31.3 g" no longer
+        // exists as one text node — asserted on the merged accessible description instead.
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
         compose.onNodeWithText("≈ 31 g whole grams").assertIsDisplayed()
     }
 
@@ -164,14 +166,14 @@ class ProductScreenTest {
         // §16: the result updates as you type. If a Calculate button ever appears, this fails.
         compose.onAllNodesWithText("Calculate", substring = true, ignoreCase = true)
             .assertCountEquals(0)
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
     }
 
     @Test
     fun clearingThePortionRemovesTheResultRatherThanShowingZero() {
         showCalculator()
         typePortion("65")
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
 
         compose.onNode(portionField()).performTextReplacement("")
 
@@ -209,9 +211,9 @@ class ProductScreenTest {
         // Scoped to the result's own node rather than searching the whole screen for the text: the
         // portion field carries a value and a unit suffix too, so a bare text search can match the
         // input instead of the result — which is how this assertion could pass while saying nothing
-        // about the result at all.
-        compose.onNode(hasTestTag(PRODUCT_RESULT_TAG) and hasText("36.2 g"))
-            .assertIsDisplayed()
+        // about the result at all. The numeral and unit are now separate sibling Text nodes
+        // (ResultValue), so the merged accessible description is what carries "36.2 g" as one string.
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("36.2 grams")
     }
 
     @Test
@@ -227,9 +229,10 @@ class ProductScreenTest {
         //
         // Asserted on the result's own tag rather than by searching for the text "0.0 g": once the
         // portion field is showing `0`, a plain text search matches the *field* as well as the
-        // result, and the assertion silently stops being about the result at all.
-        compose.onNode(hasTestTag(PRODUCT_RESULT_TAG) and hasText("0.0 g"))
-            .assertIsDisplayed()
+        // result, and the assertion silently stops being about the result at all. The numeral and
+        // unit are now separate sibling Text nodes (ResultValue), so the merged accessible
+        // description is what carries "0.0 g" as one string.
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("0.0 grams")
     }
 
     // ---- design decision 3.1: ml is never converted to g -------------------------------------
@@ -242,7 +245,7 @@ class ProductScreenTest {
         typePortion("250")
 
         // 9.4 x 250 / 100 = 23.5 — the same arithmetic as grams, because no density is applied.
-        compose.onNodeWithText("23.5 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("23.5 grams")
         compose.onNodeWithText("≈ 24 g whole grams").assertIsDisplayed()
     }
 
@@ -262,6 +265,33 @@ class ProductScreenTest {
 
         compose.onNodeWithText("✓ Verified by you").assertIsDisplayed()
         compose.onAllNodesWithText("Online value").assertCountEquals(0)
+    }
+
+    // ---- interaction-polish task 3: inline Verify affordance ----------------------------------
+
+    @Test
+    fun verifyIsOfferedForAnUnverifiedOnlineValue() {
+        // The default fixture is already OPEN_FOOD_FACTS / UNVERIFIED — isRemoteRefreshable is
+        // exactly that condition, so this is the ordinary case a scanned product first arrives in.
+        showCalculator(product())
+
+        compose.onNodeWithTag(PRODUCT_VERIFY_INLINE_TAG).assertExists()
+    }
+
+    @Test
+    fun verifyIsAbsentForAVerifiedValue() {
+        showCalculator(product(verification = VerificationStatus.USER_VERIFIED))
+
+        compose.onNodeWithTag(PRODUCT_VERIFY_INLINE_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun verifyIsAbsentForAManualOrOcrValue() {
+        // User-authored data is never remote-refreshable regardless of verification status — the
+        // condition must not fire on data source alone ignoring the (still UNVERIFIED) status.
+        showCalculator(product(origin = ProductDataOrigin.MANUAL))
+
+        compose.onNodeWithTag(PRODUCT_VERIFY_INLINE_TAG).assertDoesNotExist()
     }
 
     // ---- §4/§30 the product hero image ---------------------------------------------------------
@@ -330,7 +360,7 @@ class ProductScreenTest {
         compose.onNodeWithTag(PRODUCT_HERO_TAG).assertIsDisplayed()
 
         typePortion("65")
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
     }
 
     private fun showGalleryWithControlledImage(data: GalleryTestImage) {
@@ -504,8 +534,13 @@ class ProductScreenTest {
         // disagree and the assertion passes even when the digits are visibly cut off. Verified by
         // forcing the result into a 120dp-wide row — the bounds comparison still passed.
         // `TextLayoutResult` is the only source that reports the *desired* size independently.
+        //
+        // The numeral is now rendered by ResultValue as its own Text node, a child of the
+        // PRODUCT_RESULT_TAG row rather than that tag itself — GetTextLayoutResult lives on the
+        // Text node that actually lays out the digits, so the numeral's own text ("125.3") is what
+        // locates it.
         val layouts = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG)
+        compose.onNodeWithText("125.3")
             .fetchSemanticsNode()
             .config[SemanticsActions.GetTextLayoutResult]
             .action
@@ -518,8 +553,8 @@ class ProductScreenTest {
             !layout.hasVisualOverflow,
         )
         // A truncated result would still satisfy a bounds check by simply being a shorter string,
-        // so the value itself is asserted too.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertTextEquals("125.3 g")
+        // so the value itself is asserted too, via the merged accessible description.
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("125.3 grams")
     }
 
     @Test
@@ -579,7 +614,7 @@ class ProductScreenTest {
             ),
         )
         typePortion("65")
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
 
         compose.onNodeWithContentDescription("View product images").performClick()
         compose.onNodeWithTag(PRODUCT_GALLERY_NEXT_TAG).performClick()
@@ -589,7 +624,7 @@ class ProductScreenTest {
         compose.onNodeWithText("Nutrition").assertIsDisplayed()
         compose.onNodeWithContentDescription("Close product images").performClick()
 
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
     }
 
     @Test
@@ -660,7 +695,7 @@ class ProductScreenTest {
 
         typePortion("65")
 
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
         compose.onNodeWithText("≈ 31 g whole grams").assertIsDisplayed()
     }
 
@@ -673,7 +708,7 @@ class ProductScreenTest {
         compose.onNodeWithText("Full pack").performClick()
 
         // 48.2 x 380 / 100 = 183.16
-        compose.onNodeWithText("183.2 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("183.2 grams")
     }
 
     @Test
@@ -704,7 +739,7 @@ class ProductScreenTest {
         compose.onNodeWithText("¼ pack").performClick()
 
         // 400 / 4 = 100 g; 48.2 x 100 / 100 = 48.2
-        compose.onNodeWithText("48.2 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("48.2 grams")
     }
 
     @Test
@@ -714,7 +749,7 @@ class ProductScreenTest {
         compose.onNodeWithText("½ pack").performClick()
 
         // 400 / 2 = 200 g; 48.2 x 200 / 100 = 96.4
-        compose.onNodeWithText("96.4 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("96.4 grams")
     }
 
     // ---- §43 result style --------------------------------------------------------------------
@@ -724,7 +759,7 @@ class ProductScreenTest {
         showCalculator(settings = AppSettings(resultStyle = ResultStyle.WHOLE_DOMINANT))
         typePortion("65")
 
-        compose.onNodeWithText("31 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31 grams")
         compose.onNodeWithText("31.3 g calculated").assertIsDisplayed()
     }
 
@@ -738,7 +773,7 @@ class ProductScreenTest {
         showCalculator(product(carbs = "51.5"))
         typePortion("30")
 
-        compose.onNodeWithText("15.5 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.5 grams")
         compose.onNodeWithText("≈ 15 g whole grams").assertIsDisplayed()
         compose.onAllNodesWithText("≈ 16 g whole grams").assertCountEquals(0)
     }
@@ -756,7 +791,7 @@ class ProductScreenTest {
         typePortion("65")
 
         // The result is what matters; a long name must never displace it.
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
     }
 
     @Test
@@ -764,7 +799,7 @@ class ProductScreenTest {
         showCalculator(product(carbs = "0", name = "Bronwater"))
         typePortion("500")
 
-        compose.onNodeWithText("0.0 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("0.0 grams")
     }
 
     @Test
@@ -773,7 +808,7 @@ class ProductScreenTest {
         typePortion("2500")
 
         // 48.2 x 2500 / 100 = 1205
-        compose.onNodeWithText("1205.0 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("1205.0 grams")
     }
 
     @Test
@@ -782,10 +817,10 @@ class ProductScreenTest {
 
         typePortion("32.5")
         // 48.2 x 32.5 / 100 = 15.665
-        compose.onNodeWithText("15.7 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams")
 
         compose.onNode(portionField()).performTextReplacement("32,5")
-        compose.onNodeWithText("15.7 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams")
     }
 
     /** The portion field is the only text input on this screen. */
