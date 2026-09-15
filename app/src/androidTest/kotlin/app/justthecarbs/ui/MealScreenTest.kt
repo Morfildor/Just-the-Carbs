@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -138,6 +140,12 @@ class MealScreenTest {
      * The empty meal's total slot must not look like a calculated result (interaction-polish
      * task 5). Previously a dominant tomato-red "0.0 g" sat where the total goes, claiming an
      * answer the app had never computed; it is now a neutral em dash.
+     *
+     * Asserting the em dash alone does not prove the claim in this test's own name: a second,
+     * "supporting" line below the dominant figure previously rendered "≈ 0 g whole grams"
+     * unconditionally, reopening the exact defect the em dash exists to avoid. The em dash and
+     * the absence of any "0 g" text anywhere in the panel are both asserted here so this test
+     * cannot go green while that supporting line still claims a computed zero.
      */
     @Test
     fun anEmptyMealShowsThePlaceholderNotACalculatedZero() {
@@ -145,6 +153,7 @@ class MealScreenTest {
 
         compose.onNodeWithTag(MEAL_TOTAL_TAG).assertIsDisplayed()
         compose.onNodeWithText("—").assertIsDisplayed()
+        compose.onAllNodesWithText("0 g", substring = true).assertCountEquals(0)
     }
 
     /**

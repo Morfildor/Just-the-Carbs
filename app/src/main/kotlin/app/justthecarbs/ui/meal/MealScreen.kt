@@ -306,10 +306,12 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
         )
         Spacer(Modifier.height(Space.xs))
 
-        if (state.items.isEmpty()) {
+        if (total == null) {
             // No calculation has happened — this must not look like one. A dominant tomato-red
             // "0.0 g" here previously claimed a result the app had not computed; an em dash makes
-            // no such claim.
+            // no such claim. The supporting line below the dominant figure is part of that same
+            // claim, so it must stay silent here too — a "≈ 0 g whole grams" line beneath the em
+            // dash would restate the exact defect the em dash exists to avoid.
             Text(
                 text = stringResource(R.string.meal_total_empty_placeholder),
                 style = NumberType.result,
@@ -321,8 +323,8 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
             // Both figures derive from the exact sum independently, exactly as the calculator does —
             // the whole-gram line is never rounded from the decimal one (§17).
             val dominantNumeral = when (settings.resultStyle) {
-                ResultStyle.DECIMAL_DOMINANT -> ResultFormatter.decimal(total?.exact ?: java.math.BigDecimal.ZERO)
-                ResultStyle.WHOLE_DOMINANT -> ResultFormatter.whole(total?.wholeGrams ?: 0)
+                ResultStyle.DECIMAL_DOMINANT -> ResultFormatter.decimal(total.exact)
+                ResultStyle.WHOLE_DOMINANT -> ResultFormatter.whole(total.wholeGrams)
             }
             val resultUnit = stringResource(R.string.result_unit_grams)
             val accessibleResult = stringResource(R.string.result_accessible_grams, dominantNumeral)
@@ -333,22 +335,22 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
                 accessibleLabel = accessibleResult,
                 testTag = MEAL_TOTAL_TAG,
             )
-        }
 
-        Text(
-            text = when (settings.resultStyle) {
-                ResultStyle.DECIMAL_DOMINANT -> stringResource(
-                    R.string.product_result_whole,
-                    ResultFormatter.whole(total?.wholeGrams ?: 0),
-                )
-                ResultStyle.WHOLE_DOMINANT -> stringResource(
-                    R.string.product_result_calculated,
-                    ResultFormatter.decimal(total?.exact ?: java.math.BigDecimal.ZERO),
-                )
-            },
-            style = NumberType.supporting,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            Text(
+                text = when (settings.resultStyle) {
+                    ResultStyle.DECIMAL_DOMINANT -> stringResource(
+                        R.string.product_result_whole,
+                        ResultFormatter.whole(total.wholeGrams),
+                    )
+                    ResultStyle.WHOLE_DOMINANT -> stringResource(
+                        R.string.product_result_calculated,
+                        ResultFormatter.decimal(total.exact),
+                    )
+                },
+                style = NumberType.supporting,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         // The meal was previously a dead end: the only ways on were the system back gesture or the
         // top-left arrow, both of which read as "leave" rather than "continue". A meal is usually
