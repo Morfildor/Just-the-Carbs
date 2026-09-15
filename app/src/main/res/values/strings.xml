@@ -10,6 +10,13 @@
 -->
 <resources xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Launcher shortcuts (long-press the app icon). Short labels are what a launcher shows
+         under a small icon, so they are shorter than the in-app action they open. -->
+    <string name="shortcut_scan_barcode_short">Barcode</string>
+    <string name="shortcut_scan_barcode_long">Scan barcode</string>
+    <string name="shortcut_scan_label_short">Label</string>
+    <string name="shortcut_scan_label_long">Scan nutrition label</string>
+
     <!-- Home -->
     <string name="home_scan_button">Scan barcode</string>
     <string name="home_manual_button">Enter manually</string>

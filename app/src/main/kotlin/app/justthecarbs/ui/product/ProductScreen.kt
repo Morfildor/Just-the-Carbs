@@ -13,6 +13,7 @@ import app.justthecarbs.ui.components.ProductHeroImage
 import app.justthecarbs.ui.components.ProductGalleryDialog
 import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.DestinationMarker
+import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Motion
@@ -44,8 +45,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -67,12 +66,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -85,7 +80,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
@@ -604,7 +598,7 @@ private fun CalculatorBody(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // ZONE 1 — product identity (development-pass brief §4, §19).
+        // Saved-product identity leads the scrolling content (brief §4, §19).
         //
         // The hero image is the first thing on the screen because the first question the user has,
         // before they trust any number, is "is this the package in my hand?". It compacts while the
@@ -614,17 +608,40 @@ private fun CalculatorBody(
         // stable API giving the same fact. Non-zero means the keyboard is taking screen space.
         val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
+        val selectedUnit = state.selectedPortionUnit
+        val countableActive = state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null
+        val portionScroll = rememberScrollState()
+
+        // A quick calculation has no product image. Keep its summary above the centred input,
+        // while a saved product scrolls its identity together with the portion controls. On a
+        // short screen this lets the pinned result panel claim its natural height first instead
+        // of being squeezed by the fixed image and summary above it.
+        if (state.unsaved) {
+            ProductSummary(
+                product = product,
+                compact = imeVisible,
+                onVerify = onVerify,
+                onVerifyByTyping = onVerifyByTyping,
+                modifier = Modifier.padding(horizontal = Space.screenEdge),
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fadeOutWhenMoreBelow(portionScroll)
+                .verticalScroll(portionScroll),
+            verticalArrangement = if (state.unsaved) Arrangement.Center else Arrangement.Top,
+        ) {
+
         // A quick calculation has no photo and no name, so the hero would identify nothing: the
         // monogram is derived from the name printed above it, and with no name it renders as an
         // empty coloured plate under an empty title — which reads as a product record that failed to
         // load rather than as the reading the user just took. A *saved* product with no photo still
         // gets its monogram, unchanged.
         //
-        // Suppressed rather than shrunk. The height it frees is taken up by centring the portion
-        // zone below — see the `verticalArrangement` there. Do not instead "fix" the resulting
-        // space by unpinning the result panel (`weight(1f, fill = false)` on that zone): that was
-        // tried and it leaves a strip of page beneath the panel, which is worse than the gap.
-        if (product.name.isNotEmpty()) {
+        // An unsaved quick calculation keeps its short portion controls centred instead.
+        if (!state.unsaved && product.name.isNotEmpty()) {
             ProductHeroImage(
                 product = product,
                 compact = imeVisible,
@@ -639,13 +656,15 @@ private fun CalculatorBody(
         // reason the hero shrinks there: "Check package if needed" is guidance to read *before*
         // committing to a number, and during typing the portion field and the result need the room.
         // Nothing is hidden that the user has not already had on screen.
-        ProductSummary(
-            product = product,
-            compact = imeVisible,
-            onVerify = onVerify,
-            onVerifyByTyping = onVerifyByTyping,
-            modifier = Modifier.padding(horizontal = Space.screenEdge),
-        )
+        if (!state.unsaved) {
+            ProductSummary(
+                product = product,
+                compact = imeVisible,
+                onVerify = onVerify,
+                onVerifyByTyping = onVerifyByTyping,
+                modifier = Modifier.padding(horizontal = Space.screenEdge),
+            )
+        }
 
         // Correction #5/#10: a newer online figure is offered, never imposed. The calculation the
         // user is looking at does not move unless they say so.
@@ -659,72 +678,9 @@ private fun CalculatorBody(
             )
         }
 
-        val selectedUnit = state.selectedPortionUnit
-        val countableActive = state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null
-
-        // ZONE 2 — portion controls. Scrollable, and deliberately holds only what the user can
-        // afford to scroll for: the mode row, the input field itself, and the secondary shortcuts.
-        // The equation and the result live outside it, in the pinned surface below (§3.2).
-        val portionScroll = rememberScrollState()
-        // Zone 2 takes the remaining height and lays its controls out from the TOP, directly under
-        // the product they belong to.
-        //
-        // It was previously bottom-anchored, on the reasoning that controls belong within thumb
-        // reach (§40). Once the hero image shortened zone 1, that left a measured 163 dp of dead
-        // space between the per-100 figure and "How much are you eating?" — a quarter of the
-        // screen of nothing, which reads as a broken layout rather than a calm one. The controls
-        // still sit comfortably in the lower half because the hero above them is 150 dp tall; they
-        // simply no longer float away from it. Pinned by
-        // `thePortionControlsFollowTheProductHeaderWithoutALargeDeadBand`.
-        // Still `weight(1f)`: the zone takes the remaining height so the result panel stays welded to
-        // the bottom edge. Letting this zone shrink instead (`fill = false`) does remove the gap, but
-        // it unpins the panel — it then floats with a strip of page below it, which is worse than the
-        // gap it fixed. Verified on the emulator, both ways.
-        //
-        // The dead space is removed at its source instead: the trailing spacer below now absorbs it,
-        // and the no-photo hero above no longer reserves 150 dp for two letters.
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                // Fades the last few dp of content into the page when, and only when, there is more
-                // of it below (1.0.3 ease pass).
-                //
-                // **Before `verticalScroll`, and that ordering is the whole thing.** A draw modifier
-                // placed after it is applied to the scrolling *content*, whose height is the full
-                // scrollable extent — so the fade lands at the bottom of everything, far below the
-                // screen, and nothing appears at the visible edge. Placed here it decorates the
-                // viewport, which is the edge the user is actually looking at. Written the wrong way
-                // round first and caught by screenshotting the device, not by reading the code.
-                //
-                // This zone fits without scrolling at the default font scale and overflows from
-                // **1.3x** — an ordinary accessibility setting, not an extreme one. Measured there:
-                // *+ Add portion unit* came to rest sliced horizontally through the middle of its
-                // glyphs at the pinned panel's edge, and at 1.8x the whole quick-adjust row did.
-                // Legible, and cut — which is the exact "reads as a rendering fault rather than as
-                // more content below" failure the trailing spacer below already names. That spacer
-                // fixes the *scrolled-to-the-bottom* case; nothing was addressing the *unscrolled*
-                // one, which is what every large-font user sees first.
-                //
-                // A fade rather than moving anything: the panel stays welded to the bottom edge, no
-                // control changes size or position, and at the default scale — where nothing
-                // overflows — `canScrollForward` is false and this draws nothing at all.
-                .fadeOutWhenMoreBelow(portionScroll)
-                .verticalScroll(portionScroll)
-                .padding(horizontal = Space.screenEdge),
-            // A quick calculation has no hero, no *Usual* row, no portion units and no
-            // *Add portion unit* action, so its contents fill far less of this zone than a saved
-            // product's do — measured at 883 px of empty page between the last control and the
-            // result panel, which is the same "reads unfinished" band the 2026-08-16 Home work
-            // treated as a defect rather than tolerated.
-            //
-            // Centring the short content is the one fix available here that cannot make things
-            // worse: `weight(1f, fill = false)` on this zone removes the gap but unpins the panel
-            // from the bottom edge (tried, rejected, recorded), and a `weight` spacer *inside* a
-            // `verticalScroll` Column is meaningless because the scroll gives it an infinite height
-            // constraint. Arrangement is a property of the parent and does nothing once the content
-            // is taller than the zone, so a saved product's layout is untouched.
-            verticalArrangement = if (state.unsaved) Arrangement.Center else Arrangement.Top,
-        ) {
+        // The product identity and controls share this scrolling space. The equation and result
+        // stay in the pinned panel below; scrolling a long product never steals their height.
+        Column(modifier = Modifier.padding(horizontal = Space.screenEdge)) {
             // Dropped while the keyboard is open, for the same reason `SourceBadge` drops its
             // advisory line: it is a prompt to start, and once the user is typing into a focused
             // field it has been answered. Keeping it cost real legibility rather than height alone
@@ -861,6 +817,7 @@ private fun CalculatorBody(
             // than like more content below. Found by looking at the screen once the Usual row had
             // made this zone taller; the panel's shadow needs clearing too, not just its edge.
             Spacer(Modifier.height(Space.xl))
+        }
         }
 
         // ZONE 3 — the equation and the result, in one pinned surface (brief §3.2).
@@ -1809,17 +1766,14 @@ private fun ResultPanel(
     onAddToMealAndScanNext: () -> Unit = {},
     onOpenMeal: () -> Unit = {},
 ) {
-    val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
-    val haptics = LocalHapticFeedback.current
     // The exact figure, whichever path produced it. Reading `state.result` alone left a valid
     // direct-carb calculation showing "pending" with no Copy and no Add to meal (correction §1).
     val exact = state.exactCarbs
 
-    // Resolved during composition, not inside the click lambda: reading resources off
-    // LocalContext at click time is not configuration-aware and can return a stale string.
+    // The clipboard text follows the user's configured result style, so what is pasted agrees with
+    // what is on screen. `CopyResultButton` owns the copying and its confirmation; this stays here
+    // because formatting a result is the screen's decision, not the button's.
     val copiedValue = exact?.let { ResultFormatter.clipboardValue(it, settings.resultStyle) }
-    val copiedMessage = copiedValue?.let { stringResource(R.string.product_copied, it) }
 
     val panelShape = RoundedCornerShape(topStart = Space.sheetTopRadius, topEnd = Space.sheetTopRadius)
 
@@ -1987,54 +1941,13 @@ private fun ResultPanel(
 
                 Spacer(Modifier.width(Space.s))
 
-                val copyLabel = stringResource(R.string.product_copy)
-                // The button holds a visible "copied" state for a few seconds after the tap.
-                //
-                // The Toast alone was the only confirmation, and a Toast is transient, easy to miss
-                // one-handed, and gone by the time the user looks back — while the value they are
-                // about to paste is going into something that doses insulin. The icon swapping to a
-                // checkmark survives being glanced away from, which is exactly what a Toast cannot
-                // do. The Toast stays: it is what announces the copy to TalkBack.
-                //
-                // Keyed on the copied value so copying a *different* number after changing the
-                // portion restarts the confirmation rather than silently reusing the running timer.
-                var copiedAt by remember { mutableStateOf<String?>(null) }
-                LaunchedEffect(copiedAt) {
-                    if (copiedAt != null) {
-                        kotlinx.coroutines.delay(Motion.COPIED_STATE_MS)
-                        copiedAt = null
-                    }
-                }
-                val showCopied = copiedAt != null && copiedAt == copiedValue
-
-                IconButton(
-                    onClick = {
-                        // Only the number reaches the clipboard — never "31 g carbs" (§19).
-                        clipboard.setText(AnnotatedString(copiedValue.orEmpty()))
-                        copiedAt = copiedValue
-                        if (settings.hapticsEnabled) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        }
-                        android.widget.Toast.makeText(
-                            context,
-                            copiedMessage.orEmpty(),
-                            android.widget.Toast.LENGTH_SHORT,
-                        ).show()
-                    },
-                    modifier = Modifier
-                        .size(Space.minTouchTarget)
-                        .semantics { contentDescription = copyLabel },
-                ) {
-                    Icon(
-                        imageVector = if (showCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
-                        contentDescription = null,
-                        tint = if (showCopied) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            androidx.compose.material3.LocalContentColor.current
-                        },
-                    )
-                }
+                // Shared with the meal total's own copy button (see `CopyResultButton`), so the two
+                // most important numbers in the app are transferred and confirmed identically
+                // rather than by two hand-written copies of the same logic.
+                CopyResultButton(
+                    value = copiedValue.orEmpty(),
+                    hapticsEnabled = settings.hapticsEnabled,
+                )
             }
 
             // The supporting figure is rendered legibly, not as a whisper (design decision 3.2).

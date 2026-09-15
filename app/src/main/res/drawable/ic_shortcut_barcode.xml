@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher-shortcut icon for "Scan barcode".
+
+  Drawn rather than borrowed from the Material icon font because a shortcut icon is rendered by the
+  *launcher*, not by this app: it is tinted and masked by whatever theme the launcher runs, so it has
+  to read as a single solid silhouette at 24dp with no reliance on this app's colours. The mark is
+  the same barcode grammar the top bar's destination marker and AccentBackdrop use, so a shortcut is
+  recognisably part of the same product before the app has even opened.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#2856C5">
+    <!-- Uneven rules: the same nutrition/barcode motif the app uses elsewhere. -->
+    <path android:fillColor="@android:color/white" android:pathData="M3,5h2v14h-2z" />
+    <path android:fillColor="@android:color/white" android:pathData="M6.5,5h1.5v14h-1.5z" />
+    <path android:fillColor="@android:color/white" android:pathData="M9.5,5h2.5v14h-2.5z" />
+    <path android:fillColor="@android:color/white" android:pathData="M13.5,5h1.5v14h-1.5z" />
+    <path android:fillColor="@android:color/white" android:pathData="M16.5,5h1v14h-1z" />
+    <path android:fillColor="@android:color/white" android:pathData="M19,5h2v14h-2z" />
+</vector>

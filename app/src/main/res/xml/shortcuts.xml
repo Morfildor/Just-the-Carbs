@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher shortcuts: long-press the app icon to start a scan without passing through Home.
+
+  ## Why only two
+
+  The app has three ways in — barcode, nutrition label, and search — and only the two *scanners* are
+  here. Search is not a peer of the other two in this product: it is reached as a recovery route when
+  a lookup fails, never as the ordinary way to start, so promoting it to the launcher would advertise
+  it as a main entry point and misstate what the app is for. The two scanners are what someone
+  standing in a kitchen with the packet already in their hand actually wants.
+
+  ## Why static rather than dynamic
+
+  These never change, so there is nothing for the app to keep in step at runtime: a static list is
+  published by the manifest at install time and cannot drift out of date with the app's state, and it
+  needs no code running on the launch path to maintain it.
+
+  ## The intent
+
+  Each carries a distinct action string that `MainActivity` reads once and turns into a single
+  navigation.
+
+  **The intent is resolved by an intent-filter, not by naming a component here**, and that is a
+  correctness requirement rather than a style choice. A shortcut resource cannot name this app's
+  package portably: `${applicationId}` is a *manifest* placeholder and ships as literal text from a
+  resource XML, while `@string/...` is stored by the framework as an unresolved resource reference —
+  both were tried and both were confirmed broken by dumping the built APK and `dumpsys shortcut`, and
+  both produce shortcuts that silently do nothing because they point at no installed package. The
+  debug build's `.debug` applicationId suffix is what makes a hardcoded package wrong too. So each
+  action is declared as an intent-filter on MainActivity (see AndroidManifest.xml) and matched by
+  action alone, which is suffix-independent and resolves within this app by construction.
+
+  Behaviour when the app has never been opened is handled in code, not here: see `StartupDestination`,
+  which holds a shortcut until onboarding has been seen rather than dropping a first-time user
+  straight into a camera.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="scan_barcode"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_barcode"
+        android:shortcutShortLabel="@string/shortcut_scan_barcode_short"
+        android:shortcutLongLabel="@string/shortcut_scan_barcode_long">
+        <intent
+            android:action="app.justthecarbs.action.SCAN_BARCODE" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="scan_label"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_label"
+        android:shortcutShortLabel="@string/shortcut_scan_label_short"
+        android:shortcutLongLabel="@string/shortcut_scan_label_long">
+        <intent
+            android:action="app.justthecarbs.action.SCAN_LABEL" />
+    </shortcut>
+
+</shortcuts>

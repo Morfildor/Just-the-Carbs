@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,6 +52,7 @@ import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
+import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
 import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.ui.theme.Destination
@@ -60,6 +62,9 @@ import app.justthecarbs.ui.theme.Space
 
 /** Stable handles for instrumented tests. */
 const val MEAL_TOTAL_TAG = "meal_total"
+
+/** The meal total's copy-to-clipboard action. */
+const val MEAL_COPY_TAG = "meal_copy"
 const val MEAL_CLEAR_TAG = "meal_clear"
 const val MEAL_SCAN_NEXT_TAG = "meal_scan_next"
 const val MEAL_SNACKBAR_TAG = "meal_snackbar"
@@ -329,12 +334,38 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
             val resultUnit = stringResource(R.string.result_unit_grams)
             val accessibleResult = stringResource(R.string.result_accessible_grams, dominantNumeral)
 
-            ResultValue(
-                dominant = dominantNumeral,
-                unit = resultUnit,
-                accessibleLabel = accessibleResult,
-                testTag = MEAL_TOTAL_TAG,
-            )
+            // The total and its copy button, on one row.
+            //
+            // A meal total is the figure a multi-item user is *most* likely to be transcribing —
+            // building the meal is how they turn several foods into one number — and until now it
+            // was the one result in the app that could not be copied, so that user had to read and
+            // retype it while the calculator's single-product figure was one tap away. Same
+            // component, same confirmation, same clipboard rule as the calculator.
+            //
+            // The button is placed in the spacer that balances it on the left, so the total itself
+            // stays optically centred in the panel rather than being pushed off-centre by the
+            // button's width. Both spacers are the same minimum touch target the button occupies.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Spacer(Modifier.width(Space.minTouchTarget))
+
+                ResultValue(
+                    dominant = dominantNumeral,
+                    unit = resultUnit,
+                    accessibleLabel = accessibleResult,
+                    testTag = MEAL_TOTAL_TAG,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+
+                CopyResultButton(
+                    value = ResultFormatter.clipboardValue(total, settings.resultStyle),
+                    hapticsEnabled = settings.hapticsEnabled,
+                    modifier = Modifier.testTag(MEAL_COPY_TAG),
+                )
+            }
 
             Text(
                 text = when (settings.resultStyle) {

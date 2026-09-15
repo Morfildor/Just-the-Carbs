@@ -30,8 +30,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
@@ -93,6 +97,24 @@ fun SearchScreen(
     onBack: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
+
+    // The field is focused on arrival, so this screen opens ready to type.
+    //
+    // This screen is not browsed to — it is reached from a *failed* lookup, as the recovery route
+    // that offers finding the product by name. The user has already decided to type by the time it
+    // appears, and its single input is the only thing on it to tap, so requiring that tap is a step
+    // with no decision in it at the exact moment the app has just failed them. The same rule the
+    // quick calculator and manual entry already follow for their own single inputs.
+    //
+    // Guarded on an empty query so returning here with text already in the field (a process death,
+    // or coming back from a result) does not re-claim focus and re-open the keyboard over results
+    // the user is reading. Keyed on `Unit`, so focus is requested once for the life of the screen
+    // and never stolen back mid-session.
+    val searchFieldFocus = remember { FocusRequester() }
+    val claimsFocusOnArrival = remember { state.query.isEmpty() }
+    if (claimsFocusOnArrival) {
+        LaunchedEffect(Unit) { searchFieldFocus.requestFocus() }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AccentBackdrop(
@@ -169,6 +191,7 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = Space.screenEdge)
+                    .focusRequester(searchFieldFocus)
                     .testTag(SEARCH_FIELD_TAG),
             )
 

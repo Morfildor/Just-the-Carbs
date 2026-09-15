@@ -9,9 +9,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
@@ -21,11 +24,72 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import app.justthecarbs.ui.JustTheCarbsNavHost
+import app.justthecarbs.ui.StartupDestination
+import app.justthecarbs.ui.StartupRequest
 import app.justthecarbs.ui.StartupState
 import app.justthecarbs.ui.asStartupState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
 
 class MainActivity : ComponentActivity() {
+
+    /**
+     * The launcher shortcut this launch came from, if any, as Compose state so the nav host sees it.
+     *
+     * Held here rather than read from `intent` inside the composition because the action must be
+     * consumed exactly once: a configuration change recreates the activity and re-runs `setContent`,
+     * and an Intent whose action is still set would reopen a scanner the user had already closed.
+     * [consumeShortcutAction] is what makes the read destructive.
+     */
+    private var startupRequest by mutableStateOf(StartupRequest.NONE)
+
+    /** Increments per shortcut delivery, so repeating the same shortcut is still a new request. */
+    private var shortcutDeliveries = 0L
+
+    /**
+     * The latest settings snapshot, mirrored out of the composition.
+     *
+     * The splash screen's keep-on-screen condition runs outside composition and cannot collect a
+     * Flow, and [onNewIntent] needs the real `hasSeenOnboarding` rather than an assumption about it,
+     * so both read this one field.
+     */
+    private var startupState: StartupState = StartupState.Loading
+
+    /**
+     * Reads the shortcut action off [intent] and clears it, so it cannot be acted on twice.
+     *
+     * Clearing the action on the *Activity's* intent (rather than on a copy) is deliberate: that is
+     * the object Android hands back on recreation, so blanking it here is what stops a rotation from
+     * being read as a second shortcut launch.
+     */
+    private fun consumeShortcutAction(hasSeenOnboarding: Boolean): StartupRequest {
+        val action = intent?.action
+        val resolved = StartupDestination.from(action, hasSeenOnboarding)
+        if (action == StartupDestination.ACTION_SCAN_BARCODE ||
+            action == StartupDestination.ACTION_SCAN_LABEL
+        ) {
+            intent?.action = null
+        }
+        if (resolved == StartupDestination.DEFAULT) return StartupRequest.NONE
+        return StartupRequest(resolved, ++shortcutDeliveries)
+    }
+
+    /**
+     * A shortcut tapped while the app is already running.
+     *
+     * `launchMode` is the default, but the launcher reuses an existing task for these intents, so
+     * without this a second shortcut tap would deliver a new Intent that nothing ever read and the
+     * app would simply come to the foreground on whatever screen it was last on — which reads as the
+     * shortcut not working.
+     */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // The real flag, never an assumption that a running app is past its gate: a shortcut can
+        // arrive while the welcome carousel is still on screen, and that must not jump the gate.
+        // Settings not yet loaded reads as "not seen", which resolves to DEFAULT and changes nothing.
+        val seen = (startupState as? StartupState.Ready)?.settings?.hasSeenOnboarding == true
+        startupRequest = consumeShortcutAction(hasSeenOnboarding = seen)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Held on screen (see setKeepOnScreenCondition below) until the first real DataStore value
@@ -34,7 +98,6 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        var startupState: StartupState = StartupState.Loading
         splashScreen.setKeepOnScreenCondition { startupState is StartupState.Loading }
         // Explicitly dark on both bars. Left to resolve itself, `enableEdgeToEdge()` picks a
         // light or dark scrim from the *device* configuration, which on a light-themed phone
@@ -102,7 +165,19 @@ class MainActivity : ComponentActivity() {
                 // value must never imply.
                 StartupState.Loading -> Box(Modifier.fillMaxSize().background(Color.Black))
                 is StartupState.Ready -> JustTheCarbsTheme(themeChoice = current.settings.theme) {
-                    JustTheCarbsNavHost(container = container, settings = current.settings)
+                    // Resolved here rather than in `onCreate` because it needs the real
+                    // `hasSeenOnboarding`, and that is not known until settings have loaded — which
+                    // is exactly what `Ready` means. Consumed once: `consumeShortcutAction` clears
+                    // the Intent's action, so this cannot fire again on a configuration change.
+                    LaunchedEffect(Unit) {
+                        startupRequest = consumeShortcutAction(current.settings.hasSeenOnboarding)
+                    }
+
+                    JustTheCarbsNavHost(
+                        container = container,
+                        settings = current.settings,
+                        startupRequest = startupRequest,
+                    )
                 }
             }
         }

@@ -36,6 +36,7 @@ import app.justthecarbs.ui.meal.MEAL_ADD_AND_SCAN_TAG
 import app.justthecarbs.ui.meal.MEAL_ADD_TAG
 import app.justthecarbs.ui.meal.MEAL_BAR_TAG
 import app.justthecarbs.ui.meal.MEAL_CLEAR_TAG
+import app.justthecarbs.ui.meal.MEAL_COPY_TAG
 import app.justthecarbs.ui.meal.MEAL_SCAN_NEXT_TAG
 import app.justthecarbs.ui.meal.MEAL_TOTAL_TAG
 import app.justthecarbs.ui.meal.MealScreen
@@ -548,5 +549,65 @@ class MealScreenTest {
         showMeal(emptyList())
 
         compose.onNodeWithTag(MEAL_SCAN_NEXT_TAG).assertDoesNotExist()
+    }
+
+    // ---- copying the total ---------------------------------------------------------------------
+
+    @Test
+    fun theMealTotalCanBeCopied() {
+        // A meal total is the figure a multi-item user is most likely to be transcribing — building
+        // the meal is how several foods become one number — and it was the one result in the app
+        // with no copy action, so that user had to read and retype it.
+        showMeal(
+            listOf(
+                item(1, "Bread", "2 slices", "48.2", "34.704"),
+                item(2, "Milk", "200 ml", "4.8", "9.6"),
+            ),
+        )
+
+        compose.onNodeWithTag(MEAL_COPY_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun anEmptyMealOffersNothingToCopy() {
+        // There is no total to put on the clipboard, and an enabled copy button over an em dash
+        // would offer to transfer a number the app has deliberately not calculated.
+        showMeal(emptyList())
+
+        compose.onNodeWithTag(MEAL_COPY_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun copyingTheTotalDoesNotDisturbTheTotalItself() {
+        // The copy control shares the total's row, so it must not push the figure out of the panel
+        // or replace it: the number stays on screen, reading exactly as it did before the tap.
+        showMeal(
+            listOf(
+                item(1, "Bread", "2 slices", "48.2", "34.704"),
+                item(2, "Milk", "200 ml", "4.8", "9.6"),
+            ),
+        )
+        val before = compose.onNodeWithTag(MEAL_TOTAL_TAG).fetchSemanticsNode().boundsInRoot
+
+        compose.onNodeWithTag(MEAL_COPY_TAG).performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertIsDisplayed()
+        val after = compose.onNodeWithTag(MEAL_TOTAL_TAG).fetchSemanticsNode().boundsInRoot
+        assertEquals(before, after)
+    }
+
+    @Test
+    fun theCopyControlMeetsTheTouchTargetFloor() {
+        // One-handed in a kitchen: this is the last tap of the job and must not be the fiddliest.
+        showMeal(listOf(item(1, "Bread", "2 slices", "48.2", "34.704")))
+
+        val bounds = compose.onNodeWithTag(MEAL_COPY_TAG).fetchSemanticsNode().boundsInRoot
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        val widthDp = bounds.width / density
+        val heightDp = bounds.height / density
+        assert(widthDp >= 48f && heightDp >= 48f) {
+            "copy control is ${widthDp}x${heightDp} dp, below the 48dp floor"
+        }
     }
 }

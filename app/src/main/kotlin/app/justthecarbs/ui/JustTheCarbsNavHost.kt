@@ -253,6 +253,14 @@ fun JustTheCarbsNavHost(
     container: AppContainer,
     settings: AppSettings,
     navController: NavHostController = rememberNavController(),
+    /**
+     * Where a launcher shortcut asked the app to open, if it was started by one.
+     *
+     * Applied on top of the ordinary start destination rather than instead of it — see the
+     * `LaunchedEffect` after the NavHost for why Home stays underneath, and why this carries a
+     * per-delivery id rather than being a bare destination.
+     */
+    startupRequest: StartupRequest = StartupRequest.NONE,
 ) {
     // The welcome carousel on a genuine first launch, Home on every launch after it.
     //
@@ -271,6 +279,7 @@ fun JustTheCarbsNavHost(
     // a real settings value, so this branch is never evaluated against a default-shaped one. That
     // guard is load-bearing again rather than belt-and-braces; do not remove it.
     val startDestination = if (settings.hasSeenOnboarding) Routes.HOME else Routes.WELCOME
+
 
     NavHost(
         navController = navController,
@@ -1001,6 +1010,42 @@ fun JustTheCarbsNavHost(
                 onReplayTutorial = { navController.navigate(Routes.onboarding(replay = true)) },
                 onBack = { navController.popBackStack() },
             )
+        }
+    }
+
+    // A launcher shortcut opens its scanner *on top of* the start destination, not in place of it.
+    //
+    // Declared AFTER the NavHost, and that ordering is load-bearing rather than stylistic: a
+    // LaunchedEffect placed above it runs before the graph has been set, so the navigation lands on
+    // a controller with no destinations and is dropped. Measured on device — Back from a
+    // shortcut-opened scanner exited the app to the launcher instead of falling back to Home,
+    // because Home had never been put on the stack. Here the graph exists, the start destination is
+    // already the stack's root, and the scanner is pushed on top of it.
+    //
+    // That is also what keeps Back meaningful: someone who long-presses the app icon and picks
+    // "Barcode" still expects Back to leave them in the app they opened. Home is underneath, so
+    // closing the scanner lands exactly where an ordinary launch would have started.
+    //
+    // `MainActivity` clears the intent's action after reading it, so a configuration change — which
+    // recreates the activity and re-runs this composition — cannot reopen a scanner the user has
+    // already closed.
+    // Keyed on the whole request, so a *repeat* of the same shortcut still re-runs: keying on the
+    // destination alone meant a second "Barcode" tap carried the value the effect had already seen
+    // and never fired, leaving the app on Home. Measured on device. See `StartupRequest.id`.
+    LaunchedEffect(startupRequest) {
+        val route = when (startupRequest.destination) {
+            StartupDestination.SCAN_BARCODE -> Routes.SCAN
+            StartupDestination.SCAN_LABEL -> Routes.labelScan()
+            StartupDestination.DEFAULT -> null
+        } ?: return@LaunchedEffect
+
+        // Only from the start destination. A shortcut delivered by `onNewIntent` while the user is
+        // already deep in the app (mid-calculation, say) must not stack a scanner on top of whatever
+        // they were doing; `launchSingleTop` plus popping back to the graph's root makes the shortcut
+        // mean the same thing whether the app was cold or already running.
+        navController.navigate(route) {
+            popUpTo(navController.graph.startDestinationId) { inclusive = false }
+            launchSingleTop = true
         }
     }
 }
