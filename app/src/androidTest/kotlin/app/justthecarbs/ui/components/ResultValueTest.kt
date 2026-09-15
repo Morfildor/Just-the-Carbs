@@ -1,11 +1,21 @@
 package app.justthecarbs.ui.components
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -37,17 +47,54 @@ class ResultValueTest {
     @Test
     fun aLongValueDoesNotClipAndTheUnitStaysBesideIt() {
         composeRule.setContent {
-            JustTheCarbsTheme {
-                ResultValue(
-                    dominant = "1234.5",
-                    unit = "g",
-                    accessibleLabel = "1234.5 grams",
-                    testTag = "long_result",
-                )
+            // A dense small phone at the largest supported font scale (see the identical rationale
+            // in ProductScreenTest.theResultIsNotClippedAtTheLargestFontScale) — the narrowest real
+            // place the widest result has to fit. 200dp is comfortably narrower than the ~320dp of
+            // usable content width that scenario implies (a 360dp window less two Space.screenEdge
+            // margins), so a numeral that fails to shrink at all (fixed at NumberType.result's 72sp
+            // base) would visibly overflow it, while one that shrinks to NumberType.resultAutoSize's
+            // 36sp floor comfortably fits — making the assertion below non-vacuous in both
+            // directions rather than trivially true regardless of auto-size behaviour.
+            CompositionLocalProvider(
+                LocalDensity provides Density(density = 3.0f, fontScale = 2.0f),
+            ) {
+                JustTheCarbsTheme {
+                    Box(modifier = Modifier.width(200.dp)) {
+                        ResultValue(
+                            dominant = "1234.5",
+                            unit = "g",
+                            accessibleLabel = "1234.5 grams",
+                            testTag = "long_result",
+                        )
+                    }
+                }
             }
         }
 
         composeRule.onNodeWithTag("long_result").assertExists()
         composeRule.onNodeWithText("g").assertExists()
+
+        // Ask the Text itself whether it overflowed, via GetTextLayoutResult — a plain bounds
+        // comparison does not work here (a constrained Text reports its already-constrained size,
+        // so it can never disagree with itself even when digits are visibly cut off); see
+        // ProductScreenTest.theResultIsNotClippedAtTheLargestFontScale for the same technique and
+        // the fuller explanation of why it is necessary.
+        val layouts = mutableListOf<TextLayoutResult>()
+        composeRule.onNodeWithText("1234.5")
+            .fetchSemanticsNode()
+            .config[SemanticsActions.GetTextLayoutResult]
+            .action
+            ?.invoke(layouts)
+        val layout = layouts.single()
+
+        assertTrue(
+            "The numeral overflows its box: laid out at ${layout.size.width}x" +
+                "${layout.size.height}px, longest line ${layout.multiParagraph.maxIntrinsicWidth}px",
+            !layout.hasVisualOverflow,
+        )
+        // A truncated result would still satisfy a bounds/overflow check by simply being a shorter
+        // string, so the value itself is asserted too, via the merged accessible description — the
+        // same defense ProductScreenTest applies for the identical reason.
+        composeRule.onNodeWithTag("long_result").assertContentDescriptionEquals("1234.5 grams")
     }
 }
