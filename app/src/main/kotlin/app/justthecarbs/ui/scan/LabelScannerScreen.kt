@@ -14,6 +14,11 @@ import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +36,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -40,6 +46,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -2061,38 +2068,45 @@ private fun SearchingCard(
             if (captureState != CaptureState.IDLE) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
             }
-            Text(
-                text = stringResource(
-                    when (captureState) {
-                        CaptureState.CAPTURING -> R.string.ocr_capturing
-                        CaptureState.PROCESSING -> R.string.ocr_processing
-                        CaptureState.IDLE -> when {
-                            // A live frame could interpret the table, so the framing is good enough
-                            // to be worth capturing. It is not a claim about the final value.
-                            liveReadiness is LabelReading.Confident ||
-                                liveReadiness is LabelReading.Ambiguous ->
-                                R.string.ocr_ready_to_capture
-                            // Checked before size for the same reason the estimator computes it
-                            // first: on a sideways frame the size measure reports a rotated word's
-                            // width as its height, so "move closer" would be advice derived from a
-                            // number that means nothing. Measured on `20260903-212804-751`, where
-                            // every row reconstructed across the printed columns instead of along
-                            // the printed rows and the capture died silently as `NotFound`.
-                            framing?.readiness == TextResolutionGuidance.Readiness.SIDEWAYS ->
-                                R.string.ocr_turn_upright
-                            // Checked only when no live frame managed a reading: text that IS being
-                            // read is large enough by demonstration, whatever the measurement says.
-                            framing?.readiness == TextResolutionGuidance.Readiness.TOO_SMALL ->
-                                R.string.ocr_move_closer
-                            else -> R.string.ocr_looking
-                        }
-                    },
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val guidanceRes = when (captureState) {
+                CaptureState.CAPTURING -> R.string.ocr_capturing
+                CaptureState.PROCESSING -> R.string.ocr_processing
+                CaptureState.IDLE -> when {
+                    // A live frame could interpret the table, so the framing is good enough
+                    // to be worth capturing. It is not a claim about the final value.
+                    liveReadiness is LabelReading.Confident ||
+                        liveReadiness is LabelReading.Ambiguous ->
+                        R.string.ocr_ready_to_capture
+                    // Checked before size for the same reason the estimator computes it
+                    // first: on a sideways frame the size measure reports a rotated word's
+                    // width as its height, so "move closer" would be advice derived from a
+                    // number that means nothing. Measured on `20260903-212804-751`, where
+                    // every row reconstructed across the printed columns instead of along
+                    // the printed rows and the capture died silently as `NotFound`.
+                    framing?.readiness == TextResolutionGuidance.Readiness.SIDEWAYS ->
+                        R.string.ocr_turn_upright
+                    // Checked only when no live frame managed a reading: text that IS being
+                    // read is large enough by demonstration, whatever the measurement says.
+                    framing?.readiness == TextResolutionGuidance.Readiness.TOO_SMALL ->
+                        R.string.ocr_move_closer
+                    else -> R.string.ocr_looking
+                }
+            }
+            AnimatedContent(
+                targetState = guidanceRes,
+                transitionSpec = {
+                    (fadeIn(tween(Motion.QUICK_MS)) togetherWith fadeOut(tween(Motion.QUICK_MS)))
+                },
+                label = "scanGuidance",
+            ) { res ->
+                Text(
+                    text = stringResource(res),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        CaptureButton(onCapture, enabled = captureState == CaptureState.IDLE)
+        CaptureButton(onCapture, captureState = captureState)
         TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
             Text(stringResource(R.string.ocr_enter_manually))
         }
@@ -2406,14 +2420,46 @@ private fun SecondaryScannerActions(onCapture: () -> Unit, onEdit: () -> Unit, o
     }
 }
 
+/**
+ * The shutter. Morphs into a compact progress treatment the instant a capture is accepted — before
+ * OCR has produced anything — so the tap is visibly acknowledged rather than the screen appearing to
+ * ignore it for however long recognition takes (design pass item 6: "do not wait for OCR completion
+ * before acknowledging capture").
+ */
 @Composable
-private fun CaptureButton(onClick: () -> Unit, enabled: Boolean = true) {
+private fun CaptureButton(onClick: () -> Unit, captureState: CaptureState) {
     Button(
         onClick = onClick,
-        enabled = enabled,
+        enabled = captureState == CaptureState.IDLE,
         shape = RoundedCornerShape(Space.buttonRadius),
         modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
-    ) { Text(stringResource(R.string.ocr_capture_label)) }
+    ) {
+        AnimatedContent(
+            targetState = captureState,
+            transitionSpec = {
+                (fadeIn(tween(Motion.QUICK_MS)) togetherWith fadeOut(tween(Motion.QUICK_MS)))
+            },
+            label = "captureButtonContent",
+        ) { state ->
+            if (state == CaptureState.IDLE) {
+                Text(stringResource(R.string.ocr_capture_label))
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = LocalContentColor.current,
+                    )
+                    Spacer(Modifier.width(Space.xs))
+                    Text(
+                        stringResource(
+                            if (state == CaptureState.CAPTURING) R.string.ocr_capturing else R.string.ocr_processing,
+                        ),
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
