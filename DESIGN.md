@@ -62,6 +62,15 @@ uses the platform sans. The compact scale is deliberate:
 The label and unit remain readable when a result auto-sizes. A scanner proposal awaiting user
 confirmation must not use confirmed-result styling.
 
+A calculated result renders its dominant number and its unit as two related but distinct text
+styles rather than one string — the number is the answer, the unit is a label on it — sharing one
+coherent accessible node so a screen reader still reports them together. The same shape scales down
+for smaller previews, such as a search row's trailing figure, provided the styling never borrows
+confirmed-result colour for a value nothing has confirmed yet. Space Grotesk's bundled instance does
+not currently expose tabular figures, so digits in this shape may shift width slightly during a
+cross-fade; that is a font limitation to revisit if a tabular-figure build becomes available, not a
+missed design requirement.
+
 ## Spacing, shape, and surfaces
 
 Spacing uses the 4/8/16/24/32/48dp scale. Screens use a 20dp horizontal edge. Touch targets are at
@@ -104,14 +113,19 @@ focused/unfocused borders instead of falling back to unrelated Material defaults
 ## Screen composition
 
 Home opens with search, then the two highest-value scan actions, then a compact three-step rhythm
-and recent items. It does not imitate a dashboard and does not reserve a large empty hero area.
+and recent items. It does not imitate a dashboard and does not reserve a large empty hero area. Its
+primary scan action's copy acknowledges an in-progress meal rather than always reading as a first
+scan, so returning to Home mid-meal does not misstate what the next tap continues.
+
+Search prioritises typing and scanning. Loading, empty, offline, retry, and fallback routes remain
+close to the query. Rows are dense enough to compare quickly without shrinking touch targets. Each
+row's trailing nutrition figure sits in a reserved-width column, value over basis, so a list of
+results compares down the page the way a price column would; a hit with no established basis shows
+a quiet no-value state in the same column rather than a blank space or an invented unit.
 
 Product/calculator is the hero experience: product identity and provenance lead into a prominent
 portion input and a left-aligned answer dock. The answer remains stable and legible while changing;
 verification and recovery never silently replace its inputs.
-
-Search prioritises typing and scanning. Loading, empty, offline, retry, and fallback routes remain
-close to the query. Rows are dense enough to compare quickly without shrinking touch targets.
 
 Barcode and nutrition-label scanning deliberately share image-relative chrome but communicate
 different tasks. Live capture, frozen review, ambiguity, conflict, no-result, and permission states
@@ -130,6 +144,16 @@ Motion uses 120ms quick and 220ms standard timings. It clarifies state change wi
 answer: result digits cross-fade, page teaching transitions remain short, and no utility screen has
 decorative entrance choreography. Existing haptics stay reserved for meaningful capture,
 confirmation, or failure events.
+
+A successful action confirms itself by changing its own control's state — an icon, a label, a brief
+held glow — rather than by requiring a separate toast or dialog the user might not be looking at.
+The confirmation holds long enough to survive a glance away and back, and a fresh attempt of the
+same action restarts the hold rather than leaving a stale one to finish on its own; a failed attempt
+never shows this state. The two scanners narrate their own state changes — the moment a shutter
+commits, the moment a reading result replaces live guidance — as brief, purely visual transitions
+that never delay the underlying capture or recognition they describe. Navigation between screens
+uses a short, uniform fade rather than directional slides or scale choreography, so moving through
+the app never competes with the content the user navigated to see.
 
 All text-bearing controls grow rather than clip. Long product names ellipsise or wrap according to
 context. The result is a polite live region, composite rows expose one coherent accessibility node,
