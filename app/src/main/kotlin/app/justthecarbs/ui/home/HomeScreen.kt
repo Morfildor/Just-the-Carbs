@@ -145,6 +145,13 @@ fun HomeScreen(
     // would otherwise close the app while the user is mid-search. Intercept only while there is a
     // query to leave — clearing it is the same action the field's own X button performs — and let
     // an empty query fall through to the default (close) behaviour, unchanged.
+    // Deliberately not migrated to PredictiveBackHandler in the 2026-09-14 interaction pass — this
+    // handler does not navigate anywhere (Home is the start destination), it clears the search field
+    // in place of the default close-the-app behaviour. A predictive-back gesture here would show the
+    // system's close/home preview mid-drag for an action that, on release, keeps the app open and
+    // only clears text — a misleading preview rather than a cleanup-ordering hazard, but still a
+    // reason to leave it as an ordinary BackHandler; see
+    // docs/superpowers/specs/2026-09-14-interaction-polish-design.md.
     BackHandler(enabled = searchState.query.isNotBlank()) {
         onSearchQueryChanged("")
     }

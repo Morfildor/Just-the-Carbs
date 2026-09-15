@@ -190,6 +190,9 @@ private fun CameraPreview(
         analyzer.close()
         action()
     }
+    // Deliberately not migrated to PredictiveBackHandler in the 2026-09-14 interaction pass —
+    // camera/executor disposal ordering here needs its own dedicated audit; see
+    // docs/superpowers/specs/2026-09-14-interaction-polish-design.md.
     BackHandler(enabled = !showBarcodeDialog) { leave(onClose) }
 
     DisposableEffect(Unit) {

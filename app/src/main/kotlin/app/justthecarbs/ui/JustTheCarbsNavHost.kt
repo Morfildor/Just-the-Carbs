@@ -1,5 +1,8 @@
 package app.justthecarbs.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +54,7 @@ import app.justthecarbs.ui.scan.LabelScannerScreen
 import app.justthecarbs.ui.scan.ScannerScreen
 import app.justthecarbs.ui.settings.SettingsScreen
 import app.justthecarbs.ui.settings.SettingsViewModel
+import app.justthecarbs.ui.theme.Motion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -268,7 +272,18 @@ fun JustTheCarbsNavHost(
     // guard is load-bearing again rather than belt-and-braces; do not remove it.
     val startDestination = if (settings.hasSeenOnboarding) Routes.HOME else Routes.WELCOME
 
-    NavHost(navController = navController, startDestination = startDestination) {
+    NavHost(
+        navController = navController,
+        startDestination = startDestination,
+        // Short, uniform fade across every destination — clarifies "you moved to a new screen"
+        // without a slide/scale choreography and without delaying the destination's own content
+        // (design pass item 11; the app's motion vocabulary is Motion.QUICK_MS/STANDARD_MS
+        // everywhere else, so navigation uses the same two numbers rather than inventing a third).
+        enterTransition = { fadeIn(tween(Motion.STANDARD_MS)) },
+        exitTransition = { fadeOut(tween(Motion.QUICK_MS)) },
+        popEnterTransition = { fadeIn(tween(Motion.STANDARD_MS)) },
+        popExitTransition = { fadeOut(tween(Motion.QUICK_MS)) },
+    ) {
 
         composable(route = Routes.WELCOME) {
             val viewModel: WelcomeCarouselViewModel = viewModel(

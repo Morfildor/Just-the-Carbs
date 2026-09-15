@@ -1,6 +1,7 @@
 package app.justthecarbs.ui.onboarding
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.AnimationVector4D
@@ -64,8 +65,10 @@ import app.justthecarbs.R
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.SpaceGrotesk
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 /** Stable handles for instrumented tests. */
@@ -120,7 +123,19 @@ fun OnboardingScreen(
     var viewportWidth by remember { mutableIntStateOf(0) }
     var viewportHeight by remember { mutableIntStateOf(0) }
 
-    BackHandler(enabled = !busy) { onExit() }
+    // Predictive back is safe here (2026-09-14 interaction pass): `onExit` only launches
+    // `OnboardingViewModel.finish()`, which is Mutex-guarded and idempotent, and navigation happens
+    // separately from a `LaunchedEffect(completionState)` watching for `Saved` — there is no
+    // camera/executor or other resource this composable must release in a specific order relative to
+    // the gesture completing.
+    PredictiveBackHandler(enabled = !busy) { progress: Flow<BackEventCompat> ->
+        try {
+            progress.collect { }
+            onExit()
+        } catch (e: CancellationException) {
+            // Gesture was released without completing (dragged back and let go) — do nothing.
+        }
+    }
 
     // A new atomic backdrop must measure its own target before focus is acquired.
     LaunchedEffect(step.backdrop) {

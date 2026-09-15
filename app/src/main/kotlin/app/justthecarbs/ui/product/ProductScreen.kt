@@ -212,6 +212,12 @@ fun ProductScreen(
     // Compose Navigation's default handling, so `rememberUsageAndAwait()` (or the old fire-and-forget
     // `rememberUsage()`) never ran at all on a gesture exit, which is the far more common way to
     // leave a screen on a modern device.
+    //
+    // Deliberately not migrated to PredictiveBackHandler in the 2026-09-14 interaction pass — on the
+    // barcode-product route, `onBack` awaits `viewModel.rememberUsageAndAwait()` (a suspend Room
+    // write) before popping, precisely so the pop cannot destroy the ViewModel and cancel that write
+    // mid-flight. That is a real cleanup ordering dependency between an async write and navigation;
+    // see docs/superpowers/specs/2026-09-14-interaction-polish-design.md.
     BackHandler(onBack = onBack)
 
     if (galleryOpen && state.product != null && galleryImages.isNotEmpty()) {
