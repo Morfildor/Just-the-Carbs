@@ -200,7 +200,10 @@ class MealScreenTest {
 
         compose.onNodeWithContentDescription("Remove B").performClick()
 
-        compose.onNodeWithText("18.7 g").assertIsDisplayed()
+        // The total renders as a split numeral + unit (ResultValue, interaction-polish task 5), so
+        // "18.7 g" no longer exists as one text node — asserted on the merged accessible
+        // description instead, same convention as the other MEAL_TOTAL_TAG assertions in this file.
+        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertContentDescriptionEquals("18.7 grams")
     }
 
     /**
@@ -423,7 +426,10 @@ class MealScreenTest {
 
         compose.onNodeWithTag(MEAL_BAR_TAG).assertIsDisplayed()
         compose.onNode(hasSetTextAction()).assertIsDisplayed()
-        compose.onNodeWithText("24.1 g").assertIsDisplayed()
+        // Pre-existing defect, unrelated to this pass: the bar's own summary text is
+        // "Meal · 1 item · 24.1 g carbs", never exactly "24.1 g", so the bare onNodeWithText exact
+        // match here never matched anything — asserted via substring instead.
+        compose.onNodeWithText("24.1 g", substring = true).assertIsDisplayed()
         compose.onNodeWithTag(MEAL_ADD_TAG).assertIsDisplayed()
 
         // The real defect was geometric, not existential: the field stayed "displayed" while the
@@ -486,7 +492,7 @@ class MealScreenTest {
         )
 
         compose.onNodeWithContentDescription("Remove B").performClick()
-        compose.onNodeWithText("18.7 g").assertIsDisplayed()
+        compose.onNodeWithTag(MEAL_TOTAL_TAG).assertContentDescriptionEquals("18.7 grams")
 
         compose.onNodeWithText("Undo").performClick()
 
