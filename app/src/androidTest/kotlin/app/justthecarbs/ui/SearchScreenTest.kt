@@ -22,6 +22,7 @@ import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
+import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.ui.search.SEARCH_FIELD_TAG
 import app.justthecarbs.ui.search.SEARCH_PENDING_TAG
 import app.justthecarbs.ui.search.SEARCH_RATE_LIMITED_TAG
@@ -107,6 +108,25 @@ class SearchScreenTest {
         compose.onNodeWithText("De Ruijter · 390 gram").assertIsDisplayed()
         compose.onNodeWithText("67 g carbs").assertIsDisplayed()
         compose.onNodeWithText("/ 100 g").assertIsDisplayed()
+    }
+
+    /**
+     * The row's spoken content description and its visible two-line value must agree. Before this
+     * fix the visible text went through [ResultFormatter.quantity] (one decimal place, locale-aware
+     * separator) while the spoken description used raw [java.math.BigDecimal] precision — the same
+     * integer test value ("67") happened to make both agree, which is why no earlier test caught the
+     * divergence. A fractional value exposes it: the visible figure rounds to one decimal place
+     * while an unrounded description would still read the full value.
+     */
+    @Test
+    fun theSpokenCarbFigureMatchesTheVisibleRoundedOne() {
+        show(SearchUiState(query = "hagelslag", hits = listOf(hit(carbs = "12.34"))))
+
+        val expectedQuantity = ResultFormatter.quantity(BigDecimal("12.34"))
+        assertEquals("12.3", expectedQuantity)
+        compose.onNodeWithContentDescription(
+            "Chocoladehagel puur. De Ruijter $expectedQuantity g carbs / 100 g",
+        ).assertIsDisplayed()
     }
 
     /**

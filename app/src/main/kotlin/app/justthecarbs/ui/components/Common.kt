@@ -301,7 +301,7 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
     val carbsText = if (hit.carbsPer100 != null && basis != null) {
         stringResource(
             R.string.product_per_100,
-            hit.carbsPer100.stripTrailingZeros().toPlainString(),
+            ResultFormatter.quantity(hit.carbsPer100),
             basis.unitLabel,
         )
     } else {
