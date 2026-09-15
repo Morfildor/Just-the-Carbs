@@ -87,7 +87,58 @@ The first Production update. Opened by the first code change made after the `1.0
 below (source `fa9d9e8`, tag `play-1.0.6-submitted`): a continuation of the Light/Dark visual
 refinement pass, a full visual overhaul, and an adversarial-review fixes pass. Not yet uploaded.
 
+### Added
+
+- **Launcher shortcuts.** Long-pressing the app icon now offers *Barcode* and *Label*, opening
+  either scanner directly without passing through Home. Search is deliberately not offered: it is a
+  recovery route reached from a failed lookup, not a way to start, and promoting it to the launcher
+  would misstate what the app is for. A shortcut never skips the welcome carousel — before
+  onboarding is complete it opens the app exactly as an ordinary launch would — and the scanner
+  opens *on top of* Home, so Back leaves the user in the app rather than on their phone's home
+  screen.
+
+- **The meal total can be copied.** The calculator's result has had a one-tap copy since `1.0.2`,
+  but the meal total — the figure a multi-item user is most likely to be transcribing, since
+  building a meal is how several foods become one number — had none, so that user had to read and
+  retype it. Same control, same clipboard rule (the bare number, never "53.6 g carbs"), same
+  check-mark confirmation, now shared by both screens through one component instead of two
+  hand-written copies.
+
 ### Changed
+
+- The Search screen now opens with its field focused and the keyboard up. It is reached only from a
+  failed lookup, as the recovery route that offers finding the product by name, so the user has
+  already decided to type by the time it appears and its single input was the only thing on it to
+  tap. Returning to it with a query already in the field does not re-claim focus.
+
+- **The welcome carousel reads as one composition instead of three floating parts.** Its slide copy
+  was centred inside a pager that takes every pixel the chrome does not, so on a 1080x2400 device a
+  448px block of words sat in a 1486px space: roughly 630px of empty colour above it, 460px below,
+  and a further gap before the pager dots. Nothing was added to fill that — the copy, the slides and
+  the swipe behaviour are unchanged. The block is now anchored low and the remaining slack collects
+  once, above the mark, where an expanse of the slide's own colour is the intended character rather
+  than a hole. The app mark grows 64dp to 88dp so the icon the user tapped a moment ago is
+  recognisable, and the body measure widens slightly so a three-line ragged paragraph sets as two.
+
+- **Manual Entry's Save action now belongs to the form.** It was pinned to the bottom edge while the
+  form ended near the top, leaving about 1050px of empty page between a four-field form and its own
+  submit button, so the action read as part of the screen rather than the end of the form. Save now
+  follows the last field at a normal spacing step. It is not pinned: the column takes only the
+  height it needs and becomes scrollable when content plus button exceed the viewport, so at a large
+  font scale with the keyboard open every field and the action stay reachable rather than colliding
+  with the keyboard or being pushed off-screen.
+
+- The welcome carousel's two large translucent circles are replaced by the app's own
+  barcode/nutrition-rule motif in the slide's colours. `DESIGN.md` excludes generic hero circles,
+  and these were doing harm rather than merely being off-style: the top circle sat behind Skip, so
+  the first screen drew its escape hatch on a lighter patch of its own background, and the bottom
+  one collided with the pager dots.
+
+- `CopyResultButton` moved from the deprecated `LocalClipboardManager` to `LocalClipboard`. The
+  replacement's write is a suspend call, so it is launched on the composable's own scope rather than
+  run inline; the confirmation is still set on click, because awaiting the platform would make the
+  check mark's timing depend on it. What is copied, the check mark, the Toast and the accessibility
+  semantics are all unchanged, on both the calculator and the meal total.
 
 - Continued the Light/Dark visual refinement pass: every text-bearing button and chip now uses a
   minimum height instead of a fixed one, so labels survive large font scales instead of clipping
@@ -111,6 +162,36 @@ refinement pass, a full visual overhaul, and an adversarial-review fixes pass. N
   chrome, accessibility behavior, design documentation, and regression coverage.
 
 ### Fixed
+
+- **The nutrition-label scanner could crash the app when its screen was destroyed mid-recognition**
+  — reproduced on the emulator and confirmed pre-existing against clean `main`, so this is a
+  long-standing defect rather than a regression. Play Services delivers an ML Kit task's
+  cancellation on the main thread from inside its own completion machinery, after `close()` has shut
+  the parse executor down, and the rejected task surfaced as a `RejectedExecutionException` crash in
+  GMS code. The existing guards could not cover it: they wrap listener *submission*, and this is a
+  listener accepted while the executor was alive and dispatched after it was not. The parse executor
+  now discards tasks rejected during teardown instead of throwing — every such task is a callback
+  for a screen that is already gone, and the scanner's session guard discards those results anyway.
+  Reachable through any relaunch that clears the task while a label scan is in flight. Since
+  confirmed fixed on physical hardware by the owner, and now covered by a deterministic JVM
+  regression test: the executor's construction was extracted to one named factory the analyzer
+  calls, so the guarantee — a task dispatched after shutdown is discarded, work already accepted
+  still completes — is assertable without a device. Reverting the policy fails four of its cases
+  with the same `RejectedExecutionException` seen in the field.
+
+- The decorative corner motif no longer has its last bar clipped by the screen edge. Five 12dp bars
+  and four 8dp gaps came to exactly the 92dp the row was given, so the mark fitted its own content
+  with no tolerance and the final bar was cut — measured at 30px against its siblings' 32px, on all
+  six screens that draw it. The row now measures to its content and sits inside a small edge inset.
+
+- **The same motif was also clipped along its top edge, on all six screens.** Every screen pads its
+  *content* with `statusBarsPadding()` but the motif is a sibling of that content, so it alone was
+  laid out from y=0 — underneath the opaque status bar the app paints. Measured on device: each bar
+  began at exactly y=128, the status-bar boundary, with its rounded top corners sliced off flat,
+  which reads as a rendering fault rather than as a mark bled off the edge. The inset now lives in
+  the shared component, where it cannot be omitted a seventh time, and the small negative offset
+  that was subtracting itself back out of that inset is gone. Measured after: the bars start at five
+  different heights again, the natural ragged top of the mark.
 
 - **Adversarial review of the visual overhaul found five concrete defects, each reproduced and
   fixed** (`c101739`): `AccentBackdrop` clipped on every screen that draws it (a positive offset

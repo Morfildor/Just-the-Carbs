@@ -2,6 +2,7 @@ package app.justthecarbs.ui.manual
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,8 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -87,9 +89,28 @@ fun ManualEntryScreen(
                 onBack = onBack,
             )
 
+            // Save travels with the form instead of being pinned to the screen's bottom edge.
+            //
+            // The old arrangement gave this column `weight(1f)` and put the action in a sibling
+            // pinned beneath it, so on a 1080x2400 device the last field ended at y≈1084 and Save
+            // sat at y≈2132 — roughly 1050px of empty cream between a four-field form and its own
+            // submit button. The button read as belonging to the screen rather than to the form,
+            // which is the "stranded at the opposite end" complaint.
+            //
+            // Both are now inside one scrolling column, so Save sits directly under the last field
+            // at a normal rhythm step. `weight(1f, fill = false)` is what makes this safe at the
+            // other extreme: the column takes only the height it needs when the content is short,
+            // and stops growing — becoming scrollable — once the content plus the button exceed the
+            // viewport, which is what happens at a large font scale or with both error lines
+            // showing. So nothing is ever pushed off-screen and nothing is ever unreachable.
+            //
+            // Pinning it to the bottom edge instead was considered and rejected on this screen:
+            // the form is short and the collision it would create with the IME is precisely the
+            // failure mode the brief warns against. `imePadding()` on the outer column already
+            // lifts the whole form clear of the keyboard.
             Column(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = Space.screenEdge),
                 verticalArrangement = Arrangement.spacedBy(Space.m),
@@ -195,16 +216,10 @@ fun ManualEntryScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
+                // A step clear of the last field, so Save reads as the end of the form rather than
+                // as a fifth row of it.
                 Spacer(Modifier.height(Space.s))
-            }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Space.screenEdge)
-                    .padding(bottom = Space.m)
-                    .navigationBarsPadding(),
-            ) {
                 // Directly above the button that failed, so the explanation is where the user is
                 // already looking. Without it the tap re-enabled the button and changed nothing
                 // else, which reads as a missed tap rather than a failed save — and the response to
@@ -216,7 +231,6 @@ fun ManualEntryScreen(
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = Space.s)
                             .semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
@@ -232,6 +246,16 @@ fun ManualEntryScreen(
                     ),
                     modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                 ) { Text(stringResource(R.string.manual_save)) }
+
+                // Trailing room below the action, plus the navigation-bar inset as real height.
+                //
+                // `windowInsetsBottomHeight` rather than a `navigationBarsPadding()` modifier: the
+                // inset now has to be part of what *scrolls*, and a padding modifier applied after
+                // `verticalScroll` pads the scrolling content rather than the viewport — the exact
+                // ordering trap this repository has recorded twice before, most recently as the
+                // Settings row that came to rest under the navigation bar.
+                Spacer(Modifier.height(Space.m))
+                Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
             }
         }
     }

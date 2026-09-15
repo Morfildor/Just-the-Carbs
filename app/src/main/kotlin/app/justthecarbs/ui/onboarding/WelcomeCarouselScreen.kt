@@ -14,12 +14,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -126,22 +126,25 @@ fun WelcomeCarouselScreen(
     val markColor = if (slideIndex == 1) MaterialTheme.colorScheme.tertiary else foreground
 
     Box(modifier = Modifier.fillMaxSize().background(background).testTag(CAROUSEL_ROOT_TAG)) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .size(220.dp)
-                .background(foreground.copy(alpha = 0.14f), CircleShape),
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .size(180.dp)
-                .background(foreground.copy(alpha = 0.14f), CircleShape),
+        // The decoration is the app's own barcode/nutrition-rule grammar, not a hero circle.
+        //
+        // Two large translucent circles used to sit here — 220dp top-right and 180dp bottom-left.
+        // DESIGN.md names "generic hero circles" as outside this system, and they were doing active
+        // harm rather than merely being off-style: the top one sat directly behind Skip, so the
+        // app's first screen rendered its escape hatch on a lighter patch of its own background,
+        // and the bottom one collided with the pager dots. They also stated nothing about the
+        // product, on the one screen whose entire job is introducing it.
+        //
+        // WelcomeRules restates the motif every other screen carries, in the slide's own
+        // foreground colour, anchored to the corner the content column does not occupy.
+        WelcomeRules(
+            color = foreground,
+            modifier = Modifier.align(Alignment.TopEnd),
         )
 
-        // Inset padding on the CONTENT, not on the Box above it, so the coloured background and its
-        // decorative circles still bleed to the screen edges while Skip and the CTA stay clear of
-        // the system bars.
+        // Inset padding on the CONTENT, not on the Box above it, so the coloured background and the
+        // corner motif still bleed to the screen edges while Skip and the CTA stay clear of the
+        // system bars.
         //
         // This screen was the one place in the app with no inset handling at all, which left Skip
         // sitting underneath the status bar. It was survivable while the bars were transparent —
@@ -186,14 +189,46 @@ fun WelcomeCarouselScreen(
                 pageSpacing = 0.dp,
             ) { page ->
                 val pageSlide = SLIDES[page]
+                // Bottom-anchored, not centred.
+                //
+                // This is the whole composition fix. The column used to be `Arrangement.Center`
+                // inside a pager that takes every pixel the chrome does not, which on a 1080x2400
+                // device measured a 1486px-tall pager holding a 448px block of words: ~630px of
+                // empty colour above it and ~460px below, then a further gap before the dots. The
+                // three parts of the screen — decoration, words, controls — each floated with no
+                // relationship to the next, which is what reads as "vertically disconnected".
+                //
+                // Anchoring the block to the bottom of the pager instead ties the copy to the dots
+                // and the CTA directly beneath it, so the eye travels eyebrow -> title -> body ->
+                // dots -> action as one column. The slack that remains collects in ONE place, above
+                // the mark, where an expanse of the slide's own colour is the point rather than a
+                // hole. No copy, cards or illustrations were added to fill it.
+                //
+                // The mark grows 64dp -> 88dp for the same reason: at 64dp it was a detail lost in
+                // a large colour field, and it is the app's own icon — the thing the user tapped a
+                // moment ago — so it can afford to be recognised.
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = Space.xl),
-                    verticalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.Bottom,
                 ) {
-                    OnboardingMark(color = markColor, size = 64.dp)
-                    Spacer(Modifier.height(20.dp))
+                    // Weighted spacers, not a plain Bottom anchor.
+                    //
+                    // Anchoring hard to the bottom was measured first and overcorrected: the copy
+                    // ended 9px above the dots and the whole slack moved to the top, which trades a
+                    // hole in the middle for a bigger one above. Splitting the remaining space 2:1
+                    // keeps the block low — tied to the dots and CTA beneath it — while leaving a
+                    // deliberate settling margin under the body, so the group reads as *placed*
+                    // rather than as having fallen to the floor.
+                    //
+                    // Weights rather than fixed dp because the slack differs per device and per
+                    // font scale; a fixed value would be right on this emulator alone. When the
+                    // content is tall enough to fill the pager both spacers collapse to zero and
+                    // the layout degrades to the plain stacked column.
+                    Spacer(Modifier.weight(2f))
+                    OnboardingMark(color = markColor, size = 88.dp)
+                    Spacer(Modifier.height(Space.l))
                     Text(
                         text = stringResource(pageSlide.eyebrowRes),
                         style = MaterialTheme.typography.labelSmall,
@@ -215,13 +250,27 @@ fun WelcomeCarouselScreen(
                         text = stringResource(pageSlide.bodyRes),
                         style = MaterialTheme.typography.bodyLarge,
                         color = foreground.copy(alpha = WELCOME_SUPPORTING_ALPHA),
-                        modifier = Modifier.widthIn(max = 280.dp),
+                        // 320dp wide rather than 280dp: the old cap broke "No searching, no typing
+                        // a product name." into three short ragged lines against a full-width
+                        // slide. Still a measure rather than the full width, so the body stays a
+                        // readable column and does not run edge to edge.
+                        modifier = Modifier.widthIn(max = 320.dp),
                     )
+                    Spacer(Modifier.weight(1f))
                 }
             }
 
+            // Asymmetric padding, deliberately: the dots now follow directly from the body copy
+            // above them, so a 40dp gap there re-opened part of the disconnection the bottom
+            // anchoring exists to close. The bottom keeps its full breathing room so the CTA is
+            // not crowded against the navigation bar.
             Column(
-                modifier = Modifier.padding(horizontal = Space.xl, vertical = 40.dp),
+                modifier = Modifier.padding(
+                    start = Space.xl,
+                    end = Space.xl,
+                    top = Space.l,
+                    bottom = 40.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 Dots(count = SLIDES.size, active = slideIndex, color = foreground)
@@ -277,6 +326,53 @@ fun WelcomeCarouselScreen(
 
 /** Lowest alpha used for readable carousel copy; every slide pair stays at or above 4.5:1. */
 private const val WELCOME_SUPPORTING_ALPHA = 0.96f
+
+/**
+ * The corner motif, in the welcome carousel's own colours.
+ *
+ * Deliberately a sibling of [app.justthecarbs.ui.components.AccentBackdrop] rather than a call to
+ * it. That component reads its alpha from `extendedColors.accentBackdropAlpha`, which is tuned for
+ * a *destination accent drawn on the page ground*; this screen draws a foreground colour on a
+ * saturated slide, where the same alpha is close to invisible on cobalt and glaring on cream. The
+ * shape and the grammar are shared; only the tint rule differs, and reusing the component would
+ * mean giving it a second alpha mode to serve one caller.
+ *
+ * Purely decorative: no semantics, no touch handling, and drawn behind every control.
+ */
+@Composable
+private fun WelcomeRules(color: Color, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            // Clear of the status bar for the same reason AccentBackdrop is: the bars this app
+            // paints are opaque, so a mark laid out from y=0 is sliced flat rather than bled.
+            .statusBarsPadding()
+            // Top inset clears the whole Skip row (a 48dp target inside 20dp screen-edge padding),
+            // so the mark begins below it rather than behind it. Measured: Skip's row ends at
+            // y=307 on this device and the first bar now starts beneath that.
+            .padding(top = Space.xxl + Space.xl, end = Space.xl),
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+        verticalAlignment = Alignment.Top,
+    ) {
+        // Descending rather than the shared component's uneven rhythm: this one hangs from the top
+        // edge instead of standing on a baseline, so a ragged lower edge reads as the intended
+        // shape while a ragged upper one would read as clipping.
+        //
+        // The first bar is the tallest and sits furthest from the corner, so the mark's mass falls
+        // away from Skip rather than under it — the first attempt ran the bars up level with Skip
+        // and reproduced exactly the collision the circles were removed for.
+        listOf(96.dp, 72.dp, 52.dp, 36.dp).forEachIndexed { index, height ->
+            Box(
+                modifier = Modifier
+                    .width(12.dp)
+                    .height(height)
+                    .background(
+                        color.copy(alpha = if (index % 2 == 0) 0.22f else 0.14f),
+                        RoundedCornerShape(Space.xs),
+                    ),
+            )
+        }
+    }
+}
 
 @Composable
 private fun Dots(count: Int, active: Int, color: Color) {

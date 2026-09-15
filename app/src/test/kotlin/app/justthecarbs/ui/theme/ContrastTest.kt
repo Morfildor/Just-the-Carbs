@@ -180,9 +180,20 @@ class ContrastTest {
         val source = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/components/AccentBackdrop.kt",
         ).readText()
-        assertTrue(source.contains(".width(92.dp)"))
-        assertTrue(source.contains(".height(96.dp)"))
+
+        // What actually matters is that the motif stays a small bounded mark rather than a wash over
+        // the reading surface. That is asserted through its bounded height and the absence of any
+        // fill-the-parent sizing — NOT through an exact `.width(92.dp)` literal, which this test used
+        // to require. The explicit width was removed on purpose: five 12dp bars and four 8dp gaps
+        // came to exactly 92dp, so the row fitted its own content with zero tolerance and the last
+        // bar was clipped by the screen edge (measured at 30px against its siblings' 32px). The row
+        // now measures to its content, which cannot drift from the bars the way a typed total did.
+        //
+        // Pinning the spelling rather than the property is what made a genuine bug fix look like a
+        // regression, so this asserts the constraint the design actually has.
+        assertTrue("the motif must keep a bounded height", source.contains(".height(96.dp)"))
         assertTrue("the motif must not paint a full-screen wash", !source.contains("fillMaxSize"))
+        assertTrue("the motif must not stretch to the full width", !source.contains("fillMaxWidth"))
         assertTrue(backdropAlpha("Light") <= 0.16)
         assertTrue(backdropAlpha("Dark") <= 0.26)
     }

@@ -67,10 +67,7 @@ class LabelAnalyzer(
      * rather than racing them. A daemon thread so it can never hold the process alive, matching the
      * evidence writer's convention.
      */
-    private val parseExecutor: java.util.concurrent.ExecutorService =
-        java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "jtc-ocr-parse").apply { isDaemon = true }
-        }
+    private val parseExecutor: java.util.concurrent.ExecutorService = newParseExecutor()
 
     private val inFlight = AtomicBoolean(false)
     private val pendingStill = AtomicReference<StillRequest?>(null)
@@ -719,3 +716,53 @@ data class PassAResult(
         bitmap?.takeIf { !it.isRecycled }?.recycle()
     }
 }
+
+/**
+ * The single-threaded executor [LabelAnalyzer] dispatches ML Kit completion listeners on.
+ *
+ * ## Why a discard policy rather than the default abort
+ *
+ * The default `AbortPolicy` throws `RejectedExecutionException`, and the call sites that *submit*
+ * listeners already guard against that with `runCatching`. What they cannot guard is a listener
+ * that was accepted while the executor was alive and is dispatched after it is not: Play Services'
+ * Task implementation calls `executor.execute(...)` from inside its own completion machinery, on
+ * the main thread, outside any of this class's frames. `LabelAnalyzer.close()` closes the
+ * recognizer — which *cancels* in-flight tasks — and then shuts this executor down, so a
+ * cancellation delivered in between lands on a terminated pool and the exception surfaces as a
+ * main-thread crash in GMS code.
+ *
+ * Reproduced on the emulator before this change and proven pre-existing against clean `main`: open
+ * the nutrition-label scanner and destroy the task while recognition is in flight (a launcher
+ * shortcut, a task-switcher swipe, or any relaunch that clears the task) and the app dies with
+ * `RejectedExecutionException: ... rejected from ThreadPoolExecutor[Terminated]`. Since fixed, and
+ * since confirmed on physical hardware by the owner.
+ *
+ * Discarding is the correct outcome, not merely the quiet one: a task rejected here can only be a
+ * callback for work whose screen is already gone, and every such result is discarded by the
+ * scanner's own session guard even when it does run. Dropping it changes no reachable behaviour and
+ * removes the crash. Resource release does not rely on it — `close()` already deletes the pending
+ * still and closes the recognizer, and the live path releases its own frame through the
+ * `runCatching` fallback at submission.
+ *
+ * ## Why this is a top-level function rather than an inline initialiser
+ *
+ * So the guarantee above is reachable from a plain JVM test. `LabelAnalyzer` builds an ML Kit
+ * recognizer in its constructor and therefore cannot be instantiated off-device, which is exactly
+ * why the original defect had no regression test. Extracting the one construction the guarantee
+ * lives in costs no indirection at runtime — the analyzer calls this and nothing else does — and
+ * makes "a task submitted after shutdown is discarded rather than thrown" a property a test can
+ * assert directly, on the real executor this ships with rather than on a stand-in.
+ *
+ * Serial by construction, so two captures cannot parse concurrently and contend. A daemon thread so
+ * it can never hold the process alive, matching the evidence writer's convention.
+ */
+internal fun newParseExecutor(): java.util.concurrent.ExecutorService =
+    java.util.concurrent.ThreadPoolExecutor(
+        1,
+        1,
+        0L,
+        java.util.concurrent.TimeUnit.MILLISECONDS,
+        java.util.concurrent.LinkedBlockingQueue(),
+        { runnable -> Thread(runnable, "jtc-ocr-parse").apply { isDaemon = true } },
+        java.util.concurrent.ThreadPoolExecutor.DiscardPolicy(),
+    )
