@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import app.justthecarbs.R
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
@@ -385,6 +386,7 @@ private fun SearchNutritionColumn(hit: ProductSearchHit, modifier: Modifier = Mo
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.End,
             )
         }
