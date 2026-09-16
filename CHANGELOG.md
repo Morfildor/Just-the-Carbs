@@ -193,6 +193,16 @@ refinement pass, a full visual overhaul, and an adversarial-review fixes pass. N
   that was subtracting itself back out of that inset is gone. Measured after: the bars start at five
   different heights again, the natural ragged top of the mark.
 
+- On short screens, a saved product's photo and source summary now scroll with its portion
+  controls, leaving the calculated carbohydrate result its full readable height at large font
+  scales. Home's first-run starter follows the scan, search, and manual entry actions without a
+  viewport-sized blank gap. The Settings haptics row grows with its label at large font scales.
+
+- A conflicted OCR nutrition table now withholds its per-piece or per-serving shortcut. A Kinder
+  photograph could put both carbohydrate figures under the per-100 column and mistake the `%RI`
+  figure for carbs per piece while still recognizing a piece header; that figure can no longer be
+  saved as a portion while the table's columns disagree.
+
 - **Adversarial review of the visual overhaul found five concrete defects, each reproduced and
   fixed** (`c101739`): `AccentBackdrop` clipped on every screen that draws it (a positive offset
   pushed an already edge-aligned element off screen); Meal's Undo snackbar overlapped `JtcTopBar`

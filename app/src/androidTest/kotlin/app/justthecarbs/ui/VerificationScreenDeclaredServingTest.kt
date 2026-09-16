@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.ocr.OcrBox
 import app.justthecarbs.ui.scan.VerificationScreen
@@ -64,14 +65,14 @@ class VerificationScreenDeclaredServingTest {
     fun aDeclaredServingReadingShowsThePrintedPairAsThePrimaryLine() {
         showScreen()
 
-        rule.onNodeWithText("6 g per 18 g serving").assertIsDisplayed()
+        rule.onNodeWithText("6 g per 18 g serving").performScrollTo().assertIsDisplayed()
     }
 
     @Test
     fun aDeclaredServingReadingShowsTheNormalizedFigureAsSecondaryContext() {
         showScreen()
 
-        rule.onNodeWithText("Equivalent to 33.3 g per 100 g").assertIsDisplayed()
+        rule.onNodeWithText("Equivalent to 33.3 g per 100 g").performScrollTo().assertIsDisplayed()
     }
 
     /**
@@ -87,8 +88,8 @@ class VerificationScreenDeclaredServingTest {
             printedBasisLabel = "250 ml",
         )
 
-        rule.onNodeWithText("1.3 g per 250 ml").assertIsDisplayed()
-        rule.onNodeWithText("Equivalent to 0.5 g per 100 ml").assertIsDisplayed()
+        rule.onNodeWithText("1.3 g per 250 ml").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Equivalent to 0.5 g per 100 ml").performScrollTo().assertIsDisplayed()
     }
 
     /**
@@ -105,7 +106,7 @@ class VerificationScreenDeclaredServingTest {
             printedBasisLabel = null,
         )
 
-        rule.onNodeWithText("41 g per 100 ml").assertIsDisplayed()
+        rule.onNodeWithText("41 g per 100 ml").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Equivalent to", substring = true).assertDoesNotExist()
     }
 }

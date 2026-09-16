@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -32,6 +33,8 @@ import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.ui.home.HOME_SCAN_BARCODE_TAG
 import app.justthecarbs.ui.home.HOME_SCAN_LABEL_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_FIELD_TAG
+import app.justthecarbs.ui.home.HOME_MANUAL_TAG
+import app.justthecarbs.ui.home.HOME_BODY_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_PENDING_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_RATE_LIMITED_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_REFRESH_ERROR_TAG
@@ -43,6 +46,7 @@ import app.justthecarbs.ui.meal.MEAL_BAR_TAG
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.math.BigDecimal
@@ -410,6 +414,22 @@ class HomeScreenTest {
     }
 
     @Test
+    fun theStarterFollowsTheEntryPointsWithoutAViewportSizedBlankGap() {
+        show(recents = emptyList())
+
+        val manualBottom = compose.onNodeWithText("Enter manually")
+            .fetchSemanticsNode().boundsInRoot.bottom
+        val starterTop = compose.onNodeWithText("Scan. Portion. Carbs.")
+            .fetchSemanticsNode().boundsInRoot.top
+        with(compose.density) {
+            assertTrue(
+                "starter begins ${(starterTop - manualBottom).toDp()} after manual entry",
+                (starterTop - manualBottom).toDp() < 80.dp,
+            )
+        }
+    }
+
+    @Test
     fun theStarterHeroDisappearsOnceRecentsExist() {
         show(recents = listOf(RecentEntry(product(), lastUnit = null)))
         compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
@@ -469,15 +489,22 @@ class HomeScreenTest {
      */
     @Test
     fun largeFontKeepsEveryEntryPointReachable() {
+        var manualClicks = 0
         show(
             recents = emptyList(),
-            density = Density(density = 2.75f, fontScale = 1.8f),
+            onManualEntry = { manualClicks++ },
+            // Keep the emulator's actual px-to-dp ratio. Replacing density with 2.75 on CI's
+            // 320px/160dpi device turns a 320dp screen into an impossible 116dp screen.
+            density = Density(density = compose.density.density, fontScale = 1.8f),
         )
 
         compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).assertIsDisplayed()
         compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag(HOME_SCAN_LABEL_TAG).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Enter manually").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag(HOME_BODY_TAG).performScrollToIndex(2)
+        compose.onNodeWithTag(HOME_MANUAL_TAG).assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        assertEquals("manual entry must remain tappable at large fonts", 1, manualClicks)
     }
 
     /**

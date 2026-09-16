@@ -237,6 +237,10 @@ class QuickCalculationScreenTest {
     @Test
     fun savingIsOfferedAsASecondaryAction() {
         showQuick()
+        typePortion("35")
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText("Save product")).fetchSemanticsNodes().isNotEmpty()
+        }
 
         compose.onNodeWithText("Save product").performScrollTo().assertIsDisplayed()
     }
@@ -258,6 +262,10 @@ class QuickCalculationScreenTest {
     fun tappingSaveOpensTheForm() {
         var requested: Boolean? = null
         showQuick(onShowSave = { requested = it })
+        typePortion("35")
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText("Save product")).fetchSemanticsNodes().isNotEmpty()
+        }
 
         compose.onNodeWithText("Save product").performScrollTo().performClick()
         compose.waitForIdle()

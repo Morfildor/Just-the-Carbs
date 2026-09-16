@@ -5,10 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.CarbCalculator
 import app.justthecarbs.domain.InputMode
@@ -23,6 +25,7 @@ import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.VerificationStatus
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductUiState
+import app.justthecarbs.ui.product.PRODUCT_RESULT_TAG
 import app.justthecarbs.ui.product.USUAL_PORTION_ROW_TAG
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
 import org.junit.Rule
@@ -185,7 +188,7 @@ class UsualPortionScreenTest {
         compose.onNodeWithText("65 g").performClick()
 
         // 48.2 g/100 g × 65 g = 31.33 → 31.3, through the production calculator.
-        compose.onNodeWithText("31.3 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
     }
 
     /**
@@ -199,7 +202,7 @@ class UsualPortionScreenTest {
             units = listOf(sliceUnit()),
         )
 
-        compose.onNodeWithText("2 slices").assertIsDisplayed()
+        compose.onNodeWithText("2 slices").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -209,10 +212,10 @@ class UsualPortionScreenTest {
             units = listOf(sliceUnit()),
         )
 
-        compose.onNodeWithText("2 slices").performClick()
+        compose.onNodeWithText("2 slices").performScrollTo().performClick()
 
         // 2 slices × 36 g = 72 g; 48.2 g/100 g × 72 g = 34.704 → 34.7.
-        compose.onNodeWithText("34.7 g").assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("34.7 grams")
     }
 
     /** §13's explicit cap: a row of shortcuts the user has to read is not a shortcut. */

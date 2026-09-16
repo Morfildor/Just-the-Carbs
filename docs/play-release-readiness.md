@@ -1,6 +1,25 @@
 # Google Play release readiness — Just the Carbs
 
-**Status as of 2026-09-04**
+**Current state as of 2026-09-15**
+
+`1.0.6` / `versionCode 7` was submitted to the **Production** track from
+`fa9d9e8` (`play-1.0.6-submitted`) and is under Play review. That source and
+versionCode are frozen. `main` is developing `1.0.7` / `versionCode 8`, the first
+post-Production update; it has not been uploaded. See [version history](version-history.md)
+and `CLAUDE.md`'s **Current release and branch state** for the release record.
+
+The 1.0.7 release gate is **blocked** while API 36 instrumentation has unexplained
+failures. Passing ordinary CI is insufficient because its API 36 job uses
+`continue-on-error`; the strict [release gate](../.github/workflows/release-gate.yml)
+requires the instrumented suite to pass. Do not infer 1.0.7 release readiness from
+the 1.0.6 Production submission or from the historical checklist below.
+
+## Historical readiness snapshot (2026-09-04; superseded)
+
+The following table and checklist record the earlier closed-testing preparation.
+Their track, version, and readiness statements are historical, not current instructions.
+
+**Status as recorded on 2026-09-04**
 
 | Area | Status |
 |---|---|

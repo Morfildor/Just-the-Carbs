@@ -95,6 +95,8 @@ import java.math.BigDecimal
 
 /** Stable handles for instrumented tests. */
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
+const val HOME_MANUAL_TAG = "home_manual_entry"
+const val HOME_BODY_TAG = "home_body"
 const val HOME_SEARCH_RESULTS_TAG = "home_search_results"
 const val HOME_SEARCH_REFRESH_ERROR_TAG = "home_search_refresh_error"
 const val HOME_SEARCH_RATE_LIMITED_TAG = "home_search_rate_limited"
@@ -611,7 +613,7 @@ private fun HomeBody(
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().testTag(HOME_BODY_TAG),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             start = Space.screenEdge,
             end = Space.screenEdge,
@@ -677,7 +679,8 @@ private fun HomeBody(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = Space.xs)
-                    .heightIn(min = Space.minTouchTarget),
+                    .heightIn(min = Space.minTouchTarget)
+                    .testTag(HOME_MANUAL_TAG),
             ) {
                 Text(stringResource(R.string.home_manual_button))
             }
@@ -685,19 +688,10 @@ private fun HomeBody(
 
         if (recents.isEmpty()) {
             item(key = "starter") {
-                // `fillParentMaxHeight()` sizes this item to the LazyColumn's own viewport, not to
-                // its content — without it EmptyState packs at its natural height from the top and
-                // leaves several hundred dp of bare page beneath it on a first launch, which is
-                // exactly the unfinished-dashboard look this composable's own KDoc says it exists to
-                // avoid. Centering only here (never for a populated Recents list, which should still
-                // pack from the top and scroll normally) is why this lives at the item call site
-                // rather than as a general LazyColumn default.
-                Box(
-                    modifier = Modifier.fillParentMaxHeight(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    EmptyState(modifier = Modifier.padding(top = Space.m, bottom = Space.m))
-                }
+                // A LazyColumn item already follows the entry points. Giving this final item a
+                // whole viewport inserts a large blank band before its headline and pushes it
+                // beyond the initial screen on short devices.
+                EmptyState(modifier = Modifier.padding(top = Space.m, bottom = Space.m))
             }
         } else {
             // Favourites are the repeat-use path: a product the user has already told the app they

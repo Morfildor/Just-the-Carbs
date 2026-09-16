@@ -1,6 +1,8 @@
 package app.justthecarbs.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -487,46 +490,49 @@ class ProductScreenTest {
     @Test
     fun theResultIsNotClippedAtTheLargestFontScale() {
         compose.setContent {
+            val deviceDensity = LocalDensity.current.density
             // 1.8x is the scale the app is documented as supporting; Android's own accessibility
             // settings go to 2.0x, so this is the floor of the requirement, not the ceiling.
             CompositionLocalProvider(
                 LocalDensity provides Density(
-                    // A dense small phone: 1080px across a 5.5" screen is ~3.0 density, so the
-                    // window is only ~360dp wide. Combined with the largest font scale, this is
-                    // the narrowest place the widest result has to fit.
-                    density = 3.0f,
+                    // Preserve the physical device density while raising font scale. The CI
+                    // emulator is 320px at 160dpi; imposing a 3.0 density on it invents a 106dp
+                    // window and produces a meaningless zero-height result.
+                    density = deviceDensity,
                     fontScale = 2.0f,
                 ),
             ) {
                 JustTheCarbsTheme {
-                    ProductScreen(
-                        state = ProductUiState(
-                            loading = false,
-                            product = product(carbs = "48.2"),
-                            // 260 g of a 48.2 g/100 g product is 125.3 g — three digits plus a
-                            // decimal, the widest result this screen can be asked to render.
-                            portionText = "260",
-                            result = CarbCalculator.calculate(
-                                BigDecimal("48.2"),
-                                BigDecimal("260"),
-                                NutritionBasis.PER_100_G,
+                    Box(Modifier.width(320.dp)) {
+                        ProductScreen(
+                            state = ProductUiState(
+                                loading = false,
+                                product = product(carbs = "48.2"),
+                                // 260 g of a 48.2 g/100 g product is 125.3 g — three digits plus a
+                                // decimal, the widest result this screen can be asked to render.
+                                portionText = "260",
+                                result = CarbCalculator.calculate(
+                                    BigDecimal("48.2"),
+                                    BigDecimal("260"),
+                                    NutritionBasis.PER_100_G,
+                                ),
+                                barcode = "8712100849060",
                             ),
-                            barcode = "8712100849060",
-                        ),
-                        settings = AppSettings(),
-                        onPortionChanged = {},
-                        onAdjust = {},
-                        onSetPortion = {},
-                        onToggleFavorite = {},
-                        onBack = {},
-                        onVerify = {},
-                        onDismissVerify = {},
-                        onConfirmVerification = { _, _, _ -> },
-                        onResetOnline = {},
-                        onScanLabel = {},
-                        onEnterManually = {},
-                        onRetry = {},
-                    )
+                            settings = AppSettings(),
+                            onPortionChanged = {},
+                            onAdjust = {},
+                            onSetPortion = {},
+                            onToggleFavorite = {},
+                            onBack = {},
+                            onVerify = {},
+                            onDismissVerify = {},
+                            onConfirmVerification = { _, _, _ -> },
+                            onResetOnline = {},
+                            onScanLabel = {},
+                            onEnterManually = {},
+                            onRetry = {},
+                        )
+                    }
                 }
             }
         }
@@ -550,15 +556,21 @@ class ProductScreenTest {
             .action
             ?.invoke(layouts)
         val layout = layouts.single()
+        val numeralBounds = compose.onNodeWithText("125.3").fetchSemanticsNode().boundsInRoot
 
         assertTrue(
             "The result overflows its box: laid out at ${layout.size.width}x" +
-                "${layout.size.height}px, longest line ${layout.multiParagraph.maxIntrinsicWidth}px",
+                "${layout.size.height}px, longest line ${layout.multiParagraph.maxIntrinsicWidth}px, " +
+                "width overflow ${layout.didOverflowWidth}, height overflow ${layout.didOverflowHeight}, " +
+                "line count ${layout.lineCount}, paragraph height ${layout.multiParagraph.height}, " +
+                "node bounds $numeralBounds",
             !layout.hasVisualOverflow,
         )
         // A truncated result would still satisfy a bounds check by simply being a shorter string,
         // so the value itself is asserted too, via the merged accessible description.
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("125.3 grams")
+        compose.onNodeWithContentDescription("Portion in g").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertIsDisplayed()
     }
 
     @Test
@@ -709,7 +721,8 @@ class ProductScreenTest {
     fun packShortcutsAppearOnlyWhenAPackageSizeIsKnown() {
         showCalculator(product(packageAmount = "380"))
 
-        compose.onNodeWithText("Full pack").performClick()
+        compose.onNodeWithText("Full pack").performScrollTo().performClick()
+        compose.waitForIdle()
 
         // 48.2 x 380 / 100 = 183.16
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("183.2 grams")
@@ -730,9 +743,9 @@ class ProductScreenTest {
     fun quarterHalfAndFullPackAreOfferedAndNothingElse() {
         showCalculator(product(packageAmount = "400"))
 
-        compose.onNodeWithText("¼ pack").assertIsDisplayed()
-        compose.onNodeWithText("½ pack").assertIsDisplayed()
-        compose.onNodeWithText("Full pack").assertIsDisplayed()
+        compose.onNodeWithText("¼ pack").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("½ pack").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Full pack").performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("¾ pack").assertCountEquals(0)
     }
 
@@ -740,7 +753,8 @@ class ProductScreenTest {
     fun aQuarterPackSetsAQuarterOfThePackageAmount() {
         showCalculator(product(packageAmount = "400"))
 
-        compose.onNodeWithText("¼ pack").performClick()
+        compose.onNodeWithText("¼ pack").performScrollTo().performClick()
+        compose.waitForIdle()
 
         // 400 / 4 = 100 g; 48.2 x 100 / 100 = 48.2
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("48.2 grams")
@@ -750,7 +764,8 @@ class ProductScreenTest {
     fun aHalfPackStillSetsHalfThePackageAmount() {
         showCalculator(product(packageAmount = "400"))
 
-        compose.onNodeWithText("½ pack").performClick()
+        compose.onNodeWithText("½ pack").performScrollTo().performClick()
+        compose.waitForIdle()
 
         // 400 / 2 = 200 g; 48.2 x 200 / 100 = 96.4
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("96.4 grams")

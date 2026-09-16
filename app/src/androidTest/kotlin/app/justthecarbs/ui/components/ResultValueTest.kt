@@ -47,19 +47,15 @@ class ResultValueTest {
     @Test
     fun aLongValueDoesNotClipAndTheUnitStaysBesideIt() {
         composeRule.setContent {
-            // A dense small phone at the largest supported font scale (see the identical rationale
-            // in ProductScreenTest.theResultIsNotClippedAtTheLargestFontScale) — the narrowest real
-            // place the widest result has to fit. 200dp is comfortably narrower than the ~320dp of
-            // usable content width that scenario implies (a 360dp window less two Space.screenEdge
-            // margins), so a numeral that fails to shrink at all (fixed at NumberType.result's 72sp
-            // base) would visibly overflow it, while one that shrinks to NumberType.resultAutoSize's
-            // 36sp floor comfortably fits — making the assertion below non-vacuous in both
-            // directions rather than trivially true regardless of auto-size behaviour.
+            // Preserve the emulator's physical density: overriding it with 3.0 on CI's 320px-wide,
+            // 160dpi device turns a 200dp box into a viewport that cannot exist on that device.
+            // A 280dp result on its 320dp window leaves room for margins while still requiring
+            // auto-size to fit this unusually long value at a 2x font scale.
             CompositionLocalProvider(
-                LocalDensity provides Density(density = 3.0f, fontScale = 2.0f),
+                LocalDensity provides Density(density = LocalDensity.current.density, fontScale = 2.0f),
             ) {
                 JustTheCarbsTheme {
-                    Box(modifier = Modifier.width(200.dp)) {
+                    Box(modifier = Modifier.width(280.dp)) {
                         ResultValue(
                             dominant = "1234.5",
                             unit = "g",

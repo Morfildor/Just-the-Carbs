@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.ocr.CarbCandidate
@@ -766,7 +767,8 @@ class AssistedReadingScreenTest {
             }
         }
 
-        rule.onNodeWithTag(VERIFY_CONFIRM_TAG).performClick()
+        rule.onNodeWithTag(VERIFY_CONFIRM_TAG).performScrollTo().performClick()
+        rule.waitForIdle()
 
         assertEquals(BigDecimal("2.3"), used?.first)
         assertEquals(NutritionBasis.PER_100_G, used?.second)
@@ -792,7 +794,8 @@ class AssistedReadingScreenTest {
             }
         }
 
-        rule.onNodeWithText("Not right").performClick()
+        rule.onNodeWithText("Not right").performScrollTo().performClick()
+        rule.waitForIdle()
 
         assertEquals(true, rejected)
     }

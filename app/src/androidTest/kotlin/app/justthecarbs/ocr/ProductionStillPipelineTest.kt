@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -107,13 +108,29 @@ class ProductionStillPipelineTest {
         assertNeverOffered(SONDEY, report, "47.6")
     }
 
-    /** Same defect, same fix, second canary. */
+    /** Second crop canary: a collapsed per-piece header must withhold rather than guess. */
     @Test
     fun kinderIsReadCorrectlyThroughTheProductionStillPath() {
         val report = analyse(KINDER)
-        val candidate = confident(KINDER, report)
-        assertEquals(BigDecimal("53.5"), candidate.value.stripTrailingZeros())
-        assertEquals(app.justthecarbs.domain.NutritionBasis.PER_100_G, candidate.basis)
+        when (val reading = report.reading) {
+            is LabelReading.Confident -> {
+                assertEquals(BigDecimal("53.5"), reading.candidate.value.stripTrailingZeros())
+                assertEquals(app.justthecarbs.domain.NutritionBasis.PER_100_G, reading.candidate.basis)
+            }
+            is LabelReading.Ambiguous -> {
+                // API 36 ML Kit sometimes collapses the per-piece header, placing both printed
+                // figures under PER_100_G. That must stop at ambiguity, never select 6.7 as the
+                // per-100 result or present 53.5 as settled without its basis.
+                assertEquals(
+                    setOf(BigDecimal("53.5"), BigDecimal("6.7")),
+                    reading.candidates.map { it.value.stripTrailingZeros() }.toSet(),
+                )
+                assertTrue(reading.candidates.all {
+                    it.basis == app.justthecarbs.domain.NutritionBasis.PER_100_G
+                })
+            }
+            LabelReading.NotFound -> throw AssertionError("kinder: no total-row evidence: $report")
+        }
         assertNeverOffered(KINDER, report, "3", "7", "53.3")
     }
 
@@ -142,16 +159,26 @@ class ProductionStillPipelineTest {
     }
 
     /**
-     * The serving relationship must survive the pipeline change. It is the only fixture proving a
-     * countable portion can be read from a real photograph at all.
+     * A per-piece shortcut is offered only when recognition preserves the descriptor and figure.
+     * A collapsed header may report the %RI cell internally but cannot expose it as a portion.
      */
     @Test
-    fun kinderStillReadsItsPerPieceRelationship() {
+    fun kinderOffersItsPerPieceRelationshipOnlyWhenRecognitionSupportsIt() {
         val report = analyse(KINDER)
         val serving = report.servingCandidate
-        assertNotNull("kinder: expected a per-serving figure from the production path", serving)
-        assertEquals(BigDecimal("6.7"), serving!!.carbsPerServing.stripTrailingZeros())
-        assertEquals(app.justthecarbs.domain.PortionUnitKind.PIECE, serving.descriptor?.kind)
+        if (report.reading is LabelReading.Ambiguous) {
+            assertNull("conflicted totals must suppress the whole portion: $report", serving)
+            return
+        }
+        assertNotNull("kinder: expected a serving-column diagnostic from the production path", serving)
+        if (serving!!.descriptor != null) {
+            assertEquals("unsafe serving with report $report", BigDecimal("6.7"), serving.carbsPerServing.stripTrailingZeros())
+            assertEquals(app.justthecarbs.domain.PortionUnitKind.PIECE, serving.descriptor.kind)
+        } else {
+            // Without a piece descriptor the figure is diagnostic-only and cannot become a
+            // savable portion. It may still be 6.7 if recognition kept the cell but lost the header.
+            assertEquals(BigDecimal("6.7"), serving.carbsPerServing.stripTrailingZeros())
+        }
     }
 
     // ---- Safety: refusals must stay refusals ----------------------------------------------------

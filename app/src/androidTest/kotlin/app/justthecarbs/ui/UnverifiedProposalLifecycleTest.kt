@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.text.AnnotatedString
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.ocr.CarbCandidate
@@ -165,9 +166,9 @@ class UnverifiedProposalLifecycleTest {
             }
         }
 
-        rule.onNodeWithText("12 g per 100 g").assertIsDisplayed()
-        rule.onNodeWithText("Check this against the label").assertIsDisplayed()
-        rule.onNodeWithText("From: Hidratos de carbono 12g").assertIsDisplayed()
+        rule.onNodeWithText("12 g per 100 g").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Check this against the label").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("From: Hidratos de carbono 12g").performScrollTo().assertIsDisplayed()
     }
 
     // ------------------------------------------------------- release only on a terminal action
@@ -208,7 +209,8 @@ class UnverifiedProposalLifecycleTest {
             }
         }
 
-        rule.onNodeWithTag(VERIFY_CONFIRM_TAG).performClick()
+        rule.onNodeWithTag(VERIFY_CONFIRM_TAG).performScrollTo().performClick()
+        rule.waitForIdle()
 
         assertEquals(BigDecimal("12"), confirmed?.first)
         assertEquals(NutritionBasis.PER_100_G, confirmed?.second)
@@ -246,7 +248,7 @@ class UnverifiedProposalLifecycleTest {
             }
         }
 
-        rule.onNodeWithTag(VERIFY_REJECT_TAG).performClick()
+        rule.onNodeWithTag(VERIFY_REJECT_TAG).performScrollTo().performClick()
         rule.waitForIdle()
 
         assertFalse("the photograph must survive a rejection", bitmap.isRecycled)
@@ -254,7 +256,7 @@ class UnverifiedProposalLifecycleTest {
         // Focused entry is reachable, and the field it opens is EMPTY. A prefilled `12` would be
         // the app proposing the rejected number a second time, which is what "Reject/Edit must not
         // prefill a rejected number" forbids.
-        rule.onNodeWithText("Type it in").performClick()
+        rule.onNodeWithText("Type it in").performScrollTo().performClick()
         rule.waitForIdle()
         rule.onNodeWithTag(ASSIST_MANUAL_FIELD_TAG)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
@@ -278,7 +280,8 @@ class UnverifiedProposalLifecycleTest {
             }
         }
 
-        rule.onNodeWithTag(VERIFY_RETAKE_TAG).performClick()
+        rule.onNodeWithTag(VERIFY_RETAKE_TAG).performScrollTo().performClick()
+        rule.waitForIdle()
 
         assertEquals("retake must fire exactly once per tap", 1, retaken)
     }
@@ -367,8 +370,8 @@ class UnverifiedProposalLifecycleTest {
 
         rule.onNodeWithTag(VERIFY_PHOTO_TAG).assertIsDisplayed()
         rule.onNodeWithTag(VERIFY_ZOOM_TAG).assertIsDisplayed()
-        rule.onNodeWithText("2.8 g per 100 g").assertIsDisplayed()
-        rule.onNodeWithText("From: Koolhydraten, waarvan 2.8 g").assertIsDisplayed()
+        rule.onNodeWithText("2.8 g per 100 g").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("From: Koolhydraten, waarvan 2.8 g").performScrollTo().assertIsDisplayed()
     }
 
     /** Confirming it hands the calculator the printed value and the basis the label stated. */
@@ -387,7 +390,8 @@ class UnverifiedProposalLifecycleTest {
             }
         }
 
-        rule.onNodeWithTag(VERIFY_CONFIRM_TAG).performClick()
+        rule.onNodeWithTag(VERIFY_CONFIRM_TAG).performScrollTo().performClick()
+        rule.waitForIdle()
 
         assertEquals(0, confirmed?.first?.compareTo(BigDecimal("2.8")))
         assertEquals(NutritionBasis.PER_100_G, confirmed?.second)
@@ -426,11 +430,11 @@ class UnverifiedProposalLifecycleTest {
             }
         }
 
-        rule.onNodeWithTag(VERIFY_REJECT_TAG).performClick()
+        rule.onNodeWithTag(VERIFY_REJECT_TAG).performScrollTo().performClick()
         rule.waitForIdle()
 
         assertFalse("the photograph must survive a rejection", bitmap.isRecycled)
-        rule.onNodeWithText("Type it in").performClick()
+        rule.onNodeWithText("Type it in").performScrollTo().performClick()
         rule.waitForIdle()
         rule.onNodeWithTag(ASSIST_MANUAL_FIELD_TAG)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))

@@ -165,6 +165,32 @@ class NutritionTableInterpreterTest {
     }
 
     @Test
+    fun `a countable header cannot offer a serving when the per-100 column is conflicted`() {
+        // Recognition placed two distinct total figures under per-100 and a third figure under
+        // "per slice". That third cell could be a lost %RI marker, as on the Kinder still. The
+        // header names a unit but cannot establish which total figure belongs to its column.
+        val report = NutritionTableInterpreter.interpret(
+            document(
+                e("per", 300, 100, 340, 130, line = 0),
+                e("100", 345, 100, 385, 130, line = 0),
+                e("g", 390, 100, 405, 130, line = 0),
+                e("per", 550, 100, 590, 130, line = 0),
+                e("slice", 595, 100, 650, 130, line = 0),
+                e("Carbohydrate", 40, 200, 240, 230, line = 1),
+                e("45", 330, 200, 370, 230, line = 1),
+                e("51", 380, 200, 420, 230, line = 1),
+                e("17", 580, 200, 640, 230, line = 1),
+            ),
+        )
+
+        assertTrue("conflicting totals must remain ambiguous: $report", report.reading is LabelReading.Ambiguous)
+        assertNull("no savable serving can survive that conflict", report.servingCandidate)
+        assertTrue(report.diagnostics.any {
+            it.stage == "serving" && it.message.contains("withheld")
+        })
+    }
+
+    @Test
     fun `no carbohydrate row at all is NotFound`() {
         val reading = NutritionTableInterpreter.interpret(
             document(

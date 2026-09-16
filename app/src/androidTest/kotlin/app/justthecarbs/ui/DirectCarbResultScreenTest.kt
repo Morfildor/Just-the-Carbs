@@ -5,7 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.DirectCarbCalculator
 import app.justthecarbs.domain.InputMode
@@ -126,7 +126,7 @@ class DirectCarbResultScreenTest {
         // 4 × 14.2 = 56.8. The exact figure the workflow this pass exists to fix must produce.
         showDirectCarbResult(count = "4", carbsPerUnit = "14.2")
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertTextEquals("56.8 g")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("56.8 grams")
     }
 
     @Test
@@ -167,6 +167,6 @@ class DirectCarbResultScreenTest {
         // 2 × 15 = 30. Guards the formatting path for a value with no fractional part.
         showDirectCarbResult(count = "2", carbsPerUnit = "15")
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertTextEquals("30.0 g")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.0 grams")
     }
 }

@@ -169,7 +169,7 @@ fun SettingsScreen(
 
                 SectionLabel(stringResource(R.string.settings_interaction))
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(Space.minTouchTarget),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(

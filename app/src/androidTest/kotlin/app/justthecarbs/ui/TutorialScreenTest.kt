@@ -287,7 +287,10 @@ class TutorialScreenTest {
 
         assertMealOrTotalPresentationIsInternallyConsistent()
 
-        compose.mainClock.advanceTimeBy(20)
+        // The focus release and copy exit run in parallel. CI may schedule their first frame
+        // after the request, so assert the intermediate presentation stays coherent, then give
+        // the transition enough frames to reach its final presentation.
+        compose.mainClock.advanceTimeBy(400)
         compose.waitForIdle()
 
         compose.onNodeWithTag(TUTORIAL_TITLE_TAG, useUnmergedTree = true)

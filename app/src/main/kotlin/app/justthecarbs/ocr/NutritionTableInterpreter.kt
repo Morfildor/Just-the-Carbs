@@ -318,7 +318,20 @@ object NutritionTableInterpreter {
         // interpretation rather than a fabricated disagreement.
         val distinct = perHundred.distinctBy { it.first.stripTrailingZeros() to it.second }
 
-        val servingCandidate = serving?.let { value ->
+        // A countable header alone does not rescue a serving figure when the same total row has
+        // two different values assigned to a per-100 column. On the API 36 Kinder still, ML Kit
+        // collapsed 53.5 and 6.7 under PER_100_G and placed the %RI cell 3 under "per piece".
+        // Keeping that serving candidate would turn 3 into a savable piece shortcut despite the
+        // structural conflict. Withhold the whole portion until the total columns are resolved.
+        val servingCandidate = if (distinct.size > 1) {
+            if (serving != null) {
+                diagnostics += OcrDiagnostic(
+                    "serving",
+                    "withheld: conflicting per-100 values prevent a trustworthy serving column",
+                )
+            }
+            null
+        } else serving?.let { value ->
             val descriptor = servingColumn?.headerText?.let(::descriptorFromHeader)
             val resolved = descriptor?.let {
                 // A serving weight printed on its own line under the column header ("per piece" /
