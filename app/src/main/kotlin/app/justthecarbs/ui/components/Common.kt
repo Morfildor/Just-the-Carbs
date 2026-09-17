@@ -12,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -39,12 +41,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import app.justthecarbs.R
+import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
+import java.math.BigDecimal
 
 /**
  * The provenance badge (§23, §25).
@@ -295,57 +299,122 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
 @Composable
 fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val basis = hit.basis
-    // Built once and reused for the row's own accessible description below, so the row's spoken
-    // summary keeps the carbohydrate figure even though the visible text is now rendered in two
-    // lines by SearchNutritionColumn rather than as one string here.
-    val carbsText = if (hit.carbsPer100 != null && basis != null) {
+    val carbs = hit.carbsPer100
+    val hasValue = carbs != null && basis != null
+    val carbsText = if (carbs != null && basis != null) {
         stringResource(
             R.string.product_per_100,
-            ResultFormatter.quantity(hit.carbsPer100),
+            ResultFormatter.quantity(carbs),
             basis.unitLabel,
         )
     } else {
         stringResource(R.string.search_no_carbs)
     }
 
-    Row(
+    // Every field the card shows, spoken in the order it is read and separated so TalkBack pauses
+    // between them rather than running "De Ruijter" into "390 gram" into the carbohydrate figure.
+    //
+    // The package quantity used to be dropped entirely: the visible subtitle reads
+    // "De Ruijter · 390 gram" while the spoken line said only "De Ruijter". That field is precisely
+    // what tells a 390 g pack from a 600 g one, so a screen-reader user lost the disambiguator a
+    // sighted user gets. Empty fields are dropped rather than spoken as a gap — a record with no
+    // brand and no printed quantity previously produced a doubled separator.
+    val spoken = listOfNotNull(hit.name, hit.brand, hit.packageQuantity, carbsText)
+        .joinToString(". ")
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 76.dp)
             .clickable(onClick = onClick)
             .padding(vertical = Space.s + Space.xs)
-            .semantics {
-                contentDescription = "${hit.name}. ${hit.brand.orEmpty()} $carbsText"
-            },
-        verticalAlignment = Alignment.CenterVertically,
+            .semantics { contentDescription = spoken },
+        contentAlignment = Alignment.CenterStart,
     ) {
-        SearchThumbnail(imageUrl = hit.imageUrl, name = hit.name)
-        Spacer(Modifier.width(Space.m))
+        // Beside the text while the text column is wide enough to hold a word; beneath it otherwise.
+        // The figure column grows with the font scale, so at 2.0x on an ordinary 411dp phone it took
+        // enough width that "Chocomel" rendered as "Chocome" / "l".
+        //
+        // Measured in the name's own type size, so the switch tracks the text rather than a fixed
+        // width. Not a large sp constant: Android 14+ scales fonts non-linearly, and a 200sp figure
+        // barely grows at 2.0x, which left this switch never firing.
+        val textColumnWidth = maxWidth - Space.thumbnail - Space.m
+        val nameEm = with(LocalDensity.current) { MaterialTheme.typography.titleMedium.fontSize.toDp() }
+        val figureBelow = textColumnWidth < nameEm * FIGURE_BESIDE_MIN_NAME_EMS
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SearchThumbnail(imageUrl = hit.imageUrl, name = hit.name)
+            Spacer(Modifier.width(Space.m))
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = hit.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-            )
-            // Brand and printed quantity together are usually what separates two otherwise
-            // identical-looking cards on a shelf — a 390 g pack from a 600 g one.
-            val subtitle = listOfNotNull(hit.brand, hit.packageQuantity).joinToString(" · ")
-            if (subtitle.isNotEmpty()) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    text = hit.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    // A cut name must look cut. Clipped silently at 1.8x, "Chocolade Hagelslag Puur" read
+                    // as "Chocolade Hagelslag" — a complete, and different, product name.
+                    overflow = TextOverflow.Ellipsis,
                 )
+                // Brand and printed quantity together are usually what separates two otherwise
+                // identical-looking cards on a shelf — a 390 g pack from a 600 g one.
+                //
+                // The quantity's own spaces are non-breaking: "1 l" once wrapped as "1" / "l", leaving
+                // a bare number at a line end. The spoken line above keeps the original text.
+                val quantity = hit.packageQuantity?.replace(' ', Typography.nbsp)
+                val subtitle = listOfNotNull(hit.brand, quantity).joinToString(" · ")
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        // Room to wrap. On one line a large font scale word-wraps and the second line is
+                        // never drawn: measured at 1.8x, "Albert Heijn · 400 g" showed as "Albert Heijn ·",
+                        // losing exactly the pack size this line exists to show.
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // The unavailable state is a SENTENCE, so it belongs in this flexible column where a
+                // sentence fits — never squeezed into the numeric column beside it.
+                //
+                // That column is sized for "67.4 g" over "/ 100 g". Asked to carry
+                // "No carbohydrate value — check the package" it truncated at the default font scale and
+                // collapsed to "No carbohy…" at 1.8x, while still spending a third of the row's width to
+                // say nothing. Measured on device: a 276x84px text node for a 41-character string.
+                if (!hasValue) {
+                    Text(
+                        text = carbsText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = Space.xs),
+                    )
+                }
+                if (figureBelow && carbs != null && basis != null) {
+                    SearchNutritionColumn(
+                        value = carbs,
+                        basis = basis,
+                        beneathText = true,
+                        modifier = Modifier.padding(top = Space.xs),
+                    )
+                }
+            }
+
+            // The trailing column exists only when there is a figure for it. Reserving it on a row with
+            // no value would leave a visible empty gutter beside every such card.
+            if (!figureBelow && carbs != null && basis != null) {
+                Spacer(Modifier.width(Space.s))
+                SearchNutritionColumn(value = carbs, basis = basis)
             }
         }
-
-        Spacer(Modifier.width(Space.s))
-        SearchNutritionColumn(hit)
     }
 }
+
+/**
+ * Text-column width, in ems of the product-name type, below which a search row places its figure
+ * under the text. Keeps the figure beside the name up to 1.5x on a 411dp phone and moves it from
+ * 1.8x, and at 1.5x on 360dp and 1.3x on 320dp — the configurations measured on device.
+ */
+private const val FIGURE_BESIDE_MIN_NAME_EMS = 12f
 
 /**
  * The trailing carbohydrate summary in a search result row — a small value/basis pair in a
@@ -356,39 +425,36 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
  * result-red (design system rule) even though the two-line value/basis shape looks similar.
  */
 @Composable
-private fun SearchNutritionColumn(hit: ProductSearchHit, modifier: Modifier = Modifier) {
-    val value = hit.carbsPer100
-    val basis = hit.basis
+private fun SearchNutritionColumn(
+    value: BigDecimal,
+    basis: NutritionBasis,
+    modifier: Modifier = Modifier,
+    beneathText: Boolean = false,
+) {
+    val carbsSuffix = stringResource(R.string.product_unit_carbs_suffix)
+    val textAlign = if (beneathText) TextAlign.Start else TextAlign.End
     Column(
-        modifier = modifier.widthIn(min = 90.dp, max = 105.dp),
-        horizontalAlignment = Alignment.End,
+        // A floor with no ceiling. The minimum is what keeps figures aligned down the list the way a
+        // price column is; dropping the old 105.dp maximum lets the column grow for a long value or
+        // a large font scale instead of ellipsizing the number the user came for. Beneath the text
+        // there is no column to align, so it reads from the text's own start edge instead.
+        modifier = if (beneathText) modifier else modifier.widthIn(min = 90.dp),
+        horizontalAlignment = if (beneathText) Alignment.Start else Alignment.End,
     ) {
-        if (value != null && basis != null) {
-            val carbsSuffix = stringResource(R.string.product_unit_carbs_suffix)
-            Text(
-                text = "${ResultFormatter.quantity(value)} $carbsSuffix",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                textAlign = TextAlign.End,
-            )
-            Text(
-                text = stringResource(R.string.search_carbs_basis, basis.unitLabel),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                textAlign = TextAlign.End,
-            )
-        } else {
-            Text(
-                text = stringResource(R.string.search_no_carbs),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
-            )
-        }
+        Text(
+            text = "${ResultFormatter.quantity(value)} $carbsSuffix",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            textAlign = textAlign,
+        )
+        Text(
+            text = stringResource(R.string.search_carbs_basis, basis.unitLabel),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            textAlign = textAlign,
+        )
     }
 }

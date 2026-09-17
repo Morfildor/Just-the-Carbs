@@ -48,8 +48,17 @@ interface SearchALiciousApi {
     companion object {
         const val BASE_URL = "https://search.openfoodfacts.org/"
 
-        /** Matches the legacy page size, so neither provider produces a longer list than the other. */
-        const val SEARCH_PAGE_SIZE = 20
+        /**
+         * Results fetched per search: more than are shown, so there are enough left to rank from
+         * once the ones that cannot show a carbohydrate figure are set aside
+         * ([SearchResultRanking.select]). Measured 2026-09-16: 50 costs ~28 KB gzipped and ~190 ms
+         * against ~13 KB and ~150 ms for 20, and lifted "relevant and shows a figure at the top" on
+         * held-out queries from 36/40 to 37/40, with 95% of the top five showing a figure.
+         */
+        const val SEARCH_PAGE_SIZE = 50
+
+        /** Results shown, matching the legacy page size so neither provider lists more than the other. */
+        const val SEARCH_RESULT_LIMIT = 20
 
         /**
          * Languages whose localized names and text are searched and returned.
@@ -63,13 +72,19 @@ interface SearchALiciousApi {
          * existing preference for the localized name, and it widens recall substantially on Dutch
          * terms — `hagelslag` returned 26 matches without it and 449 with it.
          *
+         * German and French were added on 2026-09-16, measured: products sold in the Netherlands are
+         * often Belgian or German imports named only in those languages. Over 56 queries, top-1
+         * relevance went 52 -> 54 and the share of the top five that shows a figure 47% -> 64%.
+         * The cost is cross-language homonyms — "honig" is German for honey — which
+         * [SearchResultRanking] contains by never re-sorting results that miss a query word.
+         *
          * A **list**, not a comma-joined string: the POST schema types `langs` as an array where the
          * GET query parameter took a string. Same values, different container.
          */
-        val SEARCH_LANGS = listOf("nl", "en")
+        val SEARCH_LANGS = listOf("nl", "en", "de", "fr")
 
         /**
-         * Exactly what a result card renders, and nothing else.
+         * Exactly what a result card renders or [SearchResultRanking] orders by, and nothing else.
          *
          * The full hit carries ~40 keys including `ecoscore_data`, `nutriscore_data`,
          * `ingredients_tags` and an `images` map — measured at ~13 KB per hit, none of which a
@@ -99,6 +114,9 @@ interface SearchALiciousApi {
             "nutriments",
             "image_front_small_url",
             "image_front_url",
+            // Ordering only, never shown: where the product is sold, and how many people scan it.
+            "countries_tags",
+            "unique_scans_n",
         )
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -55,8 +56,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
@@ -88,6 +92,8 @@ import app.justthecarbs.ui.components.SearchResultRow
 import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.meal.MealBarIfPresent
 import app.justthecarbs.ui.product.unitLabel
+import app.justthecarbs.ui.search.SearchInformationalState
+import app.justthecarbs.ui.search.SearchViewModel
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
@@ -95,6 +101,7 @@ import java.math.BigDecimal
 
 /** Stable handles for instrumented tests. */
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
+const val HOME_SEARCH_SUBMIT_TAG = "home_search_submit"
 const val HOME_MANUAL_TAG = "home_manual_entry"
 const val HOME_BODY_TAG = "home_body"
 const val HOME_SEARCH_RESULTS_TAG = "home_search_results"
@@ -239,7 +246,11 @@ fun HomeScreen(
                     onScanLabel = onSearchScanLabel,
                     onEnterManually = onSearchEnterManually,
                     onRetry = onSearchRetry,
-                    modifier = Modifier.weight(1f).navigationBarsPadding(),
+                    // Stops at the keyboard. Edge-to-edge means `adjustResize` no longer shrinks the
+                    // window, so without this the region ran on underneath the IME and the centred
+                    // recovery panels put their actions behind it (measured: "Enter manually" at
+                    // y=1568, keyboard top at y=1517). Search is the one Home state typed into.
+                    modifier = Modifier.weight(1f).navigationBarsPadding().imePadding(),
                 )
             } else {
                 HomeBody(
@@ -413,7 +424,7 @@ private fun HomeSearchField(
         leadingIcon = {
             IconButton(
                 onClick = { onSearchSubmit(); focusManager.clearFocus() },
-                modifier = Modifier.size(Space.minTouchTarget),
+                modifier = Modifier.size(Space.minTouchTarget).testTag(HOME_SEARCH_SUBMIT_TAG),
             ) {
                 Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search_submit))
             }
@@ -540,10 +551,10 @@ private fun HomeSearchResults(
 
         // Waiting on the shared budget with nothing to show. A word, not a spinner: a spinner held
         // for several seconds promises a request that has not been sent and reads as a hang.
-        state.awaitingRemotePermit -> Box(
-            modifier = modifier.fillMaxWidth().padding(Space.screenEdge),
-            contentAlignment = Alignment.Center,
-        ) {
+        //
+        // Placed at the top of the region rather than centred in it — see SearchInformationalState
+        // for the measured reason, which bites hardest here because Home's keyboard is usually open.
+        state.awaitingRemotePermit -> SearchInformationalState(modifier = modifier) {
             Text(
                 text = stringResource(
                     if (state.rateLimited) R.string.search_rate_limited else R.string.search_updating,
@@ -574,15 +585,32 @@ private fun HomeSearchResults(
 
         // A query too short to search yet (SearchViewModel.MIN_QUERY_LENGTH) — not an error, not a
         // miss, just not enough to go on.
-        else -> Box(
-            modifier = modifier.fillMaxWidth().padding(Space.screenEdge),
-            contentAlignment = Alignment.Center,
-        ) {
+        //
+        // A *submission* refused for being too short says so, exactly as SearchScreen does. Home
+        // rendered only the generic prompt here, so tapping the magnifier with "ha" typed changed
+        // nothing on screen and read as the button having missed rather than as the app declining.
+        // Typing alone still never reaches this: `queryTooShort` is set only by an explicit search.
+        else -> SearchInformationalState(modifier = modifier) {
             Text(
-                text = stringResource(R.string.search_prompt),
+                text = if (state.queryTooShort) {
+                    pluralStringResource(
+                        R.plurals.search_too_short,
+                        SearchViewModel.MIN_QUERY_LENGTH,
+                        SearchViewModel.MIN_QUERY_LENGTH,
+                    )
+                } else {
+                    stringResource(R.string.search_prompt)
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
+                // Announced on change so a TalkBack user hears the refusal; the plain prompt is
+                // deliberately not a live region, or it would announce over the user's own typing.
+                modifier = if (state.queryTooShort) {
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                } else {
+                    Modifier
+                },
             )
         }
     }

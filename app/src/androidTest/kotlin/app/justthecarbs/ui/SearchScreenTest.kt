@@ -105,7 +105,9 @@ class SearchScreenTest {
         show(SearchUiState(query = "hagelslag", hits = listOf(hit())))
 
         compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
-        compose.onNodeWithText("De Ruijter · 390 gram").assertIsDisplayed()
+        // The quantity's space is non-breaking on screen, so "390" can never end a line without its
+        // unit; it renders identically to an ordinary space.
+        compose.onNodeWithText("De Ruijter · 390${Typography.nbsp}gram").assertIsDisplayed()
         compose.onNodeWithText("67 g carbs").assertIsDisplayed()
         compose.onNodeWithText("/ 100 g").assertIsDisplayed()
     }
@@ -124,8 +126,13 @@ class SearchScreenTest {
 
         val expectedQuantity = ResultFormatter.quantity(BigDecimal("12.34"))
         assertEquals("12.3", expectedQuantity)
+        // The printed package quantity is part of the spoken line as of the 2026-09-16 presentation
+        // pass: the card shows "De Ruijter · 390 gram" and the description used to say only
+        // "De Ruijter", so a screen-reader user lost the field that tells a 390 g pack from a 600 g
+        // one. Only the expected literal changed here — what this case exists to prove, that the
+        // spoken figure is the same ROUNDED figure the card shows, is unchanged and still asserted.
         compose.onNodeWithContentDescription(
-            "Chocoladehagel puur. De Ruijter $expectedQuantity g carbs / 100 g",
+            "Chocoladehagel puur. De Ruijter. 390 gram. $expectedQuantity g carbs / 100 g",
         ).assertIsDisplayed()
     }
 

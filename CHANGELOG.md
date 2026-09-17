@@ -106,6 +106,18 @@ refinement pass, a full visual overhaul, and an adversarial-review fixes pass. N
 
 ### Changed
 
+- **Search puts the product you most likely mean, with a carb value, at the top.** Measured live on
+  56 typical Dutch-shopper queries, the first result was both the right product and showed a carb
+  figure for only 28; on 40 further queries not used while designing the change, for 18. Now 53/56
+  and 37/40, and 95% of the top five results show a figure (was 39%). Three changes, all on the
+  device: product names in German and French are searched too; full matches for every typed word
+  are ordered by *sold in your country* (from the phone's region, never sent anywhere), then *has a
+  carb figure*, then *most scanned*; and results that cannot show a figure are left out whenever a
+  calculable match exists. When none does, the matching products stay so the right one can still be
+  opened. Fifty results are fetched to rank from (about 15 KB and 45 ms more per search) and twenty
+  shown. Sorting everything by popularity was measured too and rejected: it halved top-result
+  relevance.
+
 - The Search screen now opens with its field focused and the keyboard up. It is reached only from a
   failed lookup, as the recovery route that offers finding the product by name, so the user has
   already decided to type by the time it appears and its single input was the only thing on it to

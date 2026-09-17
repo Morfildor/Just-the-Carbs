@@ -55,6 +55,8 @@ class SearchALiciousDataSource(
      * builds only; carries counts, never query text. See [SearchProviderLog].
      */
     private val log: SearchProviderLog = SearchProviderLog.None,
+    /** The device's Open Food Facts country tag, compared locally and never sent anywhere. */
+    private val deviceCountryTag: () -> String? = { null },
 ) : ProductSearchSource {
 
     override suspend fun search(terms: String): ProductSearchResult {
@@ -79,7 +81,7 @@ class SearchALiciousDataSource(
                     ),
                 )
                 !response.isSuccessful -> ProductSearchResult.Failed(LookupError.SERVER)
-                else -> toSearchResult(response.body())
+                else -> toSearchResult(response.body(), query)
             }
         } catch (_: UnknownHostException) {
             ProductSearchResult.Failed(LookupError.OFFLINE)
@@ -126,18 +128,32 @@ class SearchALiciousDataSource(
      * A response that reports itself as `timed_out` is a partial answer, and presenting a truncated
      * list as the complete result set would be a wrong answer rather than a missing one.
      */
-    private fun toSearchResult(body: SearchALiciousResponse?): ProductSearchResult {
+    private fun toSearchResult(body: SearchALiciousResponse?, query: String): ProductSearchResult {
         val rawHits = body?.hits ?: return ProductSearchResult.Failed(LookupError.MALFORMED)
         if (body.timedOut == true) return ProductSearchResult.Failed(LookupError.TIMEOUT)
 
-        val hits = rawHits.mapNotNull { it.toHit() }
+        val candidates = rawHits.mapNotNull { raw ->
+            raw.toHit()?.let { hit ->
+                SearchResultRanking.Candidate(
+                    hit = hit,
+                    countries = raw.countriesTags.orEmpty().filterNotNull(),
+                    uniqueScans = raw.uniqueScans?.toInt(),
+                )
+            }
+        }
             // Deduplicated by barcode, never by display name: two genuinely different products
             // routinely share a name ("Gouda"), and collapsing those would hide one of them. The
             // barcode is the product's identity, so `distinctBy` on it is the only safe key.
             //
-            // distinctBy keeps the FIRST occurrence, which preserves the service's relevance
-            // ordering — the ranking is the main thing this provider is being adopted for.
-            .distinctBy { it.barcode }
+            // distinctBy keeps the FIRST occurrence, so the service's relevance order is what
+            // SearchResultRanking starts from and falls back to.
+            .distinctBy { it.hit.barcode }
+        val hits = SearchResultRanking.select(
+            query = query,
+            candidates = candidates,
+            deviceCountryTag = deviceCountryTag(),
+            limit = SearchALiciousApi.SEARCH_RESULT_LIMIT,
+        )
 
         if (hits.isNotEmpty()) return ProductSearchResult.Found(hits)
 

@@ -456,10 +456,14 @@ class SearchALiciousDataSourceTest {
 
         val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
         assertEquals("hagelslag", body["q"]!!.jsonPrimitive.content)
-        assertEquals(20, body["page_size"]!!.jsonPrimitive.int)
+        // 50 fetched so enough remain to rank from once uncalculable results are set aside.
+        assertEquals(50, body["page_size"]!!.jsonPrimitive.int)
         // Without langs, product_name_nl is absent from every hit and Dutch recall collapses
-        // (hagelslag: 449 matches with it, 26 without).
-        assertEquals(listOf("nl", "en"), body["langs"]!!.jsonArray.map { it.jsonPrimitive.content })
+        // (hagelslag: 449 matches with it, 26 without). German and French added 2026-09-16.
+        assertEquals(
+            listOf("nl", "en", "de", "fr"),
+            body["langs"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
         val fields = body["fields"]!!.jsonArray.map { it.jsonPrimitive.content }
         // The EXACT list, not a set of `contains` checks. Those cannot see a field being *added*,
         // which is the direction this regresses in: every unused field is paid for on every request
@@ -475,6 +479,8 @@ class SearchALiciousDataSourceTest {
                 "nutriments",
                 "image_front_small_url",
                 "image_front_url",
+                "countries_tags",
+                "unique_scans_n",
             ),
             fields,
         )
@@ -483,7 +489,7 @@ class SearchALiciousDataSourceTest {
     }
 
     /**
-     * Every requested field is one a result card actually renders.
+     * Every requested field is one a result card renders or [SearchResultRanking] orders by.
      *
      * Stated as a property rather than only as a list, so the reason the list is what it is survives
      * next to it: `SearchResultRow` draws the name (preferring `product_name_nl`), the brand, the
@@ -491,7 +497,7 @@ class SearchALiciousDataSourceTest {
      * barcode. Nothing else is read anywhere in the app.
      */
     @Test
-    fun `every requested field feeds something the result card shows`() {
+    fun `every requested field feeds the result card or its ordering`() {
         val rendered = mapOf(
             "code" to "the barcode — a hit's identity and what selecting it looks up",
             "product_name" to "the card's title",
@@ -501,6 +507,8 @@ class SearchALiciousDataSourceTest {
             "nutriments" to "the carbohydrate figure",
             "image_front_small_url" to "the thumbnail",
             "image_front_url" to "the thumbnail, preferred",
+            "countries_tags" to "ordering: products sold in the device's country first",
+            "unique_scans_n" to "ordering: the more widely scanned product first",
         )
         assertEquals(rendered.keys.toList(), SearchALiciousApi.SEARCH_FIELDS)
     }
@@ -656,5 +664,81 @@ class SearchALiciousDataSourceTest {
 
         assertEquals(ProductSearchResult.NoMatches, chain.search("zzzqqxx"))
         assertTrue("a genuine no-match must not spend a legacy request", !fallbackCalled)
+    }
+
+    // ---- ranking and filtering, through the real decoding -------------------------------------
+
+    private fun rankedSource(country: String?): SearchALiciousDataSource {
+        val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+        val api = Retrofit.Builder()
+            .baseUrl(server.url("/"))
+            .client(OkHttpClient())
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(SearchALiciousApi::class.java)
+        return SearchALiciousDataSource(api, deviceCountryTag = { country })
+    }
+
+    /**
+     * Shaped on the live `nutella` result, which led with a US-only "Nutella & go!". The US product
+     * is given the most scans here so that only the device-country rule can put the Dutch jar first.
+     */
+    private val nutellaPage = """
+        {"count":3,"hits":[
+          {"code":"0009800800124","product_name":"Nutella & go!","brands":["Ferrero"],
+           "quantity":"52 g","nutriments":{"carbohydrates_100g":63.46},
+           "countries_tags":["en:united-states"],"unique_scans_n":5000},
+          {"code":"8000500310427","product_name":"Nutella","brands":["Ferrero"],
+           "nutriments":{"carbohydrates_100g":57.5},
+           "countries_tags":["en:netherlands"],"unique_scans_n":900},
+          {"code":"8000500023976","product_name":"Nutella","brands":["Ferrero"],
+           "quantity":"400 g","nutriments":{"carbohydrates_100g":57.5},
+           "countries_tags":["en:netherlands","en:belgium"],"unique_scans_n":300}
+        ]}
+    """.trimIndent()
+
+    @Test
+    fun `a calculable product sold in the device country is returned first`() = runTest {
+        respond(nutellaPage)
+
+        val found = hits(rankedSource("en:netherlands").search("nutella"))
+
+        assertEquals(listOf("8000500023976", "0009800800124"), found.map { it.barcode })
+    }
+
+    @Test
+    fun `a result that cannot show a figure is left out when calculable matches exist`() = runTest {
+        respond(nutellaPage)
+
+        val found = hits(rankedSource(null).search("nutella"))
+
+        // The NL jar with no printed quantity has a figure but no basis, so its card could not show
+        // it; the two calculable Nutellas remain.
+        assertTrue(found.none { it.barcode == "8000500310427" })
+        assertEquals(2, found.size)
+    }
+
+    @Test
+    fun `unexpected shapes in the ordering fields never fail a search`() = runTest {
+        respond(
+            """{"count":1,"hits":[{"code":"8000500023976","product_name":"Nutella",
+               "quantity":"400 g","nutriments":{"carbohydrates_100g":57.5},
+               "countries_tags":[null,"en:netherlands"],"unique_scans_n":12.0}]}""",
+        )
+
+        val found = hits(rankedSource("en:netherlands").search("nutella"))
+
+        assertEquals(listOf("8000500023976"), found.map { it.barcode })
+    }
+
+    @Test
+    fun `the device country is never sent to the service`() = runTest {
+        respond("""{"count":0,"hits":[]}""")
+
+        rankedSource("en:netherlands").search("nutella")
+
+        val request = server.takeRequest()
+        val sent = request.requestUrl.toString() + request.body.readUtf8()
+        assertTrue("sent: $sent", !sent.contains("netherlands"))
     }
 }

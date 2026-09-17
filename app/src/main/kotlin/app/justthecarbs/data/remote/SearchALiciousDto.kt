@@ -109,4 +109,9 @@ data class SearchALiciousHit(
     val nutriments: OffNutriments? = null,
     @SerialName("image_front_small_url") val imageFrontSmallUrl: String? = null,
     @SerialName("image_front_url") val imageFrontUrl: String? = null,
+    // Ordering signals (see SearchResultRanking). Typed loosely on purpose: always a list and an
+    // integer when measured, but a decorative field must never be the reason a search fails as
+    // malformed.
+    @SerialName("countries_tags") val countriesTags: List<String?>? = null,
+    @SerialName("unique_scans_n") val uniqueScans: Double? = null,
 )

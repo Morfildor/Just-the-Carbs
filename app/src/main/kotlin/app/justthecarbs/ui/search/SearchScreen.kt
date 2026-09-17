@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -73,6 +74,16 @@ const val SEARCH_REFRESH_ERROR_TAG = "search_refresh_error"
 const val SEARCH_REFRESH_PROGRESS_TAG = "search_refresh_progress"
 const val SEARCH_RATE_LIMITED_TAG = "search_rate_limited"
 const val SEARCH_PENDING_TAG = "search_pending"
+
+/**
+ * The weighted slot below the field that every search state occupies — results, failure, waiting
+ * notice, prompt and refusal alike.
+ *
+ * Exists so a test can measure where a state sits *within its own region* rather than against an
+ * absolute pixel position, which is what makes the placement assertion mean the same thing on any
+ * screen size.
+ */
+const val SEARCH_STATE_REGION_TAG = "search_state_region"
 
 /**
  * Free-text product search (spec §9).
@@ -221,108 +232,153 @@ fun SearchScreen(
                 }
             }
 
-            when {
-                // Order matters: a *refresh* failure carries a LookupError exactly like a first-search
-                // failure does, so testing `error != null` first would take the whole region away from
-                // results that are still good. The two are distinguished by what the user stands to
-                // lose, and this branch is the one where they lose nothing.
-                state.hits.isNotEmpty() -> SearchResults(
-                    state = state,
-                    onSelect = onSelect,
-                    onRetry = onRetry,
-                    onListTouched = { focusManager.clearFocus() },
-                    modifier = Modifier.weight(1f),
-                )
-
-                state.error != null -> SearchFailure(
-                    error = state.error,
-                    onScanLabel = onScanLabel,
-                    onEnterManually = onEnterManually,
-                    onRetry = onRetry,
-                    modifier = Modifier.weight(1f),
-                )
-
-                // Waiting on our own budget, or on a server backoff, with nothing to show yet. A
-                // spinner is wrong here: it promises something is on the wire when nothing is, and a
-                // spinner held for several seconds reads as a hang. A word does the job honestly.
-                state.awaitingRemotePermit -> Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth().padding(Space.screenEdge),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = stringResource(
-                            if (state.rateLimited) R.string.search_rate_limited else R.string.search_updating,
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.testTag(SEARCH_PENDING_TAG),
+            // One weighted region for every state, tagged so a test can measure where a state sits
+            // *within it* rather than against an absolute pixel position.
+            //
+            // The region ends at the top of the keyboard. The app is edge-to-edge (targetSdk 36), so
+            // `adjustResize` no longer shrinks the window and a weighted region runs on underneath an
+            // open IME: measured on device, the no-matches panel's "Enter manually" sat at y=1620
+            // behind a keyboard starting at y=1517. `navigationBarsPadding` moved up from the list so
+            // the two insets are applied once, in order, for every state rather than only for results.
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .testTag(SEARCH_STATE_REGION_TAG),
+            ) {
+                when {
+                    // Order matters: a *refresh* failure carries a LookupError exactly like a first-search
+                    // failure does, so testing `error != null` first would take the whole region away from
+                    // results that are still good. The two are distinguished by what the user stands to
+                    // lose, and this branch is the one where they lose nothing.
+                    state.hits.isNotEmpty() -> SearchResults(
+                        state = state,
+                        onSelect = onSelect,
+                        onRetry = onRetry,
+                        onListTouched = { focusManager.clearFocus() },
+                        modifier = Modifier.fillMaxSize(),
                     )
-                }
 
-                state.searching -> Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(strokeWidth = 2.dp)
-                }
+                    state.error != null -> SearchFailure(
+                        error = state.error,
+                        onScanLabel = onScanLabel,
+                        onEnterManually = onEnterManually,
+                        onRetry = onRetry,
+                        modifier = Modifier.fillMaxSize(),
+                    )
 
-                state.noMatches -> Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // A search that matched nothing is not a dead end: the two ways of getting a number
-                    // without the database are offered right here (§26).
-                    RecoveryPanel(
-                        title = stringResource(R.string.notfound_title),
-                        body = stringResource(R.string.search_no_matches, state.query),
-                    ) {
-                        PrimaryAction(
-                            text = stringResource(R.string.product_scan_label),
-                            onClick = onScanLabel,
+                    // Waiting on our own budget, or on a server backoff, with nothing to show yet. A
+                    // spinner is wrong here: it promises something is on the wire when nothing is, and a
+                    // spinner held for several seconds reads as a hang. A word does the job honestly.
+                    state.awaitingRemotePermit -> SearchInformationalState {
+                        Text(
+                            text = stringResource(
+                                if (state.rateLimited) R.string.search_rate_limited else R.string.search_updating,
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.testTag(SEARCH_PENDING_TAG),
                         )
-                        SecondaryAction(
-                            text = stringResource(R.string.permission_manual),
-                            onClick = onEnterManually,
+                    }
+
+                    // The spinner stays centred: it is a placeholder for content that is arriving, not
+                    // something to read, so it belongs where the content will be rather than pinned to
+                    // the top like a sentence.
+                    state.searching -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(strokeWidth = 2.dp)
+                    }
+
+                    state.noMatches -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // A search that matched nothing is not a dead end: the two ways of getting a number
+                        // without the database are offered right here (§26).
+                        RecoveryPanel(
+                            title = stringResource(R.string.notfound_title),
+                            body = stringResource(R.string.search_no_matches, state.query),
+                        ) {
+                            PrimaryAction(
+                                text = stringResource(R.string.product_scan_label),
+                                onClick = onScanLabel,
+                            )
+                            SecondaryAction(
+                                text = stringResource(R.string.permission_manual),
+                                onClick = onEnterManually,
+                            )
+                        }
+                    }
+
+                    else -> SearchInformationalState {
+                        Text(
+                            // A submission refused for being too short says so, rather than leaving the
+                            // generic prompt up — which is the same screen the tap started from and so reads
+                            // as the button not having registered. Not an error colour: nothing has gone
+                            // wrong, the app is stating a requirement.
+                            text = if (state.queryTooShort) {
+                                pluralStringResource(
+                                    R.plurals.search_too_short,
+                                    SearchViewModel.MIN_QUERY_LENGTH,
+                                    SearchViewModel.MIN_QUERY_LENGTH,
+                                )
+                            } else {
+                                stringResource(R.string.search_prompt)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            // The refusal is announced on change so a TalkBack user hears it; without that
+                            // the screen is silent after the tap, which is the same dead end by another
+                            // route. The *prompt* is deliberately not a live region: with live search it is
+                            // re-rendered while the user types, and announcing "type a product name" over
+                            // their own typing is exactly the live-region spam this pass had to avoid.
+                            modifier = if (state.queryTooShort) {
+                                Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                            } else {
+                                Modifier
+                            },
                         )
                     }
                 }
-
-                else -> Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth().padding(Space.screenEdge),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        // A submission refused for being too short says so, rather than leaving the
-                        // generic prompt up — which is the same screen the tap started from and so reads
-                        // as the button not having registered. Not an error colour: nothing has gone
-                        // wrong, the app is stating a requirement.
-                        text = if (state.queryTooShort) {
-                            pluralStringResource(
-                                R.plurals.search_too_short,
-                                SearchViewModel.MIN_QUERY_LENGTH,
-                                SearchViewModel.MIN_QUERY_LENGTH,
-                            )
-                        } else {
-                            stringResource(R.string.search_prompt)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        // The refusal is announced on change so a TalkBack user hears it; without that
-                        // the screen is silent after the tap, which is the same dead end by another
-                        // route. The *prompt* is deliberately not a live region: with live search it is
-                        // re-rendered while the user types, and announcing "type a product name" over
-                        // their own typing is exactly the live-region spam this pass had to avoid.
-                        modifier = if (state.queryTooShort) {
-                            Modifier.semantics { liveRegion = LiveRegionMode.Polite }
-                        } else {
-                            Modifier
-                        },
-                    )
-                }
             }
         }
+    }
+}
+
+/**
+ * A short informational line — the prompt, the too-short refusal, the waiting notice.
+ *
+ * **Placed near the top of its region, never centred in it.** Centring inside the weighted slot put
+ * this text roughly halfway down a 2400px screen: measured at y=1403 on SearchScreen with ~1100px of
+ * empty page above it, and at y=1436 on Home, where an open keyboard then pinned the app's only
+ * piece of guidance against its top edge. A sentence that answers "what do I do now?" belongs
+ * directly under the field it is about, where the eye already is after typing.
+ *
+ * Shared by both search surfaces so the two cannot drift on it again — this is the same defect class
+ * this repo has now recorded three times (the pinned *Enter manually* action, the quick-calculation
+ * dead space, and this).
+ *
+ * Kept deliberately small: it is placement only. It owns no wording, no colour and no semantics, so
+ * each caller still says its own thing in its own voice.
+ */
+@Composable
+internal fun SearchInformationalState(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = Space.screenEdge, vertical = Space.l),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        content()
     }
 }
 
@@ -365,13 +421,12 @@ private fun SearchResults(
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = Space.screenEdge)
-                .navigationBarsPadding()
                 // Reaching for the list puts the keyboard away.
                 //
                 // Live search means results arrive while the field still has focus and the IME is
-                // still up — the user never pressed Enter, so nothing has dismissed it. Under
-                // `adjustResize` that is not an occlusion bug (the list is not covered) but the
-                // viewport is roughly halved, so the moment someone stops typing and starts
+                // still up — the user never pressed Enter, so nothing has dismissed it. The state
+                // region stops at the keyboard, so the list is not covered, but the viewport is
+                // roughly halved, so the moment someone stops typing and starts
                 // *reading*, the list they are reading is the smallest thing on screen.
                 //
                 // `Initial` rather than `Main`, and `requireUnconsumed = false`, so this handler

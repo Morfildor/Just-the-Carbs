@@ -16,6 +16,7 @@ import app.justthecarbs.data.remote.LogcatSearchProviderLog
 import app.justthecarbs.data.remote.NetworkModule
 import app.justthecarbs.data.remote.OpenFoodFactsDataSource
 import app.justthecarbs.data.remote.SearchALiciousDataSource
+import app.justthecarbs.data.remote.SearchResultRanking
 import app.justthecarbs.data.settings.SettingsRepository
 import app.justthecarbs.domain.CachedProductSearch
 import app.justthecarbs.domain.FallbackProductSearch
@@ -23,6 +24,7 @@ import app.justthecarbs.domain.GovernedProductSearch
 import app.justthecarbs.domain.ProductSearchSource
 import app.justthecarbs.domain.RemoteSearchGovernor
 import app.justthecarbs.domain.SearchProviderLog
+import java.util.Locale
 
 /**
  * Manual dependency container.
@@ -107,6 +109,8 @@ class AppContainer(context: Context) {
         SearchALiciousDataSource(
             api = NetworkModule.searchALiciousApi(okHttpClient),
             log = searchProviderLog,
+            // Read per search so a changed system region applies without a restart.
+            deviceCountryTag = { SearchResultRanking.countryTagOf(Locale.getDefault()) },
         )
     }
 

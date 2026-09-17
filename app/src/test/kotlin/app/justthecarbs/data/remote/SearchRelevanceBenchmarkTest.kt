@@ -27,8 +27,9 @@ import java.text.Normalizer
  * product still findable at the rank the provider put it at. That is the half this repository can
  * change and therefore the half worth a regression gate.
  *
- * It does **not** re-measure the remote ranker. The service's ordering is authoritative (§6 of the
- * brief) and no code here reorders it, so a test asserting "Nutella ranks first for `nutella`" would
+ * It does **not** re-measure the remote ranker. Since 2026-09-16 the app re-orders a page with
+ * [SearchResultRanking]; what this file pins is that re-ordering applied to fixed input. A test
+ * asserting "Nutella ranks first for `nutella`" against the live service would
  * be asserting a fact about someone else's server — green or red for reasons no commit in this repo
  * controls, i.e. exactly the flaky-live-test shape §26 forbids in the standard suite. The live
  * ranking bench lives in `SearchALiciousLiveDiagnosticTest` (androidTest) instead.
@@ -46,9 +47,12 @@ import java.text.Normalizer
  * Two facts from that run shaped this pass and are recorded because they are easy to re-derive
  * wrongly:
  *
- * 1. **Top1 equals Top3.** When this service finds the expected product it ranks it *first*; there
- *    is no population of "nearly right" results sitting at rank 2-3 that a re-ranker could lift. A
- *    client-side ranker therefore has nothing to gain here, which is the evidence behind §6.
+ * 1. **Top1 equals Top3.** When this service finds the expected product it ranks it *first*.
+ *    This was once read as "a client-side ranker has nothing to gain". That held for *finding a
+ *    named product* and missed two other questions — is the top result sold here, and can the app
+ *    show its carbs — on which a live re-measure (2026-09-16) found large gains. See
+ *    [SearchResultRanking]. On this fixed corpus the re-ranking lifts Top1 from 34 to 37, by
+ *    putting full matches for every query word ahead of partial ones.
  * 2. **The two misses are not ranking failures.** `pindak` and `pindaka` return **zero hits** —
  *    the index does no prefix matching, so there is no result set to rank. `nutt` returns 7 hits,
  *    none of which is Nutella. No client-side change can fix an empty response.
@@ -177,9 +181,10 @@ class SearchRelevanceBenchmarkTest {
         }
 
         assertEquals("scored queries", 39, scored)
-        assertEquals("Top1 — baseline measured live 2026-08-28", 34, top1)
-        assertEquals("Top3", 34, top3)
-        assertEquals("Top10", 36, top10)
+        // 34 as the service ordered it (2026-08-28); 37 after SearchResultRanking.
+        assertEquals("Top1", 37, top1)
+        assertEquals("Top3", 37, top3)
+        assertEquals("Top10", 37, top10)
         assertEquals("Top20", 37, top20)
         // Named explicitly so a future reader does not mistake them for ranking failures: both
         // return zero or unrelated hits from the index itself.
@@ -202,10 +207,11 @@ class SearchRelevanceBenchmarkTest {
     }
 
     @Test
-    fun theProvidersRankingOrderSurvivesMappingUnchanged() = runBlocking {
-        // The single most important property in this file: nothing in the app reorders results.
-        // Relevance is the provider's, and dedupe keeps the FIRST occurrence precisely so it cannot
-        // promote a later hit over an earlier one.
+    fun theProvidersOrderSurvivesAmongEqualResults() = runBlocking {
+        // Among results the app has no reason to tell apart — every one matches every query word and
+        // shows a figure, and none carries a country or scan count — the provider's order stands.
+        // Dedupe keeps the FIRST occurrence precisely so it cannot promote a later hit over an
+        // earlier one.
         val case = CORPUS.first { it.query == "Coca Cola Zero" }
         enqueue(case)
 
@@ -258,11 +264,12 @@ class SearchRelevanceBenchmarkTest {
     }
 
     @Test
-    fun aPageOfTwentyIsEnoughForTheCorpus() {
-        // Measured, not assumed: Top20 (37/39) exceeds Top10 (36/39) by exactly one query, so
-        // raising page_size beyond 20 would buy at most one benchmark position while enlarging
-        // every response. §20 says change it only on evidence; the evidence says keep 20.
-        assertEquals(20, SearchALiciousApi.SEARCH_PAGE_SIZE)
+    fun fiftyAreFetchedAndTwentyShown() {
+        // 2026-08-28 kept the page at 20: for finding a named product, a larger page bought at most
+        // one position. 2026-09-16 re-measured once results without a carbohydrate figure are set
+        // aside — then a larger page is what leaves enough to rank from. See SEARCH_PAGE_SIZE.
+        assertEquals(50, SearchALiciousApi.SEARCH_PAGE_SIZE)
+        assertEquals(20, SearchALiciousApi.SEARCH_RESULT_LIMIT)
     }
 
     private companion object {

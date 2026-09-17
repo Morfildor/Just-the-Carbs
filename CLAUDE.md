@@ -4386,6 +4386,18 @@ hand-built query string is not evidence until the string itself has been printed
 
 ### Baseline relevance, and why no ranker was built
 
+**Superseded 2026-09-16 — a ranker now exists: `data/remote/SearchResultRanking.kt`.** The finding
+below is right about *finding a named product* and missed two other questions: is the top result
+sold where the user is, and can the app show its carbs. Re-measured live over 56 queries plus 40
+held-out ones, "top result relevant and shows a figure" was 28/56 and 18/40; with German/French
+names, a re-rank of full-word matches (device country → calculable → `unique_scans_n`), and
+uncalculable results set aside when a calculable full match exists, it is 53/56 and 37/40. Page
+size is 50 fetched / 20 shown. Measured and rejected: `sort_by` popularity (top-1 relevance halved),
+re-sorting partial matches (German *Honig* put a Spanish bread first), dropping every uncalculable
+result (lost the only real "Conimex Nasi" and "krentenbollen" products), and a name-over-brand
+tie-break (no score change, mixed spot results). The device country is compared on the device and
+never sent. Text below kept as the dated record.
+
 48 queries, live, `page_size=20`, over the categories the brief lists:
 **Top1 34/39 · Top3 34/39 · Top10 36/39 · Top20 37/39** (39 scored; 9 generic queries scored
 separately, all returned usable results).
