@@ -55,6 +55,53 @@ reader, and the granularity gap is deliberate.
 
 ---
 
+## 1.0.7 (versionCode 8)
+
+**Replaces `1.0.6` as the first Production release.** `1.0.6` was still under review when this
+version was uploaded, so it never went live; Play reviews `1.0.7` instead. Opened 2026-09-17 by a
+pre-release stabilization pass (search ranking, Turkish/EU label recognition, decimal-comma writing,
+loading presentation) on top of the accumulated `1.0.6`-cycle work (visual overhaul, tutorial
+polish, launcher shortcuts, adversarial-review fixes). Built from `ea3124d` (tag
+`play-1.0.7-submitted`), uploaded to Google Play's **Production** track 2026-09-17; review in
+progress as of this entry. Full change list is in `CHANGELOG.md`'s `1.0.7` section; this entry
+records the build/artifact facts.
+
+| | |
+|---|---|
+| Track | **Production — uploaded 2026-09-17, under review** |
+| Built from | `ea3124da87928d70537b5914e5a348d44b5e22c1` (tag `play-1.0.7-submitted`), frozen on branch `release/1.0.7` |
+| AAB | `JustTheCarbs-1.0.7-vc8.aab`, 36,117,270 bytes |
+| AAB SHA-256 | `81b2454a16c7c6cd5f333e164f769d6f2f7549779e59a4fc6c1730acd0217ceb` |
+| APK (minified release, same build, used for the smoke test below) | `app-release.apk`, 67,008,786 bytes, SHA-256 `46fb194fca17a399a12a5128f5705414ece0007c084f30fc816cff698fcc3dde` |
+| Signer | `CN=Tunc Bilen, O=JustTheCarbs, OU=Release, C=NL, L=Haarlem`, SHA256withRSA, SHA-256 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` — the same key as every earlier version, read directly off the bundle with `keytool -printcert -jarfile` and independently confirmed on the APK with `apksigner verify --print-certs` |
+
+Verified directly from the built artifacts, not from configuration: `aapt2 dump xmltree` on the
+bundle's own manifest shows `package="app.justthecarbs"`, `versionCode=8`, `versionName="1.0.7"`,
+`minSdkVersion=26`, `targetSdkVersion=36`, `allowBackup=false`, `usesCleartextTraffic=false`, no
+`debuggable` attribute, no `FileProvider`. Permissions unchanged (CAMERA, INTERNET, transitive
+ACCESS_NETWORK_STATE). Release APK locale configuration is `--_--` (English only). R8 privacy
+barriers: `ScanEvidenceRecorder`/`OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`;
+`ScanEvidenceExport`/`OcrDiagnosticsReport`/`ScanTrace`/`ZipIntegrity` absent entirely;
+`UnitMarkerFilter`/`CandidateProvenance`/`CarbCandidate`/`PackageBasisResolver`/`ScaleAmbiguity`/
+`RecoveryCandidates`/`CrossColumnRatioCheck`/`SearchQueryMatcher` retained as real classes.
+
+JVM **2097/2097** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 219 XML files). Lint **0
+errors, 28 warnings**. Instrumented, whole suite in one chunked run on the API 36 `carbscan`
+emulator: **445/447**, the 2 failures both `@ExploratoryExperiment` harnesses that need a pushed
+evidence corpus and are excluded by `release-gate.yml`'s `notAnnotation` filter; both fail
+identically against `120817d`, so neither is a regression. OCR corpus (nine committed photographs):
+**42/42**, readings byte-identical to `120817d`. OSV dependency scan: **226 release-runtime
+artifacts, 0 known vulnerabilities**. Minified release-APK smoke test on the emulator: fresh
+install, welcome carousel, live name search returning matches, 0 `FATAL`/`ClassNotFound`/
+`NoSuchMethod`/`NoClassDefFound`/serialization log lines.
+
+**Not verified on physical hardware.** Everything above is JVM plus the `carbscan` emulator. Turkish
+and EU-language label recognition rests on synthetic tables cross-checked against Annex XV of
+Regulation (EU) 1169/2011 and Open Food Facts' nutrient taxonomy, plus the existing nine-photograph
+corpus — no new physical photograph was taken. `docs/manual-qa.md` §44 is the open gate.
+
+---
+
 ## 1.0.6 (versionCode 7)
 
 **First Production release.** Opened 2026-09-10 by a scanner shutter-haptic patch, then extended by
@@ -87,6 +134,12 @@ during that preparation pass.
 uploaded AAB's byte size and SHA-256, and independent re-verification of the signer certificate
 against the uploaded bundle. If these facts exist in Play Console or the owner's local build output,
 they should be added to the table above.
+
+
+**2026-09-17:** superseded. `1.0.7` / `versionCode 8` was uploaded to Production before this
+version's review completed, so `1.0.6` never went live. Same shape as `1.0.4`'s withdrawn
+`versionCode 5` below: the code is spent and this entry stands as the permanent record of what it
+was, but Play never served this artifact to users.
 
 ---
 

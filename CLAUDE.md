@@ -4663,10 +4663,10 @@ diagnostic deliberately bypasses `SearchALiciousDataSource` — the escaper esca
 can only be built by appending it *after* escaping, and going through the data source would measure
 the escaper instead of the service.
 
-## Current release and branch state — 2026-09-14
+## Current release and branch state — 2026-09-17
 
 This section supersedes every older statement in this file and in `docs/` saying that
-`versionCode 7` / `1.0.6` has not yet been uploaded, remains a local development build, or is "the
+`versionCode 8` / `1.0.7` has not yet been uploaded, remains a local development build, or is "the
 next Play artifact" still to be built — including the "Version and track state (updated
 2026-09-08)" table immediately below, which was accurate when written and is now historical.
 
@@ -4674,37 +4674,40 @@ next Play artifact" still to be built — including the "Version and track state
 account full production-publishing access — the closed-testing gate described below under "The
 14-day clock is RUNNING" (Play's 12-testers/14-days requirement for some personal accounts) is
 **cleared**. This is an account-level permission, separate from any individual release's own Play
-review: it does not by itself mean `1.0.6` / `versionCode 7` has finished review — check Play
-Console for that release's own status. Do not re-list the closed-testing/14-day requirement as an
-open gate; the remaining production gates are the app-content forms and the §44 signature (see
-"Production gates" below).
+review.
 
-**1.0.7 replaces 1.0.6 as the first Production release (owner, 2026-09-17).** Play accepts a new
-version while the first Production release is still in review, so `1.0.7` / `versionCode 8` is built
-to be uploaded over the in-review `1.0.6`; `versionCode 7` stays spent. After the upload is
-confirmed, tag the exact **build** commit `play-1.0.7-submitted` and cut `release/1.0.7` from it —
-never a later docs commit. **Build commit: `ea3124d`.** AAB 36,117,270 bytes, SHA-256
-`81b2454a16c7c6cd5f333e164f769d6f2f7549779e59a4fc6c1730acd0217ceb`, copy at
-`release/1.0.7/JustTheCarbs-1.0.7-vc8.aab`. Full evidence: `docs/play-release-readiness.md` §7.
+**`1.0.7` / `versionCode 8` replaced `1.0.6` / `versionCode 7` as the first Production submission
+(owner, 2026-09-17).** `1.0.6` was still under review when `1.0.7` was uploaded to the same
+Production track, so Play reviews `1.0.7` instead and `1.0.6` never goes live — the same shape as
+`1.0.4`'s withdrawn `versionCode 5` (see `docs/version-history.md`). Both spent version codes are
+never rebuilt or reused. **`1.0.7`'s own Play review has not been confirmed complete in this
+repository** — the owner expects it to clear quickly, but check Play Console for the actual status
+before describing the app as live. Do not infer "live" from "uploaded".
 
-**Production:**
-- `1.0.6` / `versionCode 7`
-- uploaded to Google Play's **Production** track
-- currently **under Play review**
-- frozen source branch: `release/1.0.6`
-- source commit: `fa9d9e8e18c340ecae3dc0f14d7a225e9813ae2c` (tag `play-1.0.6-submitted`)
-- `versionCode 7` is **spent** — never rebuild or re-upload it, whatever happens to the review
+**Production (submitted):**
+- `1.0.7` / `versionCode 8`
+- uploaded to Google Play's **Production** track 2026-09-17
+- Play review status: **not independently confirmed here** — owner reports it uploaded and expects
+  fast acceptance; verify in Play Console before recording it as live
+- frozen source branch: `release/1.0.7`
+- source commit: `ea3124da87928d70537b5914e5a348d44b5e22c1` (tag `play-1.0.7-submitted`)
+- AAB SHA-256 `81b2454a16c7c6cd5f333e164f769d6f2f7549779e59a4fc6c1730acd0217ceb`, 36,117,270 bytes
+- `versionCode 8` is **spent** — never rebuild or re-upload it, whatever happens to the review
+
+**Superseded, never went live:**
+- `1.0.6` / `versionCode 7`, frozen on `release/1.0.6` at `fa9d9e8` (tag `play-1.0.6-submitted`)
+- `versionCode 7` is spent and must never be reused
 
 **Development:**
 - branch `main`
-- `1.0.7` / `versionCode 8`
-- the **first Production update**
-- not uploaded
+- `branding.gradle.kts` still names `8` / `"1.0.7"`, matching the submitted commit exactly —
+  correct, and must stay that way until the next real code change
+- **the first code change on `main` after this submission opens `1.0.8` / `versionCode 9`**, per
+  the versioning rule below (bump `branding.gradle.kts` and rename `CHANGELOG.md`'s Unreleased
+  heading in that same change); a documentation-only change, including this one, opens nothing
 
-`branding.gradle.kts` on `main` now names `8` / `"1.0.7"`; on `release/1.0.6` it still correctly
-names `7` / `"1.0.6"` and must stay that way — that branch is the frozen record of what was
-submitted. Do not merge `main` back into `release/1.0.6`, do not force-update it, and do not create
-`release/1.0.7` until there is a concrete upload candidate for `1.0.7`.
+Do not merge `main` back into `release/1.0.6` or `release/1.0.7`, do not force-update either, and do
+not create `release/1.0.8` until there is a concrete upload candidate for that version.
 
 ## Version and track state (updated 2026-09-08) — HISTORICAL, describes 1.0.5→1.0.6; see above for current state
 

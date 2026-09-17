@@ -5,11 +5,10 @@ most recent released one; every uploaded version is copied into
 [`docs/version-history.md`](docs/version-history.md), the append-only archive that records each
 artifact's hash, size and signer.
 
-**Latest Production submission: `1.0.6` / `versionCode 7`**, built from `fa9d9e8` (tag
-`play-1.0.6-submitted`), uploaded to Google Play's **Production** track and still in review.
-**`1.0.7` / `versionCode 8` is prepared to replace it as the first Production release** (owner,
-2026-09-17: Play accepts a new version while the first Production release is still in review).
-`versionCode 7` stays spent either way.
+**Latest Production submission: `1.0.7` / `versionCode 8`**, built from `ea3124d` (tag
+`play-1.0.7-submitted`), uploaded to Google Play's **Production** track 2026-09-17, replacing the
+in-review `1.0.6` before it completed review. Under review as of this entry. `1.0.6` / `versionCode 7`
+never went live and stays spent, same as `1.0.4`'s withdrawn `versionCode 5`.
 
 ## Versioning rule — one version per uploaded artifact (owner, resolved 2026-08-30)
 
@@ -82,7 +81,7 @@ work after
 Nothing yet. `1.0.7` / `versionCode 8` is open below; a documentation-only change opens nothing
 further and lands directly under that heading.
 
-## 1.0.7 (versionCode 8) — 2026-09-17 — release bundle built, not yet uploaded; to replace 1.0.6 as the first Production release
+## 1.0.7 (versionCode 8) — 2026-09-17 — uploaded to Google Play Production, replacing 1.0.6, under review
 
 Opened by the first code change made after the `1.0.6` submission below (source `fa9d9e8`, tag
 `play-1.0.6-submitted`): a continuation of the Light/Dark visual refinement pass, a full visual
@@ -306,7 +305,7 @@ minimum), and it now also names the search host and the language list a search c
 
 ---
 
-## 1.0.6 (versionCode 7) — 2026-09-10 — uploaded to Google Play Production, under review
+## 1.0.6 (versionCode 7) — 2026-09-10 — SUPERSEDED 2026-09-17 by `1.0.7` before review completed; never went live
 
 Built from `fa9d9e8` (tag `play-1.0.6-submitted`) and uploaded to Google Play's **Production**
 track; review in progress. This is the first Production release. Opened by the scanner

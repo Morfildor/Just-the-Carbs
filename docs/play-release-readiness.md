@@ -2,21 +2,25 @@
 
 **Current state as of 2026-09-17**
 
-`1.0.6` / `versionCode 7` was submitted to the **Production** track from `fa9d9e8`
-(`play-1.0.6-submitted`) and is still in review; that versionCode is spent. **`1.0.7` /
-`versionCode 8` is built and verified to replace it as the first Production release** (owner: Play
-accepts a new version while the first Production release is in review). Not uploaded yet — see §7.
+`1.0.7` / `versionCode 8` was **uploaded to the Production track 2026-09-17**, from committed
+`ea3124d` (tag `play-1.0.7-submitted`, branch `release/1.0.7`), replacing the in-review `1.0.6`
+before its review completed. `1.0.6` / `versionCode 7` never went live and stays spent, same
+shape as `1.0.4`'s withdrawn `versionCode 5` — see `docs/version-history.md`.
+
+**`1.0.7`'s Play review status is not independently confirmed from this repository.** The owner
+reports the upload was sent and expects it to clear review quickly; that is the owner's expectation,
+not a verified fact recorded here. Check Play Console for whether it has actually gone live before
+describing the app as published. Once confirmed live, update this line and the `docs/version-history.md`
+entry with the live date.
 
 The 2026-09-16 "blocked pending explained API 36 failures" note is **cleared**: the whole
 instrumented suite ran on API 36 with only two failures, both `@ExploratoryExperiment` harnesses the
 strict [release gate](../.github/workflows/release-gate.yml) excludes (§7).
 
-**Upload steps:** Play Console → Production → create a new release → upload
-`release/1.0.7/JustTheCarbs-1.0.7-vc8.aab` → paste the *What's new* text from `CHANGELOG.md`'s
-`1.0.7` section → review and roll out (this replaces the in-review `1.0.6`). Publish the corrected
-privacy policy (push `docs/privacy-policy.html` to `main`) alongside. After Play accepts the upload:
-tag `ea3124d` as `play-1.0.7-submitted`, cut `release/1.0.7` from it, and copy the `1.0.7` section into
-`version-history.md`.
+**Completed at upload:** `main` and the `play-1.0.7-submitted` tag/`release/1.0.7` branch are pushed;
+the corrected privacy policy (`docs/privacy-policy.html`) shipped in the same push, so GitHub Pages
+now serves the corrected page; `docs/version-history.md` carries the `1.0.7` entry with artifact
+hash/size/signer.
 
 ## Historical readiness snapshot (2026-09-04; superseded)
 
@@ -540,7 +544,7 @@ changed.
 
 ## 7. Technical evidence — release candidate
 
-### 2026-09-17 — `versionCode 8` / `1.0.7`, built, not yet uploaded (commit `ea3124d`)
+### 2026-09-17 — `versionCode 8` / `1.0.7`, uploaded to Production (commit `ea3124d`)
 
 | Check | Result |
 |---|---|
