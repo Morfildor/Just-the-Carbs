@@ -4524,6 +4524,15 @@ This section supersedes every older statement in this file and in `docs/` saying
 next Play artifact" still to be built — including the "Version and track state (updated
 2026-09-08)" table immediately below, which was accurate when written and is now historical.
 
+**Account-level production access granted (2026-09-17).** Google has granted this developer
+account full production-publishing access — the closed-testing gate described below under "The
+14-day clock is RUNNING" (Play's 12-testers/14-days requirement for some personal accounts) is
+**cleared**. This is an account-level permission, separate from any individual release's own Play
+review: it does not by itself mean `1.0.6` / `versionCode 7` has finished review — check Play
+Console for that release's own status. Do not re-list the closed-testing/14-day requirement as an
+open gate; the remaining production gates are the app-content forms and the §44 signature (see
+"Production gates" below).
+
 **Production:**
 - `1.0.6` / `versionCode 7`
 - uploaded to Google Play's **Production** track
@@ -4657,13 +4666,17 @@ rather than observed — a test cannot watch a real status bar.
 Beyond that, the remaining path to production is Play Console forms plus the §44 signature, which is
 owner work, not engineering.
 
-**The 14-day clock is RUNNING.** If this account is subject to Play's **12-testers / 14-days
+**The 14-day clock CLEARED 2026-09-17 — see "Current release and branch state" above.** This
+account has been granted full production-publishing access, so the requirement described below is
+satisfied and is no longer an open gate. Kept as the historical record of what the requirement was.
+
+~~The 14-day clock is RUNNING.~~ If this account was subject to Play's **12-testers / 14-days
 closed-testing requirement** (some personal accounts created from Nov 2023 onward are; organization
-accounts are not), the closed track is now satisfying it in progress: 12+ testers opted in, period
+accounts are not), the closed track satisfied it in progress: 12+ testers opted in, period
 elapsing. **Internal testing never counted toward it** — a separate track, no credit — which is
 exactly why the closed track was needed; it now exists, so nothing remains to create or enrol. What
 is left is elapsed time and keeping testers opted in. Console's Production track is the authority on
-days remaining. Still the longest pole, and still the one item outside this repo's evidence.
+days remaining. Was the longest pole, and the one item outside this repo's evidence.
 
 Production gates (full detail §1b and the §5a Console matrix): complete the app-content forms
 (Data Safety, content rating, target audience, app access, ads); sign the §44 assessment; read the
