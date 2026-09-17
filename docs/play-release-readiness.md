@@ -1,18 +1,22 @@
 # Google Play release readiness — Just the Carbs
 
-**Current state as of 2026-09-15**
+**Current state as of 2026-09-17**
 
-`1.0.6` / `versionCode 7` was submitted to the **Production** track from
-`fa9d9e8` (`play-1.0.6-submitted`) and is under Play review. That source and
-versionCode are frozen. `main` is developing `1.0.7` / `versionCode 8`, the first
-post-Production update; it has not been uploaded. See [version history](version-history.md)
-and `CLAUDE.md`'s **Current release and branch state** for the release record.
+`1.0.6` / `versionCode 7` was submitted to the **Production** track from `fa9d9e8`
+(`play-1.0.6-submitted`) and is still in review; that versionCode is spent. **`1.0.7` /
+`versionCode 8` is built and verified to replace it as the first Production release** (owner: Play
+accepts a new version while the first Production release is in review). Not uploaded yet — see §7.
 
-The 1.0.7 release gate is **blocked** while API 36 instrumentation has unexplained
-failures. Passing ordinary CI is insufficient because its API 36 job uses
-`continue-on-error`; the strict [release gate](../.github/workflows/release-gate.yml)
-requires the instrumented suite to pass. Do not infer 1.0.7 release readiness from
-the 1.0.6 Production submission or from the historical checklist below.
+The 2026-09-16 "blocked pending explained API 36 failures" note is **cleared**: the whole
+instrumented suite ran on API 36 with only two failures, both `@ExploratoryExperiment` harnesses the
+strict [release gate](../.github/workflows/release-gate.yml) excludes (§7).
+
+**Upload steps:** Play Console → Production → create a new release → upload
+`release/1.0.7/JustTheCarbs-1.0.7-vc8.aab` → paste the *What's new* text from `CHANGELOG.md`'s
+`1.0.7` section → review and roll out (this replaces the in-review `1.0.6`). Publish the corrected
+privacy policy (push `docs/privacy-policy.html` to `main`) alongside. After Play accepts the upload:
+tag `ea3124d` as `play-1.0.7-submitted`, cut `release/1.0.7` from it, and copy the `1.0.7` section into
+`version-history.md`.
 
 ## Historical readiness snapshot (2026-09-04; superseded)
 
@@ -535,6 +539,21 @@ Re-verify in a logged-out browser at submission. No rebuild is needed: the URL i
 changed.
 
 ## 7. Technical evidence — release candidate
+
+### 2026-09-17 — `versionCode 8` / `1.0.7`, built, not yet uploaded (commit `ea3124d`)
+
+| Check | Result |
+|---|---|
+| Release AAB | Built with `clean :app:bundleRelease :app:assembleRelease` on committed `ea3124d` (0 modified files). **36,117,270 bytes**, SHA-256 `81b2454a16c7c6cd5f333e164f769d6f2f7549779e59a4fc6c1730acd0217ceb`. Copy kept at `release/1.0.7/JustTheCarbs-1.0.7-vc8.aab` (git-ignored) with its `mapping.txt`. |
+| Signature | **UPLOADABLE KEY** — `C=NL, L=Haarlem, O=JustTheCarbs, OU=Release, CN=Tunc Bilen`, SHA256withRSA, valid to 2051-08-20, cert SHA-256 `1E:21:23:F3:10:4C:C4:C1:87:EC:C2:F1:16:2A:A1:98:57:E2:7C:98:71:77:FA:A0:15:BD:B8:62:88:F8:C4:F5` (`keytool -printcert -jarfile`; `jarsigner` "jar verified"). Same key as every earlier version. |
+| Identity in the bundle's own manifest | `package="app.justthecarbs"`, `versionCode 8`, `versionName 1.0.7`, minSdk 26, targetSdk 36, `allowBackup=false`, `usesCleartextTraffic=false`, no `debuggable` — read from `base/manifest/AndroidManifest.xml` inside the AAB with `aapt2 dump xmltree`. No `FileProvider`. |
+| Permissions | CAMERA, INTERNET, ACCESS_NETWORK_STATE (transitive, disclosed) plus AGP's `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` — unchanged. Release APK locales `--_--` (English only). |
+| R8 privacy barriers | **PASS** — `ScanEvidenceRecorder`, `OcrDiagnosticsLogger` → `R8$$REMOVED$$CLASS$$`; `ScanEvidenceExport`, `OcrDiagnosticsReport`, `ScanTrace`, `ZipIntegrity` absent. Retained as real classes: `UnitMarkerFilter`, `CandidateProvenance`, `CarbCandidate`, `PackageBasisResolver`, `ScaleAmbiguity`, `RecoveryCandidates`, `CrossColumnRatioCheck`, `SearchQueryMatcher`. `ProductNames` is absent — a one-function object inlined; the smoke test below shows names working. |
+| Release APK smoke test (emulator) | Minified `app-release.apk` from the same build (67,008,786 bytes, SHA-256 `46fb194f…c3dde`): fresh install, welcome carousel, live name search for `nutella` → 8 matching rows; process alive; **0** `FATAL`/`ClassNotFound`/`NoSuchMethod`/`NoClassDefFound`/`Serialization` log lines. |
+| JVM / lint | **2097/2097**, 0 failures/errors/skips (`--rerun-tasks`, 219 XML files); lint **0 errors, 28 warnings**. |
+| Instrumented (API 36 `carbscan`) | Whole suite in one chunked run: **445 passed, 2 failed of 447** — both failures `@ExploratoryExperiment` harnesses that need a pushed evidence corpus, excluded by `release-gate.yml`, identical at HEAD. After the last code change, the 22 OCR-dependent classes re-ran: 107/109, the same two. OCR corpus 42/42 with the nine photographs' readings identical to `120817d`. |
+| OSV dependency scan | **PASS 2026-09-17** — 226 release-runtime artifacts, no known vulnerabilities. |
+| Physical device | **Not done by the agent.** Label reading in Turkish/EU languages is synthetic-table and corpus evidence only (`docs/manual-qa.md` §44). |
 
 ### 2026-09-04 — `versionCode 4` / `1.0.3`, the shipped artifact (commit `7cbf78d`)
 

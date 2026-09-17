@@ -4683,7 +4683,9 @@ open gate; the remaining production gates are the app-content forms and the §44
 version while the first Production release is still in review, so `1.0.7` / `versionCode 8` is built
 to be uploaded over the in-review `1.0.6`; `versionCode 7` stays spent. After the upload is
 confirmed, tag the exact **build** commit `play-1.0.7-submitted` and cut `release/1.0.7` from it —
-never a later docs commit. Artifact facts: `docs/play-release-readiness.md` §7.
+never a later docs commit. **Build commit: `ea3124d`.** AAB 36,117,270 bytes, SHA-256
+`81b2454a16c7c6cd5f333e164f769d6f2f7549779e59a4fc6c1730acd0217ceb`, copy at
+`release/1.0.7/JustTheCarbs-1.0.7-vc8.aab`. Full evidence: `docs/play-release-readiness.md` §7.
 
 **Production:**
 - `1.0.6` / `versionCode 7`

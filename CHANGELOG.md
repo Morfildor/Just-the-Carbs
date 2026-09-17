@@ -99,6 +99,16 @@ so its release notes cover `1.0.6`'s changes too.
 • Fixes for label scanning, portion recalculation and meal saving.
 ```
 
+### Release preparation verification — 2026-09-17
+
+Signed AAB built from `clean` on committed `ea3124d`: **36,117,270 bytes**, SHA-256
+`81b2454a16c7c6cd5f333e164f769d6f2f7549779e59a4fc6c1730acd0217ceb`, upload key `CN=Tunc Bilen`
+(`1E:21:23:F3…C4:F5`), bundle manifest `versionCode 8` / `1.0.7`. JVM 2097/2097; lint 0 errors,
+28 warnings; instrumented 445/447 on API 36 (two excluded `@ExploratoryExperiment` harnesses, identical
+at HEAD); OCR corpus 42/42 identical to `120817d`; R8 barriers pass; minified release smoke test
+(launch, carousel, live search) clean; OSV 226 artifacts, none vulnerable. Full table:
+`docs/play-release-readiness.md` §7.
+
 The privacy policy was corrected alongside this version: since `1.0.2` it had said search text is
 sent only on an explicit submit, but search runs as you type (after a 350 ms pause, three characters
 minimum), and it now also names the search host and the language list a search carries.
