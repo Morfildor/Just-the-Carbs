@@ -25,6 +25,7 @@ import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.NutritionValueValidator
 import app.justthecarbs.domain.PortionParser
+import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.Product
 import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.jtcDialogOutline
@@ -50,7 +51,7 @@ fun VerifyDialog(
 ) {
     var name by remember { mutableStateOf(product.name) }
     var carbs by remember {
-        mutableStateOf(product.carbsPer100.stripTrailingZeros().toPlainString())
+        mutableStateOf(ResultFormatter.editable(product.carbsPer100))
     }
     var basis by remember { mutableStateOf(product.basis) }
 

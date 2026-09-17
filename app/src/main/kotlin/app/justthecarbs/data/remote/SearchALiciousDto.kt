@@ -102,6 +102,8 @@ data class SearchALiciousHit(
      * absent from every hit. See [SearchALiciousApi.SEARCH_LANGS].
      */
     @SerialName("product_name_nl") val productNameNl: String? = null,
+    /** Turkish name. Only populated when `langs` includes `tr` — see [SearchALiciousApi.searchLanguagesFor]. */
+    @SerialName("product_name_tr") val productNameTr: String? = null,
     @Serializable(with = FirstOfStringOrArray::class)
     val brands: String? = null,
     /** Free text as printed, e.g. `"390 gram"`. The only basis evidence this endpoint supplies. */

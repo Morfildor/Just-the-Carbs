@@ -1,6 +1,6 @@
 # Privacy policy — Just the Carbs
 
-**Last updated:** 2026-08-26
+**Last updated:** 2026-09-17
 **Contact:** albinogorillassupport@gmail.com
 
 This describes what the app actually does, verified against the source code (§48).
@@ -42,15 +42,15 @@ There is no login, no cloud profile, and no synchronisation. Deleting the app de
 
 | Field | Value |
 |---|---|
-| Recipient | Open Food Facts, for product data/search (`world.openfoodfacts.org`) and product photos (`images.openfoodfacts.org` or `static.openfoodfacts.org`) |
-| When | Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts' own image host — the app checks this and will not load an image from any other address. Search text: only when you explicitly submit a search (the on-screen search action, or your keyboard's Search key) — typing alone never sends anything |
-| What is sent | The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo); the search words themselves (search) |
+| Recipient | Open Food Facts, for product data (`world.openfoodfacts.org`), search (`search.openfoodfacts.org`, or `world.openfoodfacts.org` if that service does not answer) and product photos (`images.openfoodfacts.org` or `static.openfoodfacts.org`) |
+| When | Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts' own image host — the app checks this and will not load an image from any other address. Search text: while you search by name — once you have typed at least three characters and paused for about a third of a second, or when you press the search action. Fewer than three characters are never sent |
+| What is sent | The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo); the search words, plus the list of languages whose product names should be searched (search). That list starts with Turkish when your phone's language is Turkish, so it can reveal that setting. Your phone's region is used only on the device, to order the results, and is not sent |
 | What Just the Carbs does not attach to these requests | An account/user ID, advertising ID, your portions, results, history, or verified values. The recipient still receives normal network metadata such as IP address |
 | Transport | HTTPS only. Cleartext traffic is disabled at the platform level |
 
 **About the search text specifically.** Unlike a barcode, this is text you typed, so it deserves
-naming rather than folding into "product lookups". It is sent only when you explicitly submit a
-search, never as you type, it is sent with no app-supplied user identifier, and Just the Carbs does
+naming rather than folding into "product lookups". It is sent while you search —
+after you pause typing, not on every keystroke — with no app-supplied user identifier, and Just the Carbs does
 not store it on your device or on a Just the Carbs server — the app keeps no search history and has
 no server. Open Food Facts' own retention of search requests was not established by a primary
 source in the 2026-08-14 review. If you do not use Search by name, nothing of this kind is sent by

@@ -189,6 +189,28 @@ class QuickCalculationTest {
         assertTrue("the calculator must be usable", state.canCalculate)
     }
 
+    /** On a Turkish-locale device the portion field gets the same comma the results use. */
+    @Test
+    fun `a Turkish-locale device writes an adjusted portion with a decimal comma`() = runTest(dispatcher) {
+        val previous = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr-TR"))
+            val fixture = Fixture()
+            fixture.viewModel.startQuickCalculation(BigDecimal("48"), NutritionBasis.PER_100_G)
+            advanceUntilIdle()
+
+            fixture.viewModel.onPortionChanged("12,5")
+            fixture.viewModel.adjustPortion(5)
+            advanceUntilIdle()
+
+            val state = fixture.viewModel.state.value
+            assertEquals("17,5", state.portionText)
+            assertEquals(0, BigDecimal("8.4").compareTo(state.result?.exact))
+        } finally {
+            java.util.Locale.setDefault(previous)
+        }
+    }
+
     // ---- 2 & 3. no persistence as a side effect ------------------------------------------------
 
     /**

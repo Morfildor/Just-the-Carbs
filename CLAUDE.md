@@ -51,6 +51,152 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Search trust + label languages pass (2026-09-17) — 1.0.7, READ FIRST
+
+A pre-release stabilization pass on `main` above `120817d`. Still `1.0.7` / `versionCode 8`, not
+uploaded; no release build. **The app stays English** — owner decision 10, restated mid-pass: a full
+`values-tr` translation was built, the owner said *"App will always be in English. I want recognition
+of labels and ocr for Turkish and other eu countries"*, and it was removed. **"Turkish/EU support"
+means reading labels and search input, never translating the UI.** The owner also set the bar for the
+OCR work: **"no regression in detection and accuracy."**
+
+### Search
+
+- **The ranking defect.** `SearchResultRanking.select` (the 2026-09-16 pass) set aside every result
+  without a carb figure whenever one with a figure existed, so `krokante pizza` showed Albert Heijn
+  products matching only the brand word and dropped the one exact match. `domain/SearchQueryMatcher`
+  now grades each result by query coverage — `FULL` (every word), `STRONG` (at least one non-brand
+  word, and every non-brand word or a majority), `WEAK` — with brand words decided per page (a whole
+  brand token in ≥2 results, not outnumbered by name mentions) and near matches (1–2 letters trimmed,
+  stem ≥5) counting as partial. Order: strength → matched words → whole-word matches → **then** carb
+  figure → sold here → scans. `WEAK` rows are shown only when nothing better exists. Folding is NFD
+  plus `ı→i`, for matching only; the query is sent as typed (the service does not fold Turkish).
+- **Stale rows.** A refinement keeps an old row only if it matches the added words (`localHitsFor`),
+  otherwise the list empties and a *Searching…* line shows.
+- **Settle 500 → 350 ms**, measured with a 180 ms service: 690 → 540 ms to results, 4 requests at
+  320 ms per key. 300 ms was measured and rejected (22 requests at 320 ms per key).
+- **Loading.** The centred spinner is gone from Home and Search: a hairline whenever searching, plus
+  `SearchingLine` when there is nothing to show yet.
+- **Device language, not app language.** `JustTheCarbsApplication.deviceLanguage` (the system
+  locale; the app has only English resources) chooses product names (`ProductNames`: Turkish device →
+  `product_name_tr`, otherwise `product_name_nl`, then the main name) and search `langs`
+  (`TURKISH_SEARCH_LANGS` = tr,en,nl,de,fr). It is part of `CachedProductSearch`'s key.
+- **Benchmark.** `tools/search-benchmark/capture.py` recorded 68 Turkish and 46 Dutch queries
+  (`app/src/test/resources/search/benchmark/`, ~345 KB gzip) and `SearchBenchmarkTest` replays them
+  through the real data source. Old → new ranking: Turkish top-1 61 → 63 of 63 answerable, top-5 leaks
+  27 → 3, relevant results shown 499 → 931; Dutch top-1 46 → 46, top-5 leaks 10 → 0. Fewer top-five
+  results show a figure (Turkish 318 → 244), by design. Five Turkish queries have no relevant hit in
+  the service's page at all (`Pinar sut`, `Icim yogurt`, `Torku fıstıklı/fistikli`,
+  `mısır gevreği`): a service limitation, not a ranking one.
+- **Decimal separator.** `ResultFormatter.editable` writes pre-filled fields with the device locale's
+  separator and every digit (`PortionParser` still reads both); the clipboard stays `Locale.ROOT`.
+  Typed `1.500` is still read as 1.5 — deliberately undecided: rejecting grouping would also reject
+  app-written values like `3.125`.
+
+### Label recognition in Turkish and the EU languages
+
+Measured first in `EuropeanLabelDiagnosticTest` (synthetic tables in 20 EU languages plus Norwegian and Turkish, from
+Annex XV of Regulation 1169/2011, cross-checked against Open Food Facts' nutrient taxonomy), fixed,
+then pinned by `EuropeanNutritionTableTest` and `TurkishNutritionTableTest`.
+
+**Three confident-wrong paths found, none reported from the field:**
+
+1. **A row stating its own basis read the basis's `100`** (`Hidratos de carbono por 100 g 62,5 g` →
+   `Confident 100.0`, Spanish/Portuguese/Estonian; `Ambiguous [100, 62.5]` in nine more). A
+   non-carbohydrate row with the same inline basis typed `HEADER` and made a column right where the
+   carbohydrate row's `100` sat. `InlineBasisSpans` masks the `100` only after a connective, and
+   `je`/`pour`/`por`/`ve`/`v`/`u`/`la` were missing. Fixed by adding them, plus `markedAfterSpanAt`
+   for `100 g kohta` / `100 g için` / a case-suffixed unit. **Latvian and Lithuanian `100 g` with no
+   marker still offer `100` as a choice** — indistinguishable from an amount, pre-existing.
+2. **A bare percentage beside a lost carbohydrate cell read as grams** in 14 languages whose
+   percentage header is not `%RI` (`%RM`, `%AR`, `%IR`, `%DR`, `%RWS`, `%RHP`, `%BRD`, ...). The
+   header was unrecognised, so no percentage column existed to claim the `7`. `BARE_PERCENT_HEADER`
+   now accepts `%` + up to five letters: the `%` is what keeps prose out.
+3. **Merged total+child rows offered the child's figure** when its word was unlisted (singular
+   sugars `sucre`/`zucchero`/`cukier`/`cukr`/`zahăr`/`sukker`/`socker`/`azúcar`/`açúcar`, Polish
+   `alkohole wielowodorotlenowe`, Czech `polyalkoholy`, Lithuanian `cukrūs`, Finnish `sokereita`).
+
+**Also:** case suffixes on the unit (`100 g'da`, `100 g-ban`, `100 g:ssa`) are stripped in
+`normalize` (`UNIT_CASE_SUFFIX`, generalised from the Turkish-only rule); per-portion words in their
+header forms (`porcji`, `porci`, `porcii`, `porciji`, `porcijo`, `porcijoje`, `portsjoni`,
+`annoksessa`, `porsiyonda`, `ración`); Slovak and Hungarian entries; and
+`CarbohydrateTermAnchor.OTHER_NUTRIENT_TERMS` gained each language's Annex XV fat/saturates/protein/
+salt/energy names — **needed because of fix 1**: once `por`/`100 g kohta`/`100 g:ssa` were bases, a
+Spanish, Finnish or Estonian sentence reached the row logic and offered the fat `12` beside `46`.
+
+**Measured and left out, because they changed a real capture:**
+
+- **Hungarian `szénhidrát`** — on the Indomie capture (`SeventeenthSessionFixtures
+  .c20260904_134501_895`) the multilingual carbohydrate line wraps and its Hungarian word lands on the
+  next line, which the row builder merged with `of which / dont / waarvan / davon / amelybol 29g`
+  (2,9 g sugars). As a term it made that a second total row: `Confident 29.0`, the sugars figure.
+  Guarded (below), focused entry still lost its target, because two total rows now print figures and
+  `FocusedAmountEntry` refuses to arbitrate. **Hungarian-only tables therefore read nothing.**
+- **An "of which" row rule** (`davon`, `dont`, `waarvan`, ... making a row a child row) — it fixed
+  Indomie and turned 30+ correct corpus readings into `NotFound`, because real Dutch and multilingual
+  packs print `koolhydraten, waarvan 9,6 g` on the total's own line. **Do not retry it.** Nor put bare
+  "of which" words into `exclusionTerms`: the prose walk gives up at a child term seen before the
+  carbohydrate one, and every language prints `of which saturates` first.
+- Rare carbohydrate spellings (`glúcidos`, `glícidos`, `ogljikove hidrate`) and a Maltese entry —
+  unmeasurable against the corpus and low value; Maltese and Irish packs print English.
+
+**The refused-elsewhere guard** (`NutritionTableInterpreter`): a per-100 reading is dropped when a
+*different* total line of the same panel had its own per-100 cell refused (no unit, or impossible).
+The same principle as `perHundredCellRejected`, applied to the next line instead of the next column.
+Pinned with the Indomie capture's wrapped line renamed to a known word (`Koolhydraten`): without the
+guard it reads `Confident 29.0`.
+
+**Greek and Bulgarian** cannot be read: ML Kit's bundled recognizer is Latin-script only.
+
+### How "no regression" was established
+
+A temporary probe snapshot of **every committed OCR fixture document (517) and every replayed device
+capture (102, sessions 13–17)** — reading, columns, row kinds, serving candidate, provenance, failure
+reason, recovery offers, and the single-pass production decision (resolver outcome, verification
+route, `ScanPresentationDecision`, focused target) — at HEAD (baseline worktree) and after. **All 619
+decisions are identical.** 58 documents differ only in row kinds or column labels (new percentage
+columns, rows now typed as child rows, anchors that moved a few pixels), none reaching a decision. The
+probe was deleted; re-create it from this description if a later vocabulary change needs the same
+proof.
+
+Negative controls, each restored byte-identically: connectives removed (2 tests fail), postposition/
+suffix spans disabled (2), percent-header rule reverted (2), refused-elsewhere guard disabled (1),
+case suffix back to Turkish-only (6), singular sugars removed (1), other-nutrient anchors removed (1),
+inflected portion word removed (1).
+
+### Verified
+
+JVM **2097/2097** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, 219 XML files). Lint **0 errors,
+28 warnings** (unchanged baseline). OCR corpus on the `carbscan` emulator (the six corpus classes plus
+`RealImageBaselineTest`'s readings of the nine photographs): HEAD and this tree **identical** — 42/42
+both, all 27 reading/serving/provenance lines equal.
+
+**Whole instrumented suite, one chunked run on API 36: 445 passed, 2 failed, 447 total** (every class
+ran exactly the tests it declares). The two failures are `@ExploratoryExperiment` harnesses
+(`FourteenthSessionOpticalExperimentTest`, `RedLabelAcquisitionExperimentTest`) that need an evidence
+corpus pushed to the device first, fail identically at HEAD, and are excluded by
+`release-gate.yml` (`notAnnotation=...ExploratoryExperiment`). So the release gate's own set passed in
+full — which **clears the 2026-09-16 "blocked pending explained API 36 failures" note**.
+After the connective adjustment below, the debug APKs were rebuilt and every class that goes through
+the OCR code (22 classes, including the corpus) re-ran: **107 passed, 2 failed — the same two
+experiments**, again identical at HEAD.
+
+**The full JVM run caught what the targeted runs had not.** `CrossColumnEvidenceReachTest` pins that the
+six header phrases of the Turkish rice-flour capture sit within 6% of the width. With `pour` a
+connective, `ColumnClassifier` took the 90 px word into the French header and moved it 52 px (span
+91 → 106 px). No decision changed (the 3% collapse already declined there at HEAD), but the column
+classifier reads `100 g` without the new words, so it now uses
+`NutritionTerminology.columnHeaderConnectives` — HEAD's set — while the inline-basis, row and prose
+readers keep the extended one. The 619-document snapshot above predates this adjustment, which only
+returns column geometry to HEAD's; the JVM suite and the OCR-dependent device classes were re-run after it.
+
+### NOT verified
+
+Nothing here has been seen on a physical device or a real Turkish/EU package — every label result is
+synthetic geometry plus the committed corpus, and search latency is a JVM measurement.
+`docs/manual-qa.md` **§44** is the gate. The Turkish-locale behaviour (product names, `langs`,
+decimal comma) is JVM-tested only.
+
 ## Final Tutorial V2 polish (owner correction, 2026-09-10) — READ FIRST
 
 **Superseded by "Current release and branch state" further down this file: `1.0.6` / `versionCode 7`
@@ -4533,6 +4679,12 @@ Console for that release's own status. Do not re-list the closed-testing/14-day 
 open gate; the remaining production gates are the app-content forms and the §44 signature (see
 "Production gates" below).
 
+**1.0.7 replaces 1.0.6 as the first Production release (owner, 2026-09-17).** Play accepts a new
+version while the first Production release is still in review, so `1.0.7` / `versionCode 8` is built
+to be uploaded over the in-review `1.0.6`; `versionCode 7` stays spent. After the upload is
+confirmed, tag the exact **build** commit `play-1.0.7-submitted` and cut `release/1.0.7` from it —
+never a later docs commit. Artifact facts: `docs/play-release-readiness.md` §7.
+
 **Production:**
 - `1.0.6` / `versionCode 7`
 - uploaded to Google Play's **Production** track
@@ -5732,7 +5884,9 @@ Note: `connectedAndroidTest` **uninstalls the app afterwards** — reinstall bef
 9. **Regulatory wording** — never describe the app as an accessory to a medical device, or as a
    medical device, or as not one. Qualification is unresolved; the docs say only that the controls
    are conservative while it is.
-10. **Countable-portion app language is English-only** (2026-08-14, owner correction mid-session —
+10. **The app is English-only** — restated by the owner 2026-09-17, after a `values-tr` translation
+    was built and removed: Turkish/EU support means reading labels and search input, never UI text.
+    Originally recorded as: **Countable-portion app language is English-only** (2026-08-14, owner correction mid-session —
     the original brief's Dutch requirement was leftover from an earlier draft). This is about
     *displayed UI strings* only: `ServingSizeParser` still recognizes Dutch remote `serving_size`
     text (the owner is in the Netherlands and OFF data for their products is legitimately Dutch) —

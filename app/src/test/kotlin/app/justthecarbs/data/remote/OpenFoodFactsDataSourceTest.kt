@@ -34,6 +34,7 @@ import java.math.BigDecimal
 class OpenFoodFactsDataSourceTest {
 
     private lateinit var server: MockWebServer
+    private lateinit var api: OpenFoodFactsApi
     private lateinit var dataSource: OpenFoodFactsDataSource
 
     private val barcode = "8712100849060"
@@ -44,7 +45,7 @@ class OpenFoodFactsDataSourceTest {
         server.start()
 
         val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-        val api = Retrofit.Builder()
+        api = Retrofit.Builder()
             .baseUrl(server.url("/"))
             .client(OkHttpClient())
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
@@ -202,6 +203,29 @@ class OpenFoodFactsDataSourceTest {
         )
 
         assertEquals("Hagelslag puur", found(dataSource.fetch(barcode)).name)
+    }
+
+    /** The same rule search uses (ProductNames), so a product keeps its name from list to calculator. */
+    @Test
+    fun `a device set to Turkish names the product in Turkish`() = runTest {
+        respond(
+            """{"product":{"product_name":"Chocolate milk","product_name_nl":"Chocolademelk",
+               "product_name_tr":"Kakaolu süt","quantity":"200 ml","nutriments":{"carbohydrates_100g":10.5}}}""",
+        )
+
+        val turkish = OpenFoodFactsDataSource(api, preferredLanguage = { "tr-TR" })
+
+        assertEquals("Kakaolu süt", found(turkish.fetch(barcode)).name)
+    }
+
+    @Test
+    fun `the lookup asks for the Dutch and Turkish names`() = runTest {
+        respond("""{"code":"$barcode","product":{"product_name":"Hagelslag puur"}}""")
+
+        dataSource.fetch(barcode)
+
+        val fields = server.takeRequest().requestUrl!!.queryParameter("fields")!!.split(',')
+        assertTrue(fields.containsAll(listOf("product_name", "product_name_nl", "product_name_tr")))
     }
 
     @Test

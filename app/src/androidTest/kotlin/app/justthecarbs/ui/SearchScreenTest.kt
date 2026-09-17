@@ -1,7 +1,11 @@
 package app.justthecarbs.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -29,6 +33,7 @@ import app.justthecarbs.ui.search.SEARCH_RATE_LIMITED_TAG
 import app.justthecarbs.ui.search.SEARCH_REFRESH_ERROR_TAG
 import app.justthecarbs.ui.search.SEARCH_REFRESH_PROGRESS_TAG
 import app.justthecarbs.ui.search.SEARCH_RESULTS_TAG
+import app.justthecarbs.ui.search.SEARCH_SEARCHING_TAG
 import app.justthecarbs.ui.search.SEARCH_SUBMIT_TAG
 import app.justthecarbs.ui.search.SearchScreen
 import app.justthecarbs.ui.search.SearchUiState
@@ -448,15 +453,24 @@ class SearchScreenTest {
         compose.onNodeWithTag(SEARCH_REFRESH_PROGRESS_TAG).assertExists()
     }
 
-    /** With nothing to keep, the centred spinner is right — it is the whole content of the screen. */
+    /**
+     * A first search gets the same quiet treatment as a refresh (2026-09-17): the hairline under the
+     * field and one short line where the results will appear. The large centred spinner it replaced
+     * made every search look like the screen was reloading.
+     */
     @Test
-    fun aFirstSearchWithNoResultsYetShowsTheCentredSpinnerAndNoHairline() {
+    fun aFirstSearchShowsTheHairlineAndASearchingLineRatherThanASpinner() {
         show(SearchUiState(query = "hagelslag", searching = true))
 
         compose.onNodeWithTag(SEARCH_RESULTS_TAG).assertDoesNotExist()
-        // Never both at once: two simultaneous loading indicators for one search read as two
-        // things happening.
-        compose.onNodeWithTag(SEARCH_REFRESH_PROGRESS_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(SEARCH_REFRESH_PROGRESS_TAG).assertExists()
+        compose.onNodeWithTag(SEARCH_SEARCHING_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Searching…").assertIsDisplayed()
+        // One loading indicator only.
+        compose.onAllNodes(
+            hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate) and
+                !hasTestTag(SEARCH_REFRESH_PROGRESS_TAG),
+        ).assertCountEquals(0)
     }
 
     /**

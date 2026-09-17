@@ -14,6 +14,7 @@ import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductImage
 import app.justthecarbs.domain.ProductImageType
 import app.justthecarbs.domain.ProductImageUrlValidator
+import app.justthecarbs.domain.ProductNames
 import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
@@ -107,10 +108,7 @@ class OpenFoodFactsDataSource(
         // silently absent from the result list rather than reaching the screen with a barcode this
         // app cannot safely act on.
         val barcode = BarcodeValidator.normalize(code.orEmpty()) ?: return null
-        val displayName = listOfNotNull(productNameNl, productName)
-            .firstOrNull { it.isNotBlank() }
-            ?.trim()
-            ?: return null
+        val displayName = localizedName() ?: return null
 
         // A hit whose basis was never established shows no number at all. The card still carries the
         // name, brand, package text and photo — everything the user needs to recognise their
@@ -167,10 +165,7 @@ class OpenFoodFactsDataSource(
         // A record with no name cannot be shown in Recents or recognised on a second scan. Treating
         // it as absent routes the user to manual entry, which is a working outcome rather than a
         // nameless row (§26). It is never a dead end.
-        val name = listOfNotNull(remote.productNameNl, remote.productName)
-            .firstOrNull { it.isNotBlank() }
-            ?.trim()
-            ?: return ProductFetchResult.NotFound
+        val name = remote.localizedName() ?: return ProductFetchResult.NotFound
 
         // "Is there a number at all?" is answered before "what is it measured per?", and the order
         // is deliberate: asking someone whether a value is per 100 g or per 100 ml, when the record
@@ -263,6 +258,13 @@ class OpenFoodFactsDataSource(
             rawServingText = remote.servingSize.orEmpty(),
         )
     }
+
+    /** The shared naming rule, so a searched product keeps its name on the calculator. */
+    private fun OffProduct.localizedName(): String? = ProductNames.choose(
+        generic = productName,
+        localized = mapOf("nl" to productNameNl, "tr" to productNameTr),
+        language = preferredLanguage(),
+    )
 
     /**
      * Chooses one display image per role. The ordering is deliberately explicit and stable:

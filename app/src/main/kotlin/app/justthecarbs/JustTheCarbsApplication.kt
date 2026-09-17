@@ -53,6 +53,15 @@ class AppContainer(context: Context) {
     val okHttpClient by lazy { NetworkModule.okHttpClient() }
 
     /**
+     * The device's language, as a tag. The app is always shown in English; this decides only which
+     * product names and search languages Open Food Facts data arrives in. Read on every call, so a
+     * language changed in system settings applies to the next search and lookup without a restart.
+     */
+    private val deviceLanguage: () -> String = {
+        appContext.resources.configuration.locales[0].toLanguageTag()
+    }
+
+    /**
      * One Open Food Facts instance serving both roles — it is the canonical **product** source
      * (barcode lookup, the authoritative nutrition path) and the **legacy** search source, and
      * constructing it twice would open two paths to the same host.
@@ -63,9 +72,7 @@ class AppContainer(context: Context) {
     val legacySearchSource by lazy {
         OpenFoodFactsDataSource(
             NetworkModule.openFoodFactsApi(okHttpClient),
-            preferredLanguage = {
-                appContext.resources.configuration.locales[0].toLanguageTag()
-            },
+            preferredLanguage = deviceLanguage,
         )
     }
 
@@ -109,6 +116,7 @@ class AppContainer(context: Context) {
         SearchALiciousDataSource(
             api = NetworkModule.searchALiciousApi(okHttpClient),
             log = searchProviderLog,
+            preferredLanguage = deviceLanguage,
             // Read per search so a changed system region applies without a restart.
             deviceCountryTag = { SearchResultRanking.countryTagOf(Locale.getDefault()) },
         )
@@ -128,7 +136,7 @@ class AppContainer(context: Context) {
      * the same term on both is exactly the case this saves a request on.
      */
     private val cachedPrimarySearchSource by lazy {
-        CachedProductSearch(searchALiciousSource)
+        CachedProductSearch(searchALiciousSource, language = deviceLanguage)
     }
 
     /**

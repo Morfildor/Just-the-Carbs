@@ -19,6 +19,7 @@ import app.justthecarbs.domain.MealTotal
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionParser
+import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.PortionResolver
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.PortionUnitKind
@@ -514,16 +515,14 @@ class ProductViewModel(
             }
             val resolvedSelectedId = if (resolvedMode == InputMode.PORTION_UNIT) candidateSelectedId else null
             val countText = restoredCount
-                ?: product.lastCount?.takeIf { resolvedMode == InputMode.PORTION_UNIT }?.stripTrailingZeros()?.toPlainString()
+                ?: product.lastCount?.takeIf { resolvedMode == InputMode.PORTION_UNIT }?.let(ResultFormatter::editable)
                 ?: ""
 
             val portionText = if (incompatibleSelection) "" else if (resolvedMode == InputMode.PORTION_UNIT && resolvedSelectedId != null) {
                 when (val conversion = units.first { it.id == resolvedSelectedId }.conversion) {
                     is PortionConversion.WeightBased -> {
                         val count = PortionParser.parse(countText) ?: BigDecimal.ONE
-                        PortionResolver.resolve(count, conversion.amountPerUnit)
-                            .stripTrailingZeros()
-                            .toPlainString()
+                        ResultFormatter.editable(PortionResolver.resolve(count, conversion.amountPerUnit))
                     }
                     // A restored direct-carb selection has no grams to pre-fill. The count alone
                     // reproduces the calculation.
@@ -531,7 +530,7 @@ class ProductViewModel(
                 }
             } else {
                 restoredPortion
-                    ?: product.lastPortion?.stripTrailingZeros()?.toPlainString()
+                    ?: product.lastPortion?.let(ResultFormatter::editable)
                     ?: ""
             }
 
@@ -588,11 +587,11 @@ class ProductViewModel(
     fun adjustPortion(delta: Int) {
         val current = PortionParser.parse(_state.value.portionText) ?: BigDecimal.ZERO
         val adjusted = current.add(BigDecimal(delta)).max(BigDecimal.ZERO)
-        onPortionChanged(adjusted.stripTrailingZeros().toPlainString())
+        onPortionChanged(ResultFormatter.editable(adjusted))
     }
 
     fun setPortion(amount: BigDecimal) =
-        onPortionChanged(amount.stripTrailingZeros().toPlainString())
+        onPortionChanged(ResultFormatter.editable(amount))
 
     // ---- countable portions (brief §9-§12) -----------------------------------------------------
 
@@ -889,7 +888,7 @@ class ProductViewModel(
                 }
                 is PortionConversion.WeightBased -> {
                     portion = PortionResolver.resolve(count, conversion.amountPerUnit)
-                    val text = portion.stripTrailingZeros().toPlainString()
+                    val text = ResultFormatter.editable(portion)
                     savedState[KEY_PORTION] = text
                     _state.update { it.copy(portionText = text) }
                 }
@@ -1049,7 +1048,7 @@ class ProductViewModel(
             if (unit != null && unit.isCompatibleWith(_state.value.product?.basis ?: return)) {
                 savedState[KEY_MODE] = InputMode.PORTION_UNIT.name
                 savedState[KEY_SELECTED_UNIT] = unit.id
-                val countText = usage.amount.stripTrailingZeros().toPlainString()
+                val countText = ResultFormatter.editable(usage.amount)
                 savedState[KEY_COUNT] = countText
                 _state.update {
                     it.copy(

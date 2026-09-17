@@ -7,6 +7,7 @@ import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.NutritionValueValidator
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionParser
+import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
@@ -136,7 +137,8 @@ class ManualEntryViewModel(
         _state.update {
             it.copy(
                 barcode = barcode.orEmpty(),
-                carbsPer100 = ocrCarbs,
+                // Carried as `7.2`; shown in the app's own decimal form, as every other number is.
+                carbsPer100 = PortionParser.parse(ocrCarbs)?.let(ResultFormatter::editable) ?: ocrCarbs,
                 basis = when {
                     parsedBasis != null -> parsedBasis
                     ocrCarbs.isBlank() -> it.basis

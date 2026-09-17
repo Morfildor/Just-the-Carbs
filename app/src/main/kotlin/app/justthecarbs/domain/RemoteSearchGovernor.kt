@@ -156,7 +156,7 @@ class RemoteSearchGovernor(
          * measured answering 200 in 136–202 ms with no throttling. It is a cheap guard against a
          * pathological caller, sized well below the settle wait so it never delays an ordinary
          * search: with [app.justthecarbs.ui.search.SearchViewModel.REMOTE_SEARCH_SETTLE_MS] at
-         * 500 ms, a user typing continuously cannot reach this floor anyway.
+         * 350 ms, a user typing continuously cannot reach this floor anyway.
          *
          * Deliberately **not** [MIN_INTERVAL_MS]. Applying the legacy endpoint's 7 s budget to a
          * service that does not impose it would spend the entire latency win this migration exists

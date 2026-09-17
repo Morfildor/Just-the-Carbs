@@ -298,6 +298,8 @@
          offering one during an enforced backoff invites exactly the hammering it exists to stop. -->
     <string name="search_rate_limited" tools:ignore="MissingTranslation">Search is busy. Updating automatically…</string>
     <string name="search_updating" tools:ignore="MissingTranslation">Updating…</string>
+    <!-- Where results will appear, while a search with nothing to show yet is running. -->
+    <string name="search_searching" tools:ignore="MissingTranslation">Searching…</string>
     <!-- Shown when a submitted query is refused for being too short.
          Written as a plural rather than "%1$d characters", which lint correctly flags: at a limit of
          one the sentence would read "at least 1 characters". The count is still passed in so the

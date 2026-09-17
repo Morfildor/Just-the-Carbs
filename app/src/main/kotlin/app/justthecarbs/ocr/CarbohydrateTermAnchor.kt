@@ -115,6 +115,14 @@ internal object CarbohydrateTermAnchor {
      * because the packages are multilingual. Diacritics are written out for reviewability and
      * normalized away on both sides before matching, exactly as in [NutritionTerminology].
      *
+     * **The other European languages were added on 2026-09-17**, as the name each prints in its
+     * nutrition declaration (Regulation (EU) No 1169/2011, Annex XV) — the official wording, not a
+     * guess. They became necessary when `por`, `je`, `v`, `100 g kohta` and `100 g:ssa` were
+     * recognised as bases: a running Spanish, Finnish or Estonian sentence then reached this row
+     * logic, and with `Grasas`, `Rasva` or `Rasvad` unknown the fat figure `12` was offered beside the
+     * carbohydrate `46` (`EuropeanLabelDiagnosticTest`). Hungarian `só` is left out: it normalizes to
+     * the English word `so`.
+     *
      * Deliberately *not* exhaustive and deliberately not a new public vocabulary: an unlisted
      * nutrient simply leaves the number unclaimed, which is the pre-existing behaviour. Missing a
      * term costs nothing that was not already lost; inventing one that collides with a carbohydrate
@@ -137,5 +145,36 @@ internal object CarbohydrateTermAnchor {
         // energy
         "energie", "energy", "energi", "brennwert", "energy value", "valeur energetique",
         "valeur énergétique",
+        // The Annex XV names in the other languages, fat / saturates / protein / salt / energy.
+        // Spanish
+        "grasas", "saturadas", "proteínas", "sal", "valor energético",
+        // Italian
+        "grassi", "acidi grassi saturi", "sale", "energia",
+        // Portuguese
+        "lípidos", "saturados",
+        // Polish
+        "tłuszcz", "kwasy tłuszczowe nasycone", "białko", "wartość energetyczna",
+        // Czech and Slovak
+        "tuky", "nasycené mastné kyseliny", "nasýtené mastné kyseliny", "bílkoviny", "bielkoviny",
+        "sůl", "energetická hodnota",
+        // Hungarian
+        "zsír", "telített zsírsavak", "fehérje",
+        // Romanian
+        "grăsimi", "acizi grași saturați", "proteine", "sare", "valoare energetică",
+        // Norwegian
+        "mettede fettsyrer",
+        // Finnish
+        "rasva", "rasvat", "tyydyttyneitä rasvoja", "proteiini", "suola",
+        // Estonian
+        "rasvad", "küllastunud rasvhapped", "valgud", "sool", "energiasisaldus",
+        // Latvian
+        "tauki", "piesātinātās taukskābes", "olbaltumvielas", "sāls", "enerģētiskā vērtība",
+        // Lithuanian
+        "riebalai", "sočiosios riebalų rūgštys", "baltymai", "druska", "energinė vertė",
+        // Croatian and Slovenian
+        "masti", "zasićene masne kiseline", "bjelančevine", "energija",
+        "maščobe", "nasičene maščobne kisline", "beljakovine", "energijska vrednost",
+        // Turkish
+        "tuz", "enerji", "doymuş yağ",
     )
 }

@@ -1,0 +1,50 @@
+# Dutch/English control set (2026-09-17): the queries of SearchRelevanceBenchmarkTest, plus the
+# on-device report that started the 2026-09-17 pass ("krokante pizza" -> "... Albert heijn").
+# Same format and matching rules as turkish-queries.tsv. Measured with the device country set to
+# the Netherlands, so a change for Turkish users can be checked for what it costs Dutch ones.
+Nutella	nutella
+Kinder Bueno	kinder bueno
+Coca Cola Zero	cola zero
+Pepsi Max	pepsi max
+Oreo	oreo
+Snickers	snickers
+Milka Oreo	milka oreo
+Calve pindakaas	calve pindakaas
+Kelloggs corn flakes	corn flakes
+Ben & Jerry's	ben jerry
+hagelslag	hagelslag
+pindakaas	pindakaas
+stroopwafel	stroopwafel
+volkoren brood	volkoren brood
+chocolademelk	chocolademelk
+yoghurt	yoghurt
+karnemelk	karnemelk
+appelstroop	appelstroop
+speculaas	speculaas
+vla	vla
+pasta	pasta
+milk	milk
+bread	bread
+chocolate	chocolate
+cereal	cereal
+cheese	cheese
+water	water
+juice	juice
+dark chocolate	dark chocolate
+chocolate milk	chocolate milk
+peanut butter	peanut butter
+tomato pasta sauce	tomato pasta sauce
+protein yoghurt	protein yoghurt
+whole wheat bread	whole wheat bread
+Kinder Bueno (White)	kinder bueno white
+70% chocolate	70 chocolate
+Coca-Cola Zero	cola zero
+Haagen-Dazs	haagen dazs
+Cote d'Or	cote
+krokante pizza	krokant pizza
+krokante pizza Albert heijn	krokant pizza
+pizza	pizza
+Albert Heijn pindakaas	pindakaas
+ontbijtkoek	ontbijtkoek
+honing	honing
+appelsap	appelsap

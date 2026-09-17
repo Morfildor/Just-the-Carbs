@@ -4,6 +4,7 @@ import app.justthecarbs.domain.BarcodeValidator
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.NutritionValueValidator
 import app.justthecarbs.domain.PackageBasisResolver
+import app.justthecarbs.domain.ProductNames
 import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
@@ -12,6 +13,7 @@ import kotlinx.serialization.SerializationException
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.Locale
 
 /**
  * Search-a-licious as a [ProductSearchSource] — the app's primary text-search provider.
@@ -55,6 +57,8 @@ class SearchALiciousDataSource(
      * builds only; carries counts, never query text. See [SearchProviderLog].
      */
     private val log: SearchProviderLog = SearchProviderLog.None,
+    /** The device's language, as a tag (`tr-TR`). Read per search. The app itself stays English. */
+    private val preferredLanguage: () -> String = { Locale.getDefault().toLanguageTag() },
     /** The device's Open Food Facts country tag, compared locally and never sent anywhere. */
     private val deviceCountryTag: () -> String? = { null },
 ) : ProductSearchSource {
@@ -64,12 +68,17 @@ class SearchALiciousDataSource(
         if (query.isEmpty()) return ProductSearchResult.NoMatches
 
         return try {
+            val language = preferredLanguage()
             val response = api.search(
                 SearchALiciousRequest(
                     // Escaped here, at the transport boundary, and nowhere else. The user's text is
                     // untouched everywhere above this line — the field shows what they typed and the
                     // legacy fallback receives it verbatim. See [SearchALiciousQuery].
+                    //
+                    // Never folded: the service does not fold Turkish letters, so "Pınar süt" must
+                    // leave as typed to find what it names (see SearchQueryMatcher).
                     q = SearchALiciousQuery.escape(query),
+                    langs = SearchALiciousApi.searchLanguagesFor(language),
                 ),
             )
             when {
@@ -81,7 +90,7 @@ class SearchALiciousDataSource(
                     ),
                 )
                 !response.isSuccessful -> ProductSearchResult.Failed(LookupError.SERVER)
-                else -> toSearchResult(response.body(), query)
+                else -> toSearchResult(response.body(), query, language)
             }
         } catch (_: UnknownHostException) {
             ProductSearchResult.Failed(LookupError.OFFLINE)
@@ -128,16 +137,23 @@ class SearchALiciousDataSource(
      * A response that reports itself as `timed_out` is a partial answer, and presenting a truncated
      * list as the complete result set would be a wrong answer rather than a missing one.
      */
-    private fun toSearchResult(body: SearchALiciousResponse?, query: String): ProductSearchResult {
+    private fun toSearchResult(
+        body: SearchALiciousResponse?,
+        query: String,
+        language: String,
+    ): ProductSearchResult {
         val rawHits = body?.hits ?: return ProductSearchResult.Failed(LookupError.MALFORMED)
         if (body.timedOut == true) return ProductSearchResult.Failed(LookupError.TIMEOUT)
 
         val candidates = rawHits.mapNotNull { raw ->
-            raw.toHit()?.let { hit ->
+            raw.toHit(language)?.let { hit ->
                 SearchResultRanking.Candidate(
                     hit = hit,
                     countries = raw.countriesTags.orEmpty().filterNotNull(),
                     uniqueScans = raw.uniqueScans?.toInt(),
+                    // Every name the service may have matched, not only the one shown: a Dutch name
+                    // on screen must not hide that the Turkish one is what the user typed.
+                    otherNames = listOfNotNull(raw.productName, raw.productNameNl, raw.productNameTr),
                 )
             }
         }
@@ -177,16 +193,17 @@ class SearchALiciousDataSource(
      * other absence is tolerated: no brand, no quantity, no image and no carbohydrate value are all
      * ordinary states of a crowd-sourced record, and a user may still recognise the package.
      */
-    private fun SearchALiciousHit.toHit(): ProductSearchHit? {
+    private fun SearchALiciousHit.toHit(language: String): ProductSearchHit? {
         // Validated and normalised (P1 §10), not merely non-blank — see
         // OpenFoodFactsDataSource.toHit's identical fix for the full rationale. `code` here is
         // equally untrusted remote text, and this hit ends up in the same `product/{barcode}`
         // navigation route.
         val barcode = BarcodeValidator.normalize(code.orEmpty()) ?: return null
-        val displayName = listOfNotNull(productNameNl, productName)
-            .firstOrNull { it.isNotBlank() }
-            ?.trim()
-            ?: return null
+        val displayName = ProductNames.choose(
+            generic = productName,
+            localized = mapOf("nl" to productNameNl, "tr" to productNameTr),
+            language = language,
+        ) ?: return null
 
         val resolution = PackageBasisResolver.resolve(
             // This index carries no structured unit — see the class KDoc. Passing null is the honest

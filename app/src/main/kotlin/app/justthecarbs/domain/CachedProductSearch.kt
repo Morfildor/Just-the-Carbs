@@ -58,6 +58,7 @@ package app.justthecarbs.domain
 class CachedProductSearch(
     private val delegate: ProductSearchSource,
     private val nowMs: () -> Long = System::currentTimeMillis,
+    private val language: () -> String = { "" },
 ) : ProductSearchSource {
 
     private class Entry(val storedAtMs: Long, val hits: List<ProductSearchHit>)
@@ -72,18 +73,18 @@ class CachedProductSearch(
      * atomic together (evict-if-full then put), and because `LinkedHashMap`'s access-order
      * reordering mutates on read — so even lookups need the lock.
      */
-    private val entries = object : LinkedHashMap<String, Entry>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>): Boolean =
+    private val entries = object : LinkedHashMap<Pair<String, String>, Entry>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, String>, Entry>): Boolean =
             size > MAX_ENTRIES
     }
 
     private val lock = Any()
 
     override suspend fun search(terms: String): ProductSearchResult {
-        val key = key(terms)
         // A blank query is not a search and must not occupy an entry; the delegate already answers
         // it without a request.
-        if (key.isEmpty()) return delegate.search(terms)
+        if (terms.isBlank()) return delegate.search(terms)
+        val key = key(terms)
 
         cached(key)?.let { return ProductSearchResult.Found(it) }
 
@@ -108,7 +109,7 @@ class CachedProductSearch(
      * "younger than the TTL") would pin an entry until real time caught up. Same rule, and the same
      * reasoning, as the product-refresh freshness window.
      */
-    private fun cached(key: String): List<ProductSearchHit>? = synchronized(lock) {
+    private fun cached(key: Pair<String, String>): List<ProductSearchHit>? = synchronized(lock) {
         val entry = entries[key] ?: return null
         val age = nowMs() - entry.storedAtMs
         if (age in 0 until TTL_MS) return entry.hits
@@ -123,9 +124,13 @@ class CachedProductSearch(
      * ViewModel's `normalize` — so `" chocolate "` and `"chocolate"` share an entry because they
      * produce the same request. Case is **not** folded: the providers below are free to treat case
      * as meaningful, and a cache that merged two queries the network would answer differently would
-     * be inventing results rather than remembering them. The cheap win is not worth that.
+     * be inventing results rather than remembering them. The cheap win is not worth that. Nor are
+     * Turkish letters: the service answers `Pınar süt` and `Pinar sut` differently.
+     *
+     * The device language is part of the key, because the delegate's names and search languages
+     * follow it (2026-09-17): the same text has a different answer on a device set to Turkish.
      */
-    private fun key(terms: String): String = terms.trim()
+    private fun key(terms: String): Pair<String, String> = language() to terms.trim()
 
     companion object {
         /**

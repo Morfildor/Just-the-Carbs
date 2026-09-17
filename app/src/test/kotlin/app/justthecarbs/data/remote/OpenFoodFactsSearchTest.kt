@@ -29,6 +29,7 @@ import java.math.BigDecimal
 class OpenFoodFactsSearchTest {
 
     private lateinit var server: MockWebServer
+    private lateinit var api: OpenFoodFactsApi
     private lateinit var dataSource: OpenFoodFactsDataSource
 
     @Before
@@ -37,14 +38,14 @@ class OpenFoodFactsSearchTest {
         server.start()
 
         val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-        val api = Retrofit.Builder()
+        api = Retrofit.Builder()
             .baseUrl(server.url("/"))
             .client(OkHttpClient())
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(OpenFoodFactsApi::class.java)
 
-        dataSource = OpenFoodFactsDataSource(api)
+        dataSource = OpenFoodFactsDataSource(api, preferredLanguage = { "en-NL" })
     }
 
     @After
@@ -392,5 +393,17 @@ class OpenFoodFactsSearchTest {
 
         assertEquals(1, result.size)
         assertEquals("0036000291452", result.single().barcode)
+    }
+
+    @Test
+    fun `a device set to Turkish names a search hit in Turkish`() = runTest {
+        respond(
+            """{"count":1,"products":[{"code":"1111111111116","product_name":"Chocolate milk",
+               "product_name_nl":"Chocolademelk","product_name_tr":"Kakaolu süt","quantity":"200 ml"}]}""",
+        )
+
+        val turkish = OpenFoodFactsDataSource(api, preferredLanguage = { "tr" })
+
+        assertEquals("Kakaolu süt", hits(turkish.search("kakaolu")).single().name)
     }
 }

@@ -88,6 +88,24 @@ object ResultFormatter {
      */
     private const val MAX_DISPLAY_DECIMALS = 1
 
+    /**
+     * A number the app writes into a field the user may edit, or shows as the exact figure a tap
+     * will put there: every digit kept, the locale's decimal separator, no grouping separator.
+     *
+     * Not [quantity], which rounds for reading: a portion the app fills in must be the portion it
+     * calculates with. Grouping is never written because [PortionParser] reads `.` and `,` as the
+     * decimal separator on every locale, so `1.500` would come back as one and a half.
+     *
+     * Added 2026-09-17: on a device whose locale writes a decimal comma (Turkish, Dutch, ...), a
+     * field showing `62.5` sat beside a result showing `62,5`. The app is English either way;
+     * [quantity] already followed the device locale.
+     */
+    fun editable(value: BigDecimal, locale: Locale = Locale.getDefault()): String {
+        val plain = value.stripTrailingZeros().toPlainString()
+        val separator = DecimalFormatSymbols(locale).decimalSeparator
+        return if (separator == '.') plain else plain.replace('.', separator)
+    }
+
     /** e.g. `31`. */
     fun whole(value: Int, locale: Locale = Locale.getDefault()): String =
         DecimalFormat("0", DecimalFormatSymbols(locale))

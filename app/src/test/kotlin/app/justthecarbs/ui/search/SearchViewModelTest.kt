@@ -1001,6 +1001,41 @@ class SearchViewModelTest {
         assertEquals(listOf("hagelslag"), source.callsInOrder)
     }
 
+    /**
+     * The lower bound on the settle wait. Measured 2026-09-17 on virtual time: at 300 ms, someone
+     * pausing 320 ms between keys sent 22 requests for "krokante pizza albert heijn" instead of 4.
+     */
+    @Test
+    fun `a slow, steady typist still costs one request per word`() = runTest {
+        val source = FakeSearchSource()
+        val viewModel = viewModelFor(source)
+
+        "hagelslag".foldIndexed("") { index, acc, ch ->
+            val next = acc + ch
+            viewModel.onQueryChanged(next)
+            if (index < "hagelslag".lastIndex) dispatcher.scheduler.advanceTimeBy(320)
+            next
+        }
+        dispatcher.scheduler.advanceTimeBy(past())
+
+        assertEquals(listOf("hagelslag"), source.callsInOrder)
+    }
+
+    /** The upper bound: the wait was 500 ms until 2026-09-17, which users felt on every search. */
+    @Test
+    fun `a search is sent within 350 ms of the last keystroke`() = runTest {
+        val source = FakeSearchSource()
+        val primaryGovernor = RemoteSearchGovernor(RemoteSearchGovernor.PRIMARY_MIN_INTERVAL_MS) {
+            dispatcher.scheduler.currentTime
+        }
+        val viewModel = SearchViewModel(source, primaryGovernor) { dispatcher.scheduler.currentTime }
+
+        viewModel.onQueryChanged("hagelslag")
+        dispatcher.scheduler.advanceTimeBy(351)
+
+        assertEquals(listOf("hagelslag"), source.callsInOrder)
+    }
+
     @Test
     fun `a two-word query typed with a thinking pause costs two requests at most`() = runTest {
         // The realistic worst case for a live search: someone types a word, pauses to think, then
@@ -1111,13 +1146,14 @@ class SearchViewModelTest {
         source.resolve("hagelslag", ProductSearchResult.Found(listOf(hit(barcode = "A"))))
         dispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onQueryChanged("hagelslag zzzz")
+        // A refinement the kept row still matches ("puur"), so the row may stay while this loads.
+        viewModel.onQueryChanged("hagelslag puur")
         dispatcher.scheduler.advanceTimeBy(past())
         // Still the old list while the answer is in flight — no "no results" flash on the way.
         assertEquals("A", viewModel.state.value.hits.single().barcode)
         assertFalse(viewModel.state.value.noMatches)
 
-        source.resolve("hagelslag zzzz", ProductSearchResult.NoMatches)
+        source.resolve("hagelslag puur", ProductSearchResult.NoMatches)
         dispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(viewModel.state.value.noMatches)
@@ -1164,7 +1200,8 @@ class SearchViewModelTest {
         source.resolve("hagelslag puur", ProductSearchResult.Failed(LookupError.SERVER))
         dispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onQueryChanged("hagelslag puurr")
+        // An edit the row still matches (its brand is De Ruijter), so it may stay while this loads.
+        viewModel.onQueryChanged("hagelslag puur ruijter")
 
         // The failure belonged to the previous query, so it goes at once. The list it was covering
         // is still the newest thing anyone has seen, and a replacement is on its way, so it stays.
@@ -1774,10 +1811,10 @@ class SearchViewModelTest {
 
     // ---- Q. Local narrowing ---------------------------------------------------------------------
 
-    private fun namedHit(barcode: String, name: String) = ProductSearchHit(
+    private fun namedHit(barcode: String, name: String, brand: String = "De Ruijter") = ProductSearchHit(
         barcode = barcode,
         name = name,
-        brand = "De Ruijter",
+        brand = brand,
         packageQuantity = "390 gram",
         carbsPer100 = BigDecimal("67"),
         basis = NutritionBasis.PER_100_G,
@@ -1798,7 +1835,8 @@ class SearchViewModelTest {
                 ProductSearchResult.Found(
                     listOf(
                         namedHit("1", "Chocolate bar"),
-                        namedHit("2", "Chocolade hagelslag"),
+                        // Not "Chocolade …": that is Dutch for chocolate, and a near match stays.
+                        namedHit("2", "Choco pops"),
                     ),
                 ),
             )
@@ -1863,12 +1901,13 @@ class SearchViewModelTest {
         }
     }
 
+    /**
+     * Until 2026-09-17 a refinement that matched no row kept every row, so the list on screen was
+     * shown under text it did not answer. Now only the words the edit added are checked — the rest
+     * the service already matched — and a row without them makes way for the updating state.
+     */
     @Test
-    fun `a narrowing that matches nothing locally keeps the wider list rather than blanking`() {
-        // Local matching is a substring test; the remote search is not. "hagelslag" ->
-        // "hagelslag puur" is an ordinary refinement no product name contains literally, so an
-        // empty local result says nothing about the remote answer — and blanking would reintroduce
-        // the empty-then-results flicker, and read as "no results" for an unsearched query.
+    fun `rows without the added words are not shown under the new query`() {
         runTest {
             val source = FakeSearchSource()
             val viewModel = viewModelFor(source)
@@ -1883,9 +1922,87 @@ class SearchViewModelTest {
             viewModel.onQueryChanged("hagelslag zzzz")
             dispatcher.scheduler.runCurrent()
 
-            assertEquals(listOf("1"), viewModel.state.value.hits.map { it.barcode })
-            assertFalse(viewModel.state.value.noMatches)
+            assertEquals(emptyList<ProductSearchHit>(), viewModel.state.value.hits)
             assertTrue(viewModel.state.value.searching)
+            assertFalse(viewModel.state.value.narrowedLocally)
+            // Neutral pending, not a verdict.
+            assertFalse(viewModel.state.value.noMatches)
+            assertNull(viewModel.state.value.error)
+        }
+    }
+
+    /** "hagelslag" found this row through stemming; the added word is what decides whether it stays. */
+    @Test
+    fun `a row the service matched stays while it contains the added words`() {
+        runTest {
+            val source = FakeSearchSource()
+            val viewModel = viewModelFor(source)
+            viewModel.onQueryChanged("hagelslag")
+            dispatcher.scheduler.advanceTimeBy(past())
+            source.resolve(
+                "hagelslag",
+                ProductSearchResult.Found(listOf(namedHit("1", "Chocoladehagel puur"))),
+            )
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.onQueryChanged("hagelslag puur")
+            dispatcher.scheduler.runCurrent()
+
+            assertEquals(listOf("1"), viewModel.state.value.hits.map { it.barcode })
+            assertTrue(viewModel.state.value.narrowedLocally)
+        }
+    }
+
+    /** The on-device report of 2026-09-17. */
+    @Test
+    fun `refining with a brand keeps only that brand's rows while the answer loads`() {
+        runTest {
+            val source = FakeSearchSource()
+            val viewModel = viewModelFor(source)
+            viewModel.onQueryChanged("krokante pizza")
+            dispatcher.scheduler.advanceTimeBy(past())
+            source.resolve(
+                "krokante pizza",
+                ProductSearchResult.Found(
+                    listOf(
+                        namedHit("1", "Krokante Pizza - Margherita", brand = "Albert Heijn"),
+                        namedHit("2", "Krokante pizza mozzarella", brand = "1 de beste"),
+                        namedHit("3", "Pizza quattro formaggi", brand = "Plus"),
+                    ),
+                ),
+            )
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.onQueryChanged("krokante pizza Albert heijn")
+            dispatcher.scheduler.runCurrent()
+
+            assertEquals(listOf("1"), viewModel.state.value.hits.map { it.barcode })
+            assertTrue(viewModel.state.value.searching)
+        }
+    }
+
+    @Test
+    fun `added words are compared without Turkish letters`() {
+        runTest {
+            val source = FakeSearchSource()
+            val viewModel = viewModelFor(source)
+            viewModel.onQueryChanged("Pınar")
+            dispatcher.scheduler.advanceTimeBy(past())
+            source.resolve(
+                "Pınar",
+                ProductSearchResult.Found(
+                    listOf(
+                        namedHit("1", "Pınar Süt", brand = "Pınar"),
+                        namedHit("2", "Pınar Peynir", brand = "Pınar"),
+                    ),
+                ),
+            )
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.onQueryChanged("Pinar sut")
+            dispatcher.scheduler.runCurrent()
+
+            assertEquals(listOf("1"), viewModel.state.value.hits.map { it.barcode })
         }
     }
 

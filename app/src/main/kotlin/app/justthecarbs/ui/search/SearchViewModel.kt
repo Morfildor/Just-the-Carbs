@@ -7,6 +7,7 @@ import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
 import app.justthecarbs.domain.RemoteSearchGovernor
+import app.justthecarbs.domain.SearchQueryMatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -407,45 +408,40 @@ class SearchViewModel(
     }
 
     /**
-     * The hits to show for [terms] without asking the network.
+     * The hits to show for [terms] without asking the network, while its own answer loads.
      *
-     * Safe **only** when [terms] grew out of the query the remote results belong to — that is the
-     * one relationship under which the existing set is guaranteed to contain every match, so
-     * narrowing it cannot hide a product that a remote search would have found.
-     *
-     * Every other relationship returns nothing, and the two that look tempting are the reasons why:
+     * Only when [terms] grew out of the query the remote results belong to. Every other relationship
+     * returns nothing, and the two that look tempting are the reasons why:
      *
      * - **Shortening** (`chocolate` -> `choc`) is not safe. The `chocolate` set is a *subset* of
      *   what `choc` matches, so presenting it would be showing a narrow answer as a complete one.
      * - **Divergence** (`chocolate` -> `gouda`) is not safe for the obvious reason, and is handled
      *   by the same rule rather than by a second one.
      *
-     * Matching is a normalized substring test over the two fields already shown on the card. It is
-     * deliberately not fuzzy: this is a stopgap view of results the user can already see, not a
-     * second search engine, and anything cleverer would let the local and remote answers disagree
-     * about what matches.
+     * For a refinement, a row stays only if it contains the words the edit **added**, as judged by
+     * [SearchQueryMatcher] — the same matcher that ranks the answer, so a row does not vanish here
+     * and reappear there. The words already on screen were the service's to match, and it matched
+     * them in ways a name does not always show: "hagelslag" found "Chocoladehagel puur".
+     *
+     * A refinement that leaves no row returns nothing, and the screen shows that the new query is
+     * loading. Until 2026-09-17 it kept every row instead, to avoid a blank flash; on device that
+     * showed the "krokante pizza" results under "krokante pizza Albert heijn" as if they answered it.
      */
     private fun localHitsFor(terms: String): List<ProductSearchHit> {
         val base = remoteQuery ?: return emptyList()
         if (remoteHits.isEmpty()) return emptyList()
-        val needle = terms.lowercase()
-        if (!needle.startsWith(base.lowercase())) return emptyList()
-        if (needle == base.lowercase()) return remoteHits
-        val narrowed = remoteHits.filter { hit ->
-            hit.name.lowercase().contains(needle) || hit.brand?.lowercase()?.contains(needle) == true
+        val needle = SearchQueryMatcher.fold(terms)
+        val baseText = SearchQueryMatcher.fold(base)
+        if (!needle.startsWith(baseText)) return emptyList()
+        if (needle == baseText) return remoteHits
+
+        val baseWords = SearchQueryMatcher(base, emptyList()).words.toSet()
+        val addedWords = SearchQueryMatcher(terms, emptyList()).words.filterNot { it in baseWords }
+        val subjects = remoteHits.map { SearchQueryMatcher.Subject(listOf(it.name), it.brand) }
+        val matcher = SearchQueryMatcher(addedWords.joinToString(" "), subjects)
+        return remoteHits.filterIndexed { index, _ ->
+            matcher.match(subjects[index]).strength != SearchQueryMatcher.Strength.WEAK
         }
-        // A narrowing that matches nothing keeps the WIDER list rather than emptying the screen.
-        //
-        // Local matching is a substring test over two fields; the remote search is not. "hagelslag"
-        // -> "hagelslag puur" is a perfectly ordinary refinement that no product name contains
-        // literally, so the filter legitimately returns nothing while the remote answer may well
-        // return plenty. Blanking on that reintroduces exactly the empty-then-results flicker the
-        // previous pass removed, and an empty list reads as "no results" — a claim about a query
-        // that has not been searched yet.
-        //
-        // Showing the wider list is honest here because the progress affordance stays up: it is
-        // labelled as still-refreshing, not presented as the answer.
-        return narrowed.ifEmpty { remoteHits }
     }
 
     /**
@@ -707,14 +703,15 @@ class SearchViewModel(
         /**
          * How long typing must pause before a remote search is *scheduled*.
          *
-         * Raised to 1 s when the legacy endpoint's 7 s budget made every request precious, then
-         * returned to **500 ms** on 2026-08-28 when Search-a-licious became the primary provider.
+         * Raised to 1 s when the legacy endpoint's 7 s budget made every request precious, returned
+         * to 500 ms on 2026-08-28 when Search-a-licious became the primary provider, and lowered to
+         * **350 ms** on 2026-09-17.
          *
-         * The reasoning inverts with the budget it is protecting. Against a 9-per-minute ceiling a
-         * conservative settle stopped a hesitation consuming a scarce slot; against a service that
-         * answered twelve back-to-back requests in ~150 ms each, a full second of stillness after
-         * typing stops is latency the user pays for nothing. 500 ms is still comfortably past an
-         * ordinary mid-word pause.
+         * Measured on virtual time with a 180 ms service response, typing "krokante pizza albert
+         * heijn": at 500 ms results arrived 690 ms after the last key; at 350 ms, 540 ms. At 300 ms
+         * (490 ms) a steady typist pausing 320 ms between keys sent 22 requests instead of 4, one
+         * per keystroke, so 300 ms was not taken. Pinned by `a slow, steady typist still costs one
+         * request per word` and `a search is sent within 350 ms of the last keystroke`.
          *
          * It is **not** what bounds the request rate. The primary's floor is
          * [RemoteSearchGovernor.PRIMARY_MIN_INTERVAL_MS] and the legacy fallback keeps
@@ -722,6 +719,6 @@ class SearchViewModel(
          * [app.justthecarbs.domain.GovernedProductSearch]. Lowering this cannot exceed either
          * budget; it can only waste settle time.
          */
-        const val REMOTE_SEARCH_SETTLE_MS = 500L
+        const val REMOTE_SEARCH_SETTLE_MS = 350L
     }
 }

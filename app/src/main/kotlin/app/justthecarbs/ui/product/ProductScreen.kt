@@ -1197,7 +1197,7 @@ private fun UsualPortionRow(
         ) {
             usages.forEach { usage ->
                 val unit = usage.portionUnitId?.let { id -> units.firstOrNull { it.id == id } }
-                val amount = usage.amount.stripTrailingZeros().toPlainString()
+                val amount = ResultFormatter.editable(usage.amount)
                 val label = if (unit != null) {
                     val quantity = usage.amount.toInt()
                     stringResource(R.string.product_usual_count, amount, unit.unitLabel(quantity))
@@ -1341,7 +1341,7 @@ private fun PortionEquationText(
                 R.string.product_count_equation,
                 count.ifBlank { "0" },
                 unit.unitLabel(count = pluralQuantity),
-                conversion.amountPerUnit.stripTrailingZeros().toPlainString(),
+                ResultFormatter.editable(conversion.amountPerUnit),
                 conversion.basis.unitLabel,
                 resolvedGrams,
             )
@@ -1352,7 +1352,7 @@ private fun PortionEquationText(
             R.string.product_direct_carb_equation,
             count.ifBlank { "0" },
             unit.unitLabel(count = pluralQuantity),
-            conversion.carbsPerUnit.stripTrailingZeros().toPlainString(),
+            ResultFormatter.editable(conversion.carbsPerUnit),
         )
     }
     Text(
@@ -1435,10 +1435,12 @@ private fun PortionUnitCorrectionForm(
     val conversion = unit.conversion
     var amountText by remember(unit.id) {
         mutableStateOf(
-            when (conversion) {
-                is PortionConversion.WeightBased -> conversion.amountPerUnit
-                is PortionConversion.DirectCarbs -> conversion.carbsPerUnit
-            }.stripTrailingZeros().toPlainString(),
+            ResultFormatter.editable(
+                when (conversion) {
+                    is PortionConversion.WeightBased -> conversion.amountPerUnit
+                    is PortionConversion.DirectCarbs -> conversion.carbsPerUnit
+                },
+            ),
         )
     }
 
@@ -1541,13 +1543,13 @@ private fun PortionUnitChangedNotice(
             text = when (newerConversion) {
                 is PortionConversion.WeightBased -> stringResource(
                     R.string.portion_changed_body,
-                    newerConversion.amountPerUnit.stripTrailingZeros().toPlainString(),
+                    ResultFormatter.editable(newerConversion.amountPerUnit),
                     newerConversion.basis.unitLabel,
                     unit.unitLabel(count = 1),
                 )
                 is PortionConversion.DirectCarbs -> stringResource(
                     R.string.portion_changed_carbs_body,
-                    newerConversion.carbsPerUnit.stripTrailingZeros().toPlainString(),
+                    ResultFormatter.editable(newerConversion.carbsPerUnit),
                     unit.unitLabel(count = 1),
                 )
             },
@@ -1730,7 +1732,7 @@ private fun RemoteChangedNotice(
         Text(
             text = stringResource(
                 R.string.remote_changed_body,
-                newerCarbs.stripTrailingZeros().toPlainString(),
+                ResultFormatter.editable(newerCarbs),
                 unit,
             ),
             style = MaterialTheme.typography.bodySmall,

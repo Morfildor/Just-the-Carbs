@@ -61,6 +61,7 @@ interface OpenFoodFactsApi {
             "lang",
             "product_name",
             "product_name_nl",
+            "product_name_tr",
             "brands",
             "quantity",
             // OFF's own normalized quantity and unit. Requested on BOTH paths, not just the full

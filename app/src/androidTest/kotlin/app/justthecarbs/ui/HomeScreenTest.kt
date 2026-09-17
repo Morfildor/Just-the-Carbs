@@ -6,11 +6,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -36,6 +40,8 @@ import app.justthecarbs.ui.home.HOME_SEARCH_FIELD_TAG
 import app.justthecarbs.ui.home.HOME_MANUAL_TAG
 import app.justthecarbs.ui.home.HOME_BODY_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_PENDING_TAG
+import app.justthecarbs.ui.home.HOME_SEARCH_PROGRESS_TAG
+import app.justthecarbs.ui.home.HOME_SEARCH_SEARCHING_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_RATE_LIMITED_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_REFRESH_ERROR_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_RESULTS_TAG
@@ -339,6 +345,20 @@ class HomeScreenTest {
 
         compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
         compose.onNodeWithTag(HOME_SEARCH_RESULTS_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(HOME_SEARCH_PROGRESS_TAG).assertExists()
+    }
+
+    /** Same quiet first-search treatment as the search screen (2026-09-17). */
+    @Test
+    fun aFirstSearchOnHomeShowsTheHairlineAndASearchingLineRatherThanASpinner() {
+        show(recents = emptyList(), searchState = SearchUiState(query = "hagelslag", searching = true))
+
+        compose.onNodeWithTag(HOME_SEARCH_PROGRESS_TAG).assertExists()
+        compose.onNodeWithTag(HOME_SEARCH_SEARCHING_TAG).assertIsDisplayed()
+        compose.onAllNodes(
+            hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate) and
+                !hasTestTag(HOME_SEARCH_PROGRESS_TAG),
+        ).assertCountEquals(0)
     }
 
     @Test

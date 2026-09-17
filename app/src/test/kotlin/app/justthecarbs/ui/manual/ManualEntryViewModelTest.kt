@@ -578,6 +578,31 @@ class ManualEntryViewModelTest {
             assertTrue("a resolved OCR basis needs no further choice", viewModel.state.value.canSave)
         }
 
+    /** The route carries `7.2`; a Turkish-locale device shows it with the comma it uses everywhere else. */
+    @Test
+    fun `a Turkish-locale device shows a scanned figure with a decimal comma and stores it exactly`() =
+        runTest(dispatcher) {
+            val previous = java.util.Locale.getDefault()
+            try {
+                java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr-TR"))
+                val journal = Journal()
+                val local = FakeLocal(journal)
+                val viewModel = ManualEntryViewModel(repositoryOf(local, FakeUnits(journal)))
+
+                viewModel.start(barcode, ocrCarbs = "7.2", ocrBasis = NutritionBasis.PER_100_G.name)
+                assertEquals("7,2", viewModel.state.value.carbsPer100)
+
+                viewModel.onNameChanged("Mercimek")
+                viewModel.onCarbsChanged("12,5")
+                viewModel.save()
+                advanceUntilIdle()
+
+                assertEquals(0, BigDecimal("12.5").compareTo(local.stored[barcode]?.carbsPer100))
+            } finally {
+                java.util.Locale.setDefault(previous)
+            }
+        }
+
     @Test
     fun `ordinary Home entry with no OCR context still starts on grams`() = runTest(dispatcher) {
         // The unchanged path: plain manual entry (nothing carried in) must keep defaulting to

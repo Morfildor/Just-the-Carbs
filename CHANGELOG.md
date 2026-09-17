@@ -6,9 +6,10 @@ most recent released one; every uploaded version is copied into
 artifact's hash, size and signer.
 
 **Latest Production submission: `1.0.6` / `versionCode 7`**, built from `fa9d9e8` (tag
-`play-1.0.6-submitted`), uploaded to Google Play's **Production** track and currently under review.
-`1.0.7` / `versionCode 8` is the first Production update and is open below, accumulating changes
-made after that submission.
+`play-1.0.6-submitted`), uploaded to Google Play's **Production** track and still in review.
+**`1.0.7` / `versionCode 8` is prepared to replace it as the first Production release** (owner,
+2026-09-17: Play accepts a new version while the first Production release is still in review).
+`versionCode 7` stays spent either way.
 
 ## Versioning rule — one version per uploaded artifact (owner, resolved 2026-08-30)
 
@@ -81,13 +82,44 @@ work after
 Nothing yet. `1.0.7` / `versionCode 8` is open below; a documentation-only change opens nothing
 further and lands directly under that heading.
 
-## 1.0.7 (versionCode 8) — Unreleased
+## 1.0.7 (versionCode 8) — 2026-09-17 — release bundle built, not yet uploaded; to replace 1.0.6 as the first Production release
 
-The first Production update. Opened by the first code change made after the `1.0.6` submission
-below (source `fa9d9e8`, tag `play-1.0.6-submitted`): a continuation of the Light/Dark visual
-refinement pass, a full visual overhaul, and an adversarial-review fixes pass. Not yet uploaded.
+Opened by the first code change made after the `1.0.6` submission below (source `fa9d9e8`, tag
+`play-1.0.6-submitted`): a continuation of the Light/Dark visual refinement pass, a full visual
+overhaul, an adversarial-review fixes pass, search ranking, and label recognition in Turkish and the
+EU languages. Because `1.0.6` never left review, this is the first version Production users receive,
+so its release notes cover `1.0.6`'s changes too.
+
+### Play Store release notes
+
+```
+• Search puts the product you typed first, and shows its carbs when a figure exists.
+• Nutrition-label scanning recognises the wording of more European languages and Turkish. On a phone set to Turkish, search shows Turkish product names.
+• Refreshed Light and Dark looks, an optional guided tutorial, launcher shortcuts for both scanners and a copyable meal total.
+• Fixes for label scanning, portion recalculation and meal saving.
+```
+
+The privacy policy was corrected alongside this version: since `1.0.2` it had said search text is
+sent only on an explicit submit, but search runs as you type (after a 350 ms pause, three characters
+minimum), and it now also names the search host and the language list a search carries.
 
 ### Added
+
+- **Nutrition labels in Turkish and the other EU languages are read.** The parser already knew
+  most of the carbohydrate words; what it lacked was measured on synthetic tables in every
+  Latin-script EU language plus Turkish and Norwegian: headers written with a case suffix
+  (`100 g'da`, `100 g:ssa`, `100 g-ban`), the connectives `je`, `pour`, `por`, `ve`, `v`, `u` and
+  `la`, the per-portion words each language prints (`w porcji`, `Porsiyonda`, `por ración`, ...),
+  singular and official names for sugars, fibre and polyols, and every language's own name for
+  fat, protein, salt and energy. Every table, drink and three-column layout now reads in those
+  languages, and running-text declarations read where the language marks its basis. **Not read:**
+  Hungarian-only tables, deliberately — its carbohydrate word made a real multilingual capture
+  lose its focused-entry target — plus Greek and Bulgarian (the on-device recognizer reads Latin
+  script only). The app itself stays in English.
+
+- On a phone set to Turkish, search asks Open Food Facts for Turkish text first and shows products'
+  Turkish names, on the search list and the calculator alike. Typing without Turkish letters
+  (`Pinar sut`, `Ulker cikolata`) still ranks and narrows `Pınar süt` and `Ülker çikolata`.
 
 - **Launcher shortcuts.** Long-pressing the app icon now offers *Barcode* and *Label*, opening
   either scanner directly without passing through Home. Search is deliberately not offered: it is a
@@ -105,6 +137,27 @@ refinement pass, a full visual overhaul, and an adversarial-review fixes pass. N
   hand-written copies.
 
 ### Changed
+
+- **Search never hides the product you typed behind unrelated ones that show a carb value.** The
+  ranking below (earlier in this version) set aside every result without a figure whenever one with
+  a figure existed, so `krokante pizza` showed Albert Heijn products matching only the brand word
+  while the one exact match was dropped. Results are now ordered by how much of the query they
+  match — every word first, then most words, then the rest only when nothing better exists — and a
+  carb figure only orders results that match equally well. Measured on 68 recorded Turkish and 46
+  Dutch searches: the right product is first as often as before or more (Turkish 61 → 63 of 63
+  answerable, Dutch 46 of 46), and irrelevant results in the top five fell from 27 to 3 and from 10
+  to 0. Fewer of the top five show a figure, because an exact match without one now outranks an
+  unrelated product with one.
+
+- Refining a search no longer leaves rows on screen that do not contain the words just added; they
+  are replaced by the refined results or a small *Searching…* line. The search is sent 350 ms after
+  the last keystroke instead of 500 ms — measured at 540 ms to results instead of 690 ms, still one
+  request per word for a slow typist. A thin progress line and that one line replace the large
+  centred spinner on Home and Search.
+
+- Numbers the app writes into a field — a remembered portion, an adjusted portion, a scanned figure,
+  a correction form — use the phone's decimal separator, matching the results beside them. A
+  Turkish or Dutch phone showed `62,5` as a result above a field filled with `62.5`.
 
 - **Search puts the product you most likely mean, with a carb value, at the top.** Measured live on
   56 typical Dutch-shopper queries, the first result was both the right product and showed a carb
@@ -174,6 +227,23 @@ refinement pass, a full visual overhaul, and an adversarial-review fixes pass. N
   chrome, accessibility behavior, design documentation, and regression coverage.
 
 ### Fixed
+
+- **Three ways a nutrition label in another European language could produce a wrong figure**,
+  found by measurement, none seen reported:
+  - a row printing its own basis (`Hidratos de carbono por 100 g 62,5 g`) read the basis's `100` as
+    the carbohydrate figure in Spanish, Portuguese and Estonian, and offered it beside the real one
+    in seven more languages (Latvian and Lithuanian, which print no word marking a basis, still
+    offer it as a choice);
+  - with a percentage column headed `%RM`, `%AR`, `%RWS`, `%BRD` and the like, and the carbohydrate
+    gram figure lost by the recognizer, the percentage beside it read as grams in fourteen
+    languages;
+  - two printed rows merged into one offered the sugars, polyol or fibre figure beside the total
+    when the child's word was unlisted (singular sugars, official Polish and Czech polyols,
+    Lithuanian `cukrūs`).
+  A carbohydrate line wrapped onto the next printed line, merged there with the start of the
+  sugars clause, can also no longer put the sugars figure forward while the line above printed its
+  own figure unusably. Every committed device capture and replay was compared before and after: no
+  reading, offered choice, portion, failure reason or screen changed.
 
 - **The nutrition-label scanner could crash the app when its screen was destroyed mid-recognition**
   — reproduced on the emulator and confirmed pre-existing against clean `main`, so this is a

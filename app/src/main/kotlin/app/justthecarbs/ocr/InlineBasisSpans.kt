@@ -72,7 +72,7 @@ object InlineBasisSpans {
      */
     private fun spanAt(row: LogicalRow, start: Int): Span? {
         val first = row.elements.getOrNull(start) ?: return null
-        if (NutritionTerminology.normalize(first.text) !in CONNECTIVES) return null
+        if (NutritionTerminology.normalize(first.text) !in CONNECTIVES) return markedAfterSpanAt(row, start)
 
         val hundred = row.elements.getOrNull(start + 1) ?: return null
         if (NutritionTerminology.normalize(hundred.text) != "100") return null
@@ -83,6 +83,29 @@ object InlineBasisSpans {
         val basis = NutritionTerminology.basisUnitFor(NutritionTerminology.normalize(unitElement.text))
             ?: return null
 
+        return Span(basis, (start until start + MAX_SPAN).toSet())
+    }
+
+    /**
+     * `100 g kohta`, `100 g için`, `100 g'da`, `100 g-ban`, `100 g:ssa`: the languages that mark a
+     * basis after the quantity, with a postposition or a case suffix on the unit, rather than with a
+     * connective before it. Either marker does the connective's job — it says `100 g` is a basis, not
+     * an amount.
+     *
+     * Added 2026-09-17. Without it the Estonian row `Süsivesikud 100 g kohta 62,5 g` read
+     * `Confident 100.0` and the Turkish and Finnish rows offered `100` beside the real figure
+     * (`EuropeanLabelDiagnosticTest`). A bare `100 g` with no marker is still not a basis, which is
+     * why a Latvian or Lithuanian row printing only `100 g` still offers `100` as a choice.
+     */
+    private fun markedAfterSpanAt(row: LogicalRow, start: Int): Span? {
+        if (NutritionTerminology.normalize(row.elements[start].text) != "100") return null
+        val unitElement = row.elements.getOrNull(start + 1) ?: return null
+        val basis = NutritionTerminology.basisUnitFor(NutritionTerminology.normalize(unitElement.text))
+            ?: return null
+        if (NutritionTerminology.carriesCaseSuffix(unitElement.text)) return Span(basis, setOf(start, start + 1))
+
+        val marker = row.elements.getOrNull(start + 2) ?: return null
+        if (NutritionTerminology.normalize(marker.text) !in NutritionTerminology.postpositions) return null
         return Span(basis, (start until start + MAX_SPAN).toSet())
     }
 }

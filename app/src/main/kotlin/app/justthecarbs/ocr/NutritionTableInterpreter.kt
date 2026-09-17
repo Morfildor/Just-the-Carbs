@@ -202,6 +202,10 @@ object NutritionTableInterpreter {
         // ask for a better photograph, never a licence to answer from a cell the user did not print
         // there.
         var perHundredCellRejected = false
+        // Which total line each per-100 reading came from, in step with [perHundred], and which total
+        // lines had their own per-100 cell refused. See the filter below `distinct`.
+        val perHundredSources = mutableListOf<NutrientDeclaration>()
+        val refusedDeclarations = mutableListOf<NutrientDeclaration>()
 
         totalDeclarations.forEach { declaration ->
             declaration.valueCells.map { it.sourceRow }.distinct().forEach { totalRow ->
@@ -245,6 +249,7 @@ object NutritionTableInterpreter {
                     column?.kind == NutritionColumnKind.PER_100_ML
                 ) {
                     perHundredCellRejected = true
+                    refusedDeclarations += declaration
                 }
             }
 
@@ -268,6 +273,7 @@ object NutritionTableInterpreter {
                     } else {
                         val key = validated.stripTrailingZeros() to inlineBasis
                         perHundred += validated to inlineBasis
+                        perHundredSources += declaration
                         contributingDeclarations.putIfAbsent(key, declaration)
                         contributingRows.putIfAbsent(key, totalRow)
                     }
@@ -284,6 +290,7 @@ object NutritionTableInterpreter {
                             NutritionValueValidator.validateCarbsPer100(cell.value.toDouble(), basis)
                         if (validated == null) {
                             perHundredCellRejected = true
+                            refusedDeclarations += declaration
                             diagnostics += OcrDiagnostic(
                                 "rejected",
                                 "${cell.value.toPlainString()}: outside the possible per-100 range",
@@ -291,6 +298,7 @@ object NutritionTableInterpreter {
                         } else {
                             val key = validated.stripTrailingZeros() to basis
                             perHundred += validated to basis
+                            perHundredSources += declaration
                             contributingDeclarations.putIfAbsent(key, declaration)
                             contributingRows.putIfAbsent(key, totalRow)
                             contributingColumns.putIfAbsent(key, column.kind)
@@ -314,9 +322,32 @@ object NutritionTableInterpreter {
             }
         }
 
+        // A total line whose per-100 cell was refused has printed the label's answer, unusably. A
+        // number from a *different* total line of the same panel is then not a second opinion: it is
+        // [perHundredCellRejected]'s substitution, from the next line rather than the next column.
+        //
+        // Measured 2026-09-17 on the Indomie capture (`SeventeenthSessionFixtures
+        // .c20260904_134501_895`): its carbohydrate line printed `73` with no unit, refused; the
+        // wrapped Hungarian line `Szénhidrát` below it had been merged with the start of the sugars
+        // clause and its `29g` (2,9 g sugars). Once `szénhidrát` was vocabulary, that line was a
+        // second total line and the sugars figure read as `Confident 29.0`. Dropped here, the capture
+        // refuses exactly as it did before the word was known.
+        val usable = perHundred.filterIndexed { index, reading ->
+            val source = perHundredSources[index]
+            val refusedElsewhere = refusedDeclarations.any { it !== source }
+            if (refusedElsewhere) {
+                diagnostics += OcrDiagnostic(
+                    "rejected",
+                    "${reading.first.toPlainString()}: another total-carbohydrate line printed its own " +
+                        "per-100 figure and it was refused; a second line's number is not substituted",
+                )
+            }
+            !refusedElsewhere
+        }
+
         // Normalized before deduplication so "45" and "45.0" printed on two rows are one
         // interpretation rather than a fabricated disagreement.
-        val distinct = perHundred.distinctBy { it.first.stripTrailingZeros() to it.second }
+        val distinct = usable.distinctBy { it.first.stripTrailingZeros() to it.second }
 
         // A countable header alone does not rescue a serving figure when the same total row has
         // two different values assigned to a per-100 column. On the API 36 Kinder still, ML Kit

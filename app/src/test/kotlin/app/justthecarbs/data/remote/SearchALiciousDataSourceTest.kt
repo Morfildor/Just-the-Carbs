@@ -42,6 +42,7 @@ import java.math.BigDecimal
 class SearchALiciousDataSourceTest {
 
     private lateinit var server: MockWebServer
+    private lateinit var api: SearchALiciousApi
     private lateinit var dataSource: SearchALiciousDataSource
 
     @Before
@@ -50,14 +51,14 @@ class SearchALiciousDataSourceTest {
         server.start()
 
         val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-        val api = Retrofit.Builder()
+        api = Retrofit.Builder()
             .baseUrl(server.url("/"))
             .client(OkHttpClient())
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(SearchALiciousApi::class.java)
 
-        dataSource = SearchALiciousDataSource(api)
+        dataSource = SearchALiciousDataSource(api, preferredLanguage = { "en-NL" })
     }
 
     @After
@@ -474,6 +475,7 @@ class SearchALiciousDataSourceTest {
                 "code",
                 "product_name",
                 "product_name_nl",
+                "product_name_tr",
                 "brands",
                 "quantity",
                 "nutriments",
@@ -502,6 +504,7 @@ class SearchALiciousDataSourceTest {
             "code" to "the barcode — a hit's identity and what selecting it looks up",
             "product_name" to "the card's title",
             "product_name_nl" to "the preferred localized title",
+            "product_name_tr" to "the title on a device set to Turkish, and a name the ranking compares",
             "brands" to "the card's subtitle",
             "quantity" to "the subtitle's package size, and the only basis evidence here",
             "nutriments" to "the carbohydrate figure",
@@ -607,6 +610,66 @@ class SearchALiciousDataSourceTest {
         assertEquals("Chocoladehagelslag", hits(dataSource.search("x")).single().name)
     }
 
+    // ---- Turkish ------------------------------------------------------------------------------
+
+    private fun turkishSource() =
+        SearchALiciousDataSource(api, preferredLanguage = { "tr-TR" }, deviceCountryTag = { "en:turkey" })
+
+    /**
+     * Without `tr` in `langs`, `product_name_tr` never arrives and Turkish text is not searched:
+     * "Pınar süt" matched 93 products without it and 157 with it (live, 2026-09-17).
+     */
+    @Test
+    fun `a device set to Turkish asks for Turkish text first`() = runTest {
+        respond("""{"count":0,"hits":[]}""")
+
+        turkishSource().search("süt")
+
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        assertEquals(
+            SearchALiciousApi.TURKISH_SEARCH_LANGS,
+            body["langs"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals("tr", SearchALiciousApi.TURKISH_SEARCH_LANGS.first())
+    }
+
+    @Test
+    fun `a device set to Turkish shows the Turkish name`() = runTest {
+        respond(
+            """{"count":1,"hits":[{"code":"1111111111116","product_name":"Chocolate milk",
+               "product_name_nl":"Chocolademelk","product_name_tr":"Kakaolu süt","quantity":"200 ml"}]}""",
+        )
+
+        assertEquals("Kakaolu süt", hits(turkishSource().search("kakaolu süt")).single().name)
+    }
+
+    /** The live service does not fold Turkish letters, so folding the request would lose results. */
+    @Test
+    fun `Turkish letters in the query are sent as typed`() = runTest {
+        respond("""{"count":0,"hits":[]}""")
+
+        turkishSource().search("Pınar süt")
+
+        val q = Json.parseToJsonElement(server.takeRequest().body.readUtf8())
+            .jsonObject["q"]!!.jsonPrimitive.content
+        assertEquals("Pınar süt", q)
+    }
+
+    @Test
+    fun `a name in another language counts toward the ranking`() = runTest {
+        respond(
+            """{"count":2,"hits":[
+              {"code":"1111111111116","product_name":"Kraker","quantity":"100 g"},
+              {"code":"2222222222222","product_name":"Hazelnut spread","product_name_nl":"Hazelnootpasta",
+               "product_name_tr":"Fındık Kreması","quantity":"400 g"}]}""",
+        )
+
+        val found = hits(dataSource.search("fındık kreması"))
+
+        // Shown under its Dutch name in an English app, but it is the only real match.
+        assertEquals(listOf("Hazelnootpasta"), found.map { it.name })
+    }
+
     // ------------------------------------------------------- the two halves, wired together
 
     /**
@@ -676,7 +739,7 @@ class SearchALiciousDataSourceTest {
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(SearchALiciousApi::class.java)
-        return SearchALiciousDataSource(api, deviceCountryTag = { country })
+        return SearchALiciousDataSource(api, preferredLanguage = { "en-NL" }, deviceCountryTag = { country })
     }
 
     /**
@@ -703,19 +766,28 @@ class SearchALiciousDataSourceTest {
 
         val found = hits(rankedSource("en:netherlands").search("nutella"))
 
-        assertEquals(listOf("8000500023976", "0009800800124"), found.map { it.barcode })
+        assertEquals(
+            listOf("8000500023976", "0009800800124", "8000500310427"),
+            found.map { it.barcode },
+        )
     }
 
+    /**
+     * Until 2026-09-17 this jar was left out, because calculable matches existed. An exact match is
+     * still the product the user named, so it now stays — after the ones that can show a figure.
+     */
     @Test
-    fun `a result that cannot show a figure is left out when calculable matches exist`() = runTest {
+    fun `a full match that cannot show a figure is kept after the calculable ones`() = runTest {
         respond(nutellaPage)
 
         val found = hits(rankedSource(null).search("nutella"))
 
-        // The NL jar with no printed quantity has a figure but no basis, so its card could not show
-        // it; the two calculable Nutellas remain.
-        assertTrue(found.none { it.barcode == "8000500310427" })
-        assertEquals(2, found.size)
+        // The NL jar with no printed quantity has a figure but no basis, so its card cannot show it.
+        assertEquals(
+            listOf("0009800800124", "8000500023976", "8000500310427"),
+            found.map { it.barcode },
+        )
+        assertNull(found.last().carbsPer100)
     }
 
     @Test

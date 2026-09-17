@@ -16,6 +16,7 @@ class SearchResultRankingTest {
         countries: List<String> = emptyList(),
         scans: Int? = null,
         calculable: Boolean = true,
+        otherNames: List<String> = emptyList(),
     ) = SearchResultRanking.Candidate(
         hit = ProductSearchHit(
             barcode = name,
@@ -28,6 +29,7 @@ class SearchResultRankingTest {
         ),
         countries = countries,
         uniqueScans = scans,
+        otherNames = otherNames,
     )
 
     private fun rank(query: String, country: String?, vararg candidates: SearchResultRanking.Candidate) =
@@ -84,6 +86,41 @@ class SearchResultRankingTest {
                 nl,
                 candidate("Nutella & go", countries = listOf("en:united-states"), scans = 50),
                 candidate("Nutella jar", countries = listOf(nl, "en:belgium"), scans = 3),
+            ),
+        )
+    }
+
+    /**
+     * The 2026-09-16 rule dropped a full match without a figure whenever one with a figure existed,
+     * so the top of the list always showed a number. Such matches are now kept, after the ones with
+     * a figure, so that top stays as it was.
+     */
+    @Test
+    fun `among full matches a figure comes before the device country`() {
+        assertEquals(
+            listOf("Nutella & go", "Nutella jar"),
+            rank(
+                "nutella",
+                nl,
+                candidate("Nutella jar", countries = listOf(nl), calculable = false),
+                candidate("Nutella & go", countries = listOf("en:united-states")),
+            ),
+        )
+    }
+
+    /**
+     * Measured on the Turkish benchmark: `kek` (cake) matches inside German *Keks* (biscuit), and a
+     * Keks with a figure then led the list above every real kek without one.
+     */
+    @Test
+    fun `among full matches a whole word comes before one inside a longer word`() {
+        assertEquals(
+            listOf("Kek", "Hafer Keks"),
+            rank(
+                "kek",
+                "en:turkey",
+                candidate("Hafer Keks", countries = listOf("en:turkey"), scans = 900),
+                candidate("Kek", calculable = false),
             ),
         )
     }
@@ -182,15 +219,112 @@ class SearchResultRankingTest {
         assertNull(SearchResultRanking.countryTagOf(Locale("nl")))
     }
 
-    // ---- select: rank, then keep what can show a carbohydrate figure --------------------------
+    // ---- strength before everything else ------------------------------------------------------
+
+    /**
+     * The live "krokante pizza Albert heijn" page (2026-09-17), reduced. The service padded its answer
+     * with Albert Heijn products that share nothing but the brand, and the old rule kept every one
+     * that carried a figure. Albert Heijn's own pizzas often lack a printed quantity, so they carried
+     * none.
+     */
+    private val albertHeijnPage = arrayOf(
+        candidate("Albert Heijn Heldere Bloemenhoning", brand = "Albert Heijn"),
+        candidate("Pizza krokante", brand = "Albert Heijn", calculable = false),
+        candidate("Kandijkoek", brand = "Albert Heijn"),
+        candidate("Pizza krokant Hawaï", brand = "Albert Heijn"),
+        candidate("Albert heijn Carrots"),
+        candidate("Krokante muesli chocolade", brand = "Gwoon"),
+    )
+
+    @Test
+    fun `a full match without a figure ranks above a brand-only match with one`() {
+        val ranked = rank("krokante pizza Albert heijn", nl, *albertHeijnPage)
+        assertEquals(listOf("Pizza krokante", "Pizza krokant Hawaï"), ranked.take(2))
+    }
+
+    @Test
+    fun `a strong partial match ranks by how much of the product it names, before its figure`() {
+        assertEquals(
+            listOf("Pizza krokant Hawaï", "Krokante muesli", "Pizza salami"),
+            rank(
+                "krokante pizza Albert heijn",
+                nl,
+                candidate("Krokante muesli", brand = "Albert Heijn"),
+                candidate("Pizza salami", brand = "Albert Heijn"),
+                candidate("Pizza krokant Hawaï", brand = "Albert Heijn", calculable = false),
+            ),
+        )
+    }
+
+    @Test
+    fun `among equally strong partial matches a figure comes first`() {
+        assertEquals(
+            listOf("Pizza salami", "Pizza tonno"),
+            rank(
+                "krokante pizza Albert heijn",
+                nl,
+                candidate("Pizza tonno", brand = "Albert Heijn", calculable = false),
+                candidate("Pizza salami", brand = "Albert Heijn"),
+            ),
+        )
+    }
+
+    @Test
+    fun `the device country does not reorder partial matches`() {
+        assertEquals(
+            listOf("Pizza tonno", "Pizza salami"),
+            rank(
+                "krokante pizza Albert heijn",
+                nl,
+                candidate("Pizza tonno", brand = "Albert Heijn"),
+                candidate("Pizza salami", brand = "Albert Heijn", countries = listOf(nl)),
+            ),
+        )
+    }
+
+    @Test
+    fun `a result's other names count toward its match`() {
+        assertEquals(
+            listOf("Nutella", "Kraker"),
+            rank(
+                "fındık kreması",
+                null,
+                candidate("Kraker"),
+                candidate("Nutella", otherNames = listOf("Fındık Kreması")),
+            ),
+        )
+    }
+
+    @Test
+    fun `a plain spelling finds the Turkish one`() {
+        assertEquals(
+            listOf("Pınar Süt", "Sut"),
+            rank("Pinar sut", null, candidate("Sut", brand = "Migros"), candidate("Pınar Süt", brand = "Pınar")),
+        )
+    }
+
+    // ---- select: rank, then stop once the matches run out -------------------------------------
 
     private fun select(query: String, limit: Int, vararg candidates: SearchResultRanking.Candidate) =
         SearchResultRanking.select(query, candidates.toList(), nl, limit).map { it.name }
 
     @Test
-    fun `results that cannot show a figure are dropped when a calculable full match exists`() {
+    fun `brand-only and unrelated results are not shown beside real matches`() {
         assertEquals(
-            listOf("Hagelslag puur", "Chocolade melk"),
+            listOf("Pizza krokante", "Pizza krokant Hawaï"),
+            select("krokante pizza Albert heijn", 20, *albertHeijnPage),
+        )
+    }
+
+    /**
+     * Replaces a rule measured on 2026-09-16 that kept only calculable results once one of them
+     * matched every word. It also kept calculable results that matched nothing, and dropped exact
+     * matches without a figure — the 2026-09-17 on-device report.
+     */
+    @Test
+    fun `a full match without a figure is kept, after the full matches with one`() {
+        assertEquals(
+            listOf("Hagelslag puur", "Hagelslag melk", "Hagelslag wit"),
             select(
                 "hagelslag",
                 20,
@@ -202,15 +336,10 @@ class SearchResultRankingTest {
         )
     }
 
-    /**
-     * Measured on held-out queries: dropping every non-calculable result removed the only products
-     * that were actually "Conimex Nasi" or "krentenbollen", and a sambal took the top slot. When no
-     * calculable result matches the query, the real product stays — above the calculable guesses.
-     */
     @Test
-    fun `when no calculable result matches every word, the full matches stay first`() {
+    fun `a result sharing one of two words is not shown beside a full match`() {
         assertEquals(
-            listOf("Conimex Nasi Goreng", "Sambal"),
+            listOf("Conimex Nasi Goreng"),
             select(
                 "conimex nasi",
                 20,
@@ -222,14 +351,43 @@ class SearchResultRankingTest {
     }
 
     @Test
-    fun `when nothing is calculable every result is kept`() {
+    fun `strong partial matches follow the full matches`() {
         assertEquals(
-            listOf("Ontbijtkoek", "Koek"),
+            listOf("Pizza krokante", "Pizza krokant Hawaï", "Pizza salami"),
+            select(
+                "krokante pizza Albert heijn",
+                20,
+                candidate("Pizza salami", brand = "Albert Heijn"),
+                candidate("Pizza krokant Hawaï", brand = "Albert Heijn"),
+                candidate("Pizza krokante", brand = "Albert Heijn", calculable = false),
+            ),
+        )
+    }
+
+    /** Measured live: "honig macaroni" has no full match; the service's order is all there is. */
+    @Test
+    fun `weak matches are shown, in the provider's order, when nothing better exists`() {
+        assertEquals(
+            listOf("Miel", "Macaroni", "Brood"),
+            select(
+                "honig macaroni",
+                20,
+                candidate("Miel", scans = 1, calculable = false),
+                candidate("Macaroni", scans = 900),
+                candidate("Brood", countries = listOf(nl), scans = 5000),
+            ),
+        )
+    }
+
+    @Test
+    fun `when nothing is calculable every full match is kept`() {
+        assertEquals(
+            listOf("Ontbijtkoek naturel", "Ontbijtkoek volkoren"),
             select(
                 "ontbijtkoek",
                 20,
-                candidate("Ontbijtkoek", calculable = false),
-                candidate("Koek", calculable = false),
+                candidate("Ontbijtkoek naturel", calculable = false),
+                candidate("Ontbijtkoek volkoren", calculable = false),
             ),
         )
     }

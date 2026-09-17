@@ -82,8 +82,9 @@ data class OffProduct(
     /** Language tag used for the product's primary localized content. */
     val lang: String? = null,
     @SerialName("product_name") val productName: String? = null,
-    /** Localized name, preferred where present (§12). */
+    /** Localized names; which one is shown is decided by [app.justthecarbs.domain.ProductNames]. */
     @SerialName("product_name_nl") val productNameNl: String? = null,
+    @SerialName("product_name_tr") val productNameTr: String? = null,
     val brands: String? = null,
     /**
      * Free text, e.g. "500 ml". Parsed by `PackageQuantityParser` for both the package size and

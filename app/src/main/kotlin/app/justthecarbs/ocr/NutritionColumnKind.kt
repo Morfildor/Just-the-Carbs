@@ -856,7 +856,7 @@ object ColumnClassifier {
     /**
      * Whether one element is part of a basis statement rather than the prose introducing it.
      *
-     * Accepts a quantity (`100`, `100g`), a bare unit (`g`, `ml`), a connective (`per`, `pour`), or a
+     * Accepts a quantity (`100`, `100g`), a bare unit (`g`, `ml`), a connective (`per`, `voor`), or a
      * serving word (`portie`, `serving`, `stuk`) — the vocabularies already used to classify the span
      * itself, so this cannot recognise a basis the classifier would not.
      */
@@ -1005,8 +1005,8 @@ object ColumnClassifier {
      */
     private const val PERCENT_BAND_MARGIN_IN_HEIGHTS = 1.5
 
-    /** Words that introduce a column header. One shared list — see NutritionTerminology. */
-    private val CONNECTIVES = NutritionTerminology.connectives
+    /** Words that introduce a column header — see [NutritionTerminology.columnHeaderConnectives]. */
+    private val CONNECTIVES = NutritionTerminology.columnHeaderConnectives
 
     /**
      * `100 g`, `100g`, `100 gram`, `100 ml`, `100 milliliter` — every spelling
@@ -1036,6 +1036,17 @@ object ColumnClassifier {
     )
     private val REFERENCE_PERCENT = Regex("(?:^|\\s)(?:ri|dv|gda|reference intake|daily value)(?:$|\\s)")
 
-    /** Runs against RAW element text — normalization would strip the "%" these depend on. */
-    private val BARE_PERCENT_HEADER = Regex("^%\\s*(?:ri|dv|gda)?\\*?$", RegexOption.IGNORE_CASE)
+    /**
+     * Runs against RAW element text — normalization would strip the "%" these depend on.
+     *
+     * A header token that is `%` and a short abbreviation heads a percentage column whatever the
+     * abbreviation. Each language names the reference intake its own way — `%RI` (English, Dutch,
+     * Nordic), `%RM` (German), `%AR` (French, Italian), `%IR` (Spanish), `%DR` (Portuguese), `%RWS`
+     * (Polish), `%RHP` (Czech), `%RBÉ` (Hungarian), `%BRD` (Turkish) — and until 2026-09-17 only the
+     * first was known. Measured in `EuropeanLabelDiagnosticTest`: with bare percentage cells and the
+     * carbohydrate row's gram figure lost, the `7` beside it bound to the per-100 column and read as
+     * `Confident 7.0` in fourteen languages. The `%` is what makes the rule safe to generalise: prose
+     * never prints one before a word.
+     */
+    private val BARE_PERCENT_HEADER = Regex("^%\\s*(?:\\p{L}{1,5}\\.?)?\\**$", RegexOption.IGNORE_CASE)
 }

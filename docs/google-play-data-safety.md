@@ -61,7 +61,7 @@ those results. The owner should preserve screenshots of that disclosure and the 
 | Recipient / endpoint | Trigger | Data |
 |---|---|---|
 | `https://world.openfoodfacts.org/api/v3/product/{barcode}` | Uncached barcode lookup | Barcode; app/version/developer-contact User-Agent; normal network metadata |
-| `https://world.openfoodfacts.org/cgi/search.pl` | User performs name search; ≥3 characters, ~400 ms debounce | Search words; User-Agent; normal network metadata |
+| `https://search.openfoodfacts.org/search` (POST), falling back to `https://world.openfoodfacts.org/cgi/search.pl` | User searches by name; ≥3 characters, sent 350 ms after typing pauses or on the search action | Search words; the list of name languages to search (Turkish first on a Turkish-language phone, which can reveal that setting); User-Agent; normal network metadata. The phone's region orders results on the device and is not sent. Updated 2026-09-17 for `1.0.7`: no new Data Safety data type — the language list travels inside the already-declared search request |
 | `https://images.openfoodfacts.org/...` or `https://static.openfoodfacts.org/...` | A returned product has an allowlisted HTTPS image URL | Standard image request; User-Agent; normal network metadata |
 | Google ML Kit endpoints | SDK diagnostics/maintenance behavior | Data types listed by Google's ML Kit disclosure; not camera input or recognized result |
 

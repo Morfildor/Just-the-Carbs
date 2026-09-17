@@ -38,11 +38,9 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Scale
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -58,7 +56,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
@@ -93,6 +90,8 @@ import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.meal.MealBarIfPresent
 import app.justthecarbs.ui.product.unitLabel
 import app.justthecarbs.ui.search.SearchInformationalState
+import app.justthecarbs.ui.search.SearchProgressLine
+import app.justthecarbs.ui.search.SearchingLine
 import app.justthecarbs.ui.search.SearchViewModel
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.Space
@@ -108,6 +107,8 @@ const val HOME_SEARCH_RESULTS_TAG = "home_search_results"
 const val HOME_SEARCH_REFRESH_ERROR_TAG = "home_search_refresh_error"
 const val HOME_SEARCH_RATE_LIMITED_TAG = "home_search_rate_limited"
 const val HOME_SEARCH_PENDING_TAG = "home_search_pending"
+const val HOME_SEARCH_PROGRESS_TAG = "home_search_progress"
+const val HOME_SEARCH_SEARCHING_TAG = "home_search_searching"
 const val HOME_SCAN_BARCODE_TAG = "home_scan_barcode"
 const val HOME_SCAN_LABEL_TAG = "home_scan_label"
 const val HOME_FAVORITES_HEADING_TAG = "home_favorites_heading"
@@ -473,145 +474,131 @@ private fun HomeSearchResults(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    when {
-        // Results first, for the same reason as SearchScreen: a refresh failure carries an error
-        // but costs the user nothing, so it must not take the region away from a usable list.
-        state.hits.isNotEmpty() -> Column(modifier = modifier.fillMaxWidth()) {
-            // Home had no refresh indicator at all — its only loading state was the centred spinner
-            // for an empty list, so a refresh over existing results was completely silent. The
-            // reserved height keeps the results from jumping as it appears and disappears.
-            Box(
-                modifier = Modifier.fillMaxWidth().height(Space.s),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (state.searching) {
-                    LinearProgressIndicator(
+    Column(modifier = modifier.fillMaxWidth()) {
+        // The same hairline as the search screen, in the same place, for a first search as well as
+        // a refresh. Home had no refresh indication at all until the smoothing pass, and its first
+        // search showed a centred spinner until 2026-09-17.
+        SearchProgressLine(searching = state.searching, tag = HOME_SEARCH_PROGRESS_TAG)
+
+        val region = Modifier.weight(1f)
+        when {
+            // Results first, for the same reason as SearchScreen: a refresh failure carries an error
+            // but costs the user nothing, so it must not take the region away from a usable list.
+            state.hits.isNotEmpty() -> Column(modifier = region.fillMaxWidth()) {
+                // No Retry while rate limited — the queued query resumes by itself, and a button there
+                // would invite the hammering the backoff exists to stop. Same rule as SearchScreen.
+                if (state.rateLimited) {
+                    RefreshErrorBanner(
+                        text = stringResource(R.string.search_rate_limited),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = Space.screenEdge)
-                            .height(2.dp)
-                            .clearAndSetSemantics { },
+                            .padding(horizontal = Space.screenEdge, vertical = Space.xs)
+                            .testTag(HOME_SEARCH_RATE_LIMITED_TAG),
+                    )
+                } else if (state.refreshFailed) {
+                    RefreshErrorBanner(
+                        text = stringResource(R.string.search_refresh_failed),
+                        retryText = stringResource(R.string.error_retry),
+                        onRetry = onRetry,
+                        modifier = Modifier
+                            .padding(horizontal = Space.screenEdge, vertical = Space.xs)
+                            .testTag(HOME_SEARCH_REFRESH_ERROR_TAG),
                     )
                 }
-            }
-            // No Retry while rate limited — the queued query resumes by itself, and a button there
-            // would invite the hammering the backoff exists to stop. Same rule as SearchScreen.
-            if (state.rateLimited) {
-                RefreshErrorBanner(
-                    text = stringResource(R.string.search_rate_limited),
+                LazyColumn(
                     modifier = Modifier
-                        .padding(horizontal = Space.screenEdge, vertical = Space.xs)
-                        .testTag(HOME_SEARCH_RATE_LIMITED_TAG),
-                )
-            } else if (state.refreshFailed) {
-                RefreshErrorBanner(
-                    text = stringResource(R.string.search_refresh_failed),
-                    retryText = stringResource(R.string.error_retry),
-                    onRetry = onRetry,
-                    modifier = Modifier
-                        .padding(horizontal = Space.screenEdge, vertical = Space.xs)
-                        .testTag(HOME_SEARCH_REFRESH_ERROR_TAG),
-                )
-            }
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = Space.screenEdge)
-                    .testTag(HOME_SEARCH_RESULTS_TAG),
-            ) {
-                items(state.hits, key = { it.barcode }) { hit ->
-                    SearchResultRow(hit = hit, onClick = { onSelect(hit) })
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = Space.screenEdge)
+                        .testTag(HOME_SEARCH_RESULTS_TAG),
+                ) {
+                    items(state.hits, key = { it.barcode }) { hit ->
+                        SearchResultRow(hit = hit, onClick = { onSelect(hit) })
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
                 }
             }
-        }
 
-        state.error != null -> {
-            val title = when (state.error) {
-                LookupError.OFFLINE -> stringResource(R.string.error_offline_title)
-                LookupError.TIMEOUT -> stringResource(R.string.error_timeout_title)
-                LookupError.RATE_LIMITED -> stringResource(R.string.error_rate_limited_title)
-                LookupError.SERVER -> stringResource(R.string.error_server_title)
-                LookupError.MALFORMED -> stringResource(R.string.error_malformed_title)
+            state.error != null -> {
+                val title = when (state.error) {
+                    LookupError.OFFLINE -> stringResource(R.string.error_offline_title)
+                    LookupError.TIMEOUT -> stringResource(R.string.error_timeout_title)
+                    LookupError.RATE_LIMITED -> stringResource(R.string.error_rate_limited_title)
+                    LookupError.SERVER -> stringResource(R.string.error_server_title)
+                    LookupError.MALFORMED -> stringResource(R.string.error_malformed_title)
+                }
+                val body = when (state.error) {
+                    LookupError.OFFLINE -> stringResource(R.string.error_offline_body)
+                    LookupError.RATE_LIMITED -> stringResource(R.string.error_rate_limited_body)
+                    else -> stringResource(R.string.error_generic_body)
+                }
+                Box(modifier = region.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    RecoveryPanel(title = title, body = body) {
+                        PrimaryAction(text = stringResource(R.string.error_retry), onClick = onRetry)
+                        SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+                        SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
+                    }
+                }
             }
-            val body = when (state.error) {
-                LookupError.OFFLINE -> stringResource(R.string.error_offline_body)
-                LookupError.RATE_LIMITED -> stringResource(R.string.error_rate_limited_body)
-                else -> stringResource(R.string.error_generic_body)
+
+            // Waiting on the shared budget with nothing to show. A word, not a spinner: a spinner held
+            // for several seconds promises a request that has not been sent and reads as a hang.
+            //
+            // Placed at the top of the region rather than centred in it — see SearchInformationalState
+            // for the measured reason, which bites hardest here because Home's keyboard is usually open.
+            state.awaitingRemotePermit -> SearchInformationalState(modifier = region) {
+                Text(
+                    text = stringResource(
+                        if (state.rateLimited) R.string.search_rate_limited else R.string.search_updating,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag(HOME_SEARCH_PENDING_TAG),
+                )
             }
-            Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                RecoveryPanel(title = title, body = body) {
-                    PrimaryAction(text = stringResource(R.string.error_retry), onClick = onRetry)
-                    SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+
+            state.searching -> SearchingLine(tag = HOME_SEARCH_SEARCHING_TAG, modifier = region)
+
+            state.noMatches -> Box(modifier = region.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                RecoveryPanel(
+                    title = stringResource(R.string.notfound_title),
+                    body = stringResource(R.string.search_no_matches, state.query),
+                ) {
+                    PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
                     SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
                 }
             }
-        }
 
-        // Waiting on the shared budget with nothing to show. A word, not a spinner: a spinner held
-        // for several seconds promises a request that has not been sent and reads as a hang.
-        //
-        // Placed at the top of the region rather than centred in it — see SearchInformationalState
-        // for the measured reason, which bites hardest here because Home's keyboard is usually open.
-        state.awaitingRemotePermit -> SearchInformationalState(modifier = modifier) {
-            Text(
-                text = stringResource(
-                    if (state.rateLimited) R.string.search_rate_limited else R.string.search_updating,
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.testTag(HOME_SEARCH_PENDING_TAG),
-            )
-        }
-
-        state.searching -> Box(
-            modifier = modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator(strokeWidth = 2.dp)
-        }
-
-        state.noMatches -> Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            RecoveryPanel(
-                title = stringResource(R.string.notfound_title),
-                body = stringResource(R.string.search_no_matches, state.query),
-            ) {
-                PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
-                SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
+            // A query too short to search yet (SearchViewModel.MIN_QUERY_LENGTH) — not an error, not a
+            // miss, just not enough to go on.
+            //
+            // A *submission* refused for being too short says so, exactly as SearchScreen does. Home
+            // rendered only the generic prompt here, so tapping the magnifier with "ha" typed changed
+            // nothing on screen and read as the button having missed rather than as the app declining.
+            // Typing alone still never reaches this: `queryTooShort` is set only by an explicit search.
+            else -> SearchInformationalState(modifier = region) {
+                Text(
+                    text = if (state.queryTooShort) {
+                        pluralStringResource(
+                            R.plurals.search_too_short,
+                            SearchViewModel.MIN_QUERY_LENGTH,
+                            SearchViewModel.MIN_QUERY_LENGTH,
+                        )
+                    } else {
+                        stringResource(R.string.search_prompt)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    // Announced on change so a TalkBack user hears the refusal; the plain prompt is
+                    // deliberately not a live region, or it would announce over the user's own typing.
+                    modifier = if (state.queryTooShort) {
+                        Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                    } else {
+                        Modifier
+                    },
+                )
             }
-        }
-
-        // A query too short to search yet (SearchViewModel.MIN_QUERY_LENGTH) — not an error, not a
-        // miss, just not enough to go on.
-        //
-        // A *submission* refused for being too short says so, exactly as SearchScreen does. Home
-        // rendered only the generic prompt here, so tapping the magnifier with "ha" typed changed
-        // nothing on screen and read as the button having missed rather than as the app declining.
-        // Typing alone still never reaches this: `queryTooShort` is set only by an explicit search.
-        else -> SearchInformationalState(modifier = modifier) {
-            Text(
-                text = if (state.queryTooShort) {
-                    pluralStringResource(
-                        R.plurals.search_too_short,
-                        SearchViewModel.MIN_QUERY_LENGTH,
-                        SearchViewModel.MIN_QUERY_LENGTH,
-                    )
-                } else {
-                    stringResource(R.string.search_prompt)
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                // Announced on change so a TalkBack user hears the refusal; the plain prompt is
-                // deliberately not a live region, or it would announce over the user's own typing.
-                modifier = if (state.queryTooShort) {
-                    Modifier.semantics { liveRegion = LiveRegionMode.Polite }
-                } else {
-                    Modifier
-                },
-            )
         }
     }
 }

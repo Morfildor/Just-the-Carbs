@@ -21,7 +21,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,6 +73,7 @@ const val SEARCH_REFRESH_ERROR_TAG = "search_refresh_error"
 const val SEARCH_REFRESH_PROGRESS_TAG = "search_refresh_progress"
 const val SEARCH_RATE_LIMITED_TAG = "search_rate_limited"
 const val SEARCH_PENDING_TAG = "search_pending"
+const val SEARCH_SEARCHING_TAG = "search_searching"
 
 /**
  * The weighted slot below the field that every search state occupies — results, failure, waiting
@@ -206,31 +206,7 @@ fun SearchScreen(
                     .testTag(SEARCH_FIELD_TAG),
             )
 
-            // Refreshing over results that are still on screen: a hairline under the field, not a
-            // spinner replacing the list. Blanking a good list on every keystroke and rebuilding it is
-            // the flicker this whole pass exists to avoid, and the previous results stay usable — the
-            // user can tap one while the newer search is still running.
-            //
-            // The indicator occupies the gap that was already there rather than adding to it, so the
-            // results below do not jump by its height each time a search starts and finishes.
-            Box(modifier = Modifier.fillMaxWidth().height(Space.s), contentAlignment = Alignment.Center) {
-                if (state.searching && state.hits.isNotEmpty()) {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = Space.screenEdge)
-                            .height(2.dp)
-                            // The tag has to survive the semantics wipe below, so it goes inside
-                            // clearAndSetSemantics rather than before it — a testTag set outside would
-                            // be cleared with everything else and the node would be unfindable.
-                            //
-                            // Deliberately not a live region and carrying no description: it toggles on
-                            // every debounce, and announcing that would talk over the results a TalkBack
-                            // user is reading. The completed outcome is what gets announced.
-                            .clearAndSetSemantics { testTag = SEARCH_REFRESH_PROGRESS_TAG },
-                    )
-                }
-            }
+            SearchProgressLine(searching = state.searching, tag = SEARCH_REFRESH_PROGRESS_TAG)
 
             // One weighted region for every state, tagged so a test can measure where a state sits
             // *within it* rather than against an absolute pixel position.
@@ -284,15 +260,7 @@ fun SearchScreen(
                         )
                     }
 
-                    // The spinner stays centred: it is a placeholder for content that is arriving, not
-                    // something to read, so it belongs where the content will be rather than pinned to
-                    // the top like a sentence.
-                    state.searching -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(strokeWidth = 2.dp)
-                    }
+                    state.searching -> SearchingLine(tag = SEARCH_SEARCHING_TAG)
 
                     state.noMatches -> Box(
                         modifier = Modifier.fillMaxSize(),
@@ -348,6 +316,58 @@ fun SearchScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * The hairline under a search field while a search is pending — the one loading indicator either
+ * search surface shows.
+ *
+ * Shown for a first search as well as a refresh (2026-09-17). A first search used to replace the
+ * whole region with a large centred spinner, which made every search look like the screen was
+ * reloading; over results, blanking a good list on every keystroke is the flicker the live search
+ * was built to avoid. The previous results stay usable while it runs.
+ *
+ * It occupies the gap that was already there rather than adding to it, so nothing below it moves
+ * when a search starts or finishes.
+ */
+@Composable
+internal fun SearchProgressLine(searching: Boolean, tag: String, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.fillMaxWidth().height(Space.s), contentAlignment = Alignment.Center) {
+        if (searching) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.screenEdge)
+                    .height(2.dp)
+                    // The tag has to survive the semantics wipe below, so it goes inside
+                    // clearAndSetSemantics rather than before it — a testTag set outside would be
+                    // cleared with everything else and the node would be unfindable.
+                    //
+                    // Deliberately not a live region and carrying no description: it toggles on every
+                    // debounce, and announcing that would talk over the results a TalkBack user is
+                    // reading. The completed outcome is what gets announced.
+                    .clearAndSetSemantics { testTag = tag },
+            )
+        }
+    }
+}
+
+/**
+ * The quiet line that stands in for results while a search with nothing to show yet is running.
+ *
+ * Not a live region, for the same reason as [SearchProgressLine]: it appears on every refinement.
+ */
+@Composable
+internal fun SearchingLine(tag: String, modifier: Modifier = Modifier) {
+    SearchInformationalState(modifier = modifier) {
+        Text(
+            text = stringResource(R.string.search_searching),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.testTag(tag),
+        )
     }
 }
 

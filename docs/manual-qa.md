@@ -2621,3 +2621,50 @@ OLED device at low brightness when available. Check both gesture navigation and 
 **Device/API:** ____________________ **Font scale:** ______ **Navigation:** ______________
 
 **Result:** ____________________ **Date:** ____________
+
+---
+
+## §44 — Search trust and label languages (1.0.7, 2026-09-17)
+
+Emulator and JVM only so far. The app is shown in **English** in every row below, whatever the
+phone's language; only the product data and the labels read are in other languages.
+
+### Search
+
+- [ ] 44.1 Type `krokante pizza`: a product whose name holds both words is first, even if it shows no
+      carb figure. No product matching only the brand word sits above it.
+- [ ] 44.2 Type slowly, word by word (`hagel`, `hagelslag`, `hagelslag puur`): rows without the word
+      just added disappear; the list never flashes blank; a thin line shows while it updates.
+- [ ] 44.3 First search from an empty field, on Home and on Search: a thin progress line and a small
+      *Searching…* line, never a large centred spinner.
+- [ ] 44.4 Results arrive about half a second after the last keystroke. Typing a long name steadily
+      sends about one request per pause, not one per letter (`adb logcat -s JtcSearch`, debug build).
+- [ ] 44.5 Phone set to Turkish (system language), app still English: `Pınar süt` and `Pinar sut` both
+      find Pınar products, listed under their Turkish names, and the calculator keeps the same name.
+- [ ] 44.6 Phone set to Turkish or Dutch: a remembered or adjusted portion is written `12,5`, as the
+      results are; typing `12,5` and `12.5` both calculate.
+
+### Nutrition labels
+
+Scan each with the nutrition-label scanner; the figure must be the per-100 total carbohydrate the
+pack prints, or no figure at all — never sugars, fibre, a percentage, a portion figure or `100`.
+
+- [ ] 44.7 A Turkish pack (`100 g'da`, `Karbonhidrat`, `Şekerler`): the carbohydrate figure.
+- [ ] 44.8 A German or Austrian pack (`je 100 g`, `davon Zucker`, `%RM*`).
+- [ ] 44.9 A French or Belgian pack (`pour 100 g`, `dont sucres`, `%AR*`).
+- [ ] 44.10 A Polish, Czech or Slovak pack (`w 100 g` / `ve 100 g`, `%RWS*` / `%RHP*`).
+- [ ] 44.11 A Spanish, Portuguese or Italian pack (`por 100 g` / `per 100 g`).
+- [ ] 44.12 A Finnish or Nordic pack (`100 g:ssa`, `josta sokereita`, `varav sockerarter`).
+- [ ] 44.13 A pack whose percentage column carries no `%` signs, only the header: the percentage is
+      never offered as grams.
+- [ ] 44.14 A small pack printing the declaration as a sentence (`Nährwerte je 100 g: … Kohlenhydrate
+      46 g, davon Zucker 1 g …`): 46, or no figure — never the fat or sugars figure.
+- [ ] 44.15 A Hungarian-only pack: **no figure is read** (known gap, deliberate); the app routes to
+      typing it in, never to a wrong value.
+- [ ] 44.16 A Greek- or Bulgarian-only pack: no figure (the recognizer reads Latin script only).
+- [ ] 44.17 The Indomie noodles pack from the 2026-09-04 session: still focused entry, carbohydrate row
+      highlighted, as before this pass.
+
+**Device/API:** ____________________ **Phone language:** ______________
+
+**Result:** ____________________ **Date:** ____________

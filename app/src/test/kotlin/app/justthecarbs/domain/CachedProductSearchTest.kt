@@ -64,6 +64,26 @@ class CachedProductSearchTest {
 
     // ---------------------------------------------------------------- hits and misses
 
+    /**
+     * Names and search languages follow the device language (2026-09-17), so an answer cached in one
+     * language must not be shown after a switch to another.
+     */
+    @Test
+    fun `an answer cached in one device language is not reused in another`() = runTest {
+        val source = FakeSource { found("A") }
+        var language = "en-NL"
+        val cache = CachedProductSearch(source, nowMs = { 1_000_000L }, language = { language })
+
+        cache.search("süt")
+        language = "tr-TR"
+        cache.search("süt")
+        language = "en-NL"
+        cache.search("süt")
+
+        assertEquals(listOf("süt", "süt"), source.calls)
+    }
+
+
     @Test
     fun `an exact repeated query is answered from memory`() = runTest {
         val source = FakeSource { found("A", "B") }

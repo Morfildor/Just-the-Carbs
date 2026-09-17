@@ -1,5 +1,6 @@
 package app.justthecarbs.data.remote
 
+import app.justthecarbs.domain.ProductNames
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -61,7 +62,8 @@ interface SearchALiciousApi {
         const val SEARCH_RESULT_LIMIT = 20
 
         /**
-         * Languages whose localized names and text are searched and returned.
+         * Languages whose localized names and text are searched and returned, for every device
+         * language except Turkish ([searchLanguagesFor]).
          *
          * Dutch first, English second — the same asymmetry the rest of the app already has: the UI
          * is English-only (owner decision 10) while the *data* the owner scans is legitimately
@@ -82,6 +84,22 @@ interface SearchALiciousApi {
          * GET query parameter took a string. Same values, different container.
          */
         val SEARCH_LANGS = listOf("nl", "en", "de", "fr")
+
+        /**
+         * The languages for a device set to Turkish: Turkish first, then English and the rest.
+         * Input recognition like [SEARCH_LANGS]; the app is still shown in English.
+         *
+         * Without `tr` the service neither searches Turkish text nor returns `product_name_tr`:
+         * "Pınar süt" matched 93 products without it and 157 with it (live, 2026-09-17).
+         *
+         * Only for Turkish devices: a Dutch shopper typing "pasta" has no use for Turkish *pasta*
+         * (cake).
+         */
+        val TURKISH_SEARCH_LANGS = listOf("tr", "en", "nl", "de", "fr")
+
+        /** The `langs` to send from a device set to [language] (a language tag). */
+        fun searchLanguagesFor(language: String): List<String> =
+            if (ProductNames.languageOf(language) == "tr") TURKISH_SEARCH_LANGS else SEARCH_LANGS
 
         /**
          * Exactly what a result card renders or [SearchResultRanking] orders by, and nothing else.
@@ -109,6 +127,9 @@ interface SearchALiciousApi {
             "code",
             "product_name",
             "product_name_nl",
+            // The Turkish name: shown on a device set to Turkish, and compared by the ranking
+            // whenever the service returns it.
+            "product_name_tr",
             "brands",
             "quantity",
             "nutriments",

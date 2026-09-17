@@ -1,0 +1,80 @@
+# Turkish search benchmark (2026-09-17). One query per line: <query> TAB <relevance key>.
+#
+# A result is RELEVANT when every key token matches a word of its names or brand, after the same
+# folding the app uses (case, accents and the dotless ı folded away). A plain token matches as a
+# word prefix, so `fistik` covers `fıstıklı`. A token starting with `=` must equal a whole word, and
+# `/` separates accepted spellings: `=sut/sutu` accepts `süt` and `sütü` but not `sütlü` (milk
+# chocolate), and `=bal/bali/balli` keeps `balık` (fish) out of a honey query.
+#
+# A result is OBVIOUS LEAKAGE when it matches none of the key tokens at all.
+#
+# Accented and ASCII spellings of the same query sit next to each other on purpose: the live
+# service does not fold Turkish letters, so the two can return different pages.
+Ülker	ulker
+Ulker	ulker
+Eti	=eti
+Şölen	solen
+Solen	solen
+Torku	torku
+Pınar	pinar
+Pinar	pinar
+İçim	icim
+Sütaş	sutas
+Nestlé	nestle
+Coca-Cola	coca cola
+Tadım	tadim
+Tamek	tamek
+Ülker çikolata	ulker cikolat
+Ulker cikolata	ulker cikolat
+Pınar süt	pinar =sut/sutu
+Pinar sut	pinar =sut/sutu
+İçim yoğurt	icim yogur
+Icim yogurt	icim yogur
+Torku fıstıklı	torku fistik
+Torku fistikli	torku fistik
+Eti Burçak	=eti burcak
+Eti Burcak	=eti burcak
+Sütaş ayran	sutas ayran
+Sutas ayran	sutas ayran
+Ülker Çokoprens	cokoprens
+Eti Popkek	popkek
+Şölen Ozmo	ozmo
+Nestlé Nesquik	nesquik
+Coca-Cola Zero	coca cola zero
+Pınar labne	pinar labne
+Ülker Halley	halley
+Eti Cin	=eti =cin
+Torku Banada	banada
+Tadım fıstık	tadim fistik
+süt	=sut/sutu
+sut	=sut/sutu
+yoğurt	yogur
+yogurt	yogur
+ekmek	ekme
+çikolata	cikolat
+cikolata	cikolat
+bisküvi	biskuvi
+biskuvi	biskuvi
+makarna	makarna
+pirinç	pirinc
+pirinc	pirinc
+dondurma	dondurma
+peynir	peynir
+ayran	ayran
+bulgur	bulgur
+lokum	lokum
+helva	helva
+pekmez	pekmez
+bal	=bal/bali/balli
+tahin	tahin
+gofret	gofret
+kraker	kraker
+meyve suyu	meyve =suyu/su
+mısır gevreği	misir gevre
+yulaf ezmesi	yulaf
+fındık kreması	findik krem
+kek	=kek/keki
+tost ekmeği	tost ekme
+şehriye	sehriye
+irmik	irmik
+kuru üzüm	=kuru uzum
