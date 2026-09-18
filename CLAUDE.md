@@ -4700,11 +4700,12 @@ before describing the app as live. Do not infer "live" from "uploaded".
 
 **Development:**
 - branch `main`
-- `branding.gradle.kts` still names `8` / `"1.0.7"`, matching the submitted commit exactly —
-  correct, and must stay that way until the next real code change
-- **the first code change on `main` after this submission opens `1.0.8` / `versionCode 9`**, per
-  the versioning rule below (bump `branding.gradle.kts` and rename `CHANGELOG.md`'s Unreleased
-  heading in that same change); a documentation-only change, including this one, opens nothing
+- **`1.0.8` / `versionCode 9` is OPEN** (2026-09-18): `branding.gradle.kts` names `9` / `"1.0.8"`,
+  opened by the first code change after the submission — Home's Quick Add and Remove from Recent
+  (`f00a7f9`). Further work this cycle lands under `CHANGELOG.md`'s `## 1.0.8` heading.
+- **HOLD (owner, 2026-09-18):** `1.0.8` is the first update after `1.0.7`. Do not build it for
+  release or upload it until the owner confirms `1.0.7` is live on Production and says the first
+  update is ready.
 
 Do not merge `main` back into `release/1.0.6` or `release/1.0.7`, do not force-update either, and do
 not create `release/1.0.8` until there is a concrete upload candidate for that version.

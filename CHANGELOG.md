@@ -62,8 +62,8 @@ work after
   defect line says what the user would have seen, not which function moved.
 - `versionCode` is unique per upload and **never reused** — Play rejects a duplicate. It is bumped
   when a version section is opened, then left alone until that build ships.
-- **`versionCode 1` through `7` are spent** — none is to be rebuilt or re-uploaded; the next number
-  is `8`, which `1.0.7` has open below. Code `5` was consumed by the withdrawn closed-testing
+- **`versionCode 1` through `8` are spent** — none is to be rebuilt or re-uploaded; the next number
+  is `9`, which `1.0.8` has open below. Code `5` was consumed by the withdrawn closed-testing
   submission (see its section below) and never became a released closed-track artifact; `1`, `2`,
   `3`, `4` and `6` reached the closed track and `7` reached the **Production** track, as recorded in
   `docs/version-history.md`.
@@ -78,8 +78,49 @@ work after
 
 ## Unreleased
 
-Nothing yet. `1.0.7` / `versionCode 8` is open below; a documentation-only change opens nothing
-further and lands directly under that heading.
+Nothing yet. `1.0.8` / `versionCode 9` is open below; later changes this cycle land under that
+heading.
+
+## 1.0.8 (versionCode 9) — in development — not built, not uploaded
+
+**Hold (owner, 2026-09-18):** `1.0.7` is still under Production review. This version is the first
+update after it and is not to be built for release or uploaded until the owner confirms `1.0.7` is
+live on Production and says the first update is ready. Work accumulates here until then.
+
+### Added
+
+- **Quick Add from Home.** A remembered product on Home — Favourite or Recent — now has a small
+  **+** beside its last portion. One tap adds exactly that portion ("35 g", "2 slices") to the
+  current meal and stays on Home: the button turns into a check, the meal bar updates and glows, and
+  the phone gives a short confirm vibration (when haptics are on). It is offered only when the app
+  can rebuild the last use exactly; otherwise the card still opens the product as before. A double
+  tap adds one item, not two.
+- **Remove from Recent, with Undo.** Long-press a card on Home and choose *Remove from Recent* to
+  forget that product's remembered portion and usual portions, keeping the product, its carb value,
+  its portion units and its Favourite star. *Undo* puts it back exactly.
+
+### Changed
+
+- **Home cards are laid out in two aligned rows:** the product name with its carb figure, then the
+  remembered portion with the **+** and the Favourite star together at the right edge, where they
+  sit in the same place on every card. At large text sizes the CARBS caption moves under the figure
+  so product names keep their width.
+- The meal bar on Home now slides in when a meal starts instead of pushing the list down in one
+  frame.
+
+### Verified so far
+
+JVM 2131/2131 (0 skipped, `--rerun-tasks`); lint 0 errors, 28 warnings (unchanged); instrumented
+`ui` package 373/373 and `data.local` 47/47 on the `carbscan` emulator. **Not yet seen on a physical
+device**: the Quick Add haptic, a live TalkBack pass, and whether taps meant to open a product land on
+the **+** by accident. Re-check all of this before the release build.
+
+### Play Store release notes
+
+*Draft — rewrite before upload.*
+
+> Add a food you have had before in one tap: Home now shows a + beside your last portion. Long-press
+> a recent product to remove it from Recent, with Undo.
 
 ## 1.0.7 (versionCode 8) — 2026-09-17 — uploaded to Google Play Production, replacing 1.0.6, under review
 
