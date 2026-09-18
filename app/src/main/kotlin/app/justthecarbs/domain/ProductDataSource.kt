@@ -84,4 +84,29 @@ interface LocalProductDataSource : ProductDataSource {
 
     /** Favourites first, then most recently used (§21, §22). */
     fun observeRecents(limit: Int): Flow<List<Product>>
+
+    /**
+     * Forgets that one product was ever used, and returns what was forgotten (§43, one barcode).
+     *
+     * Clears the five remembered-use columns and that barcode's `portion_usage` rows — the same
+     * definition of "usage" the global *Clear recent history* action uses — while preserving the
+     * product itself, its carbohydrate value and basis, provenance, verification, its portion-unit
+     * definitions and the favourite flag.
+     *
+     * Declared here, on the local store, rather than assembled in [ProductRepository] from a product
+     * save plus a `PortionUsageStore` delete: the two writes must land together or not at all. A
+     * crash between them leaves the product looking forgotten while its *Usual* shortcuts survive to
+     * reappear on the next visit, which is the precise defect the global action was fixed for. The
+     * store that owns both tables is the only layer that can make them one transaction.
+     *
+     * Returns null for an unknown barcode: nothing was erased, so there is nothing to undo.
+     */
+    suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot?
+
+    /**
+     * Puts one [forgetRecentUse] back, atomically and only if the product still exists.
+     *
+     * Writes only the usage fields, so an edit made during the Undo window survives it.
+     */
+    suspend fun restoreRecentUse(snapshot: RecentUseSnapshot)
 }

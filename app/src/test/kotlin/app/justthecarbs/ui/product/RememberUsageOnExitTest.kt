@@ -17,6 +17,7 @@ import app.justthecarbs.domain.ProductDataSource
 import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
+import app.justthecarbs.domain.RecentUseSnapshot
 import app.justthecarbs.domain.VerificationStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +87,12 @@ class RememberUsageOnExitTest {
         }
 
         override fun observeRecents(limit: Int): Flow<List<Product>> = flowOf(stored.values.toList())
+
+        override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
+            error("this fake does not implement forgetRecentUse")
+
+        override suspend fun restoreRecentUse(snapshot: RecentUseSnapshot) =
+            error("this fake does not implement restoreRecentUse")
     }
 
     private class NoUnits : PortionUnitStore {

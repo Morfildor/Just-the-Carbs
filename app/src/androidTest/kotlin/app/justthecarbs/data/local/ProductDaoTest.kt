@@ -318,4 +318,274 @@ class ProductDaoTest {
         assertNull("and the product remembers no portion", rescanned.lastPortion)
         assertNull("nor a count", rescanned.lastCount)
     }
+
+    // ---- Remove from Recent, one product -------------------------------------------------------
+
+    /** A used product with two usual portions, which is the state the removal has to erase. */
+    private suspend fun seedUsedProduct(barcode: String, favorite: Boolean = false) {
+        dao.upsert(
+            product(barcode, usedSecondsAfterEpoch = 10, favorite = favorite)
+                .copy(
+                    lastInputMode = InputMode.PORTION_UNIT,
+                    lastSelectedPortionUnitId = 7L,
+                    lastCount = BigDecimal("2"),
+                )
+                .toEntity(),
+        )
+        val usage = database.portionUsageDao()
+        usage.upsert(
+            PortionUsageEntity(
+                productBarcode = barcode, inputMode = InputMode.PORTION_UNIT.name,
+                portionUnitId = 7L, amount = "2", usageCount = 6, lastUsedAt = epoch.toEpochMilli(),
+            ),
+        )
+        usage.upsert(
+            PortionUsageEntity(
+                productBarcode = barcode, inputMode = InputMode.GRAMS.name,
+                portionUnitId = PortionUsageEntity.NO_UNIT_SENTINEL, amount = "65",
+                usageCount = 3, lastUsedAt = epoch.toEpochMilli(),
+            ),
+        )
+    }
+
+    /**
+     * The whole point of a *per-product* removal: the product beside it is untouched.
+     *
+     * Asserted first because it is the one failure mode that would make this feature worse than the
+     * global action it is scoped from — a user clearing one product and silently losing another's
+     * history would have no way to notice until the shortcuts were gone.
+     */
+    @Test
+    fun forgettingOneProductLeavesEveryOtherProductsUsageAlone() = runTest {
+        val usage = database.portionUsageDao()
+        seedUsedProduct("111")
+        seedUsedProduct("222")
+
+        dao.forgetRecentUse("111")
+
+        val untouched = dao.findByBarcode("222")!!
+        assertNotNull("the other product's last-used time survives", untouched.lastUsedAt)
+        assertEquals("and its remembered count", "2", untouched.lastCount)
+        assertEquals("and both its usual portions", 2, usage.findByBarcode("222").size)
+    }
+
+    /**
+     * Per column, for the same reason the global action's own test is: clearing three of the five
+     * and calling it done is exactly the half-promise that shipped once already.
+     */
+    @Test
+    fun forgettingOneProductClearsEveryRememberedPortionColumn() = runTest {
+        seedUsedProduct("111")
+
+        dao.forgetRecentUse("111")
+
+        val cleared = dao.findByBarcode("111")!!
+        assertNull("lastUsedAt", cleared.lastUsedAt)
+        assertNull("lastPortion", cleared.lastPortion)
+        assertNull("lastInputMode", cleared.lastInputMode)
+        assertNull("lastSelectedPortionUnitId", cleared.lastSelectedPortionUnitId)
+        assertNull("lastCount", cleared.lastCount)
+    }
+
+    @Test
+    fun forgettingOneProductDeletesItsUsualPortions() = runTest {
+        val usage = database.portionUsageDao()
+        seedUsedProduct("111")
+        assertEquals(2, usage.findByBarcode("111").size)
+
+        dao.forgetRecentUse("111")
+
+        assertEquals("no usual portion survives", 0, usage.findByBarcode("111").size)
+    }
+
+    /**
+     * What the action must *not* destroy. A verified carbohydrate value is §23's reliability
+     * feature, and a removal labelled "Remove from Recent" that quietly discarded it would be the
+     * worst possible reading of an ambiguous label.
+     */
+    @Test
+    fun forgettingOneProductKeepsEveryProductFactAndItsPortionUnits() = runTest {
+        val units = database.portionUnitDao()
+        dao.upsert(
+            product("111", carbs = "48.2", usedSecondsAfterEpoch = 10,
+                origin = ProductDataOrigin.OPEN_FOOD_FACTS,
+                verification = VerificationStatus.USER_VERIFIED)
+                .copy(verifiedAt = epoch)
+                .toEntity(),
+        )
+        units.upsert(
+            PortionUnitEntity(
+                productBarcode = "111", kind = PortionUnitKind.SLICE.name, customLabel = null,
+                conversionKind = "WEIGHT", conversionValue = "36",
+                conversionBasis = NutritionBasis.PER_100_G.name,
+                dataSource = ProductDataOrigin.MANUAL.name,
+                verificationStatus = VerificationStatus.USER_VERIFIED.name,
+                verifiedAt = epoch.toEpochMilli(),
+                originalRemoteConversionKind = null, originalRemoteConversionValue = null,
+                originalRemoteConversionBasis = null, latestRemoteConversionKind = null,
+                latestRemoteConversionValue = null, latestRemoteConversionBasis = null,
+                rawRemoteServingText = null,
+                createdAt = epoch.toEpochMilli(), updatedAt = epoch.toEpochMilli(),
+            ),
+        )
+
+        dao.forgetRecentUse("111")
+
+        val kept = dao.findByBarcode("111")!!.toDomain()
+        assertEquals("name", "Product 111", kept.name)
+        assertEquals("carbohydrate value", BigDecimal("48.2"), kept.carbsPer100)
+        assertEquals("basis", NutritionBasis.PER_100_G, kept.basis)
+        assertEquals("provenance", ProductDataOrigin.OPEN_FOOD_FACTS, kept.dataSource)
+        assertEquals("verification", VerificationStatus.USER_VERIFIED, kept.verificationStatus)
+        assertEquals("verified-at", epoch, kept.verifiedAt)
+        assertEquals("its portion-unit definition", 1, units.findByBarcode("111").size)
+    }
+
+    @Test
+    fun forgettingAFavouriteKeepsItStarredAndStillVisible() = runTest {
+        seedUsedProduct("111", favorite = true)
+
+        dao.forgetRecentUse("111")
+
+        val kept = dao.findByBarcode("111")!!.toDomain()
+        assertEquals("still a favourite", true, kept.favorite)
+        assertNull("but no longer remembers how it was eaten", kept.lastUsedAt)
+        assertEquals(
+            "and stays on Home, because favourites are listed whether used or not",
+            listOf("111"),
+            dao.observeRecents(limit = 10).first().map { it.barcode },
+        )
+    }
+
+    /**
+     * The user-visible outcome for an ordinary product. `observeRecents` selects on
+     * `lastUsedAt IS NOT NULL OR favorite = 1`, so clearing the timestamp is what removes the row
+     * from Home — asserted through the real query rather than by re-reading the column, because the
+     * query is the thing the user actually sees.
+     */
+    @Test
+    fun forgettingANonFavouriteRemovesItFromRecents() = runTest {
+        seedUsedProduct("111")
+        seedUsedProduct("222")
+
+        dao.forgetRecentUse("111")
+
+        assertEquals(
+            listOf("222"),
+            dao.observeRecents(limit = 10).first().map { it.barcode },
+        )
+    }
+
+    @Test
+    fun forgettingAnUnknownBarcodeReportsThatNothingWasErased() = runTest {
+        assertNull(dao.forgetRecentUse("nosuchbarcode"))
+    }
+
+    /**
+     * Undo, end to end at the storage layer: every erased fact comes back.
+     *
+     * The snapshot is captured by the removal itself, so this also pins that
+     * [ProductDao.forgetRecentUse] returns what it erased rather than what it left behind — a
+     * snapshot read *after* the clear would restore nulls and this test would fail.
+     */
+    @Test
+    fun undoingARemovalRestoresEveryUsageFactExactly() = runTest {
+        val usage = database.portionUsageDao()
+        seedUsedProduct("111")
+        val before = dao.findByBarcode("111")!!
+        val usageBefore = usage.findByBarcode("111")
+            .map { Triple(it.inputMode, it.portionUnitId, it.amount) to (it.usageCount to it.lastUsedAt) }
+            .toMap()
+
+        val snapshot = dao.forgetRecentUse("111")!!
+        dao.restoreRecentUse(snapshot)
+
+        val after = dao.findByBarcode("111")!!
+        assertEquals("lastUsedAt", before.lastUsedAt, after.lastUsedAt)
+        assertEquals("lastPortion", before.lastPortion, after.lastPortion)
+        assertEquals("lastInputMode", before.lastInputMode, after.lastInputMode)
+        assertEquals("lastSelectedPortionUnitId", before.lastSelectedPortionUnitId, after.lastSelectedPortionUnitId)
+        assertEquals("lastCount", before.lastCount, after.lastCount)
+
+        val usageAfter = usage.findByBarcode("111")
+            .map { Triple(it.inputMode, it.portionUnitId, it.amount) to (it.usageCount to it.lastUsedAt) }
+            .toMap()
+        assertEquals("every usual portion, with its count and recency", usageBefore, usageAfter)
+        assertEquals("and it is on Home again", 1, dao.observeRecents(limit = 10).first().size)
+    }
+
+    /**
+     * An Undo restores usage; it must not roll back an edit made while the Snackbar was up.
+     *
+     * The removal is reversible precisely because it touches nothing but usage — re-inserting the
+     * whole product row from the snapshot would be simpler and would silently revert a value the
+     * user verified against the package in the intervening seconds.
+     */
+    @Test
+    fun undoingARemovalDoesNotRevertAnEditMadeDuringTheUndoWindow() = runTest {
+        seedUsedProduct("111")
+        val snapshot = dao.forgetRecentUse("111")!!
+
+        // The user opens the product and verifies its value while the Snackbar is still showing.
+        dao.upsert(
+            dao.findByBarcode("111")!!.toDomain()
+                .copy(
+                    carbsPer100 = BigDecimal("52.7"),
+                    verificationStatus = VerificationStatus.USER_VERIFIED,
+                    favorite = true,
+                )
+                .toEntity(),
+        )
+
+        dao.restoreRecentUse(snapshot)
+
+        val after = dao.findByBarcode("111")!!.toDomain()
+        assertEquals("the verified value stands", BigDecimal("52.7"), after.carbsPer100)
+        assertEquals("and the verification", VerificationStatus.USER_VERIFIED, after.verificationStatus)
+        assertEquals("and the favourite toggled meanwhile", true, after.favorite)
+        assertNotNull("while the usage came back", after.lastUsedAt)
+    }
+
+    /**
+     * Undo must never resurrect a product deleted during the window.
+     *
+     * Re-inserting the usage rows alone would orphan them against a barcode with no product, which
+     * is exactly the shape that let a deleted product's portions reappear on the next scan.
+     */
+    @Test
+    fun undoingARemovalOfADeletedProductRestoresNothingAtAll() = runTest {
+        val usage = database.portionUsageDao()
+        seedUsedProduct("111")
+        val snapshot = dao.forgetRecentUse("111")!!
+
+        dao.deleteAllProducts()
+        dao.restoreRecentUse(snapshot)
+
+        assertNull("the product is not recreated", dao.findByBarcode("111"))
+        assertEquals("and no usage is orphaned behind it", 0, usage.findByBarcode("111").size)
+    }
+
+    /**
+     * The global action is unchanged by the arrival of the per-product one.
+     *
+     * The two share a definition of "usage" and deliberately **not** a statement: this asserts the
+     * global clear still exempts no row, which is the property a shared statement with an optional
+     * `WHERE` would be one careless call site away from losing.
+     */
+    @Test
+    fun theGlobalClearStillForgetsEveryProductIncludingFavourites() = runTest {
+        val usage = database.portionUsageDao()
+        seedUsedProduct("111")
+        seedUsedProduct("222", favorite = true)
+
+        dao.clearRecentHistory()
+
+        for (barcode in listOf("111", "222")) {
+            val cleared = dao.findByBarcode(barcode)!!
+            assertNull("$barcode lastUsedAt", cleared.lastUsedAt)
+            assertNull("$barcode lastCount", cleared.lastCount)
+            assertEquals("$barcode usual portions", 0, usage.findByBarcode(barcode).size)
+        }
+        assertEquals("the favourite is still starred", true, dao.findByBarcode("222")!!.favorite)
+    }
 }

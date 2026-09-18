@@ -18,6 +18,7 @@ import app.justthecarbs.domain.ProductDataSource
 import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
+import app.justthecarbs.domain.RecentUseSnapshot
 import app.justthecarbs.domain.VerificationStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -92,6 +93,64 @@ class HomeViewModelTest {
         override suspend fun fetch(barcode: String): ProductFetchResult = ProductFetchResult.NotFound
         override suspend fun save(product: Product) {}
         override fun observeRecents(limit: Int): Flow<List<Product>> = flowOf(recents)
+
+        override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
+            error("this fake does not implement forgetRecentUse")
+
+        override suspend fun restoreRecentUse(snapshot: RecentUseSnapshot) =
+            error("this fake does not implement restoreRecentUse")
+    }
+
+    /**
+     * A local store that records the forget/restore round trip.
+     *
+     * The storage semantics themselves are pinned on a real database in
+     * `ProductDaoTest` — what this fake is for is the part of the feature that lives above storage:
+     * that exactly one snapshot is held, that it is dropped before the restore is issued, and that a
+     * second Undo therefore reaches the repository zero times.
+     */
+    private class ForgetfulLocal(
+        private val recents: List<Product> = emptyList(),
+        private val snapshotFor: (String) -> RecentUseSnapshot? = { defaultSnapshot(it) },
+    ) : LocalProductDataSource {
+        val forgotten = mutableListOf<String>()
+        val restored = mutableListOf<RecentUseSnapshot>()
+
+        override suspend fun fetch(barcode: String): ProductFetchResult = ProductFetchResult.NotFound
+        override suspend fun save(product: Product) {}
+        override fun observeRecents(limit: Int): Flow<List<Product>> = flowOf(recents)
+
+        override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? {
+            forgotten += barcode
+            return snapshotFor(barcode)
+        }
+
+        override suspend fun restoreRecentUse(snapshot: RecentUseSnapshot) {
+            restored += snapshot
+        }
+
+        companion object {
+            fun defaultSnapshot(barcode: String) = RecentUseSnapshot(
+                barcode = barcode,
+                lastUsedAt = Instant.EPOCH,
+                lastPortion = BigDecimal("65"),
+                lastInputMode = InputMode.GRAMS,
+                lastSelectedPortionUnitId = null,
+                lastCount = null,
+                portionUsage = emptyList(),
+            )
+
+            /** A favourite that was starred but never eaten: nothing to forget, nothing to undo. */
+            fun emptySnapshot(barcode: String) = RecentUseSnapshot(
+                barcode = barcode,
+                lastUsedAt = null,
+                lastPortion = null,
+                lastInputMode = null,
+                lastSelectedPortionUnitId = null,
+                lastCount = null,
+                portionUsage = emptyList(),
+            )
+        }
     }
 
     private val noRemote = object : ProductDataSource {
@@ -166,6 +225,136 @@ class HomeViewModelTest {
     // something collects it, so every test needs an active subscriber before advancing time.
     private fun TestScope.subscribe(vm: HomeViewModel) {
         backgroundScope.launch { vm.recents.collect {} }
+    }
+
+    // ---- Remove from Recent: the Undo window ---------------------------------------------------
+
+    private fun forgetfulViewModel(local: ForgetfulLocal) = HomeViewModel(
+        ProductRepository(
+            local = local,
+            remote = noRemote,
+            portionUnits = CountingPortionUnitStore(emptyList()),
+            meal = noMeal,
+            portionUsage = noUsage,
+            searchSource = noSearch,
+        ),
+    )
+
+    private fun aProduct(barcode: String = "111") = product(barcode, unitId = null, mode = InputMode.GRAMS)
+        .copy(name = "Hagelslag")
+
+    @Test
+    fun `forgetting a product offers an undo naming it`() = runTest {
+        val local = ForgetfulLocal()
+        val vm = forgetfulViewModel(local)
+
+        vm.forgetRecentUse(aProduct())
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf("111"), local.forgotten)
+        assertEquals("Hagelslag", vm.lastForgotten.value?.name)
+        assertEquals("111", vm.lastForgotten.value?.snapshot?.barcode)
+    }
+
+    @Test
+    fun `undo restores the snapshot that was taken`() = runTest {
+        val local = ForgetfulLocal()
+        val vm = forgetfulViewModel(local)
+        vm.forgetRecentUse(aProduct())
+        dispatcher.scheduler.advanceUntilIdle()
+        val offered = vm.lastForgotten.value!!.snapshot
+
+        vm.undoForgetRecentUse()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(offered), local.restored)
+    }
+
+    /**
+     * The Snackbar can still be on screen for a moment after its action fires, so a second tap is
+     * reachable — and a second restore of the same snapshot would re-insert the usual portions the
+     * first one already put back.
+     *
+     * The guard is that the held snapshot is cleared *before* the restore is launched, not that the
+     * restore is idempotent; asserted by call count, because a state check alone would still pass if
+     * the clear happened after the launch.
+     */
+    @Test
+    fun `undo cannot run twice`() = runTest {
+        val local = ForgetfulLocal()
+        val vm = forgetfulViewModel(local)
+        vm.forgetRecentUse(aProduct())
+        dispatcher.scheduler.advanceUntilIdle()
+
+        vm.undoForgetRecentUse()
+        vm.undoForgetRecentUse()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("exactly one restore", 1, local.restored.size)
+        assertEquals("and nothing left to undo", null, vm.lastForgotten.value)
+    }
+
+    @Test
+    fun `undo after the snackbar has gone restores nothing`() = runTest {
+        val local = ForgetfulLocal()
+        val vm = forgetfulViewModel(local)
+        vm.forgetRecentUse(aProduct())
+        dispatcher.scheduler.advanceUntilIdle()
+
+        vm.clearForgetUndo()
+        vm.undoForgetRecentUse()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(emptyList<RecentUseSnapshot>(), local.restored)
+    }
+
+    /**
+     * A favourite starred but never eaten has nothing to forget. Offering "Removed X — Undo" there
+     * would claim something happened, and the Undo would restore a state of all nulls.
+     *
+     * This is also what stops a repeated removal of the same favourite — which stays on screen and
+     * so can be long-pressed again — replacing a good snapshot with an empty one.
+     */
+    @Test
+    fun `forgetting a product that was never used offers no undo`() = runTest {
+        val local = ForgetfulLocal(snapshotFor = { ForgetfulLocal.emptySnapshot(it) })
+        val vm = forgetfulViewModel(local)
+
+        vm.forgetRecentUse(aProduct())
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("the clear still ran", listOf("111"), local.forgotten)
+        assertEquals("but nothing is offered", null, vm.lastForgotten.value)
+    }
+
+    @Test
+    fun `forgetting an unknown product offers no undo`() = runTest {
+        val local = ForgetfulLocal(snapshotFor = { null })
+        val vm = forgetfulViewModel(local)
+
+        vm.forgetRecentUse(aProduct())
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(null, vm.lastForgotten.value)
+    }
+
+    /**
+     * One deep, never a list. A second removal replaces the first, matching the Snackbar the screen
+     * shows — a queue would let the user tap Undo and restore a product forgotten two actions ago.
+     */
+    @Test
+    fun `a second removal replaces the first rather than queueing behind it`() = runTest {
+        val local = ForgetfulLocal()
+        val vm = forgetfulViewModel(local)
+
+        vm.forgetRecentUse(aProduct("111"))
+        dispatcher.scheduler.advanceUntilIdle()
+        vm.forgetRecentUse(aProduct("222"))
+        dispatcher.scheduler.advanceUntilIdle()
+        vm.undoForgetRecentUse()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("only the most recent is restorable", listOf("222"), local.restored.map { it.barcode })
     }
 
     @Test

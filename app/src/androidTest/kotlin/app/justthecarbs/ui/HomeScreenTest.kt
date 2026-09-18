@@ -7,8 +7,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -16,6 +18,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -24,6 +27,8 @@ import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.domain.AppSettings
@@ -45,6 +50,11 @@ import app.justthecarbs.ui.home.HOME_SEARCH_SEARCHING_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_RATE_LIMITED_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_REFRESH_ERROR_TAG
 import app.justthecarbs.ui.home.HOME_SEARCH_RESULTS_TAG
+import app.justthecarbs.R
+import app.justthecarbs.domain.RecentUseSnapshot
+import app.justthecarbs.ui.home.ForgottenRecent
+import app.justthecarbs.ui.home.HOME_RECENT_FORGET_TAG
+import app.justthecarbs.ui.home.HOME_SNACKBAR_TAG
 import app.justthecarbs.ui.home.HomeScreen
 import app.justthecarbs.ui.home.RecentEntry
 import app.justthecarbs.domain.ResultStyle
@@ -105,6 +115,10 @@ class HomeScreenTest {
         onManualEntry: () -> Unit = {},
         onSearchSubmit: () -> Unit = {},
         onSearchQueryChanged: (String) -> Unit = {},
+        onOpenProduct: (String) -> Unit = {},
+        onForgetRecent: (Product) -> Unit = {},
+        forgotten: ForgottenRecent? = null,
+        onUndoForgetRecent: () -> Unit = {},
         density: Density? = null,
     ) {
         compose.setContent {
@@ -115,9 +129,12 @@ class HomeScreenTest {
                         settings = AppSettings(),
                         onScan = onScan,
                         onManualEntry = onManualEntry,
-                        onOpenProduct = {},
+                        onOpenProduct = onOpenProduct,
                         onToggleFavorite = {},
                         onOpenSettings = {},
+                        onForgetRecent = onForgetRecent,
+                        forgotten = forgotten,
+                        onUndoForgetRecent = onUndoForgetRecent,
                         onScanLabel = onScanLabel,
                         mealItems = mealItems,
                         mealTotal = if (mealItems.isEmpty()) null else {
@@ -626,5 +643,125 @@ class HomeScreenTest {
             }
         }
         compose.onNodeWithText("6 g").assertIsDisplayed()
+    }
+
+    // ---- Remove from Recent ---------------------------------------------------------------
+
+    private fun recentEntry(barcode: String = "1", name: String = "Hagelslag puur") =
+        RecentEntry(product = product(barcode = barcode, name = name), lastUnit = null)
+
+    /**
+     * The contract that decides the whole interaction: Home stays quiet.
+     *
+     * A permanent per-card remove button would take its width from the product name, on every card,
+     * forever, to serve an action taken rarely — so the action is deliberately behind a long press.
+     * Asserted as an absence, because that is the only way this can regress: someone adding a
+     * visible affordance "for discoverability" would break nothing else in this file.
+     */
+    @Test
+    fun noVisibleRemoveControlExistsOnARecentCard() {
+        show(recents = listOf(recentEntry()))
+
+        compose.onNodeWithText(stringOf(R.string.recent_forget)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(stringOf(R.string.recent_options)).assertDoesNotExist()
+    }
+
+    @Test
+    fun anOrdinaryTapOnARecentCardStillOpensTheProductRatherThanAMenu() {
+        var opened: String? = null
+        show(recents = listOf(recentEntry(barcode = "1")), onOpenProduct = { opened = it })
+
+        // `useUnmergedTree` puts the gesture on the product name. The merged node is the whole card,
+        // and its geometric centre now falls on the card's Quick Add pill — a tap there is an add,
+        // by design, not an open. The name is where a person taps to open a product.
+        compose.onNodeWithText("Hagelslag puur", useUnmergedTree = true).performClick()
+
+        assertEquals("1", opened)
+        compose.onNodeWithText(stringOf(R.string.recent_forget)).assertDoesNotExist()
+    }
+
+    @Test
+    fun longPressingARecentCardOpensItsOptions() {
+        show(recents = listOf(recentEntry()))
+
+        // `useUnmergedTree` puts the gesture on the product name. The merged node is the whole card,
+        // and its geometric centre now falls on the card's Quick Add pill — a tap there is an add,
+        // by design, not an open. The name is where a person taps to open a product.
+        compose.onNodeWithText("Hagelslag puur", useUnmergedTree = true).performTouchInput { longClick() }
+
+        compose.onNodeWithTag(HOME_RECENT_FORGET_TAG).assertIsDisplayed()
+        // The menu names the card it belongs to, and says what survives — the action is otherwise
+        // easy to read as "delete this product".
+        compose.onNodeWithText(stringOf(R.string.recent_forget_explainer)).assertIsDisplayed()
+    }
+
+    @Test
+    fun choosingRemoveFromRecentReportsTheProductExactlyOnce() {
+        val removed = mutableListOf<String>()
+        show(
+            recents = listOf(recentEntry(barcode = "1"), recentEntry(barcode = "2", name = "Melk")),
+            onForgetRecent = { removed += it.barcode },
+        )
+
+        // `useUnmergedTree` puts the gesture on the product name. The merged node is the whole card,
+        // and its geometric centre now falls on the card's Quick Add pill — a tap there is an add,
+        // by design, not an open. The name is where a person taps to open a product.
+        compose.onNodeWithText("Melk", useUnmergedTree = true).performTouchInput { longClick() }
+        compose.onNodeWithTag(HOME_RECENT_FORGET_TAG).performClick()
+
+        assertEquals(listOf("2"), removed)
+    }
+
+    /**
+     * The gesture must be reachable without performing the gesture.
+     *
+     * `onLongClickLabel` is what puts the action in TalkBack's "Actions available" list; without it
+     * the long press is still there and a screen-reader user has no way to discover or trigger it,
+     * which would make this feature sighted-only.
+     */
+    @Test
+    fun theRecentCardExposesItsOptionsAsALabelledAccessibilityAction() {
+        show(recents = listOf(recentEntry()))
+
+        // `useUnmergedTree`, because the card does not merge its descendants: the long-click action
+        // lives on the card's own clickable node, which the merged tree folds into the text beneath
+        // it. Asserted by count so the label cannot be satisfied by some other node acquiring one.
+        compose.onAllNodes(hasLongClickLabelOf(stringOf(R.string.recent_options)), useUnmergedTree = true)
+            .assertCountEquals(1)
+    }
+
+    @Test
+    fun theUndoSnackbarNamesTheRemovedProductAndRestoresIt() {
+        var undone = 0
+        show(
+            recents = emptyList(),
+            forgotten = ForgottenRecent(
+                name = "Hagelslag puur",
+                snapshot = RecentUseSnapshot(
+                    barcode = "1",
+                    lastUsedAt = Instant.EPOCH,
+                    lastPortion = BigDecimal("65"),
+                    lastInputMode = null,
+                    lastSelectedPortionUnitId = null,
+                    lastCount = null,
+                    portionUsage = emptyList(),
+                ),
+            ),
+            onUndoForgetRecent = { undone++ },
+        )
+
+        compose.onNodeWithTag(HOME_SNACKBAR_TAG).assertIsDisplayed()
+        compose.onNodeWithText(stringOf(R.string.recent_forgotten, "Hagelslag puur")).assertIsDisplayed()
+        compose.onNodeWithText(stringOf(R.string.action_undo)).performClick()
+
+        assertEquals(1, undone)
+    }
+
+    private fun stringOf(id: Int, vararg args: Any): String =
+        InstrumentationRegistry.getInstrumentation().targetContext.getString(id, *args)
+
+
+    private fun hasLongClickLabelOf(label: String) = SemanticsMatcher("long-click label is '$label'") {
+        it.config.getOrNull(SemanticsActions.OnLongClick)?.label == label
     }
 }

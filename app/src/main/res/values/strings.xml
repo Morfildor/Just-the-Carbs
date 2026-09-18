@@ -50,6 +50,29 @@
     <string name="recent_carbs_label" tools:ignore="MissingTranslation">CARBS</string>
     <string name="favorite_add">Add to favourites</string>
     <string name="favorite_remove">Remove from favourites</string>
+    <!--
+      Long-pressing a recent product opens its options. This is the long-press action's accessible
+      name: TalkBack reads it under "Actions available", which is what makes the gesture reachable
+      without performing the gesture. A card with no permanent overflow button keeps Home quiet for
+      the fast path, which is what this app is for; the cost is that the action is deliberately a
+      second-order discovery, appropriate for rare maintenance and wrong for anything on the
+      scan-portion-carbs path.
+    -->
+    <string name="recent_options">Product options</string>
+    <string name="recent_forget">Remove from Recent</string>
+    <!--
+      The menu's own explanation of what survives. This action is easy to misread as "delete this
+      product", and the difference matters most for a verified value the user checked against the
+      package — so the menu says what is kept rather than leaving the user to find out.
+    -->
+    <string name="recent_forget_explainer">Keeps the product and its carb value.</string>
+    <string name="recent_forgotten" tools:ignore="MissingTranslation">Removed %1$s from Recent</string>
+    <!-- Quick Add on a remembered Home card. The button shows only a plus, because the portion it adds
+         is printed right beside it; the spoken form names both, since TalkBack reads the button on
+         its own. -->
+    <string name="recent_quick_add_description" tools:ignore="MissingTranslation">Add %1$s of %2$s to current meal</string>
+    <string name="recent_quick_added_state" tools:ignore="MissingTranslation">Added to current meal</string>
+    <string name="recent_quick_add_failed" tools:ignore="MissingTranslation">Couldn\'t add %1$s to the meal. Try again.</string>
 
     <!-- Scanner -->
     <!--

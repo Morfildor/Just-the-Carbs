@@ -29,6 +29,12 @@ class RepositoryAuditProbeTest {
         override suspend fun fetch(barcode: String) = ProductFetchResult.Found(product)
         override suspend fun save(product: Product) { this.product = product }
         override fun observeRecents(limit: Int) = flowOf(listOf(product))
+
+        override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
+            error("this fake does not implement forgetRecentUse")
+
+        override suspend fun restoreRecentUse(snapshot: RecentUseSnapshot) =
+            error("this fake does not implement restoreRecentUse")
     }
     private class Units : PortionUnitStore {
         val units = mutableListOf<PortionUnit>()

@@ -1,10 +1,30 @@
 package app.justthecarbs.data.local
 
 import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
+
+/**
+ * One product's usage exactly as it was stored, read inside the transaction that erased it.
+ *
+ * Storage-shaped on purpose: epoch millis and `TEXT` decimals, the columns' own types, so the
+ * snapshot restores byte-for-byte what was read without a decimal round-trip in between.
+ * [app.justthecarbs.data.local.RoomProductDataSource] maps it to the domain
+ * [app.justthecarbs.domain.RecentUseSnapshot] at the same seam that already maps everything else.
+ */
+data class RecentUseSnapshotRow(
+    val barcode: String,
+    val lastUsedAt: Long?,
+    val lastPortion: String?,
+    val lastInputMode: String?,
+    val lastSelectedPortionUnitId: Long?,
+    val lastCount: String?,
+    val portionUsage: List<PortionUsageEntity>,
+)
 
 /**
  * Product reads and writes, plus the two destructive Settings actions (§43).
@@ -89,6 +109,132 @@ abstract class ProductDao {
     open suspend fun clearRecentHistory() {
         clearProductUsageColumns()
         deleteAllPortionUsage()
+    }
+
+    // ---- one product's usage (Remove from Recent) ----------------------------------------------
+
+    /**
+     * The same five columns [clearProductUsageColumns] clears, for one barcode.
+     *
+     * Written as its own statement rather than by adding a `WHERE` to that one: the global action's
+     * whole claim is that it exempts no row, and a shared statement with an optional predicate is
+     * one careless call site away from a global clear that quietly skipped something.
+     */
+    @Query(
+        """
+        UPDATE products SET
+            lastUsedAt = NULL,
+            lastPortion = NULL,
+            lastInputMode = NULL,
+            lastSelectedPortionUnitId = NULL,
+            lastCount = NULL
+        WHERE barcode = :barcode
+        """,
+    )
+    abstract suspend fun clearProductUsageColumnsFor(barcode: String)
+
+    @Query("DELETE FROM portion_usage WHERE productBarcode = :barcode")
+    abstract suspend fun deletePortionUsageFor(barcode: String)
+
+    @Query("SELECT * FROM portion_usage WHERE productBarcode = :barcode")
+    abstract suspend fun findPortionUsageFor(barcode: String): List<PortionUsageEntity>
+
+    /**
+     * Restores one usage variant. `IGNORE`, and the direction matters.
+     *
+     * `portion_usage` is uniquely indexed on (barcode, mode, unit, amount). If the user re-used the
+     * product during the Undo window, a fresh row for the same variant already exists and is the
+     * *newer* truth; ignoring the restore keeps it. `REPLACE` would overwrite a real count the user
+     * has just earned with a stale one, which is the one outcome an Undo must never produce.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertPortionUsage(usage: PortionUsageEntity)
+
+    @Query(
+        """
+        UPDATE products SET
+            lastUsedAt = :lastUsedAt,
+            lastPortion = :lastPortion,
+            lastInputMode = :lastInputMode,
+            lastSelectedPortionUnitId = :lastSelectedPortionUnitId,
+            lastCount = :lastCount
+        WHERE barcode = :barcode
+        """,
+    )
+    abstract suspend fun restoreProductUsageColumns(
+        barcode: String,
+        lastUsedAt: Long?,
+        lastPortion: String?,
+        lastInputMode: String?,
+        lastSelectedPortionUnitId: Long?,
+        lastCount: String?,
+    )
+
+    /**
+     * *Remove from Recent* for one product (§43 semantics, one barcode).
+     *
+     * Reads the snapshot and clears in **one** transaction, so the returned snapshot describes
+     * exactly what was erased — a read outside the transaction could be overtaken by a concurrent
+     * use and offer the user an Undo that restores a state that never existed.
+     *
+     * Everything the global action preserves is preserved here: the product row, its name,
+     * carbohydrate value and basis, provenance, verification, its `portion_units` definitions and
+     * the favourite flag. A favourite therefore stays in Favourites and simply stops remembering how
+     * it was last eaten; an ordinary product leaves Recents, because `observeRecents` selects on
+     * `lastUsedAt IS NOT NULL OR favorite = 1`.
+     *
+     * Returns null for an unknown barcode — nothing was erased, so there is nothing to offer Undo
+     * for, and the caller must not show one.
+     */
+    @Transaction
+    open suspend fun forgetRecentUse(barcode: String): RecentUseSnapshotRow? {
+        val product = findByBarcode(barcode) ?: return null
+        val usage = findPortionUsageFor(barcode)
+        clearProductUsageColumnsFor(barcode)
+        deletePortionUsageFor(barcode)
+        return RecentUseSnapshotRow(
+            barcode = product.barcode,
+            lastUsedAt = product.lastUsedAt,
+            lastPortion = product.lastPortion,
+            lastInputMode = product.lastInputMode,
+            lastSelectedPortionUnitId = product.lastSelectedPortionUnitId,
+            lastCount = product.lastCount,
+            portionUsage = usage,
+        )
+    }
+
+    /**
+     * Puts one [forgetRecentUse] back, atomically.
+     *
+     * **Only the five usage columns are written.** The product row is updated in place rather than
+     * re-inserted from the snapshot, so an edit made during the Undo window — a value verified
+     * against the package, a favourite toggled — survives the Undo instead of being silently
+     * reverted to the moment of removal.
+     *
+     * **Nothing is resurrected.** If the product was deleted while the Snackbar was up, the `UPDATE`
+     * matches no row and the usage rows are deliberately not written either: re-inserting them would
+     * leave `portion_usage` orphaned against a barcode with no product, which is exactly the defect
+     * that let a deleted product's portions reappear on the next scan (see [deleteAllProducts]).
+     *
+     * The rows are inserted with a fresh surrogate `id`. `portion_usage.id` is an
+     * `autoGenerate` ROWID that nothing outside this table references, and SQLite may reuse a freed
+     * ROWID — so forcing the old id back risks colliding with a row inserted for a *different*
+     * product during the Undo window, and losing the restore to the conflict strategy. The variant
+     * identity (barcode, mode, unit, amount) and both aggregate fields round-trip exactly, which is
+     * what *Usual* actually reads.
+     */
+    @Transaction
+    open suspend fun restoreRecentUse(snapshot: RecentUseSnapshotRow) {
+        if (findByBarcode(snapshot.barcode) == null) return
+        restoreProductUsageColumns(
+            barcode = snapshot.barcode,
+            lastUsedAt = snapshot.lastUsedAt,
+            lastPortion = snapshot.lastPortion,
+            lastInputMode = snapshot.lastInputMode,
+            lastSelectedPortionUnitId = snapshot.lastSelectedPortionUnitId,
+            lastCount = snapshot.lastCount,
+        )
+        snapshot.portionUsage.forEach { insertPortionUsage(it.copy(id = 0)) }
     }
 
     @Query("DELETE FROM portion_units")

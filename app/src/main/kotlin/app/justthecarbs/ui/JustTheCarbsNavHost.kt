@@ -410,6 +410,12 @@ fun JustTheCarbsNavHost(
             )
             val searchState by searchViewModel.state.collectAsStateWithLifecycle()
 
+            // The product whose usage was just forgotten, if the Undo Snackbar is still live. Held
+            // in the ViewModel rather than in the composition so it survives a rotation mid-window —
+            // the alternative silently finalises a removal the user was still deciding about.
+            val forgottenRecent by viewModel.lastForgotten.collectAsStateWithLifecycle()
+            val quickAddStatus by viewModel.quickAdd.collectAsStateWithLifecycle()
+
             HomeScreen(
                 recents = recents,
                 settings = settings,
@@ -418,6 +424,13 @@ fun JustTheCarbsNavHost(
                 onOpenProduct = { navController.navigate(Routes.product(it)) },
                 onToggleFavorite = viewModel::toggleFavorite,
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onForgetRecent = viewModel::forgetRecentUse,
+                forgotten = forgottenRecent,
+                onUndoForgetRecent = viewModel::undoForgetRecentUse,
+                onForgetUndoExpired = viewModel::clearForgetUndo,
+                quickAddStatus = quickAddStatus,
+                onQuickAdd = viewModel::quickAdd,
+                quickAddEvents = viewModel.quickAddEvents,
                 onScanLabel = { navController.navigate(Routes.labelScan()) },
                 // The tutorial is offered here rather than opened automatically. Both actions are
                 // ordinary forward navigations / a single write — neither is a gate.

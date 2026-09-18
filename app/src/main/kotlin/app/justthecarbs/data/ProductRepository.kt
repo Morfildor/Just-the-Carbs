@@ -19,6 +19,7 @@ import app.justthecarbs.domain.ProductDataSource
 import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
+import app.justthecarbs.domain.RecentUseSnapshot
 import app.justthecarbs.domain.UsualPortionSelector
 import app.justthecarbs.domain.VerificationStatus
 import kotlinx.coroutines.flow.Flow
@@ -373,6 +374,23 @@ class ProductRepository(
     }
 
     fun observeRecents(limit: Int): Flow<List<Product>> = local.observeRecents(limit)
+
+    /**
+     * *Remove from Recent* for one product — the per-product form of Settings' *Clear recent
+     * history* (§43), with the same definition of "usage" and the same list of things it preserves.
+     *
+     * Delegates rather than composing the two writes here, because atomicity is the whole point: see
+     * [LocalProductDataSource.forgetRecentUse]. Note the contrast with
+     * [clearUsageForBasisChange], which clears the same facts non-atomically — that one is a
+     * consequence of a value the user has just changed, not a promise made to them about what has
+     * been erased, and it has no Undo to be exact for.
+     *
+     * Returns the snapshot to hold for Undo, or null if the barcode is unknown.
+     */
+    suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? = local.forgetRecentUse(barcode)
+
+    /** Puts one [forgetRecentUse] back. Restores usage only; never resurrects a deleted product. */
+    suspend fun restoreRecentUse(snapshot: RecentUseSnapshot) = local.restoreRecentUse(snapshot)
 
     /**
      * Free-text product search — the fallback when a barcode does not resolve (spec §9).
