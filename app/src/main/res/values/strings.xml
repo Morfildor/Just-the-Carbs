@@ -42,6 +42,8 @@
 
     <!-- Recents list -->
     <string name="recent_never_used">Not used yet</string>
+    <string name="settings_share_app" tools:ignore="MissingTranslation">Share app</string>
+    <string name="settings_share_link_failed" tools:ignore="MissingTranslation">Could not open sharing.</string>
     <!--
       Recents previously rendered "150 g → 5.6 g" as one grey line. The carbohydrate figure was
       already computed and was styled as metadata, so the number a returning user came for was on
@@ -442,6 +444,7 @@
     <string name="verify_confirm">Save as verified</string>
     <string name="verify_cancel">Cancel</string>
 
+    <string name="verify_error_carbs_negative">Enter 0 or more</string>
     <!-- Millilitre / gram (design decision 3.1) -->
 
     <!-- OCR (§29) -->

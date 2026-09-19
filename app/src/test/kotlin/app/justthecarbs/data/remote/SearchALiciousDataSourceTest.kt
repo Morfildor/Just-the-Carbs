@@ -85,7 +85,8 @@ class SearchALiciousDataSourceTest {
            "image_front_url":"https://images.openfoodfacts.org/images/products/front_nl.4.400.jpg",
            "image_front_small_url":"https://images.openfoodfacts.org/images/products/front_nl.4.200.jpg"},
           {"code":"0009800800049","product_name":"Nutella & go!","brands":["Nutella"],
-           "quantity":"500 ml","nutriments":{"carbohydrates_100g":63.46}}
+           "quantity":"500 ml","nutriments":{"carbohydrates_100g":63.46},
+           "image_front_url":"https://images.openfoodfacts.org/images/products/nutella.400.jpg"}
         ]}
     """.trimIndent()
 
@@ -103,9 +104,16 @@ class SearchALiciousDataSourceTest {
         assertEquals("390 g", first.packageQuantity)
         assertEquals(0, BigDecimal("67").compareTo(first.carbsPer100))
         assertEquals(NutritionBasis.PER_100_G, first.basis)
-        assertTrue(first.imageUrl!!.endsWith("front_nl.4.400.jpg"))
+        assertEquals(
+            "https://images.openfoodfacts.org/images/products/front_nl.4.200.jpg",
+            first.imageUrl,
+        )
         // ml resolves as readily as g — the basis follows the printed unit, not a default.
         assertEquals(NutritionBasis.PER_100_ML, hits[1].basis)
+        assertEquals(
+            "https://images.openfoodfacts.org/images/products/nutella.400.jpg",
+            hits[1].imageUrl,
+        )
     }
 
     /**

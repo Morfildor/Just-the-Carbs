@@ -39,9 +39,8 @@ import java.math.BigDecimal
  * fields are pre-filled with the current values and the user corrects what is wrong, rather than
  * being made to retype what is already right.
  *
- * The basis is editable here too. It is the one field the app may have inferred rather than been
- * told (a product whose declared quantity could not be parsed defaults to grams), and this is where
- * the user gets to say otherwise.
+ * The basis is editable here too so an incorrect database value can be corrected against the
+ * package. The app never converts between grams and millilitres.
  */
 @Composable
 fun VerifyDialog(
@@ -60,6 +59,16 @@ fun VerifyDialog(
     // downloaded one, so it has to clear at least the same bar (§13).
     val validCarbs = parsedCarbs?.let {
         NutritionValueValidator.validateCarbsPer100(it.toDouble(), basis)
+    }
+    val isNegativeNumber = carbs.trim().let { value ->
+        value.startsWith("-") && PortionParser.parse(value.removePrefix("-")) != null
+    }
+    val carbsError = when {
+        carbs.isBlank() -> null
+        isNegativeNumber -> R.string.verify_error_carbs_negative
+        parsedCarbs == null -> R.string.manual_error_carbs
+        validCarbs == null -> R.string.manual_error_carbs_range
+        else -> null
     }
     val canConfirm = name.isNotBlank() && validCarbs != null
 
@@ -93,10 +102,13 @@ fun VerifyDialog(
                 OutlinedTextField(
                     value = carbs,
                     onValueChange = { carbs = it },
-                    label = { Text(stringResource(R.string.manual_carbs)) },
+                    label = { Text(stringResource(R.string.manual_carbs, basis.unitLabel)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    isError = carbs.isNotBlank() && validCarbs == null,
+                    isError = carbsError != null,
+                    supportingText = carbsError?.let { error ->
+                        { Text(stringResource(error)) }
+                    },
                     shape = RoundedCornerShape(Space.buttonRadius),
                     modifier = Modifier.fillMaxWidth(),
                 )

@@ -132,8 +132,8 @@ class OpenFoodFactsDataSource(
                 )
             },
             basis = basis,
-            imageUrl = imageFrontUrl?.takeIf { it.isNotBlank() }
-                ?: imageFrontSmallUrl?.takeIf { it.isNotBlank() },
+            imageUrl = imageFrontSmallUrl?.takeIf { it.isNotBlank() }
+                ?: imageFrontUrl?.takeIf { it.isNotBlank() },
         )
     }
 

@@ -1,8 +1,14 @@
 package app.justthecarbs.ui
 
+import android.content.Intent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -43,7 +49,10 @@ class SettingsScreenTest {
         }
     }
 
-    private fun show(uriHandler: UriHandler = RecordingUriHandler()) {
+    private fun show(
+        uriHandler: UriHandler = RecordingUriHandler(),
+        shareIntentLauncher: ((Intent) -> Unit)? = null,
+    ) {
         compose.setContent {
             CompositionLocalProvider(LocalUriHandler provides uriHandler) {
                 JustTheCarbsTheme {
@@ -55,6 +64,7 @@ class SettingsScreenTest {
                         onClearRecents = {},
                         onClearProducts = {},
                         onBack = {},
+                        shareIntentLauncher = shareIntentLauncher,
                     )
                 }
             }
@@ -107,9 +117,67 @@ class SettingsScreenTest {
     fun theConfiguredUrlIsTheOneCommittedForThePlayListing() {
         // Pins the exact production URL against accidental drift — same URL given to Play Console
         // (see branding.gradle.kts). A change here should be a deliberate owner decision, not a typo.
-        assert(BuildConfig.PRIVACY_POLICY_URL == "https://morfildor.github.io/Just-the-Carbs/privacy-policy.html") {
+        assert(BuildConfig.PRIVACY_POLICY_URL == "https://morfildor.github.io/Just-the-Carbs-Privacy/privacy-policy.html") {
             "unexpected PRIVACY_POLICY_URL: ${BuildConfig.PRIVACY_POLICY_URL}"
         }
+    }
+
+    @Test
+    fun shareAppRowIsAnAccessibleActionInAbout() {
+        show()
+
+        compose.onNodeWithText("Share app")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertHasClickAction()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+    }
+
+    @Test
+    fun tappingShareAppLaunchesAPlainTextChooserForTheAppsPlayStoreListing() {
+        var launched: Intent? = null
+        show(shareIntentLauncher = { launched = it })
+
+        compose.onNodeWithText("Share app").performScrollTo().performClick()
+
+        val chooser = requireNotNull(launched) { "expected a share chooser to be launched" }
+        assert(chooser.action == Intent.ACTION_CHOOSER) {
+            "expected ACTION_CHOOSER, got ${chooser.action}"
+        }
+        @Suppress("DEPRECATION")
+        val sendIntent = requireNotNull(chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)) {
+            "expected the chooser to contain an Intent"
+        }
+        assert(sendIntent.action == Intent.ACTION_SEND) {
+            "expected ACTION_SEND, got ${sendIntent.action}"
+        }
+        assert(sendIntent.type == "text/plain") {
+            "expected text/plain, got ${sendIntent.type}"
+        }
+        val payload = requireNotNull(sendIntent.getStringExtra(Intent.EXTRA_TEXT)) {
+            "expected share text"
+        }
+        assert(payload.contains(BuildConfig.APP_NAME)) {
+            "expected app name in share text, got $payload"
+        }
+        assert(payload.contains("quickly calculate carbs from packaged-food products and nutrition labels.")) {
+            "expected the neutral app description, got $payload"
+        }
+        assert(
+            payload.contains(
+                "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}",
+            ),
+        ) { "expected this app's Play Store URL, got $payload" }
+    }
+
+    @Test
+    fun whenNoShareTargetCanLaunchTheScreenDoesNotCrash() {
+        show(shareIntentLauncher = { throw IllegalStateException("no activity found to share") })
+
+        compose.onNodeWithText("Share app").performScrollTo().performClick()
+
+        compose.onNodeWithText("Could not open sharing.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Share app").assertIsDisplayed()
     }
 
     @Test

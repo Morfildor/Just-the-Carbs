@@ -122,7 +122,7 @@ Play itself rather than by local verification. Do not reopen them.
 | **PROVEN BY PLAY** | Upload signature accepted | Play accepted the upload-key signature and Play App Signing enrollment. Upload key SHA-256 `1E:21:23:F3:…:C4:F5`; Google holds the separate app-signing key (§2). |
 | **DONE 2026-08-26** | The uploaded artifact | `app-release.aab` from `clean` on `68c85a3` (recorded in `0b2312f`). 35,624,186 bytes, SHA-256 `37be02324dec011c74edd876d346077a03dc611096eae4d98374ab791c7e604b`. Hash and certificate independently re-verified against the file on disk. |
 | **DONE 2026-08-26** | Tests/lint correspond to this artifact | JVM 771/771, instrumented 218/218 (both 0 skipped), lint 0 errors. No file under `app/` has changed since `68c85a3`, so the uploaded bundle still matches HEAD's code. |
-| **DONE 2026-08-26** | Privacy policy live and linked | `https://morfildor.github.io/Just-the-Carbs/privacy-policy.html`, GitHub Pages from `docs/` on `main`. `SettingsScreen` opens the same `BuildConfig.PRIVACY_POLICY_URL`, pinned by `SettingsScreenTest`. Entering it in Console is a §5a row. |
+| **DONE 2026-08-26** | Privacy policy live and linked | `https://morfildor.github.io/Just-the-Carbs-Privacy/privacy-policy.html`, GitHub Pages. `SettingsScreen` opens the same `BuildConfig.PRIVACY_POLICY_URL`, pinned by `SettingsScreenTest`. Entering it in Console is a §5a row. |
 | **DONE 2026-08-26** | Store assets | *(owner)* 512×512 icon, feature graphic and real-device screenshots complete. Specs and shot list in [store-assets.md](store-assets.md). |
 | **DONE 2026-08-26** | One shipping language | English only; `values-nl/strings.xml` deleted, `androidResources { localeFilters += "en" }` set. Release APK carries no language configurations. Dutch *input parsing* is retained and separate. |
 | **DONE 2026-08-26** | Release CI gates | `.github/workflows/release-gate.yml` blocks on JVM (`--rerun-tasks`), instrumented, lint and the release build, with 0-skipped assertions from JUnit XML and the R8 privacy barriers as build steps. |
@@ -489,7 +489,7 @@ preference.
 | Play App Signing enrollment | **DONE** | Completed at upload; Google holds the app-signing key. |
 | Internal testing track | **DONE** | Active, available to internal testers, released 2026-08-26. |
 | Main store listing (name, short/full description, icon, feature graphic, screenshots) | **REQUIRED BEFORE PRODUCTION** | Copy from [play-store-listing.md](play-store-listing.md); assets complete (§5b). Read against §44 §7.1 before saving. |
-| Privacy policy URL | **REQUIRED BEFORE PRODUCTION** | Paste `https://morfildor.github.io/Just-the-Carbs/privacy-policy.html` into App content → Privacy policy. Page is live and linked in-app (§6). |
+| Privacy policy URL | **REQUIRED BEFORE PRODUCTION** | Paste `https://morfildor.github.io/Just-the-Carbs-Privacy/privacy-policy.html` into App content → Privacy policy. Page is live and linked in-app (§6). |
 | App access | **REQUIRED BEFORE PRODUCTION** | Select **All functionality available without special access**. No account, login or gated feature exists. |
 | Ads declaration | **REQUIRED BEFORE PRODUCTION** | **No ads.** No ad SDK or ad surface ships. |
 | Content rating questionnaire | **REQUIRED BEFORE PRODUCTION** | Category **Utility/Productivity/Other**; answers in §4c. Record the IARC result Play returns — do not pre-claim a rating. |
@@ -533,8 +533,8 @@ Before publishing, read the final listing text against §7.1 of the §44 assessm
 
 | Field | Value |
 |---|---|
-| Public URL | `https://morfildor.github.io/Just-the-Carbs/privacy-policy.html` |
-| Hosting | GitHub Pages from `docs/` on `main`; the repository is **public**, so no paid plan or separate repository is needed. |
+| Public URL | `https://morfildor.github.io/Just-the-Carbs-Privacy/privacy-policy.html` |
+| Hosting | GitHub Pages at the public URL above. |
 | In-app link | Settings → About opens `BuildConfig.PRIVACY_POLICY_URL` — the same URL, pinned by `SettingsScreenTest`. |
 | Content | Corrected 2026-08-26 so "Your control" describes what each clear action really does; committed and published. |
 | Play Console | *(owner — enter the URL at submission)* |

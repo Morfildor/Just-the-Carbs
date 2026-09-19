@@ -70,6 +70,7 @@ class OpenFoodFactsSearchTest {
            "quantity":"390 gram","product_quantity":390,"product_quantity_unit":"g",
            "nutriments":{"carbohydrates_100g":67},
            "image_front_url":"https://images.openfoodfacts.org/images/products/front.400.jpg",
+           "image_front_small_url":"https://images.openfoodfacts.org/images/products/front.200.jpg",
            "serving_size":"20 gram"},
           {"code":"8718906716223","product_name":"Puur Hagelslag","brands":"Albert Heijn",
            "quantity":"600 g","nutriments":{"carbohydrates_100g":67},
@@ -94,6 +95,14 @@ class OpenFoodFactsSearchTest {
         // it upstream, so the structured unit — which a real response carries and this fixture now
         // reproduces — is what establishes the basis.
         assertEquals(NutritionBasis.PER_100_G, first.basis)
+        assertEquals(
+            "https://images.openfoodfacts.org/images/products/front.200.jpg",
+            first.imageUrl,
+        )
+        assertEquals(
+            "https://images.openfoodfacts.org/images/products/front2.400.jpg",
+            results[1].imageUrl,
+        )
     }
 
     // ---- release pass §4: search uses the same basis rule as a barcode lookup -------------------

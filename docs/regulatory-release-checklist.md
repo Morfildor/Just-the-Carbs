@@ -109,7 +109,7 @@ summarises; the assessment governs.
 | C4 | **NOT REACHED** | Provide regulatory proof/fields if the regulated branch applies | Conditional on C3 selecting the regulated branch |
 | C5 | **NOT REACHED** | Insert Google's current disclaimer if the non-regulated health-app branch applies | Conditional on C3 selecting a health category. If it does, use Google's exact sourced text; it does not influence A1–A6 |
 | C6 | **CONDITIONAL on C3** | Confirm Organization developer account | Google requires an Organization account of developers providing **health apps**. Attaches only if C3 lands in a health category, and never as a consequence of §44. Record whether it is required now, required after a stated policy effective date, or not applicable |
-| C7 | **DONE 2026-08-26** | Host privacy policy and add Play Console + in-app links | Live at `https://morfildor.github.io/Just-the-Carbs/privacy-policy.html` (GitHub Pages, public repo, `docs/` on `main`); `SettingsScreen` opens the same `BuildConfig.PRIVACY_POLICY_URL`, pinned by `SettingsScreenTest`. Entering the URL in Play Console remains part of submission |
+| C7 | **DONE 2026-08-26** | Host privacy policy and add Play Console + in-app links | Live at `https://morfildor.github.io/Just-the-Carbs-Privacy/privacy-policy.html` (GitHub Pages); `SettingsScreen` opens the same `BuildConfig.PRIVACY_POLICY_URL`, pinned by `SettingsScreenTest`. Entering the URL in Play Console remains part of submission |
 | C8 | **OPEN — Owner (submission step)** | Submit/export the final Health Apps declaration | Retain submitted answers and date |
 
 ## D. Implemented scope and safety controls

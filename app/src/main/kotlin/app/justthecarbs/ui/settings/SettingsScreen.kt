@@ -1,5 +1,6 @@
 package app.justthecarbs.ui.settings
 
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -71,6 +72,17 @@ import app.justthecarbs.ui.theme.extendedColors
 /** Stable handle for instrumented tests. */
 const val SETTINGS_REPLAY_TUTORIAL_TAG = "settings_replay_tutorial"
 
+internal fun buildShareAppIntent(appName: String, applicationId: String): Intent {
+    val playStoreUrl = "https://play.google.com/store/apps/details?id=$applicationId"
+    val payload = "$appName — quickly calculate carbs from packaged-food products and nutrition labels.\n\n" +
+        playStoreUrl
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, payload)
+    }
+    return Intent.createChooser(sendIntent, null)
+}
+
 /**
  * Settings (§43). Four sections, deliberately small.
  *
@@ -88,17 +100,20 @@ fun SettingsScreen(
     onClearProducts: () -> Unit,
     onReplayTutorial: () -> Unit = {},
     onBack: () -> Unit,
+    shareIntentLauncher: ((Intent) -> Unit)? = null,
 ) {
     var confirmClearRecents by remember { mutableStateOf(false) }
     var confirmClearProducts by remember { mutableStateOf(false) }
     var privacyPolicyLinkFailed by remember { mutableStateOf(false) }
     var feedbackLinkFailed by remember { mutableStateOf(false) }
     var rateLinkFailed by remember { mutableStateOf(false) }
+    var shareLinkFailed by remember { mutableStateOf(false) }
     val evidenceScope = rememberCoroutineScope()
     var evidenceBusy by remember { mutableStateOf(false) }
     var evidenceExportFailed by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
+    val launchShareIntent = shareIntentLauncher ?: { intent: Intent -> context.startActivity(intent) }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AccentBackdrop(
@@ -235,6 +250,30 @@ fun SettingsScreen(
                         }
                     },
                 )
+
+                SettingsAction(
+                    text = stringResource(R.string.settings_share_app),
+                    onClick = {
+                        try {
+                            launchShareIntent(
+                                buildShareAppIntent(
+                                    appName = BuildConfig.APP_NAME,
+                                    applicationId = BuildConfig.APPLICATION_ID,
+                                ),
+                            )
+                            shareLinkFailed = false
+                        } catch (_: Exception) {
+                            shareLinkFailed = true
+                        }
+                    },
+                )
+                if (shareLinkFailed) {
+                    Text(
+                        text = stringResource(R.string.settings_share_link_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
 
                 SettingsAction(
                     text = stringResource(R.string.settings_privacy_policy),
