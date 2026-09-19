@@ -15,7 +15,9 @@ class DialogThemeContractTest {
             "ui/product/ProductScreen.kt",
             "ui/product/SaveQuickCalculation.kt",
             "ui/product/VerifyDialog.kt",
-            "ui/scan/ManualBarcodeDialog.kt",
+            // Manual barcode entry became a bottom sheet in 1.0.8 (ui/scan/ManualBarcodeSheet.kt)
+            // and so holds no AlertDialog to check. It is off this list rather than listed with a
+            // count of zero, because the list names files that *have* dialogs to constrain.
             "ui/settings/SettingsScreen.kt",
         )
 

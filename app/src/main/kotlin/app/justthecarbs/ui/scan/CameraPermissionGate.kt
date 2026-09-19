@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -210,6 +211,12 @@ fun CameraPermissionRationale(
     onAllow: () -> Unit,
     onOpenSettings: () -> Unit,
     onEnterManually: () -> Unit,
+    /**
+     * Type or paste the barcode instead (1.0.8). Null on the label scanner, which has no barcode to
+     * take — a nutrition table cannot be typed in, so offering it there would be an action that
+     * cannot help.
+     */
+    onEnterBarcode: (() -> Unit)? = null,
     onClose: () -> Unit,
 ) {
     Column(
@@ -262,11 +269,37 @@ fun CameraPermissionRationale(
             CameraPermissionState.Granted -> Unit
         }
 
-        Button(
-            onClick = onEnterManually,
-            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
-            shape = RoundedCornerShape(Space.buttonRadius),
-        ) { Text(stringResource(R.string.permission_manual)) }
+        // Offered above full manual entry, and that order is the point: without a camera, typing
+        // the eight or thirteen digits printed under the bars still reaches the real product — its
+        // name, its photo, its checked carbohydrate figure — whereas *Enter manually* asks the user
+        // to transcribe the whole nutrition panel themselves. The cheaper, better-informed route
+        // should be the one found first. It is exactly as reachable here as it is over the live
+        // preview, which is what closes the "camera permission unavailable" dead end.
+        onEnterBarcode?.let { enterBarcode ->
+            Button(
+                onClick = enterBarcode,
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) { Text(stringResource(R.string.scanner_enter_manually)) }
+            Spacer(Modifier.height(Space.s))
+        }
+
+        // Secondary once barcode entry is available: a filled button beside another filled button
+        // states two equal primaries, and these are not equal.
+        val manualModifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight)
+        if (onEnterBarcode == null) {
+            Button(
+                onClick = onEnterManually,
+                modifier = manualModifier,
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) { Text(stringResource(R.string.permission_manual)) }
+        } else {
+            OutlinedButton(
+                onClick = onEnterManually,
+                modifier = manualModifier,
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) { Text(stringResource(R.string.permission_manual)) }
+        }
 
         TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
             Text(stringResource(R.string.action_close))

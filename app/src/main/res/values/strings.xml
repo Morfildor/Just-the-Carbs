@@ -16,6 +16,10 @@
     <string name="shortcut_scan_barcode_long">Scan barcode</string>
     <string name="shortcut_scan_label_short">Label</string>
     <string name="shortcut_scan_label_long">Scan nutrition label</string>
+    <!-- "Products", not "Search products", for the short label: a launcher gives the short form
+         very little room and truncates without warning, and the icon already says "search". -->
+    <string name="shortcut_search_short">Products</string>
+    <string name="shortcut_search_long">Search products</string>
 
     <!-- Home -->
     <string name="home_scan_button">Scan barcode</string>
@@ -42,8 +46,6 @@
 
     <!-- Recents list -->
     <string name="recent_never_used">Not used yet</string>
-    <string name="settings_share_app" tools:ignore="MissingTranslation">Share app</string>
-    <string name="settings_share_link_failed" tools:ignore="MissingTranslation">Could not open sharing.</string>
     <!--
       Recents previously rendered "150 g → 5.6 g" as one grey line. The carbohydrate figure was
       already computed and was styled as metadata, so the number a returning user came for was on
@@ -182,8 +184,16 @@
     <!-- Quick adjust (§16) -->
     <!-- Parameterised because the step size now scales with the package size: ±5 on a biscuit is a
          quarter of the item, while on a 500 g pack it is noise. See quickAdjustStep(). -->
-    <string name="adjust_minus">Minus %1$d</string>
-    <string name="adjust_plus">Plus %1$d</string>
+    <!-- %1$s rather than %1$d since 1.0.8: the rail's step is a BigDecimal so the same strings
+         serve a count's step of 1 and a weight's package-scaled 5/10/25/50, and a fractional step
+         would print as a truncated integer through %d. -->
+    <string name="adjust_minus">Minus %1$s</string>
+    <string name="adjust_plus">Plus %1$s</string>
+    <!-- Spoken labels for the two proportional accelerators. Named as what they do to the amount,
+         not as the glyph: TalkBack reads "½" as "one half" detached from any object, and "×2" as a
+         multiplication sign. -->
+    <string name="adjust_halve">Halve the amount</string>
+    <string name="adjust_double">Double the amount</string>
 
     <!--
       Countable portions (countable-portions brief §3-§12). English only: the owner corrected the
@@ -256,6 +266,21 @@
     <string name="meal_scan_next" tools:ignore="MissingTranslation">Scan next item</string>
     <string name="meal_item_removed" tools:ignore="MissingTranslation">Removed %1$s</string>
     <string name="action_undo" tools:ignore="MissingTranslation">Undo</string>
+    <!-- Correcting a meal line (1.0.8). The row itself is the control; this is what TalkBack
+         announces as its double-tap action. -->
+    <string name="meal_edit_item" tools:ignore="MissingTranslation">Edit meal item</string>
+    <!-- A meal row spoken as one phrase, e.g. "Wholegrain Bread, 72 g, 34.7 grams carbs". -->
+    <string name="meal_item_spoken" tools:ignore="MissingTranslation">%1$s, %2$s, %3$s grams carbs</string>
+    <!-- The line as it stands while it is being corrected: the figure the new one replaces. -->
+    <string name="meal_edit_current" tools:ignore="MissingTranslation">Currently %1$s · %2$s g</string>
+    <!-- Under a direct-carb count: the one per-unit fact the line keeps. No unit word ("slice") is
+         claimed, because the line does not record which unit it was. -->
+    <string name="meal_edit_per_unit" tools:ignore="MissingTranslation">%1$s g carbs each</string>
+    <string name="meal_edit_count_field" tools:ignore="MissingTranslation">Count, %1$s g carbs each</string>
+    <string name="meal_edit_invalid" tools:ignore="MissingTranslation">Enter a number above 0</string>
+    <string name="meal_edit_failed" tools:ignore="MissingTranslation">Couldn\'t save the change. The meal is unchanged.</string>
+    <!-- A corrected direct-carb line's wording, e.g. "3 × 14.2 g carbs". -->
+    <string name="meal_item_direct_portion" tools:ignore="MissingTranslation">%1$s × %2$s g carbs</string>
 
     <plurals name="meal_item_count" tools:ignore="MissingTranslation">
         <item quantity="one">%d item</item>
@@ -414,6 +439,10 @@
     <string name="manual_basis_unresolved">The label didn\'t say what this is measured per. Choose g or ml to continue.</string>
     <string name="manual_package">Package size (optional)</string>
     <string name="manual_barcode">Barcode</string>
+    <!-- "Continue", not "Done": what follows is a product lookup, so the label should say the
+         number is going somewhere rather than that the task is over. -->
+    <string name="manual_barcode_continue">Continue</string>
+    <string name="manual_barcode_paste">Paste barcode</string>
     <string name="manual_save">Save product</string>
     <string name="manual_error_name">Enter a product name</string>
     <string name="manual_error_carbs">Enter carbohydrates per 100 as a number</string>
@@ -443,8 +472,8 @@
     <string name="verify_body">Check these against the printed label. Your values are kept and are never replaced by the database.</string>
     <string name="verify_confirm">Save as verified</string>
     <string name="verify_cancel">Cancel</string>
-
     <string name="verify_error_carbs_negative">Enter 0 or more</string>
+
     <!-- Millilitre / gram (design decision 3.1) -->
 
     <!-- OCR (§29) -->
@@ -698,6 +727,8 @@
     <string name="settings_rate_body" tools:ignore="MissingTranslation">A quick rating on the Play Store helps other people find the app.</string>
     <string name="settings_rate" tools:ignore="MissingTranslation">Rate JustTheCarbs</string>
     <string name="settings_rate_link_failed" tools:ignore="MissingTranslation">Could not open the Play Store.</string>
+    <string name="settings_share_app" tools:ignore="MissingTranslation">Share app</string>
+    <string name="settings_share_link_failed" tools:ignore="MissingTranslation">Could not open sharing.</string>
     <!--
       Two licences, two lines: the database and the photographs are licensed separately by Open
       Food Facts, and one sentence covering only ODbL leaves the images uncredited. Both name the
@@ -802,7 +833,9 @@
     <string name="home_tutorial_reminder_dismiss" tools:ignore="MissingTranslation">No thanks</string>
 
     <!-- Generic -->
-    <string name="action_done">Done</string>
+    <!-- action_done was removed in 1.0.8: its only caller was the manual-barcode dialog's confirm
+         button, which became "Continue" when that dialog became a sheet (the action leads to a
+         product lookup, so "Done" described the wrong thing). -->
     <string name="action_cancel">Cancel</string>
     <string name="action_close">Close</string>
 

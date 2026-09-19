@@ -2,13 +2,22 @@
 <!--
   Launcher shortcuts: long-press the app icon to start a scan without passing through Home.
 
-  ## Why only two
+  ## All three ways in
 
-  The app has three ways in — barcode, nutrition label, and search — and only the two *scanners* are
-  here. Search is not a peer of the other two in this product: it is reached as a recovery route when
-  a lookup fails, never as the ordinary way to start, so promoting it to the launcher would advertise
-  it as a main entry point and misstate what the app is for. The two scanners are what someone
-  standing in a kitchen with the packet already in their hand actually wants.
+  The app has three ways in — barcode, nutrition label, and search — and all three are here.
+
+  **Search was deliberately excluded until 1.0.8, and that exclusion is now wrong rather than
+  merely outdated.** The argument was that search is "reached as a recovery route when a lookup
+  fails, never as the ordinary way to start". That stopped being true when Home gained its own
+  always-visible search field as a first-class entry point (§9, owner request 2026-08-14): search
+  is no longer a fallback offered after a failure, so keeping it off the launcher understated what
+  the app does rather than protecting it. Someone who already knows the product's name — no packet
+  in hand, nothing to point a camera at — is as ordinary a starting point as someone holding a
+  barcode.
+
+  The Search shortcut is the odd one of the three: it names no screen. Home owns the field and the
+  live results, so the shortcut lands on Home and focuses it rather than navigating anywhere, which
+  is also what keeps it from building a second search architecture. See `StartupDestination.SEARCH`.
 
   ## Why static rather than dynamic
 
@@ -55,6 +64,21 @@
         android:shortcutLongLabel="@string/shortcut_scan_label_long">
         <intent
             android:action="app.justthecarbs.action.SCAN_LABEL" />
+    </shortcut>
+
+    <!--
+      Last of the three, which is the order a launcher shows them in: the two scanners are what
+      someone standing at a shelf with the packet in hand reaches for, and search is the way in when
+      there is no packet to point at.
+    -->
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_search"
+        android:shortcutShortLabel="@string/shortcut_search_short"
+        android:shortcutLongLabel="@string/shortcut_search_long">
+        <intent
+            android:action="app.justthecarbs.action.SEARCH" />
     </shortcut>
 
 </shortcuts>

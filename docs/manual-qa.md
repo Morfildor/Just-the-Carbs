@@ -2668,3 +2668,89 @@ pack prints, or no figure at all — never sugars, fibre, a percentage, a portio
 **Device/API:** ____________________ **Phone language:** ______________
 
 **Result:** ____________________ **Date:** ____________
+
+## §45 — Faster portions, Search shortcut, typed barcode (1.0.8, 2026-09-19)
+
+JVM and `carbscan` emulator only so far. Nothing in this section has been seen on physical
+hardware, and the three items marked **feel** cannot be answered by any emulator: they are about
+vibration and about whether a control is comfortable to hit one-handed while holding a package.
+
+### Portion accelerators (Product and the meal-item editor)
+
+The rail is the four-part strip under the amount: `½ · ×2 · −step · +step`.
+
+- [ ] 45.1 A product with **no** package size: the pair reads `−5 / +5`. A ~400 g pack: `−25 / +25`.
+      A ~1 kg pack: `−50 / +50`. The labels are never truncated.
+- [ ] 45.2 Type `72`, then tap each control in turn. The amount and the carbohydrate figure change
+      together, in one step, with no flicker of the old figure.
+- [ ] 45.3 Tap `−` repeatedly from a small amount: it stops at `0` and never shows a negative. At
+      `0` the result shows no figure, and *Add to meal* cannot be used.
+- [ ] 45.4 Tap `½` on `75`: the field reads `37.5` (or `37,5` on a comma-locale phone) — the same
+      separator the result uses.
+- [ ] 45.5 With the keyboard **open**, the rail is still reachable without hunting: tapping the
+      amount field brings it into view above the keyboard rather than leaving it under the result
+      panel. Typing after using the rail works normally.
+- [ ] 45.6 A countable product (slices, biscuits): the pair reads `−1 / +1`, and `½` gives half a
+      unit (`2` → `1`, `1` → `0.5`) with the carbs following.
+- [ ] 45.7 **Feel:** the accelerators are comfortable to hit one-handed, with the phone in the hand
+      it is usually held in, without looking closely. Four taps in a row all register.
+- [ ] 45.8 **Feel:** with *Haptic feedback* on, each tap gives a light tick — distinctly lighter
+      than the scanner's shutter buzz. With it off, nothing.
+- [ ] 45.9 Text size at maximum: the rail grows taller rather than clipping, every label is whole,
+      and nothing wraps to a second line.
+- [ ] 45.10 Tap a line in the current meal to correct it: on an ordinary phone the sheet has
+      **no** rail — deliberate, since it has no room to spare (see CHANGELOG *Known limits*). What
+      must be true is that the product name, the "Currently …" line, the amount, the carb figure
+      and Save are all visible at once, with the keyboard up. If a rail *does* appear (a tall or
+      tablet-sized window), none of those may be clipped.
+
+### Search launcher shortcut
+
+- [ ] 45.11 Long-press the app icon: three shortcuts — Barcode, Label, **Products**. The Products
+      icon reads as part of the same set, not as a stock magnifier.
+- [ ] 45.12 From the app **closed**: tap Products. The app opens on Home with the search box
+      focused and the keyboard up, ready to type. No flash of another screen on the way.
+- [ ] 45.13 From the app **open and somewhere else** (mid-calculation, or in a scanner): tap
+      Products. It returns to Home with the box focused — not stranded on the previous screen.
+- [ ] 45.14 Tap Products **three times** in a row, going elsewhere in between each time. It works
+      every time, not just the first.
+- [ ] 45.15 Use the shortcut, then rotate the phone. Focus is not re-stolen and nothing reopens.
+- [ ] 45.16 Type a query, leave to another screen, come back via the shortcut: the query is still
+      there and the box is focused.
+- [ ] 45.17 **Fresh install:** tap Products before the welcome screens have been seen. The welcome
+      carousel still shows first; the shortcut does not skip it.
+- [ ] 45.18 Barcode and Label shortcuts still open their scanners, cold and warm, unchanged.
+
+### Typed and pasted barcode
+
+- [ ] 45.19 Scanner → *Enter barcode*: a sheet rises with the keypad already up and the field
+      focused. No layout jump as the keyboard appears.
+- [ ] 45.20 Type a real 13-digit barcode off a package: *Continue* becomes available, and the
+      keypad's own tick key submits it. The product that loads is the right one.
+- [ ] 45.21 The same product scanned with the camera and typed by hand reaches the identical
+      product screen — same name, same carb figure, same provenance badge.
+- [ ] 45.22 Type an 8-digit code off a small package (EAN-8), and a 12-digit one off a US package
+      (UPC-A). Both work.
+- [ ] 45.23 Change one digit of a valid code: *Continue* greys out and the line **That barcode
+      doesn't look valid** appears. Nothing about checksums or formats is shown.
+- [ ] 45.24 While typing a valid code, no error appears before the code is complete.
+- [ ] 45.25 Copy a barcode from a message or web page — including one with spaces or a `EAN:`
+      prefix — and use the paste button in the field. The digits arrive clean and *Continue* opens.
+      The system's own paste (long-press the field) does the same.
+- [ ] 45.26 Cancel, the back gesture, and a swipe down all close the sheet and leave the scanner
+      running as before.
+- [ ] 45.27 **Deny camera access**, then open the barcode scanner: *Enter barcode* is offered on
+      that screen and works. Same on a device where the camera fails to start, if one is available.
+- [ ] 45.28 TalkBack: the sheet's title is announced as a heading, the field is named, the error is
+      read when it appears, and the paste button is named.
+- [ ] 45.29 Text size at maximum: the field, the error line and *Continue* are all fully on screen.
+- [ ] 45.30 Gesture navigation **and** three-button navigation: the sheet clears the bar in both.
+
+### Light and Dark
+
+- [ ] 45.31 Every surface above in both themes: the rail's segments and dividers are visible but
+      quieter than the amount and the carb figure; the barcode sheet's error red is legible.
+
+**Device/API:** ____________________ **Phone language:** ______________
+
+**Result:** ____________________ **Date:** ____________

@@ -49,6 +49,8 @@ import app.justthecarbs.domain.ProductImageType
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.VerificationStatus
 import app.justthecarbs.ui.meal.MEAL_ADD_TAG
+import app.justthecarbs.ui.components.PORTION_RAIL_MINUS_TAG
+import app.justthecarbs.ui.components.PORTION_RAIL_PLUS_TAG
 import app.justthecarbs.ui.product.PRODUCT_RESULT_TAG
 import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
@@ -127,10 +129,14 @@ class ProductScreenTest {
                     ),
                     settings = settings,
                     onPortionChanged = { portion = it },
-                    onAdjust = { delta ->
-                        val current = app.justthecarbs.domain.PortionParser.parse(portion) ?: BigDecimal.ZERO
-                        portion = current.add(BigDecimal(delta)).max(BigDecimal.ZERO)
-                            .stripTrailingZeros().toPlainString()
+                    // Driven through the real domain operation rather than a re-implementation of
+                    // it, so this harness cannot drift from what the app does — which is the whole
+                    // reason the arithmetic was moved into PortionAdjustment.
+                    onAdjust = { operation ->
+                        val current = app.justthecarbs.domain.PortionParser.parse(portion)
+                        portion = app.justthecarbs.domain.ResultFormatter.editable(
+                            app.justthecarbs.domain.PortionAdjustment.apply(current, operation),
+                        )
                     },
                     onSetPortion = { portion = it.stripTrailingZeros().toPlainString() },
                     onToggleFavorite = {},
@@ -206,21 +212,26 @@ class ProductScreenTest {
         // never fires, and the portion silently stays where it was.
         //
         // Measured, not inferred: before the scroll the button reports
-        // `bounds=Rect(0,0,0,0) size=228x126`; after it, `bounds=Rect(799,861,1027,987)` and the
-        // click moves the portion 65 -> 75.
+        // `bounds=Rect(0,0,0,0) size=228x126`; after it it has real bounds and the click lands.
         //
         // Same family as the keyboard-covered control recorded in CLAUDE.md — a control the user
         // cannot currently reach is a control `performClick()` cannot press.
-        compose.onNodeWithText("+10").performScrollTo().performClick()
+        //
+        // Found by tag, not by its printed label. The rail writes its minus with U+2212 rather
+        // than a hyphen, and — more to the point — its ± label is the *package-scaled* step, so
+        // there is no fixed "+10" to match: this product has no package size, so the step is the
+        // ±5 default (see quickAdjustStep). A test that matched the label would silently be
+        // asserting about a different button on a product with a package size.
+        compose.onNodeWithTag(PORTION_RAIL_PLUS_TAG).performScrollTo().performClick()
 
-        // 48.2 x 75 / 100 = 36.15
+        // 65 + 5 = 70, and 48.2 x 70 / 100 = 33.74
         //
         // Scoped to the result's own node rather than searching the whole screen for the text: the
         // portion field carries a value and a unit suffix too, so a bare text search can match the
         // input instead of the result — which is how this assertion could pass while saying nothing
         // about the result at all. The numeral and unit are now separate sibling Text nodes
-        // (ResultValue), so the merged accessible description is what carries "36.2 g" as one string.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("36.2 grams")
+        // (ResultValue), so the merged accessible description is what carries "33.7 g" as one string.
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("33.7 grams")
     }
 
     @Test
@@ -230,7 +241,7 @@ class ProductScreenTest {
 
         // Scrolled first, for the reason given in full on the sibling test above: below the fold,
         // this button has empty bounds and `performClick()` presses nothing.
-        compose.onNodeWithText("-10").performScrollTo().performClick()
+        compose.onNodeWithTag(PORTION_RAIL_MINUS_TAG).performScrollTo().performClick()
 
         // Clamped at zero: a negative portion is not a thing you can eat.
         //
@@ -240,6 +251,20 @@ class ProductScreenTest {
         // unit are now separate sibling Text nodes (ResultValue), so the merged accessible
         // description is what carries "0.0 g" as one string.
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("0.0 grams")
+    }
+
+    @Test
+    fun theStepScalesWithThePackageSize() {
+        // The rail's ± is package-scaled, which is the behaviour kept from the previous row: ±5 is
+        // a quarter of a 20 g biscuit and a hundredth of a 500 g pack, so one absolute step cannot
+        // serve both. A 400 g package puts the step at 25.
+        showCalculator(product(packageAmount = "400"))
+        typePortion("65")
+
+        compose.onNodeWithTag(PORTION_RAIL_PLUS_TAG).performScrollTo().performClick()
+
+        // 65 + 25 = 90, and 48.2 x 90 / 100 = 43.38
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("43.4 grams")
     }
 
     // ---- design decision 3.1: ml is never converted to g -------------------------------------

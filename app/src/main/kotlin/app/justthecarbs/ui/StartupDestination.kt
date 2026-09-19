@@ -16,6 +16,17 @@ enum class StartupDestination {
 
     /** The nutrition-label scanner, from the launcher's *Label* shortcut. */
     SCAN_LABEL,
+
+    /**
+     * Home with its search field focused, from the launcher's *Search* shortcut.
+     *
+     * The odd one out, and deliberately so: the other two name a screen to push, while this one
+     * names a *state of the start destination*. Search is not a screen of its own in this app —
+     * Home owns the field and the live results — so the shortcut asks Home to take focus rather
+     * than navigating anywhere. See the nav host, where that difference is what stops this
+     * shortcut pushing a destination onto the stack.
+     */
+    SEARCH,
     ;
 
     companion object {
@@ -23,6 +34,7 @@ enum class StartupDestination {
         /** Intent actions published by `res/xml/shortcuts.xml`. */
         const val ACTION_SCAN_BARCODE = "app.justthecarbs.action.SCAN_BARCODE"
         const val ACTION_SCAN_LABEL = "app.justthecarbs.action.SCAN_LABEL"
+        const val ACTION_SEARCH = "app.justthecarbs.action.SEARCH"
 
         /**
          * Resolves a launch [action] against whether the user has completed onboarding.
@@ -44,6 +56,7 @@ enum class StartupDestination {
             return when (action) {
                 ACTION_SCAN_BARCODE -> SCAN_BARCODE
                 ACTION_SCAN_LABEL -> SCAN_LABEL
+                ACTION_SEARCH -> SEARCH
                 else -> DEFAULT
             }
         }

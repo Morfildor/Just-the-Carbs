@@ -35,6 +35,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -90,6 +91,11 @@ fun ScannerScreen(
     // way back to the system dialog, and a "never ask me again" answer had no way to Settings.
     val permission = rememberCameraPermissionController()
 
+    // Barcode entry from the *permission* branch, where there is no camera session to pause and no
+    // analyzer to stop — so it is held here rather than inside CameraPreview, which owns the
+    // equivalent state for the live-preview branch and must also unbind the camera before leaving.
+    var showBarcodeSheet by remember { mutableStateOf(false) }
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         if (permission.state == CameraPermissionState.Granted) {
             CameraPreview(
@@ -105,8 +111,21 @@ fun ScannerScreen(
                 onAllow = permission::request,
                 onOpenSettings = permission::openSettings,
                 onEnterManually = onEnterManually,
+                // The dead end this closes: without a camera the only offered route was full
+                // manual product entry, so the one thing that still works — reading the digits
+                // printed under the bars — was unreachable precisely when it was needed most.
+                onEnterBarcode = { showBarcodeSheet = true },
                 onClose = onClose,
             )
+
+            if (showBarcodeSheet) {
+                ManualBarcodeSheet(
+                    // Straight to the caller's ordinary barcode navigation: no camera was ever
+                    // bound on this branch, so there is nothing to tear down first.
+                    onConfirm = onManualBarcode,
+                    onDismiss = { showBarcodeSheet = false },
+                )
+            }
         }
     }
 }
@@ -210,7 +229,18 @@ private fun CameraPreview(
             body = null,
             modifier = Modifier.fillMaxSize().padding(top = 120.dp),
         ) {
+            // Same ordering as the permission rationale, for the same reason: a camera that failed
+            // to bind (in use by another app, absent, a vendor fault) leaves the printed digits
+            // perfectly readable, and typing them reaches the real product rather than asking the
+            // user to transcribe a nutrition panel.
+            // No `analyzer.setPaused(true)` here, unlike the live-preview button: the camera
+            // failed to bind, so nothing is analysing frames to pause.
             Button(
+                onClick = { showBarcodeDialog = true },
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) { Text(stringResource(R.string.scanner_enter_manually)) }
+            OutlinedButton(
                 onClick = { leave(onEnterManually) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                 shape = RoundedCornerShape(Space.buttonRadius),
@@ -219,11 +249,22 @@ private fun CameraPreview(
                 Text(stringResource(R.string.action_close))
             }
         }
+
+        // Rendered inside the failure branch too, which returns early — without this the sheet
+        // opened from the button above would never be composed.
+        if (showBarcodeDialog) {
+            ManualBarcodeSheet(
+                // Still through `leave`, which closes the analyzer and marks the session ended —
+                // the camera never bound, but the analyzer object exists and owns an ML Kit client.
+                onConfirm = { code -> leave { onManualBarcode(code) } },
+                onDismiss = { showBarcodeDialog = false },
+            )
+        }
         return
     }
 
     if (showBarcodeDialog) {
-        ManualBarcodeDialog(
+        ManualBarcodeSheet(
             onConfirm = { code -> leave { onManualBarcode(code) } },
             onDismiss = { showBarcodeDialog = false; analyzer.setPaused(false) },
         )

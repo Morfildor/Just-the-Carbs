@@ -7,8 +7,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -280,6 +282,19 @@ fun JustTheCarbsNavHost(
     // guard is load-bearing again rather than belt-and-braces; do not remove it.
     val startDestination = if (settings.hasSeenOnboarding) Routes.HOME else Routes.WELCOME
 
+    /**
+     * The id of the *Search* shortcut delivery Home should still act on, or 0 for none.
+     *
+     * An id rather than a boolean, and the reasoning is `StartupRequest.id`'s: tapping the same
+     * shortcut twice produces two identical requests, so a flag already `true` would not re-trigger
+     * Home's effect and the second tap would appear to do nothing — the defect measured on device
+     * for the Barcode shortcut. Each delivery carries a fresh number, so every tap is distinct.
+     *
+     * `rememberSaveable`, so a rotation *while the field is focused* does not re-fire the request
+     * and drag focus back from wherever the user has since moved it: the value survives the
+     * configuration change, Home sees the id it has already handled, and does nothing.
+     */
+    var searchFocusRequest by rememberSaveable { mutableLongStateOf(0L) }
 
     NavHost(
         navController = navController,
@@ -460,6 +475,10 @@ fun JustTheCarbsNavHost(
                 onSearchScanLabel = { navController.navigate(Routes.labelScan()) },
                 onSearchEnterManually = { navController.navigate(Routes.manual()) },
                 onSearchRetry = searchViewModel::retry,
+                // The launcher's *Search* shortcut, as a delivery id Home focuses on and then
+                // reports back as handled — so the request cannot outlive the tap that made it.
+                searchFocusRequest = searchFocusRequest,
+                onSearchFocusHandled = { searchFocusRequest = 0L },
             )
         }
 
@@ -538,6 +557,7 @@ fun JustTheCarbsNavHost(
                 settings = settings,
                 onPortionChanged = viewModel::onPortionChanged,
                 onAdjust = viewModel::adjustPortion,
+                onAdjustCount = viewModel::adjustCount,
                 onSetPortion = viewModel::setPortion,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onBack = {
@@ -703,6 +723,7 @@ fun JustTheCarbsNavHost(
                 settings = settings,
                 onPortionChanged = viewModel::onPortionChanged,
                 onAdjust = viewModel::adjustPortion,
+                onAdjustCount = viewModel::adjustCount,
                 onSetPortion = viewModel::setPortion,
                 onToggleFavorite = {},
                 onBack = { navController.popBackStack() },
@@ -795,6 +816,11 @@ fun JustTheCarbsNavHost(
                 onScanNext = { navController.navigate(Routes.SCAN) },
                 onUndoRemove = viewModel::undoRemove,
                 onUndoExpired = viewModel::clearUndo,
+                onEditItem = viewModel::editItem,
+                onEditAmountChange = viewModel::onEditAmountChange,
+                onAdjustEditAmount = viewModel::adjustEditAmount,
+                onSaveEdit = viewModel::saveEdit,
+                onCloseEditor = viewModel::closeEditor,
             )
         }
 
@@ -1046,10 +1072,21 @@ fun JustTheCarbsNavHost(
     // destination alone meant a second "Barcode" tap carried the value the effect had already seen
     // and never fired, leaving the app on Home. Measured on device. See `StartupRequest.id`.
     LaunchedEffect(startupRequest) {
+        // Search is not a route. Home owns the field, so the shortcut asks for a *state* of the
+        // start destination rather than a destination of its own: pop back to Home — which is what
+        // rescues someone the shortcut finds mid-calculation — and raise the focus request Home
+        // reads. Navigating to Home instead would be both redundant (it is already the root) and
+        // wrong, since `navigate` on the current destination would not re-run Home's effects.
+        if (startupRequest.destination == StartupDestination.SEARCH) {
+            navController.popBackStack(navController.graph.startDestinationId, inclusive = false)
+            searchFocusRequest = startupRequest.id
+            return@LaunchedEffect
+        }
+
         val route = when (startupRequest.destination) {
             StartupDestination.SCAN_BARCODE -> Routes.SCAN
             StartupDestination.SCAN_LABEL -> Routes.labelScan()
-            StartupDestination.DEFAULT -> null
+            StartupDestination.SEARCH, StartupDestination.DEFAULT -> null
         } ?: return@LaunchedEffect
 
         // Only from the start destination. A shortcut delivered by `onNewIntent` while the user is

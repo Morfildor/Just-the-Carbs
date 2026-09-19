@@ -56,6 +56,7 @@
             <intent-filter>
                 <action android:name="app.justthecarbs.action.SCAN_BARCODE" />
                 <action android:name="app.justthecarbs.action.SCAN_LABEL" />
+                <action android:name="app.justthecarbs.action.SEARCH" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 

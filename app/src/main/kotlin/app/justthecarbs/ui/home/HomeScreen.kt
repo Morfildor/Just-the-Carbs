@@ -98,11 +98,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -213,6 +216,13 @@ fun HomeScreen(
     onSearchScanLabel: () -> Unit = {},
     onSearchEnterManually: () -> Unit = {},
     onSearchRetry: () -> Unit = {},
+    /**
+     * A *Search* launcher-shortcut delivery to act on, identified by [StartupRequest.id], or 0 for
+     * none. A fresh id per tap is what makes repeating the same shortcut work; see the nav host.
+     */
+    searchFocusRequest: Long = 0L,
+    /** Called once the request above has been honoured, so it is never acted on twice. */
+    onSearchFocusHandled: () -> Unit = {},
     showTutorialReminder: Boolean = false,
     onStartTutorial: () -> Unit = {},
     onDismissTutorialReminder: () -> Unit = {},
@@ -337,6 +347,8 @@ fun HomeScreen(
                 query = searchState.query,
                 onQueryChanged = onSearchQueryChanged,
                 onSearchSubmit = onSearchSubmit,
+                focusRequest = searchFocusRequest,
+                onFocusHandled = onSearchFocusHandled,
                 modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs),
             )
 
@@ -610,9 +622,32 @@ private fun HomeSearchField(
     onQueryChanged: (String) -> Unit,
     onSearchSubmit: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A *Search* shortcut delivery to focus for, or 0 for none. See [HomeScreen]. */
+    focusRequest: Long = 0L,
+    onFocusHandled: () -> Unit = {},
 ) {
     val focusManager = LocalFocusManager.current
     val clearLabel = stringResource(R.string.search_clear)
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    // The launcher's *Search* shortcut landing on Home: take focus and open the keyboard, so the
+    // shortcut delivers someone ready to type rather than to a field they must still tap.
+    //
+    // Keyed on the delivery id, which is what makes a *repeat* of the same shortcut work — an
+    // effect keyed on a boolean would already hold `true` and never re-run (the defect measured on
+    // device for the Barcode shortcut; see `StartupRequest.id`). Reported as handled immediately
+    // afterwards, so the request cannot survive into a later composition and steal focus back.
+    //
+    // The keyboard is requested explicitly rather than left to focus alone: `requestFocus()` is
+    // reliable, but the IME appearing from it is not on every OEM, and this shortcut's whole
+    // promise is that the user can start typing.
+    LaunchedEffect(focusRequest) {
+        if (focusRequest == 0L) return@LaunchedEffect
+        focusRequester.requestFocus()
+        keyboard?.show()
+        onFocusHandled()
+    }
 
     OutlinedTextField(
         value = query,
@@ -668,7 +703,10 @@ private fun HomeSearchField(
             focusedBorderColor = MaterialTheme.colorScheme.primary,
             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
         ),
-        modifier = modifier.fillMaxWidth().testTag(HOME_SEARCH_FIELD_TAG),
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester)
+            .testTag(HOME_SEARCH_FIELD_TAG),
     )
 }
 

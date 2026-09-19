@@ -10,11 +10,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import app.justthecarbs.ui.components.ProductHeroImage
+import app.justthecarbs.ui.components.PortionAdjustRail
 import app.justthecarbs.ui.components.ProductGalleryDialog
 import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.DestinationMarker
 import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
+import app.justthecarbs.ui.components.fadeOutWhenMoreBelow
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Motion
 import androidx.compose.foundation.background
@@ -42,6 +44,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -100,6 +104,7 @@ import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionConversion
+import app.justthecarbs.domain.PortionAdjustment
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.PortionUnitKind
@@ -151,7 +156,10 @@ fun ProductScreen(
     state: ProductUiState,
     settings: AppSettings,
     onPortionChanged: (String) -> Unit,
-    onAdjust: (Int) -> Unit,
+    /** One of the quick-adjust rail's accelerators, applied to the weight field (1.0.8). */
+    onAdjust: (PortionAdjustment.Operation) -> Unit,
+    /** The same accelerators applied to the count field, when a countable unit is selected. */
+    onAdjustCount: (PortionAdjustment.Operation) -> Unit = {},
     onSetPortion: (BigDecimal) -> Unit,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
@@ -319,6 +327,7 @@ fun ProductScreen(
                     settings = settings,
                     onPortionChanged = onPortionChanged,
                     onAdjust = onAdjust,
+                    onAdjustCount = onAdjustCount,
                     onSetPortion = onSetPortion,
                     onApplyNewerRemote = onApplyNewerRemote,
                     onDismissNewerRemote = onDismissNewerRemote,
@@ -571,7 +580,8 @@ private fun CalculatorBody(
     state: ProductUiState,
     settings: AppSettings,
     onPortionChanged: (String) -> Unit,
-    onAdjust: (Int) -> Unit,
+    onAdjust: (PortionAdjustment.Operation) -> Unit,
+    onAdjustCount: (PortionAdjustment.Operation) -> Unit = {},
     onSetPortion: (BigDecimal) -> Unit,
     onApplyNewerRemote: () -> Unit = {},
     onDismissNewerRemote: () -> Unit = {},
@@ -727,6 +737,16 @@ private fun CalculatorBody(
             if (countableActive) {
                 CountField(value = state.countText, unit = selectedUnit!!, onValueChange = onCountChanged)
                 Spacer(Modifier.height(Space.s))
+                // The same rail, stepping by one: "one more slice" is the count field's equivalent
+                // of "+10 g", and ½/×2 mean exactly what they do for a weight. Half a slice is a
+                // real thing to eat and the domain has always been able to express it — both
+                // countable calculators multiply a BigDecimal count — so nothing rounds here.
+                PortionAdjustRail(
+                    step = BigDecimal.ONE,
+                    onAdjust = onAdjustCount,
+                    hapticsEnabled = settings.hapticsEnabled,
+                )
+                Spacer(Modifier.height(Space.s))
                 PortionUnitStatusRow(
                     unit = selectedUnit,
                     onVerify = onVerifyPortionUnit,
@@ -766,8 +786,26 @@ private fun CalculatorBody(
                     autoFocus = state.unsaved && state.portionText.isEmpty(),
                 )
 
-                Spacer(Modifier.height(Space.m))
-                QuickAdjustRow(onAdjust = onAdjust, packageAmount = product.packageAmount)
+                Spacer(Modifier.height(Space.s))
+                // Close to the field it adjusts — Space.s rather than the m between unrelated
+                // blocks — so it reads as attached to the amount rather than as the next thing
+                // down the screen.
+                //
+                // **Brought into view when the keyboard opens**, and that is a fix rather than a
+                // nicety. Measured on the emulator: with the IME up, the pinned result panel rises
+                // and the rail sits entirely behind it — reachable only by scrolling, which is
+                // precisely the effort these accelerators exist to remove. A tap on the field is
+                // the moment the rail becomes useful, so it follows the field up.
+                val railVisibility = remember { BringIntoViewRequester() }
+                LaunchedEffect(imeVisible) {
+                    if (imeVisible) railVisibility.bringIntoView()
+                }
+                PortionAdjustRail(
+                    step = BigDecimal(quickAdjustStep(product.packageAmount)),
+                    onAdjust = onAdjust,
+                    hapticsEnabled = settings.hapticsEnabled,
+                    modifier = Modifier.bringIntoViewRequester(railVisibility),
+                )
 
                 // Only offered when the package size was read confidently. A guessed pack size
                 // would be a wrong portion presented as a shortcut (§14, §13).
@@ -1032,50 +1070,6 @@ internal fun quickAdjustStep(packageAmount: BigDecimal?): Int {
     }
 }
 
-@Composable
-private fun QuickAdjustRow(onAdjust: (Int) -> Unit, packageAmount: BigDecimal? = null) {
-    // Order runs negative → positive so the row reads like a number line (§16).
-    //
-    // Two steps per direction, the second twice the first, so the row spans a useful range without
-    // a fourth button — the constraint that keeps every label inside its button at large font
-    // scales, the same one that keeps ¾ out of PackShortcuts.
-    val small = quickAdjustStep(packageAmount)
-    val large = small * 2
-    val steps = listOf(-large, -small, small, large)
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(Space.s),
-    ) {
-        steps.forEach { delta ->
-            // Spoken as "Minus 25" / "Plus 25" rather than the glyph, which TalkBack would
-            // otherwise read as a mathematical operator detached from its amount.
-            val description = stringResource(
-                if (delta > 0) R.string.adjust_plus else R.string.adjust_minus,
-                kotlin.math.abs(delta),
-            )
-            OutlinedButton(
-                onClick = { onAdjust(delta) },
-                shape = RoundedCornerShape(Space.buttonRadius),
-                // A button's default 24dp side padding leaves too little room for "+10" at a large
-                // font scale, where it truncates to "+1" — a control that lies about what it does.
-                // heightIn rather than height so the row grows instead of clipping (§39).
-                contentPadding = PaddingValues(horizontal = Space.xs, vertical = 0.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = Space.minTouchTarget)
-                    .semantics { contentDescription = description },
-            ) {
-                Text(
-                    text = if (delta > 0) "+$delta" else "$delta",
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
-        }
-    }
-}
-
 /**
  * ¼ · ½ · Full pack (development-pass brief §14).
  *
@@ -1124,43 +1118,6 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
         }
     }
 }
-
-/**
- * Fades the bottom edge of a scrolling area while there is more content below it.
- *
- * The portion zone ends at the pinned result panel, so an element that happens to straddle that
- * boundary is drawn cut in half — legible and severed, which reads as a rendering fault rather than
- * as a hint to scroll. At the default font scale nothing overflows and this is inert; from 1.3x it
- * is what tells the user there is more.
- *
- * `DstIn` with an alpha ramp, so the content's own pixels fade to transparent and whatever the
- * screen's background happens to be shows through — the alternative, painting a solid-to-transparent
- * gradient over the top, needs to know the background colour and would smear a wrong one across the
- * content in the other theme.
- *
- * [FADE_HEIGHT] is deliberately shorter than a line of text: enough to make the cut read as a fade,
- * not so much that a control resting at the boundary becomes unreadable.
- */
-private fun Modifier.fadeOutWhenMoreBelow(scroll: ScrollState): Modifier = this
-    .graphicsLayer { alpha = 0.99f }
-    .drawWithContent {
-        drawContent()
-        if (!scroll.canScrollForward) return@drawWithContent
-        val fade = FADE_HEIGHT.toPx().coerceAtMost(size.height)
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color.Black, Color.Transparent),
-                startY = size.height - fade,
-                endY = size.height,
-            ),
-            topLeft = Offset(0f, size.height - fade),
-            size = Size(size.width, fade),
-            blendMode = BlendMode.DstIn,
-        )
-    }
-
-/** How far the bottom of a scrolling zone fades out. Shorter than a line, so nothing is hidden. */
-private val FADE_HEIGHT = 20.dp
 
 /** Stable handle for the usual-portions row, used by instrumented tests. */
 const val USUAL_PORTION_ROW_TAG = "usual_portion_row"

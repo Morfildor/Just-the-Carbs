@@ -7,6 +7,7 @@ import app.justthecarbs.domain.LocalProductDataSource
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.MealStore
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionAdjustment
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.PortionUnitStore
 import app.justthecarbs.domain.PortionUsage
@@ -207,7 +208,7 @@ class QuickCalculationTest {
             advanceUntilIdle()
 
             fixture.viewModel.onPortionChanged("12,5")
-            fixture.viewModel.adjustPortion(5)
+            fixture.viewModel.adjustPortion(PortionAdjustment.Operation.Step(5))
             advanceUntilIdle()
 
             val state = fixture.viewModel.state.value

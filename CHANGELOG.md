@@ -98,6 +98,25 @@ live on Production and says the first update is ready. Work accumulates here unt
 - **Remove from Recent, with Undo.** Long-press a card on Home and choose *Remove from Recent* to
   forget that product's remembered portion and usual portions, keeping the product, its carb value,
   its portion units and its Favourite star. *Undo* puts it back exactly.
+- **Share app.** Settings → About now opens the Android share sheet with a short description and
+  the app's Play Store link.
+- **Correct a meal item in place.** Tap a line in the current meal to change how much of it you
+  had, without going back to the product. The carbs are recalculated from the figures that line was
+  added with, so a product edited since cannot quietly change an item already on the plate.
+- **Faster portion controls.** Under the amount on the calculator, a compact row of four
+  accelerators: **½**, **×2**, and a minus/plus pair. The step follows the package size, so it is
+  ±5 on a biscuit and ±50 on a large pack; on a count of slices or biscuits it is ±1, and ½ gives
+  half a unit. The amount and the carbs update together, and the keyboard still works exactly as
+  before. An amount can never go below zero. (Not on the meal-item editor on an ordinary phone —
+  that sheet has no room to spare for it; see the note under *Known limits*.)
+- **Search shortcut on the app icon.** Long-press the app icon and pick **Products** to land on
+  Home with the search box focused and the keyboard open. Barcode and Label are unchanged, and on a
+  first run every shortcut still shows the welcome screens first.
+- **Type or paste a barcode.** *Enter barcode* now opens a compact sheet with the keypad already
+  up, a paste button in the field, and inline validation — and it is offered wherever the camera
+  cannot help: when camera access is off, and when the camera fails to start. A typed code takes
+  exactly the same route as a scanned one. The number is never silently corrected: an invalid code
+  is refused rather than turned into a different product.
 
 ### Changed
 
@@ -107,6 +126,17 @@ live on Production and says the first update is ready. Work accumulates here unt
   so product names keep their width.
 - The meal bar on Home now slides in when a meal starts instead of pushing the list down in one
   frame.
+- Settings → Privacy Policy now opens the new canonical GitHub Pages address.
+
+### Known limits
+
+- **The portion accelerators are on the calculator only.** Reusing them in the meal-item editor
+  was built and measured, and does not fit: that sheet is content-sized at about 437dp, of which
+  its result slot, amount field and action row already take about 380dp. Rendering the rail there
+  clipped the product name and the "Currently …" line intermittently, and pinning those simply
+  moved the clipping between them. Correcting a meal line is done by typing, as before. The
+  arithmetic and the wiring are shared, so a device with a taller window gets the rail without
+  further work.
 
 ### Verified so far
 

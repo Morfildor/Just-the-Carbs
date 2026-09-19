@@ -36,6 +36,31 @@ class StartupDestinationTest {
     }
 
     @Test
+    fun `the search shortcut asks for search`() {
+        assertEquals(
+            StartupDestination.SEARCH,
+            StartupDestination.from(
+                StartupDestination.ACTION_SEARCH,
+                hasSeenOnboarding = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `the search shortcut is not a scanner`() {
+        // Search resolves to a *state of Home*, never to a pushed destination, and the nav host
+        // branches on exactly this value to decide that. A future edit that folded SEARCH in with
+        // the two scanners would navigate somewhere for a shortcut whose whole design is that it
+        // does not — so the distinction is asserted rather than left to the enum's shape.
+        val resolved = StartupDestination.from(
+            StartupDestination.ACTION_SEARCH,
+            hasSeenOnboarding = true,
+        )
+        assertNotEquals(StartupDestination.SCAN_BARCODE, resolved)
+        assertNotEquals(StartupDestination.SCAN_LABEL, resolved)
+    }
+
+    @Test
     fun `an ordinary launch has no action and opens the default destination`() {
         assertEquals(
             StartupDestination.DEFAULT,
@@ -73,6 +98,17 @@ class StartupDestinationTest {
                 hasSeenOnboarding = false,
             ),
         )
+        // Search is gated for the same reason even though it opens no camera: the carousel is the
+        // only place `hasSeenOnboarding` is written, so jumping it would leave the carousel to
+        // appear later on an unrelated launch — the defect is the gate being skipped, not the
+        // screen behind it.
+        assertEquals(
+            StartupDestination.DEFAULT,
+            StartupDestination.from(
+                StartupDestination.ACTION_SEARCH,
+                hasSeenOnboarding = false,
+            ),
+        )
     }
 
     @Test
@@ -83,6 +119,29 @@ class StartupDestinationTest {
         // that does nothing rather than like a broken build.
         assertEquals("app.justthecarbs.action.SCAN_BARCODE", StartupDestination.ACTION_SCAN_BARCODE)
         assertEquals("app.justthecarbs.action.SCAN_LABEL", StartupDestination.ACTION_SCAN_LABEL)
+        assertEquals("app.justthecarbs.action.SEARCH", StartupDestination.ACTION_SEARCH)
+    }
+
+    @Test
+    fun `every published action resolves to something other than the default`() {
+        // The set-membership contract MainActivity relies on. Its SHORTCUT_ACTIONS set decides
+        // which actions are *cleared* off the Intent after being read, and an action that resolves
+        // to a destination but is missing from that set replays on the next configuration change —
+        // a rotation reopening a scanner the user had closed. Enumerating the actions here is what
+        // makes "did you add it in both places?" answerable: a new action added to this list fails
+        // until it also resolves.
+        val published = listOf(
+            StartupDestination.ACTION_SCAN_BARCODE,
+            StartupDestination.ACTION_SCAN_LABEL,
+            StartupDestination.ACTION_SEARCH,
+        )
+        published.forEach { action ->
+            assertNotEquals(
+                "$action must resolve to a real destination",
+                StartupDestination.DEFAULT,
+                StartupDestination.from(action, hasSeenOnboarding = true),
+            )
+        }
     }
 
     @Test

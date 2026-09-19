@@ -30,6 +30,22 @@ import app.justthecarbs.ui.StartupState
 import app.justthecarbs.ui.asStartupState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
 
+/**
+ * Every action this app publishes as a launcher shortcut.
+ *
+ * One list rather than a chain of `||` at the point of use, because the consequence of forgetting
+ * an entry is silent and specific: an action that resolves to a destination but is never cleared
+ * stays on the Activity's Intent, so the *next configuration change* replays it — a rotation
+ * reopening a scanner the user had already closed. Adding a shortcut therefore means adding it
+ * here, and a member of this set that resolves to `DEFAULT` (before onboarding) is still cleared,
+ * which is correct: it has been delivered and considered.
+ */
+private val SHORTCUT_ACTIONS = setOf(
+    StartupDestination.ACTION_SCAN_BARCODE,
+    StartupDestination.ACTION_SCAN_LABEL,
+    StartupDestination.ACTION_SEARCH,
+)
+
 class MainActivity : ComponentActivity() {
 
     /**
@@ -64,9 +80,7 @@ class MainActivity : ComponentActivity() {
     private fun consumeShortcutAction(hasSeenOnboarding: Boolean): StartupRequest {
         val action = intent?.action
         val resolved = StartupDestination.from(action, hasSeenOnboarding)
-        if (action == StartupDestination.ACTION_SCAN_BARCODE ||
-            action == StartupDestination.ACTION_SCAN_LABEL
-        ) {
+        if (action in SHORTCUT_ACTIONS) {
             intent?.action = null
         }
         if (resolved == StartupDestination.DEFAULT) return StartupRequest.NONE

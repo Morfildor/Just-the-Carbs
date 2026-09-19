@@ -17,6 +17,7 @@ import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.MealTotal
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.PortionAdjustment
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.ResultFormatter
@@ -583,11 +584,31 @@ class ProductViewModel(
         recalculate()
     }
 
-    /** −10 / −5 / +5 / +10 (§16). Never goes below zero, which is not a portion. */
-    fun adjustPortion(delta: Int) {
-        val current = PortionParser.parse(_state.value.portionText) ?: BigDecimal.ZERO
-        val adjusted = current.add(BigDecimal(delta)).max(BigDecimal.ZERO)
-        onPortionChanged(ResultFormatter.editable(adjusted))
+    /**
+     * One of the quick-adjust rail's four accelerators applied to the weight field (1.0.8).
+     *
+     * The arithmetic is [PortionAdjustment]'s — shared with the count field below and with the
+     * meal-line editor — and the result goes back through [onPortionChanged], so an adjusted
+     * portion takes exactly the path a typed one does: same parse, same recalculation, same saved
+     * state. Written through [ResultFormatter.editable] so the field shows the device locale's
+     * decimal separator, which is what a user would have typed.
+     */
+    fun adjustPortion(operation: PortionAdjustment.Operation) {
+        val current = PortionParser.parse(_state.value.portionText)
+        onPortionChanged(ResultFormatter.editable(PortionAdjustment.apply(current, operation)))
+    }
+
+    /**
+     * The same four accelerators applied to the count field.
+     *
+     * A separate entry point rather than a mode branch inside [adjustPortion], because the two
+     * fields are genuinely separate state and conflating them is how a count ends up written into
+     * the grams field. Half a count is legitimate — [PortionResolver] and [DirectCarbCalculator]
+     * both multiply a `BigDecimal` count — so no rounding to whole units happens here.
+     */
+    fun adjustCount(operation: PortionAdjustment.Operation) {
+        val current = PortionParser.parse(_state.value.countText)
+        onCountChanged(ResultFormatter.editable(PortionAdjustment.apply(current, operation)))
     }
 
     fun setPortion(amount: BigDecimal) =
