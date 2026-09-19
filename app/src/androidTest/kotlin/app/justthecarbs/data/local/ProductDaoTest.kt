@@ -588,4 +588,70 @@ class ProductDaoTest {
         }
         assertEquals("the favourite is still starred", true, dao.findByBarcode("222")!!.favorite)
     }
+
+    // ---- the saved-product search projection -----------------------------------------------------
+
+    /**
+     * The projection local-first search reads.
+     *
+     * The property that matters is **what it does not filter**. `observeRecents` answers "what
+     * belongs on Home" and therefore hides a product that is neither starred nor recently used, or
+     * one pushed past its limit — which is exactly the product this feature exists to find again.
+     */
+    @Test
+    fun theSearchProjectionIncludesFavouritesRecentsAndEverythingElse() = runTest {
+        dao.upsert(product("111", usedSecondsAfterEpoch = 10).toEntity())
+        dao.upsert(product("222", favorite = true).toEntity())
+        // Neither starred nor ever used: invisible to Home, and searchable all the same.
+        dao.upsert(product("333").toEntity())
+
+        val rows = dao.findAllForSearch()
+
+        assertEquals(setOf("111", "222", "333"), rows.map { it.barcode }.toSet())
+    }
+
+    @Test
+    fun theSearchProjectionSeesAProductThatRecentsWouldHaveTruncatedAway() = runTest {
+        repeat(30) { dao.upsert(product("row$it", usedSecondsAfterEpoch = it.toLong()).toEntity()) }
+
+        assertEquals(30, dao.findAllForSearch().size)
+        assertEquals("a limited recents list is the thing this must not be", 5, dao.observeRecents(5).first().size)
+    }
+
+    @Test
+    fun theSearchProjectionCarriesExactDecimalValues() = runTest {
+        // TEXT columns, not REAL: 48.2 through a binary double comes back 48.200000000000003, and
+        // the figure on the search card is one the user reads.
+        dao.upsert(product("111", carbs = "48.2").toEntity())
+
+        assertEquals("48.2", dao.findAllForSearch().single().carbsPer100)
+    }
+
+    @Test
+    fun theSearchProjectionRoundTripsUnicodeNames() = runTest {
+        dao.upsert(
+            product("111").copy(name = "Pınar Süt", brand = "Côte d'Or").toEntity(),
+        )
+
+        val row = dao.findAllForSearch().single()
+        assertEquals("Pınar Süt", row.name)
+        assertEquals("Côte d'Or", row.brand)
+    }
+
+    @Test
+    fun theSearchProjectionCarriesTheStarAndTheLastUseItRanksBy() = runTest {
+        dao.upsert(product("111", favorite = true, usedSecondsAfterEpoch = 10).toEntity())
+        dao.upsert(product("222").toEntity())
+
+        val rows = dao.findAllForSearch().associateBy { it.barcode }
+        assertEquals(true, rows.getValue("111").favorite)
+        assertEquals(epoch.plusSeconds(10).toEpochMilli(), rows.getValue("111").lastUsedAt)
+        assertEquals(false, rows.getValue("222").favorite)
+        assertNull("never used", rows.getValue("222").lastUsedAt)
+    }
+
+    @Test
+    fun anEmptyStoreProjectsNothing() = runTest {
+        assertEquals(emptyList<SavedProductSearchRow>(), dao.findAllForSearch())
+    }
 }

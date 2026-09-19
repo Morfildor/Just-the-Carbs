@@ -51,6 +51,154 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Local-first saved-product search (2026-09-19) — 1.0.8, READ FIRST
+
+On branch `1.0.8-portion-shortcut-barcode`, above `4dc916a`. Still `1.0.8` / `versionCode 9`, still
+**HOLD** — nothing built as a release, nothing uploaded. Nothing about the calculation, the schema,
+migrations, the §10 lookup priority, barcode detection, OCR or the remote search stack changed: no
+provider, governor, cache, fallback, ranker or DTO was touched, and `ProductSearchSource` is **not**
+a composite local+remote source.
+
+Typing in either search box now matches the products already on the device, immediately, and the
+network joins later. The two are separate pipelines by design.
+
+### Why this is not a fourth link in the provider chain
+
+`SavedProductSearchSource` is its own interface, deliberately not another `ProductSearchSource`.
+That chain answers *"which host do we ask next?"* — it exists for a request budget, a cache, a
+fallback host and a governor, and none of those describe a table on this device. Folding the store
+into it would have cost the two things the feature needs: the ViewModel could no longer tell a local
+hit from a remote one (so the merge rules would have had nowhere to live), and a local read would
+have inherited pacing built for a service. `savedProducts` is a **nullable** constructor parameter
+defaulting to null, so every pre-existing `SearchViewModel` test still exercises the untouched
+remote pipeline.
+
+**It is declared BEFORE `nowMs`, and that ordering is load-bearing.** Every existing test constructs
+the ViewModel with a clock as a trailing lambda; adding the parameter after it silently rebound
+those lambdas and the suite failed to compile. The same hazard this file already records for
+`RemoteSearchGovernor`'s clock argument.
+
+### Matching is a Kotlin scan, and `LIKE` could not have done it
+
+`ProductDao.findAllForSearch()` is a narrow seven-column projection with **no `WHERE`, no `ORDER BY`
+and no `LIKE`** — no FTS, no new index, no migration. Deliberately **not** `observeRecents`: that
+query answers "what belongs on Home", so its `WHERE lastUsedAt IS NOT NULL OR favorite = 1` and its
+`LIMIT` hide exactly the products this feature exists to find — one saved but never since used, or
+one pushed past the recents limit.
+
+Matching reuses **`SearchQueryMatcher`**, the same matcher and the same folding that rank the remote
+page, so a row cannot be judged one way locally and the other way remotely. SQLite has no equivalent
+of that folding — `LIKE` is case-insensitive for ASCII only, so it would never match `Pınar` against
+`Pinar`, which was **verified on device**: typing plain `pinar` found the product whose brand is
+`Pınar`, offline.
+
+### Relevance beats favourite, and that is not a tie-break
+
+Ordering: exact real barcode → relevance in full (strength, then product/matched/whole words) →
+favourite → recency (null **last** — never used is "no evidence", not "eaten at the epoch") → name,
+then barcode for a total order. Without that last key the list could reshuffle between the initial
+local answer and the merge, which reads on screen as thrashing.
+
+The star is consulted only once relevance has genuinely tied. Starring a product says the user wants
+it near the top of *Home*; it says nothing about which product they just typed the name of.
+
+**A test I wrote was wrong about this and the production code was right.** I first asserted that
+"Gouda jong" must beat a starred "Gouda jong belegen extra" — but both contain both query words as
+whole words, so every relevance signal the matcher exposes genuinely ties and the star is correctly
+the first thing with anything to say. The rule is now pinned twice: once where relevance really does
+differ (whole-word count, `Süt` against `Sütlü`), and once at the strength boundary.
+
+### `local:` keys are identities, never barcode text
+
+A product the user authored with no barcode carries `local:<uuid>` (minted by `ManualEntryViewModel`
+and `ProductViewModel`). `SavedProduct.isRealBarcode` excludes those from barcode matching — a digit
+query must not "exactly match" an identity the user has never seen and could not type — while they
+remain perfectly good identities for dedupe and navigation. Verified on device: a `local:` product
+was found by name and **opened its calculator with the network off**, resolving through
+`ProductRepository.lookup`'s local-first path with no request.
+
+### The merge, and the one thing it must not do
+
+```
+[ local FULL matches ]  [ remote, in the order it arrived ]  [ remaining local ]   then the limit
+```
+
+**The remote block is never re-ranked.** Search-a-licious ranks with information this app never
+receives — localized name matching, per-record popularity, its own relevance score — and
+`ProductSearchHit` retains none of it, so any re-ordering here would be re-ordering on strictly less
+evidence than produced it.
+
+Only **FULL** local matches lead: such a row was already on top before the remote answer arrived, so
+leaving it there is the arrangement in which the list moves least. Strong-but-partial and weak local
+matches are appended instead — a weak local hit ahead of real results stops being "better than
+nothing" the moment real results exist. A duplicate keeps the **local payload** (because
+`ProductRepository.lookup` is local-first, so showing the remote figure would show a number the next
+screen contradicts) at the **remote position**, unless its local copy is already leading.
+
+`RESULT_LIMIT = 20` is restated on the ViewModel rather than imported from `SearchALiciousApi`: it
+bounds a merged list no single provider produced.
+
+### Two generation counters, deliberately not one
+
+`localGeneration` is separate from `requestGeneration`. Sharing one would mean either the local
+search bumping a number the remote pipeline reads as "a newer request exists" — silently dropping an
+in-flight remote answer on **every keystroke** — or the local search testing a counter it does not
+control. Same invariant, enforced the same way: captured before the read, re-checked at the single
+point a result becomes state. Proven against a `NonCancellable` source that ignores cancellation
+entirely, the same fake shape `SearchViewModelTest` already uses for the remote path.
+
+### Outcomes re-merge rather than reading `state.hits`
+
+`NoMatches` and `Failed` both recompute from `savedHitsFor(terms)`, so the screen does not depend on
+whether the local read finished before the remote answer. Both orders are tested.
+
+**`NoMatches` had to become narrower:** the service saying it holds no such record is an answer about
+*the service*, and a product on this device is not covered by it. Telling someone their own saved
+product does not exist while it sits in the store would be the flatly wrong version of an honest
+empty result. With nothing saved it still reports no matches exactly as before.
+
+**A failure with saved hits carries `error` AND `refreshFailed`** — that is the established contract
+(`SearchScreen`'s `when` tests `hits.isNotEmpty()` first), and my first version of both the test and
+the local-read path nulled the error instead. Corrected to match the existing rule rather than
+inventing a second one.
+
+### The copy no longer names a provider
+
+`search_prompt` → *"Type a product name or barcode to search."*, `search_hint` → *"Product, brand or
+barcode"*. Search answers from saved products as well as the database, so naming one provider
+described half the box — and named a service the user has no relationship with in the one place
+there is nothing on screen to explain it. **Attribution is unchanged and still in Settings → About**,
+which is where the licence requires it. Six test assertions updated.
+
+### Verified
+
+JVM **2273/2273** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 229 JUnit XML
+files — up from 2131). Lint **0 errors, 28 warnings**, unchanged baseline, and **no unused-resource
+finding** — the copy change orphaned nothing. Debug APK and debug test APK both build. Zero compiler
+warnings in new or changed code.
+
+Instrumented on the `carbscan` emulator (API 36): **132 green** — `ProductDaoTest` 31 (6 new
+projection cases), `SearchScreenTest` 34, `SearchPresentationRegressionTest` 20, `HomeScreenTest` 36,
+`SavedProductSearchScreenTest` 6 (new), `SearchShortcutFocusTest` 5.
+
+**The benchmarks were confirmed executed, not skipped** — `SearchBenchmarkTest` 3/3 and
+`SearchRelevanceBenchmarkTest` 6/6 counted from their JUnit XML, plus `SearchResultRankingTest` 28/28
+and the whole provider chain. Neither was weakened. The remote request pattern was re-measured *with*
+a local source attached: still one request per word, still behind the 350 ms settle and the shared
+budget, pinned by `a local answer does not make the app search sooner or more often`.
+
+**Driven by hand on the emulator with Wi-Fi and mobile data both off:** saved products found by name,
+brand, exact barcode and folded Turkish; a `local:` product found and opened; the failure rendered as
+the compact inline line rather than the recovery panel. Then online: the FULL local match leading,
+remote results joining beneath without reordering. Light, Dark, 1.8× text, long names, keyboard open.
+
+### NOT verified
+
+**Nothing here has been seen on physical hardware.** Everything is JVM plus the emulator — including
+the offline pass, which is real offline behaviour but on a virtual device. Specifically open: how
+immediate the local answer feels on a real phone with a store built up over months rather than six
+seeded rows, and a live TalkBack pass over a merged list. `docs/manual-qa.md` **§46** is the gate.
+
 ## Search trust + label languages pass (2026-09-17) — 1.0.7, READ FIRST
 
 A pre-release stabilization pass on `main` above `120817d`. Still `1.0.7` / `versionCode 8`, not
@@ -4703,6 +4851,10 @@ before describing the app as live. Do not infer "live" from "uploaded".
 - **`1.0.8` / `versionCode 9` is OPEN** (2026-09-18): `branding.gradle.kts` names `9` / `"1.0.8"`,
   opened by the first code change after the submission — Home's Quick Add and Remove from Recent
   (`f00a7f9`). Further work this cycle lands under `CHANGELOG.md`'s `## 1.0.8` heading.
+- **Work so far is on `1.0.8-portion-shortcut-barcode`, not `main`**: Quick Add / Remove from Recent,
+  Share app plus the negative-carb guard and canonical privacy URL, the portion accelerators with the
+  Search shortcut and typed barcode entry (`4dc916a`), and local-first saved-product search — see
+  the pass section at the top of this file. Nothing has been merged to `main` and nothing is built.
 - **HOLD (owner, 2026-09-18):** `1.0.8` is the first update after `1.0.7`. Do not build it for
   release or upload it until the owner confirms `1.0.7` is live on Production and says the first
   update is ready.

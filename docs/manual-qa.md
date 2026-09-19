@@ -2754,3 +2754,110 @@ The rail is the four-part strip under the amount: `½ · ×2 · −step · +step
 **Device/API:** ____________________ **Phone language:** ______________
 
 **Result:** ____________________ **Date:** ____________
+
+## §46 — Local-first saved-product search (1.0.8, 2026-09-19)
+
+JVM and `carbscan` emulator only. The emulator work included a genuine offline pass (Wi-Fi and
+mobile data both off), so the headline behaviour has been *seen* — but not on real hardware, on a
+real network, or with a store built up over months of actual use.
+
+**What this feature is:** typing in either search box now matches the products already saved on the
+phone, immediately, before and independently of the online search. Saved results and online results
+appear in **one list, looking identical** — there is no badge, section or filter, and the absence of
+one is the requirement. A tester who notices "search has two databases now" has found a defect.
+
+**Seed data first.** Most rows below need saved products to find. Before starting, scan or enter at
+least six: one Favourite, one used recently, one saved but **never** used since, one entered by hand
+with no barcode, one whose name is in Turkish or carries accents, and one with a long name.
+
+### It answers immediately
+
+- [ ] 46.1 With the phone in **aeroplane mode**, type the name of a saved product in Home's search
+      box. It appears. This is the whole feature: a saved product is findable with no network at all.
+- [ ] 46.2 Same, on the **Search** screen reached from a failed scan. Both boxes behave identically.
+- [ ] 46.3 **Feel, and the point of the pass:** online, with a normal connection, type a saved
+      product's name and watch the moment the first row appears. It should feel immediate — at or
+      near the keystroke — rather than after a visible pause. Compare against a product that is
+      *not* saved: that one still waits for the network, and the difference should be noticeable.
+- [ ] 46.4 A saved product that is **neither** a Favourite nor recently used is still found. So is
+      one old enough to have dropped off Home's Recent list entirely.
+- [ ] 46.5 A product entered by hand with **no barcode** is found by its name, and tapping it opens
+      its calculator normally.
+
+### What it matches
+
+- [ ] 46.6 By **product name**, and by **brand** — typing only the brand finds its products.
+- [ ] 46.7 By **exact barcode**: type a saved product's full number. That product is the first
+      result.
+- [ ] 46.8 Accents and Turkish letters: a product stored as `Pınar Süt` or `Côte d'Or` is found by
+      typing plain `pinar sut` / `cote dor`, and by its exact spelling.
+- [ ] 46.9 Typing a run of digits that is **not** any saved barcode does not surface an unrelated
+      hand-entered product. (Those carry an internal identifier the user never sees; it must never
+      behave as a barcode.)
+- [ ] 46.10 Two characters find nothing and ask for nothing; three begin searching.
+- [ ] 46.11 A query matching nothing saved and nothing online still reaches the ordinary "no
+      products found" screen with its scan/enter actions.
+
+### Order
+
+- [ ] 46.12 Type the **full name** of a saved product that is not starred, while a *starred*
+      product also matches the words loosely. The one whose name was typed comes first. **Relevance
+      beats the star** — a Favourite must never displace a better match.
+- [ ] 46.13 Two saved products matching equally well: the Favourite is first, and between two
+      unstarred equals the more recently used is first.
+- [ ] 46.14 Repeat the same query several times, leaving and returning. The order of the saved rows
+      is the same every time.
+- [ ] 46.15 A product sharing only a **brand** word with the query does not crowd out real matches.
+
+### Online results joining
+
+- [ ] 46.16 Online, type a saved product's exact name. The saved row appears first, then the online
+      results arrive **beneath it**. The saved row does not jump, shuffle or disappear as they land.
+- [ ] 46.17 **Feel:** watch that moment closely, several times. The list should extend downward. If
+      rows visibly reorder or flash, that is the defect this row exists to catch.
+- [ ] 46.18 A product that is both saved and online appears **once**, not twice — and the figure
+      shown matches what the product screen shows when it is tapped.
+- [ ] 46.19 Type a partial word matching a saved product loosely. The online results lead and the
+      saved one appears further down; it is not forced to the top.
+- [ ] 46.20 The progress hairline keeps running while online results are still coming, even though
+      saved rows are already readable.
+
+### When the network is not there
+
+- [ ] 46.21 Offline with saved matches: the results stay, and the failure is the **compact line**
+      ("Couldn't refresh results" / Try again) above them — not the full-screen recovery panel.
+- [ ] 46.22 Offline with **no** saved match: the full recovery screen appears as before.
+- [ ] 46.23 Go offline *while* results are on screen, then type one more letter. Saved matches for
+      the new text appear; nothing is blanked.
+- [ ] 46.24 Come back online and tap *Try again*: online results join the saved ones.
+- [ ] 46.25 On a **slow or flaky** connection, saved results never vanish and return.
+
+### It still looks like one search
+
+- [ ] 46.26 Nowhere in either search box is there a badge, label, heading, divider or filter
+      distinguishing a saved result from an online one. A saved product and an online product look
+      the same.
+- [ ] 46.27 The idle prompt reads **"Type a product name or barcode to search."** and the field
+      **"Product, brand or barcode"** — no mention of Open Food Facts. Attribution is still in
+      Settings → About.
+- [ ] 46.28 Tapping a saved result opens the ordinary product screen, including for a hand-entered
+      product with no barcode, and Back returns where it did before.
+- [ ] 46.29 TalkBack: a saved row is announced exactly like an online one — name, brand, quantity
+      if any, then the carb figure. Nothing says "saved" or "local".
+- [ ] 46.30 A saved product with **no** photo shows its monogram tile, beside online rows with
+      photos, without the row heights jumping.
+
+### Light, Dark, and text size
+
+- [ ] 46.31 Both themes, with saved and online rows in one list: identical typography, dividers and
+      figure column throughout.
+- [ ] 46.32 Text size at maximum, with a long saved product name: the name wraps rather than
+      clipping, the figure moves below the text as it does for online rows, and nothing is cut.
+- [ ] 46.33 On the narrowest phone available, with the keyboard open, saved rows are readable and
+      the list scrolls normally.
+
+**Device/API:** ____________________ **Phone language:** ______________
+
+**Store size when tested (saved products):** ________
+
+**Result:** ____________________ **Date:** ____________

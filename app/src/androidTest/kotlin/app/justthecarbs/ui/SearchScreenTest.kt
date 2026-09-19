@@ -102,7 +102,7 @@ class SearchScreenTest {
     fun anUntouchedSearchExplainsWhatToDo() {
         show(SearchUiState())
 
-        compose.onNodeWithText("Type a product name to search Open Food Facts.").assertIsDisplayed()
+        compose.onNodeWithText("Type a product name or barcode to search.").assertIsDisplayed()
     }
 
     @Test
@@ -317,7 +317,7 @@ class SearchScreenTest {
         compose.waitForIdle()
 
         compose.onNodeWithText("Type at least 3 characters to search.").assertDoesNotExist()
-        compose.onNodeWithText("Type a product name to search Open Food Facts.").assertIsDisplayed()
+        compose.onNodeWithText("Type a product name or barcode to search.").assertIsDisplayed()
         assertEquals(emptyList<String>(), source.queries)
     }
 
@@ -367,7 +367,7 @@ class SearchScreenTest {
         compose.waitForIdle()
 
         compose.onNodeWithText("Chocoladehagel puur").assertDoesNotExist()
-        compose.onNodeWithText("Type a product name to search Open Food Facts.").assertIsDisplayed()
+        compose.onNodeWithText("Type a product name or barcode to search.").assertIsDisplayed()
     }
 
     /**
@@ -409,7 +409,7 @@ class SearchScreenTest {
         // nor the initial prompt has flashed up in their place.
         compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
         compose.onNodeWithText("No products found", substring = true).assertDoesNotExist()
-        compose.onNodeWithText("Type a product name to search Open Food Facts.").assertDoesNotExist()
+        compose.onNodeWithText("Type a product name or barcode to search.").assertDoesNotExist()
 
         gate.complete(Unit)
         compose.waitForIdle()

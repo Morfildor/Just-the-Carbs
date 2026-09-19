@@ -27,6 +27,28 @@ data class RecentUseSnapshotRow(
 )
 
 /**
+ * One saved product in the narrow shape saved-product search reads.
+ *
+ * A projection rather than a `SELECT *`: search scans every saved row on every keystroke, and the
+ * full entity carries a JSON gallery blob, six remote-variant columns and the whole remembered
+ * portion — none of which matching or ranking looks at. Room maps the seven named columns and reads
+ * nothing else.
+ *
+ * Storage-shaped, like [RecentUseSnapshotRow]: `TEXT` decimals and epoch millis, converted at the
+ * `RoomSavedProductSearchSource` seam that already converts everything else.
+ */
+data class SavedProductSearchRow(
+    val barcode: String,
+    val name: String,
+    val brand: String?,
+    val carbsPer100: String,
+    val basis: String,
+    val imageUrl: String?,
+    val favorite: Boolean,
+    val lastUsedAt: Long?,
+)
+
+/**
  * Product reads and writes, plus the two destructive Settings actions (§43).
  *
  * The clear actions issue statements against `portion_usage` and `portion_units` as well as
@@ -61,6 +83,32 @@ abstract class ProductDao {
         """,
     )
     abstract fun observeRecents(limit: Int): Flow<List<ProductEntity>>
+
+    /**
+     * Every saved product, for local-first search.
+     *
+     * **Deliberately not [observeRecents].** That query answers "what belongs on Home", so it
+     * carries `WHERE lastUsedAt IS NOT NULL OR favorite = 1` and a `LIMIT` — which between them hide
+     * exactly the products this feature exists to find: one saved but never since used, or one
+     * pushed past the recents limit. A product the user has stored is searchable whether or not it
+     * is recent, starred, or recently enough used to be on a list of twelve.
+     *
+     * No `WHERE`, no `ORDER BY` and no `LIKE`: matching and ranking are
+     * [app.justthecarbs.domain.SavedProductSearch]'s, in Kotlin, using the same matcher and the same
+     * folding the remote page is ranked with. SQLite has no equivalent of that folding — `LIKE` is
+     * case-insensitive for ASCII only, so it would never match `Pınar` against `Pinar` — and pushing
+     * the predicate down would mean two different definitions of "matches".
+     *
+     * `suspend`, not a `Flow`: this is read once per search, not observed. A flow here would
+     * re-emit the whole table on every unrelated product write.
+     */
+    @Query(
+        """
+        SELECT barcode, name, brand, carbsPer100, basis, imageUrl, favorite, lastUsedAt
+        FROM products
+        """,
+    )
+    abstract suspend fun findAllForSearch(): List<SavedProductSearchRow>
 
     /**
      * Every column on `products` that records *that the user ate the thing*, cleared for every row.

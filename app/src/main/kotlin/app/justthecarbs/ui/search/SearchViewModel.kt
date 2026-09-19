@@ -7,6 +7,8 @@ import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
 import app.justthecarbs.domain.RemoteSearchGovernor
+import app.justthecarbs.domain.SavedProductSearch
+import app.justthecarbs.domain.SavedProductSearchSource
 import app.justthecarbs.domain.SearchQueryMatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -152,6 +154,24 @@ class SearchViewModel(
      */
     private val governor: RemoteSearchGovernor = RemoteSearchGovernor(),
     /**
+     * The products already on this device, searched **before and independently of** the network.
+     *
+     * Null disables local search entirely and restores the pre-2026-09-19 behaviour exactly, which
+     * is what keeps every existing test in this file meaningful: they were written against a
+     * ViewModel with no local source and still exercise the same remote pipeline unchanged.
+     *
+     * Shared across both `SearchViewModel` instances like the governor and the cache are — not
+     * because there is a budget to protect (reading the local store costs nothing) but because
+     * there is exactly one store, and constructing an adapter per screen would be two objects
+     * describing one thing.
+     *
+     * Declared **before** [nowMs] so that stays the trailing parameter: every existing test
+     * constructs this ViewModel with a clock as a trailing lambda, and moving that position would
+     * silently rebind those lambdas to this parameter — a hazard this file already records for
+     * `RemoteSearchGovernor`'s own clock argument.
+     */
+    private val savedProducts: SavedProductSearchSource? = null,
+    /**
      * Wall clock, injectable so request pacing is testable on virtual time.
      *
      * Must agree with the clock the [governor] was built with — both default to
@@ -229,6 +249,37 @@ class SearchViewModel(
 
     /** The coroutine running the current search, cancelled when a newer request replaces it. */
     private var inFlight: Job? = null
+
+    /**
+     * The saved-product hits for [localQuery], and the query they answer.
+     *
+     * Kept beside the remote pair for the same reason that one is kept beside
+     * [SearchUiState.hits]: what the screen shows is *derived* from both, so neither may be
+     * overwritten by the merge. A remote answer arriving must be mergeable with the local hits
+     * already on screen, and a remote failure must leave them exactly as they were.
+     */
+    private var localQuery: String? = null
+    private var localHits: List<ProductSearchHit> = emptyList()
+
+    /**
+     * The local search's **own** generation counter, deliberately separate from
+     * [requestGeneration].
+     *
+     * The two clocks tick at different rates and for different reasons: a local search starts on
+     * every keystroke that meets the minimum length, a remote one only after the settle wait and
+     * the governor. Sharing one counter would mean either the local search bumping a number the
+     * remote pipeline reads as "a newer request exists" — silently dropping an in-flight remote
+     * answer on every keystroke — or the local search testing a counter it does not control, so a
+     * remote request landing mid-read would invalidate a perfectly current local result.
+     *
+     * The invariant this enforces is the same one [requestGeneration] enforces for the network,
+     * and it is enforced the same way: re-checked at the single point where a local result becomes
+     * state, so an older read cannot land whether or not its coroutine was cancelled.
+     */
+    private var localGeneration = 0L
+
+    /** The coroutine reading the local store, cancelled when a newer query replaces it. */
+    private var localInFlight: Job? = null
 
     /**
      * The [SearchRequest.generation] that has already consumed its one automatic 429 resume, or
@@ -377,13 +428,29 @@ class SearchViewModel(
         // one the remote results belong to is those results narrowed; for a divergent query it is
         // nothing, because showing chocolate for "gouda" would be a wrong answer rather than a
         // stale one.
-        val localHits = if (willSearch || hadResultsForThisQuery) localHitsFor(terms) else emptyList()
-        val narrowed = localHits.isNotEmpty() && terms != remoteQuery
+        val narrowedHits = if (willSearch || hadResultsForThisQuery) localHitsFor(terms) else emptyList()
+        val narrowed = narrowedHits.isNotEmpty() && terms != remoteQuery
+
+        // Saved products carried over only for the query that produced them. Anything else drops
+        // them here and the read started below replaces them — a saved hit for the previous word is
+        // as wrong as a remote one.
+        val keepSaved = terms == localQuery
+        if (!keepSaved) {
+            localQuery = null
+            localHits = emptyList()
+        }
+        val savedHits = if (keepSaved) localHits else emptyList()
 
         _state.update {
             it.copy(
                 query = text,
-                hits = if (hadResultsForThisQuery) it.hits else localHits,
+                hits = when {
+                    hadResultsForThisQuery -> it.hits
+                    // Saved products lead a query that has no remote answer yet; where a narrowed
+                    // remote page also exists, the two are merged by the same rule the arriving
+                    // answer will use, so a row does not move when the network catches up.
+                    else -> SavedProductSearch.merge(terms, savedHits, narrowedHits, RESULT_LIMIT)
+                },
                 // Verdicts about the *previous* query go immediately either way. "No products found
                 // for X" and a network error are statements about a completed search; keeping them
                 // beside newer text would attribute them to a query that has not run.
@@ -396,15 +463,103 @@ class SearchViewModel(
                 searching = willSearch,
                 awaitingRemotePermit = false,
                 rateLimited = if (willSearch) governor.isServerBackoffActive(nowMs()) else false,
-                narrowedLocally = if (hadResultsForThisQuery) it.narrowedLocally else narrowed,
+                // Saved hits answer the query, but they are not the whole answer while a remote
+                // search is still coming, so they count as a local view exactly as a narrowed
+                // remote page does. The screen uses this only to keep the progress affordance up.
+                narrowedLocally = when {
+                    hadResultsForThisQuery -> it.narrowedLocally
+                    else -> narrowed || (savedHits.isNotEmpty() && terms != remoteQuery)
+                },
             )
         }
+
+        // Started after the state write, so the keystroke's own synchronous result is on screen
+        // before anything asynchronous can touch it — and started whenever the query is long
+        // enough, including when `willSearch` is false because the remote answer is already here:
+        // a saved product matching the text is worth showing either way.
+        if (terms.length >= MIN_QUERY_LENGTH) startLocalSearch(terms) else cancelLocalSearch()
 
         if (!willSearch) return
 
         requestedQuery = terms
         waitPending = true
         requests.value = SearchRequest(terms, immediate = false, generation = ++requestGeneration)
+    }
+
+    /**
+     * Read the saved products for [terms] and publish them, unless a newer query has started.
+     *
+     * Runs on every keystroke that meets the minimum length, with no settle wait and no governor —
+     * see the constructor's [savedProducts] and the field comment on [localGeneration] for why
+     * those two exist for the network and must not be borrowed for this.
+     *
+     * The staleness rule is the remote pipeline's, applied to its own counter: the generation is
+     * captured before the read and re-checked at the one point a result becomes state. That check
+     * is the invariant and the cancellation below is the optimisation — a source that ignores
+     * cancellation still cannot land an old answer, because the counter has moved.
+     */
+    private fun startLocalSearch(terms: String) {
+        val source = savedProducts ?: return
+        // Already answered for exactly these terms. The store has not changed under us within one
+        // editing session in any way this screen can observe, so re-reading it would cost a table
+        // scan per keystroke to produce the list already on screen.
+        if (terms == localQuery) return
+
+        val generation = ++localGeneration
+        localInFlight?.cancel()
+        localInFlight = viewModelScope.launch {
+            val products = runCatching { source.allProducts() }.getOrNull() ?: return@launch
+            val hits = SavedProductSearch.search(terms, products, RESULT_LIMIT)
+            // The single point where a local result becomes state, and the single place staleness
+            // is decided. A newer query has raised the counter, so this read is dropped even if its
+            // coroutine was never actually cancelled.
+            if (generation != localGeneration) return@launch
+
+            localQuery = terms
+            localHits = hits
+            if (hits.isEmpty()) return@launch
+
+            _state.update {
+                // Merged against whatever remote hits belong to this same query. Nothing else about
+                // the state is touched: a local read is not an answer to the remote search, so it
+                // cannot clear `searching`, resolve `noMatches`, or dismiss an error.
+                val remote = if (remoteQuery == terms) remoteHits else emptyList()
+                it.copy(
+                    hits = SavedProductSearch.merge(terms, hits, remote, RESULT_LIMIT),
+                    // A saved product *is* a result, so a screen that was about to say "no products
+                    // found" no longer may. The remote search's own verdict is preserved in
+                    // `remoteHits`/`remoteQuery` and re-applied if the user edits away and back.
+                    noMatches = false,
+                    // A failure that already arrived becomes a *refresh* failure now that there is
+                    // something to keep — the same demotion `runSearch` performs when hits survive a
+                    // failed refresh, reached in the other order. `error` is deliberately left as it
+                    // is: the established contract carries it alongside `refreshFailed`, and the
+                    // screen decides between the two by testing `hits.isNotEmpty()` first.
+                    refreshFailed = it.error != null || it.refreshFailed,
+                    narrowedLocally = remote.isEmpty(),
+                )
+            }
+        }
+    }
+
+    /**
+     * The saved hits belonging to [terms], or nothing.
+     *
+     * Guarded on the query rather than returning [localHits] outright: a remote answer can arrive
+     * for a query the user has since edited past, and merging the previous word's saved products
+     * into it would be the same staleness the generation checks exist to prevent, arriving through
+     * the other pipeline.
+     */
+    private fun savedHitsFor(terms: String): List<ProductSearchHit> =
+        if (localQuery == terms) localHits else emptyList()
+
+    /** Drop any saved-product work and results — the query is gone or too short to answer. */
+    private fun cancelLocalSearch() {
+        localGeneration++
+        localInFlight?.cancel()
+        localInFlight = null
+        localQuery = null
+        localHits = emptyList()
     }
 
     /**
@@ -463,6 +618,10 @@ class SearchViewModel(
             waitPending = false
             inFlight?.cancel()
             inFlight = null
+            // The refusal clears the list, so the saved hits that were in it go too — and the read
+            // that would have replaced them is abandoned rather than left to write into a screen
+            // that has just said the query is too short.
+            cancelLocalSearch()
             _state.update {
                 it.copy(
                     searching = false,
@@ -555,7 +714,12 @@ class SearchViewModel(
                 _state.update {
                     it.copy(
                         searching = false,
-                        hits = result.hits,
+                        hits = SavedProductSearch.merge(
+                            request.terms,
+                            savedHitsFor(request.terms),
+                            result.hits,
+                            RESULT_LIMIT,
+                        ),
                         noMatches = false,
                         error = null,
                         refreshFailed = false,
@@ -565,21 +729,30 @@ class SearchViewModel(
                     )
                 }
             }
-            // An answer, not an absence of one. The list kept on screen during the refresh was kept
-            // only because a replacement was coming — this IS the replacement, so it goes. Leaving
-            // it would present one query's products as the result for text that genuinely has none.
+            // An answer, not an absence of one. Any *remote* list kept on screen during the refresh
+            // was kept only because a replacement was coming — this IS the replacement, so it goes.
+            // Leaving it would present one query's products as the result for text that genuinely
+            // has none. Saved products are not covered by that reasoning; see below.
             ProductSearchResult.NoMatches -> {
                 remoteQuery = request.terms
                 remoteHits = emptyList()
+                // Saved products survive this, and that is the one place "no matches" had to become
+                // narrower. The service saying it holds no such record is an answer about the
+                // service; a product on this device is not covered by it, and telling someone their
+                // own saved product does not exist — while it is sitting in the store — would be
+                // the flatly wrong version of an honest empty result.
+                val saved = savedHitsFor(request.terms)
                 _state.update {
                     it.copy(
                         searching = false,
-                        hits = emptyList(),
-                        noMatches = true,
+                        hits = saved,
+                        noMatches = saved.isEmpty(),
                         error = null,
                         refreshFailed = false,
                         awaitingRemotePermit = false,
                         rateLimited = false,
+                        // The remote search is finished and these are all the results there are, so
+                        // this is a complete answer rather than a local view of a pending one.
                         narrowedLocally = false,
                     )
                 }
@@ -594,7 +767,21 @@ class SearchViewModel(
                 // still tappable, still correct for the query that produced them — and the failure
                 // is reported beside them rather than in place of them. Only a failure with nothing
                 // to keep becomes the full-screen recovery panel.
-                val keptResults = it.hits.isNotEmpty()
+                // Saved products are re-merged rather than read off `it.hits`, so the outcome does
+                // not depend on whether the local read happened to finish before the failure
+                // arrived. Both orders now produce the same screen: the saved list, with the
+                // failure reported beside it.
+                //
+                // This is what makes the app usable with no network at all. Every hit here is a
+                // product already on the device, so a failed or impossible request costs the user
+                // the products they have never saved — and nothing else.
+                val kept = SavedProductSearch.merge(
+                    request.terms,
+                    savedHitsFor(request.terms),
+                    it.hits,
+                    RESULT_LIMIT,
+                )
+                val keptResults = kept.isNotEmpty()
                 val limited = result.error == LookupError.RATE_LIMITED
                 it.copy(
                     // A rate limit is not over when the response arrives — the backoff has just
@@ -604,7 +791,7 @@ class SearchViewModel(
                     searching = limited,
                     awaitingRemotePermit = limited,
                     rateLimited = limited,
-                    hits = if (keptResults) it.hits else emptyList(),
+                    hits = kept,
                     noMatches = false,
                     // A rate limit never becomes a full-screen failure: it is a wait this app is
                     // already handling, not a dead end, and the recovery panel's actions answer a
@@ -699,6 +886,17 @@ class SearchViewModel(
          * refusal is made with, rather than repeating "3" in a string that could drift from it.
          */
         const val MIN_QUERY_LENGTH = 3
+
+        /**
+         * The most results either source, or a merge of both, may put on screen.
+         *
+         * The same number the remote provider already applies
+         * ([app.justthecarbs.data.remote.SearchALiciousApi.SEARCH_RESULT_LIMIT] = 20), restated here
+         * rather than imported because this is the *screen's* budget: it bounds a merged list that
+         * no single provider produced, and a merge that could exceed the limit either source obeys
+         * would make a local hit's arrival lengthen the list rather than join it.
+         */
+        const val RESULT_LIMIT = 20
 
         /**
          * How long typing must pause before a remote search is *scheduled*.

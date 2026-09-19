@@ -12,6 +12,7 @@ import app.justthecarbs.data.local.RoomMealDataSource
 import app.justthecarbs.data.local.RoomPortionUnitDataSource
 import app.justthecarbs.data.local.RoomPortionUsageDataSource
 import app.justthecarbs.data.local.RoomProductDataSource
+import app.justthecarbs.data.local.RoomSavedProductSearchSource
 import app.justthecarbs.data.remote.LogcatSearchProviderLog
 import app.justthecarbs.data.remote.NetworkModule
 import app.justthecarbs.data.remote.OpenFoodFactsDataSource
@@ -40,6 +41,20 @@ class AppContainer(context: Context) {
     private val database by lazy { JustTheCarbsDatabase.build(appContext) }
 
     val localProducts by lazy { RoomProductDataSource(database.productDao()) }
+
+    /**
+     * The saved products both search surfaces match against before the network answers.
+     *
+     * One instance for the process, like the governors and the cache — not because there is a
+     * budget to protect (a local read costs nothing and is not paced) but because there is exactly
+     * one store, and an adapter per screen would be two objects describing one table.
+     *
+     * Separate from [searchSource] on purpose: that is the remote provider *chain*, and folding the
+     * local store into it as a fourth link would make a local hit indistinguishable from a remote
+     * one at the point the two have to be merged differently. See
+     * [app.justthecarbs.domain.SavedProductSearchSource].
+     */
+    val savedProductSearch by lazy { RoomSavedProductSearchSource(database.productDao()) }
     val localPortionUnits by lazy { RoomPortionUnitDataSource(database.portionUnitDao()) }
     val localMeal by lazy { RoomMealDataSource(database.mealItemDao()) }
     val localPortionUsage by lazy { RoomPortionUsageDataSource(database.portionUsageDao()) }

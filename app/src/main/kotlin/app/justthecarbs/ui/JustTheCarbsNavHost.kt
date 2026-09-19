@@ -419,8 +419,15 @@ fun JustTheCarbsNavHost(
                 // ProductSearchSource — this screen does not know there is more than one provider.
                 // The governor here paces the PRIMARY; the legacy fallback carries its own stricter
                 // budget inside GovernedProductSearch.
+                //
+                // `savedProductSearch` is the products already on this device, answered before and
+                // independently of the network — also shared, because there is one store.
                 factory = factory {
-                    SearchViewModel(container.searchSource, container.primarySearchGovernor)
+                    SearchViewModel(
+                        container.searchSource,
+                        container.primarySearchGovernor,
+                        savedProducts = container.savedProductSearch,
+                    )
                 },
             )
             val searchState by searchViewModel.state.collectAsStateWithLifecycle()
@@ -764,8 +771,16 @@ fun JustTheCarbsNavHost(
                 // ProductSearchSource — this screen does not know there is more than one provider.
                 // The governor here paces the PRIMARY; the legacy fallback carries its own stricter
                 // budget inside GovernedProductSearch.
+                //
+                // `savedProductSearch` is the products already on this device, answered before and
+                // independently of the network — also shared, because there is one store. Both
+                // surfaces get it, so the two behave identically.
                 factory = factory {
-                    SearchViewModel(container.searchSource, container.primarySearchGovernor)
+                    SearchViewModel(
+                        container.searchSource,
+                        container.primarySearchGovernor,
+                        savedProducts = container.savedProductSearch,
+                    )
                 },
             )
             val state by viewModel.state.collectAsStateWithLifecycle()

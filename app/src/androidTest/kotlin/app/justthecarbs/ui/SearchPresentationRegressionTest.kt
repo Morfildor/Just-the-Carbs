@@ -179,7 +179,7 @@ class SearchPresentationRegressionTest {
     fun theSearchPromptIsPlacedNearTheTopRatherThanCentredInTheViewport() {
         showSearch(SearchUiState())
 
-        compose.onNodeWithText("Type a product name to search Open Food Facts.").assertIsDisplayed()
+        compose.onNodeWithText("Type a product name or barcode to search.").assertIsDisplayed()
         assertSitsNearTheTopOfTheStateRegion("Type a product name")
     }
 
@@ -396,7 +396,7 @@ class SearchPresentationRegressionTest {
         compose.waitForIdle()
 
         compose.onNodeWithText("Type at least 3 characters to search.").assertDoesNotExist()
-        compose.onNodeWithText("Type a product name to search Open Food Facts.").assertIsDisplayed()
+        compose.onNodeWithText("Type a product name or barcode to search.").assertIsDisplayed()
         assertTrue("Typing alone must not search", source.queries.isEmpty())
     }
 

@@ -117,6 +117,20 @@ live on Production and says the first update is ready. Work accumulates here unt
   cannot help: when camera access is off, and when the camera fails to start. A typed code takes
   exactly the same route as a scanned one. The number is never silently corrected: an invalid code
   is refused rather than turned into a different product.
+- **Search finds your own products first, and works offline.** Typing in either search box now
+  matches the products already saved on the phone straight away, without waiting for the network,
+  and online results join them as they arrive. A product you have saved is findable with no
+  connection at all — by name, by brand, by its exact barcode, and by plain spelling where the name
+  carries accents or Turkish letters (`pinar sut` finds `Pınar Süt`). It searches everything saved,
+  not only Favourites and Recents, so a product kept months ago and never used since still comes
+  back. If the network then fails, your own products stay on screen with a small *Couldn't refresh
+  results* line above them instead of the results being replaced by an error.
+
+  **It is still one search.** A saved product and an online one look identical — no badge, no
+  section, no filter, no separate list — because the point is that search became faster, not that it
+  gained a second database. Where both sources hold the same product it appears once, showing the
+  copy already on your phone, which is the one that opens when you tap it. Online results keep the
+  order the database returned them in.
 
 ### Changed
 
@@ -127,6 +141,12 @@ live on Production and says the first update is ready. Work accumulates here unt
 - The meal bar on Home now slides in when a meal starts instead of pushing the list down in one
   frame.
 - Settings → Privacy Policy now opens the new canonical GitHub Pages address.
+- **Search no longer names Open Food Facts in its prompt.** The empty state read "Type a product
+  name to search Open Food Facts."; it now reads "Type a product name or barcode to search.", and
+  the field is labelled "Product, brand or barcode". Search answers from saved products as well as
+  the database, so naming one provider described half of what the box does — and it named a service
+  the user has no relationship with, in the one place there is nothing on screen to explain it.
+  Attribution is unchanged and still in Settings → About, which is where the licence requires it.
 
 ### Known limits
 
@@ -140,17 +160,42 @@ live on Production and says the first update is ready. Work accumulates here unt
 
 ### Verified so far
 
-JVM 2131/2131 (0 skipped, `--rerun-tasks`); lint 0 errors, 28 warnings (unchanged); instrumented
-`ui` package 373/373 and `data.local` 47/47 on the `carbscan` emulator. **Not yet seen on a physical
-device**: the Quick Add haptic, a live TalkBack pass, and whether taps meant to open a product land on
-the **+** by accident. Re-check all of this before the release build.
+JVM **2273/2273** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 229 JUnit XML
+files); lint **0 errors, 28 warnings** (unchanged baseline); debug APK and debug test APK both
+build. Instrumented on the `carbscan` emulator (API 36): the `ui` package and `data.local` for the
+earlier slices, plus **132 green** for the search work — `ProductDaoTest` 31, `SearchScreenTest` 34,
+`SearchPresentationRegressionTest` 20, `HomeScreenTest` 36, `SavedProductSearchScreenTest` 6,
+`SearchShortcutFocusTest` 5.
+
+The search benchmarks were re-run and **confirmed executed rather than skipped** —
+`SearchBenchmarkTest` 3/3 and `SearchRelevanceBenchmarkTest` 6/6, along with `SearchResultRankingTest`
+28/28 and the whole provider chain. Neither benchmark was weakened to accommodate local search, and
+the remote request pattern is re-measured with a local source attached: still one request per word,
+still behind the 350 ms settle and the shared budget.
+
+Local-first search was driven by hand on the emulator **with Wi-Fi and mobile data switched off**:
+saved products found by name, by brand, by exact barcode, and by plain `pinar` against a stored
+`Pınar`; a hand-entered product with no barcode found and opened; the failure rendered as the
+compact inline line rather than the recovery panel. Then online: the saved row leading, online
+results joining beneath it without the list reordering. Checked in Light and Dark, at 1.8× text, with
+long names and the keyboard open.
+
+**Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps meant
+to open a product land on the **+** by accident, and — for search — how immediate the local answer
+actually feels on real hardware with a store built up over months rather than six seeded rows.
+Re-check all of this before the release build; `docs/manual-qa.md` §45 and §46 are the gates.
 
 ### Play Store release notes
 
-*Draft — rewrite before upload.*
+*Draft — rewrite before upload. Currently 407 characters of the 500 allowed.*
 
-> Add a food you have had before in one tap: Home now shows a + beside your last portion. Long-press
-> a recent product to remove it from Recent, with Undo.
+```
+• Search now finds your saved products instantly, and works with no connection at all — by name, brand or barcode.
+• Add a food you have had before in one tap: Home shows a + beside your last portion.
+• Quicker portion controls: halve, double, or step up and down by an amount that suits the pack.
+• Type or paste a barcode when the camera can't help.
+• Long-press a recent product to remove it, with Undo.
+```
 
 ## 1.0.7 (versionCode 8) — 2026-09-17 — uploaded to Google Play Production, replacing 1.0.6, under review
 
