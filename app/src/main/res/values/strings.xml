@@ -94,6 +94,79 @@
     <string name="scanner_enter_manually">Enter barcode</string>
     <string name="scanner_unavailable">The camera is unavailable. You can still enter a product manually.</string>
 
+    <!--
+      Barcode from photo (1.0.8). Read a barcode out of a picture the user already has — a
+      screenshot of an order confirmation, a photo of a packet already thrown away, a shelf picture
+      taken in a shop.
+
+      The action is an icon in the camera's own chrome, so its label is a content description rather
+      than visible text, and it names the whole gesture rather than the bare noun: "Gallery" read
+      out by TalkBack over a camera preview says where the picture comes from but not what tapping
+      it will do. It mirrors ocr_choose_photo's construction for the same reason, differing only in
+      naming a barcode rather than a nutrition label.
+    -->
+    <string name="scanner_choose_photo">Choose a photo containing a barcode</string>
+
+    <!--
+      Sharing a picture into the app from elsewhere (1.0.8).
+
+      The question is asked rather than inferred. A screenshot of a barcode and a photo of a
+      nutrition table are the same kind of file, and running both recognizers to see which answers
+      would let a barcode in the corner of a packet photo silently outrank the table the user
+      actually meant. Two choices, no default, no "detect automatically".
+
+      The body says where the image goes, because a share leaves the user in a new app with a
+      picture from their gallery and no statement about what just happened to it.
+    -->
+    <string name="share_chooser_title" tools:ignore="MissingTranslation">What do you want to scan?</string>
+    <string name="share_chooser_body" tools:ignore="MissingTranslation">The image stays on this device. Nothing is uploaded.</string>
+    <string name="share_chooser_barcode" tools:ignore="MissingTranslation">Barcode</string>
+    <string name="share_chooser_barcode_subtitle" tools:ignore="MissingTranslation">Find the product from the code in the picture</string>
+    <string name="share_chooser_label" tools:ignore="MissingTranslation">Nutrition label</string>
+    <string name="share_chooser_label_subtitle" tools:ignore="MissingTranslation">Read the carbohydrate figure off the table</string>
+    <string name="share_chooser_cancel" tools:ignore="MissingTranslation">Not now</string>
+    <!--
+      One statement for every way a shared image can be unusable — unreadable, empty, too large,
+      truncated, or a type that was never an image. The user acts on all of them identically, so
+      naming the cause would name something they cannot do anything about. No exception text and
+      no storage vocabulary.
+    -->
+    <string name="share_failed_title" tools:ignore="MissingTranslation">That image could not be read</string>
+    <string name="share_failed_body" tools:ignore="MissingTranslation">Try sharing it again, or scan the package directly.</string>
+    <string name="share_failed_home" tools:ignore="MissingTranslation">Go to Home</string>
+    <!--
+      Announced while the chosen photo is being copied and read. Names the photo as the subject,
+      because the live camera behind it is no longer what the user is waiting on — "Reading…" alone
+      would read as though the camera had found something.
+    -->
+    <string name="scanner_photo_reading">Reading the photo you chose…</string>
+    <!--
+      No usable barcode. Deliberately NOT phrased in terms of the recognizer or the check digit:
+      "no barcode was detected", "invalid checksum" and "unsupported symbology" are three different
+      technical facts that the user acts on identically, and naming them would explain the app's
+      internals instead of what to do next. One statement, then the ways forward.
+
+      "No barcode we could read" rather than "no barcode": the photo may well contain one that came
+      out too small or too blurred, and telling someone their picture has no barcode in it when
+      they can see one is the version of this message that gets the app distrusted.
+    -->
+    <string name="scanner_photo_no_barcode">No barcode we could read was found in that photo.</string>
+    <string name="scanner_photo_choose_another">Choose another photo</string>
+    <!--
+      Several distinct codes. The app must never pick one: a shelf photo or a multipack legitimately
+      shows two products, and choosing either silently produces a confident lookup for the one the
+      user did not mean. The body says why they are being asked, so the question does not read as
+      the app having failed.
+    -->
+    <string name="scanner_photo_multiple_title">Which barcode?</string>
+    <string name="scanner_photo_multiple_body">That photo has more than one barcode in it. Pick the product you want.</string>
+    <!--
+      Each row's spoken label. The visible text is the digits alone — they are what the user matches
+      against the picture behind the sheet — while TalkBack gets the whole action, so selection is
+      never communicated by position or highlight alone.
+    -->
+    <string name="scanner_photo_use_barcode">Use barcode %1$s</string>
+
     <!-- Camera permission (§9) -->
     <!--
       Shared by both scanners (ScannerScreen and LabelScannerScreen), so it must not name only one
@@ -522,6 +595,42 @@
       the description has to say the photo is the thing being read, not merely that a photo exists.
     -->
     <string name="ocr_captured_description">The captured label, being read</string>
+
+    <!--
+      Photo import (1.0.8). A second way in to the SAME label-reading pipeline: a photograph the
+      user already has is staged to a cache file and handed to the very same recognition a shutter
+      press produces, so everything downstream — ambiguity, conflict, crop recovery, verification —
+      behaves identically.
+
+      The action is an icon in the camera's own chrome, so the label is a content description rather
+      than visible text. It names the whole gesture ("Choose a photo of a nutrition label") instead
+      of the bare noun: a lone "Gallery" read out by TalkBack over a camera preview says where the
+      picture comes from but not what tapping it will do.
+    -->
+    <string name="ocr_choose_photo">Choose a photo of a nutrition label</string>
+    <!--
+      Announced while the picked photo is being copied and read. It names the photo as the subject,
+      because the screen behind it is a live camera the user is no longer waiting on — "Reading…"
+      alone would read as though the camera had captured something.
+    -->
+    <string name="ocr_photo_reading">Reading the photo you chose…</string>
+    <!--
+      Import failures. Each says what happened and leaves the user somewhere they can act, and NONE
+      of them is phrased as a reading: "we could not read that file" is a different statement from
+      "there is no nutrition table in it", and collapsing the two would tell someone their label is
+      unreadable when in fact nothing was ever decoded.
+    -->
+    <string name="ocr_photo_unreadable">That photo could not be opened. Try choosing it again, or take a new one.</string>
+    <string name="ocr_photo_too_large">That file is too large to read. Choose a photo instead.</string>
+    <string name="ocr_photo_failed">That photo could not be read. Try another one, or use the camera.</string>
+    <string name="ocr_photo_choose_another">Choose another photo</string>
+    <!--
+      The permission-denied variant. Shorter than ocr_choose_photo because it is a button with
+      visible text in a vertical stack of buttons, where the surrounding copy has already
+      established that the subject is a nutrition label — whereas the scanner's icon carries its
+      whole meaning in its content description and has no such context.
+    -->
+    <string name="permission_choose_photo">Choose a photo</string>
 
     <!--
       Crop confirmation. The instruction names the two parts of the table that must be enclosed,

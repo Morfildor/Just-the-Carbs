@@ -1,7 +1,11 @@
 package app.justthecarbs.ui.scan
 
+import android.net.Uri
 import android.os.SystemClock
 import android.util.Size
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -42,6 +46,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -56,8 +61,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,6 +103,8 @@ import app.justthecarbs.ocr.DisputedCandidates
 import app.justthecarbs.ocr.EvidenceResolver
 import app.justthecarbs.ocr.EvidenceSource
 import app.justthecarbs.ocr.FocusedAmountEntry
+import app.justthecarbs.ocr.ImportedImageStaging
+import app.justthecarbs.ocr.ImportedPhotoIntake
 import app.justthecarbs.ocr.LabelAnalyzer
 import app.justthecarbs.ocr.LabelReading
 import app.justthecarbs.ocr.LiveEvidenceBuffer
@@ -127,7 +136,9 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -254,6 +265,22 @@ fun LabelScannerScreen(
      * default masks a caller that forgot to wire it rather than surfacing it at compile time.
      */
     hapticsEnabled: Boolean,
+    /**
+     * An image shared into the app from elsewhere, already copied into this app's cache (1.0.8).
+     *
+     * Non-null only on the share route, where the user has already been asked what the picture
+     * contains and answered "nutrition label". It enters the **same** `importPhoto` the photo
+     * picker feeds, so from that function down there is no share-specific path at all - the same
+     * staging, the same `analyzeStillRetaining`, the same automatic verification gate, the same
+     * crop recovery, the same assisted reading. A share's only privilege is skipping the picker.
+     *
+     * A `file://` URI into `cacheDir`, not the sender's `content://`. The sender's grant rides on
+     * the delivered Intent and may be dead by the time the user has answered the chooser, so
+     * `MainActivity` takes the bytes while the grant is certainly live and this is what survives.
+     * Staging copying it a second time is a local file copy - cheap, and the price of there being
+     * exactly one way into the pipeline rather than two that must be kept in agreement.
+     */
+    sharedImage: Uri? = null,
 ) {
     // §6, startup-hardening pass: the same shared five-state gate ScannerScreen uses. Previously
     // this screen carried its own copy of the granted/not-granted-plus-requested tracking, with the
@@ -261,8 +288,32 @@ fun LabelScannerScreen(
     // "not this time" denial, and no way to Settings for a "never ask me again" one.
     val permission = rememberCameraPermissionController()
 
+    /**
+     * Photo import survives a denied camera permission, and this flag is how (1.0.8).
+     *
+     * Reading a photograph the user already has needs no camera at all — it is decode, OCR and
+     * parse, none of which touches the sensor. But every one of those stages, and all the state
+     * they drive, lives inside [LabelCamera], which is composed only when the permission is
+     * granted. Without this the feature would vanish in exactly the state where it is most useful:
+     * the user who declined the camera has *nothing else* on this screen that can read a label.
+     *
+     * So a denied permission that chooses a photo composes [LabelCamera] anyway, with
+     * [LabelCamera.cameraEnabled] false. It binds no camera use case and shows no preview; it is
+     * there purely as the host of the one pipeline. The alternative — a second, camera-free copy of
+     * the import, recognition and recovery wiring — is the parallel path this whole feature is
+     * forbidden from creating.
+     */
+    var photoOnlyImport by remember { mutableStateOf(false) }
+    val cameraGranted = permission.state == CameraPermissionState.Granted
+
+    // A shared image needs no camera: it is decode, OCR and parse. Composing LabelCamera for it
+    // regardless (with the camera disabled when permission is absent) is the same arrangement the
+    // photo-only path already uses, and for the same reason - this screen is the sole host of the
+    // pipeline, and a camera-free second copy of it is the fork this feature must not create.
+    val hasSharedImage = sharedImage != null
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        if (permission.state == CameraPermissionState.Granted) {
+        if (cameraGranted || photoOnlyImport || hasSharedImage) {
             LabelCamera(
                 onUseValue = onUseValue,
                 onEditManually = onEditManually,
@@ -271,6 +322,16 @@ fun LabelScannerScreen(
                 onSavePortionUnit = onSavePortionUnit,
                 onCarryPendingPortionUnit = onCarryPendingPortionUnit,
                 hapticsEnabled = hapticsEnabled,
+                cameraEnabled = cameraGranted,
+                // Opens the picker as the screen appears, but only on the path that got here *by*
+                // asking for it — a granted camera must open on the live preview exactly as before.
+                // A share already has its image, so it must not also open the picker - that
+                // would ask the user to choose a photo they have just supplied.
+                openPhotoPickerOnStart = !cameraGranted && sharedImage == null,
+                sharedImage = sharedImage,
+                // Back from a photo-only visit returns to the rationale rather than leaving the
+                // user on a black screen with no camera behind it.
+                onExitPhotoOnly = { photoOnlyImport = false },
             )
         } else {
             CameraPermissionRationale(
@@ -279,6 +340,7 @@ fun LabelScannerScreen(
                 onOpenSettings = permission::openSettings,
                 // No camera, so nothing has been read and no basis can have been established.
                 onEnterManually = { onEditManually(null) },
+                onChoosePhoto = { photoOnlyImport = true },
                 onClose = onClose,
             )
         }
@@ -294,6 +356,27 @@ private fun LabelCamera(
     onSavePortionUnit: (suspend (PortionUnitKind, PortionConversion) -> Boolean)? = null,
     onCarryPendingPortionUnit: ((PortionUnitKind, PortionConversion) -> Unit)? = null,
     hapticsEnabled: Boolean,
+    /**
+     * Whether to bind the camera at all (1.0.8).
+     *
+     * False on the photo-import-only path taken when the camera permission was declined: no use
+     * case is bound, no preview is shown and the shutter is absent, but the analyzer, the whole
+     * recognition pipeline and every recovery route are present and behave identically. This
+     * screen is the only host of that pipeline, and a second camera-free copy of it is exactly the
+     * fork this feature must not create.
+     */
+    cameraEnabled: Boolean = true,
+    /** Opens the photo picker as the screen appears — the photo-only entry path. */
+    openPhotoPickerOnStart: Boolean = false,
+    /**
+     * A shared image to import as the screen appears, instead of opening the picker (1.0.8).
+     *
+     * Handed to the same `importPhoto` a picked photo goes to. See the public screen's parameter
+     * of the same name for why it is a staged `file://` rather than the sender's `content://`.
+     */
+    sharedImage: Uri? = null,
+    /** Leave the photo-only visit, returning to whatever sent the user here. */
+    onExitPhotoOnly: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -481,6 +564,82 @@ private fun LabelCamera(
     var frozenLiveSnapshot by remember {
         mutableStateOf<CaptureEvidenceCoordinator.LiveEvidenceSnapshot?>(null)
     }
+    /**
+     * The picker result already acted on, so a re-delivery cannot re-import it (1.0.8).
+     *
+     * `rememberLauncherForActivityResult` re-delivers its last result to a recreated composition —
+     * a rotation, a large-font change, returning after process death. A picker result is an
+     * *event*, not state: replaying it would silently re-import a photograph the user has already
+     * dealt with, on top of whatever they are looking at now. Survives recreation via
+     * [rememberSaveable] because that is exactly when the replay happens; a plain `remember` would
+     * be reset by the same recreation that re-delivers the result, and so would never see it.
+     *
+     * Cleared when the picker is opened again, so deliberately re-choosing the same photograph
+     * (having retaken it in the camera app, say) is a genuine new import rather than a replay.
+     * See [ImportedPhotoIntake], which owns that distinction and is where it is tested.
+     */
+    var consumedPhotoToken by rememberSaveable { mutableStateOf<String?>(null) }
+
+    /**
+     * Whether a picked photo is being staged and recognised right now.
+     *
+     * Separate from [captureState], which describes the *camera*. Conflating them would put the
+     * shutter into its capturing treatment while no capture is happening, and on the photo-only
+     * path there is no shutter at all.
+     */
+    var importState by remember { mutableStateOf<PhotoImportState>(PhotoImportState.Idle) }
+
+    /**
+     * Android's system photo picker.
+     *
+     * `PickVisualMedia` rather than `GetContent`: the system picker runs out of process, shows only
+     * the items the user selects and grants access to nothing else — so this app needs **no**
+     * storage or media permission, at any API level, and none appears in its manifest. On API 33+
+     * it is the modern picker; below that the contract falls back to a system document chooser
+     * automatically, which is why minSdk 26 needs no branch here.
+     *
+     * [ImageOnly] narrows the chooser to images. It is a filter, not a guarantee — a document
+     * chooser can still return something that is not an image — which is why staging checks the
+     * bytes rather than trusting the picker's own filtering.
+     */
+    /**
+     * The URI the picker just returned, awaiting import.
+     *
+     * The launcher's callback records it here rather than starting the import directly: the import
+     * is a local function declared far below (it needs most of this composable's state), and a
+     * lambda defined up here cannot name it. Parking the URI in state and letting a
+     * [LaunchedEffect] pick it up keeps the handler next to the capture handler it mirrors, which
+     * is where a reader compares the two.
+     */
+    var pickedPhoto by remember { mutableStateOf<Uri?>(null) }
+
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri == null) {
+            // A cancellation must change nothing at all: not the live camera, not the current
+            // reading, not a recognition still running from a capture made before the picker was
+            // opened. Pinned by ImportedPhotoIntakeTest; see ImportedPhotoIntake for the rule.
+            OcrDiagnosticsLogger.timing("photo import ignored (CANCELLED)")
+            // The one exception: a photo-only visit (camera declined) that is cancelled has nothing
+            // behind it, so it returns the user to the rationale rather than a blank screen.
+            if (!cameraEnabled && pendingCrop == null) onExitPhotoOnly()
+        } else {
+            pickedPhoto = uri
+        }
+    }
+
+    fun choosePhoto() {
+        // Cleared so deliberately re-choosing the same photograph counts as a new import rather
+        // than a replay — the token exists to catch re-delivery to a recreated composition, not to
+        // stop the user picking the same file twice on purpose.
+        consumedPhotoToken = null
+        importState = PhotoImportState.Idle
+        photoPicker.launch(
+            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+        )
+    }
+
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var torchAvailable by remember { mutableStateOf(false) }
@@ -1534,6 +1693,218 @@ private fun LabelCamera(
         focusThenCapture(capture, file, workGeneration)
     }
 
+    /**
+     * Reads a photograph the user already has, through **the same pipeline a shutter press uses**.
+     *
+     * ## Where the two inputs converge, and why it is here
+     *
+     * The convergence point is `analyzer.analyzeStillRetaining(context, file, workGeneration)` —
+     * the identical call [takePictureNow] makes, with the identical arguments, reached with the
+     * identical result handler. Everything past that line is literally the same code: the same
+     * EXIF correction in [app.justthecarbs.ocr.StillImageLoader], the same whole-frame recognition,
+     * the same parser, the same [readSelectedTable] with the same rectangle and the same
+     * `automatic = true` gate, and therefore the same ambiguity, conflict, crop-recovery,
+     * verification and result routes. There is no imported-photo branch anywhere downstream,
+     * because there is nothing downstream that could tell the difference.
+     *
+     * What differs is only how the JPEG comes to exist: CameraX writes one, or
+     * [ImportedPhotoStaging] copies one. Both produce a file of the same shape in the same
+     * `cacheDir`, owned the same way and deleted by the same code.
+     *
+     * ## The state sequence mirrors captureLabel deliberately
+     *
+     * A photo import is a new attempt at reading a label, exactly as a capture is, so it invalidates
+     * the same things for the same reasons: a stale `pendingCrop` would leak the previous
+     * photograph's bitmap, a stale `lastRecognisedRegion` would make this image's first *Read
+     * table* be skipped as an "unchanged" crop of a photograph that is gone, and a stale
+     * `frozenLiveSnapshot` would let what the camera saw before a *different* image corroborate
+     * this one. The one deliberate omission is the shutter haptic: nothing was shuttered, and a
+     * cue that fires for choosing a file would teach the vocabulary [ScanHapticCue] exists to keep
+     * meaningful.
+     *
+     * Live evidence is not merely ignored but cleared, and the aim epoch bumped: an imported
+     * photograph has **no** pre-shutter camera stream of its own, so any frames still in the buffer
+     * belong to a different image entirely. Corroborating an imported reading with them would be
+     * cross-image contamination of the most literal kind.
+     */
+    fun importPhoto(uri: Uri, fromShare: Boolean = false) {
+        // For a share, `lastConsumedToken` is null, and that keeps two different replay questions
+        // apart rather than loosening one.
+        //
+        // The token guard exists for the *launcher* handing its last result to a recreated
+        // composition. A share is not delivered by the launcher and cannot be replayed that way;
+        // its own once-per-share guard is `importedShare`, plus the Activity consuming the share
+        // the moment the chooser is answered. The barcode scanner records what happens when the
+        // two are conflated: the screen strands on "Reading..." with no way out.
+        val decision = ImportedPhotoIntake.decide(
+            hasSelection = true,
+            resultToken = uri.toString(),
+            lastConsumedToken = if (fromShare) null else consumedPhotoToken,
+            beginWork = coordinator::beginNewWork,
+        )
+        val workGeneration = when (decision) {
+            is ImportedPhotoIntake.Decision.Import -> decision.workGeneration
+            is ImportedPhotoIntake.Decision.Ignore -> {
+                OcrDiagnosticsLogger.timing("photo import ignored (${decision.reason})")
+                return
+            }
+        }
+        consumedPhotoToken = uri.toString()
+
+        // A genuinely new aim: this image has no live camera stream behind it, so nothing recorded
+        // while the user was pointing the phone somewhere else may corroborate it.
+        coordinator.beginNewAim()
+        liveEvidence.clear()
+        frozenLiveSnapshot = null
+
+        pendingCrop?.recycle()
+        pendingCrop = null
+        capturedPreview = null
+        cropSelection = null
+        readingTable = false
+        autoAttempted = false
+        lastRecognisedRegion = null
+        rereadBudget = TargetedRereadBudget()
+        reading = null
+        liveReadiness = null
+        framing = null
+        servingCandidate = null
+        portionSaveState = PortionSaveState.Idle
+        verification = null
+        scaleUnresolvedProposal = null
+        conflicted = null
+        assisting = null
+        disputedCandidates = DisputedCandidates.NONE
+        // The camera stops feeding the analyzer while a chosen photograph is being read — the same
+        // pause a capture takes, and for the same reason: a live frame landing mid-import would be
+        // interpreting a different image from the one the user is waiting on.
+        analyzer.pause()
+        importState = PhotoImportState.Reading
+
+        saveScope.launch {
+            // Staging is file I/O measured in tens of megabytes; recognition is ML Kit. Neither
+            // belongs on the main thread, and the whole block is cancellable — leaving the screen
+            // cancels `saveScope`, which stops the copy between chunks rather than finishing work
+            // nobody is waiting for.
+            val staged = withContext(Dispatchers.IO) {
+                ImportedPhotoStaging.stage(
+                    context = context,
+                    uri = uri,
+                    // Two independent reasons to stop: the screen is gone, or a newer selection (or
+                    // capture) has superseded this one.
+                    cancelled = { disposed.get() || !coordinator.isCurrentWork(workGeneration) },
+                )
+            }
+
+            // Between the copy finishing and this line, the user may have retaken, chosen another
+            // photo or left. Checked before anything is shown, exactly as the capture path checks
+            // its own result.
+            if (!coordinator.isCurrentWork(workGeneration)) {
+                (staged as? ImportedPhotoStaging.Result.Staged)?.file?.delete()
+                return@launch
+            }
+
+            when (staged) {
+                is ImportedPhotoStaging.Result.Failed -> {
+                    importState = PhotoImportState.Failed(staged.reason)
+                    // Nothing was decoded, so there is no reading to report — and `NotFound` would
+                    // be a lie about a photograph that was never read. The camera comes back so the
+                    // user is left somewhere they can act.
+                    if (cameraEnabled) analyzer.resume()
+                }
+
+                is ImportedPhotoStaging.Result.Staged -> {
+                    // The photograph now exists as a file, so show it for the rest of the wait —
+                    // the same frozen-preview treatment a capture gets, for the same reason.
+                    capturedPreview = staged.file
+                    pendingCapture.set(staged.file)
+
+                    // THE CONVERGENCE. Identical call, identical handler, identical everything
+                    // downstream. See this function's KDoc.
+                    analyzer.analyzeStillRetaining(context, staged.file, workGeneration) { result ->
+                        pendingCapture.compareAndSet(staged.file, null)
+                        mainExecutor.execute {
+                            if (!coordinator.isCurrentWork(result.sessionId)) {
+                                result.recycle()
+                                return@execute
+                            }
+                            importState = PhotoImportState.Idle
+                            if (result.bitmap == null) {
+                                // Decoding failed on a file that copied cleanly — a HEIC the device
+                                // cannot read, or something that was never an image. Reported as an
+                                // import failure rather than `NotFound` for the same reason as
+                                // above: nothing was read, so nothing can be said about the label.
+                                importState = PhotoImportState.Failed(
+                                    ImportedImageStaging.Failure.UNREADABLE,
+                                )
+                                capturedPreview = null
+                                if (cameraEnabled) analyzer.resume()
+                            } else {
+                                // The same rectangle a capture proposes. On an imported photograph
+                                // the scan overlay was never aimed through, so `scanRegion` is
+                                // whatever the overlay last measured (or DEFAULT_CROP when the
+                                // camera never rendered) — a generous central starting position
+                                // that the automatic pass either resolves confidently from or
+                                // hands to the crop screen, exactly as it does for a capture.
+                                val proposed = ScanRegionMapper.expand(
+                                    scanRegion.get() ?: DEFAULT_CROP,
+                                )
+                                cropSelection = proposed
+                                pendingCrop = result
+                                autoAttempted = false
+                                readSelectedTable(proposed, automatic = true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Picks up whatever the launcher parked and runs the import next to the capture handler it
+    // mirrors. Keyed on the URI so each distinct selection runs once; the URI is cleared
+    // immediately, so a recomposition cannot re-run it and the replay guard in
+    // [ImportedPhotoIntake] catches the case this cannot see — the launcher re-delivering its last
+    // result to a composition recreated from scratch, where this state is gone but the token is not.
+    LaunchedEffect(pickedPhoto) {
+        val uri = pickedPhoto ?: return@LaunchedEffect
+        pickedPhoto = null
+        importPhoto(uri)
+    }
+
+    // Opens the picker for the photo-only entry path, where the user asked for a photo from the
+    // permission screen and should land in the chooser rather than on an empty scanner.
+    LaunchedEffect(openPhotoPickerOnStart) {
+        if (openPhotoPickerOnStart) choosePhoto()
+    }
+
+    /**
+     * The share this screen has already imported, so it imports it once only.
+     *
+     * `rememberSaveable`, because the recreation it must survive - a rotation - is precisely when
+     * a second import would otherwise be triggered.
+     *
+     * The barcode scanner records the measurement behind this shape: keying a `LaunchedEffect` on
+     * the URI and calling the import from inside it runs *twice* for one share, because the
+     * import's own first state write recomposes the screen and relaunches the effect. There the
+     * visible symptom was a screen stuck on "Reading..." forever. Here `importPhoto`'s own
+     * consumed-token guard would absorb the second call, so the symptom would be milder and the
+     * defect the same - which is exactly the kind that survives review.
+     *
+     * Compared by value rather than a bare boolean, so a genuinely different second share (its
+     * own cache file, its own path) still imports.
+     */
+    var importedShare by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // A shared image enters exactly where a picked one does. In a `SideEffect` so the state write
+    // happens after the composition that reads it has settled, rather than inline in the body.
+    SideEffect {
+        val shared = sharedImage ?: return@SideEffect
+        if (shared.toString() == importedShare) return@SideEffect
+        importedShare = shared.toString()
+        importPhoto(shared, fromShare = true)
+    }
+
     if (cameraFailed) {
         RecoveryPanel(
             title = stringResource(R.string.scanner_unavailable),
@@ -1706,6 +2077,12 @@ private fun LabelCamera(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // No preview and no camera binding on the photo-only path: binding a use case without the
+        // CAMERA permission throws, and there is nothing to show anyway. The screen is then a plain
+        // black host for the picker and the results — the analyzer and the whole pipeline are
+        // present and identical, which is the entire reason this composable is reused rather than
+        // duplicated for the camera-less case.
+        if (cameraEnabled) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
@@ -1820,6 +2197,7 @@ private fun LabelCamera(
                 previewView
             },
         )
+        }
 
         // The photograph, over the live preview, for as long as the app is reading it.
         //
@@ -1834,7 +2212,14 @@ private fun LabelCamera(
         // timer would claim knowledge the app does not have, on the screen whose output someone
         // doses insulin from. The existing single line already says what is happening.
         val processingPhoto = capturedPreview
-        if (processingPhoto != null && captureState == CaptureState.PROCESSING) {
+        // An imported photo gets the identical treatment, keyed on its own state: the wait is the
+        // same wait, and showing the chosen photograph while it is read is what makes it legible.
+        // On the photo-only path it is also the only thing on screen, which is exactly right —
+        // there is no camera behind it to show.
+        if (
+            processingPhoto != null &&
+            (captureState == CaptureState.PROCESSING || importState is PhotoImportState.Reading)
+        ) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(processingPhoto)
@@ -1848,7 +2233,10 @@ private fun LabelCamera(
             )
         }
 
-        ScanRegionOverlay(
+        // The aiming guide belongs to the live camera. On the photo-only path there is nothing to
+        // aim, and drawing a framing bracket over a black screen would instruct the user to do
+        // something they cannot do.
+        if (cameraEnabled) ScanRegionOverlay(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
@@ -1900,18 +2288,58 @@ private fun LabelCamera(
             }
         }
 
-        Box(
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(Space.m),
+            verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
+            // The gallery action sits on the left of the viewport, directly above the card — the
+            // camera-app idiom, and the one position that cannot collide with anything: the torch
+            // and Close are pinned to the top row, and the card below is a sibling in this Column
+            // rather than an overlay, so neither can overlap however tall the card grows at large
+            // font scales. Only while the live camera is the subject: once a photograph is frozen
+            // on screen the actions that matter are the ones on the card, and an import from there
+            // would discard the capture the user is looking at without saying so.
+            //
+            // Hidden on the photo-only path too, where the picker is already open and this would be
+            // a second way to do the thing currently happening.
+            if (pendingCrop == null && cameraEnabled) {
+                ChoosePhotoButton(
+                    reading = importState is PhotoImportState.Reading,
+                    onChoose = ::choosePhoto,
+                )
+            }
+
+            // A failed import, said plainly and left somewhere the user can act from. Never
+            // rendered as a reading: nothing was decoded, so `NotFound` would claim the photograph
+            // was read and had no table in it.
+            (importState as? PhotoImportState.Failed)?.let { failure ->
+                PhotoImportFailureCard(
+                    reason = failure.reason,
+                    onChooseAnother = ::choosePhoto,
+                    onDismiss = {
+                        importState = PhotoImportState.Idle
+                        if (!cameraEnabled) onExitPhotoOnly()
+                    },
+                    cameraAvailable = cameraEnabled,
+                )
+            }
+
             when (val current = reading) {
                 // Nothing has been read yet, so there is no candidate basis — but the label may
                 // still have stated one, and that fact is as true here as anywhere.
-                null -> SearchingCard(captureState, liveReadiness, framing, ::captureLabel) {
-                    onEditManually(StatedBasis.of(pendingCrop?.document))
+                //
+                // The aiming card belongs to the live camera: it reports framing guidance measured
+                // from camera frames and offers a shutter. On the photo-only path none of that
+                // exists, and the import already has its own progress and failure treatment above,
+                // so the card is simply absent rather than offering a capture that cannot happen.
+                null -> if (cameraEnabled) {
+                    SearchingCard(captureState, liveReadiness, framing, ::captureLabel) {
+                        onEditManually(StatedBasis.of(pendingCrop?.document))
+                    }
                 }
                 is LabelReading.Confident -> ProposalCard(
                     candidate = current.candidate,
@@ -2489,6 +2917,139 @@ private fun ScannerCard(review: Boolean, content: @Composable ColumnScope.() -> 
     )
 }
 
+/**
+ * A photo that could not be read, and the ways out of it (1.0.8).
+ *
+ * The copy is chosen by [reason] so the user is told what actually happened rather than a single
+ * generic apology — "that file is too large" and "that photo could not be opened" send them to
+ * different next actions. **None of these is a reading.** A staging failure means nothing was
+ * decoded, so saying "no nutrition table found" would assert something about a label the app never
+ * saw, and the user would go and re-photograph a package that was never the problem.
+ *
+ * Both ways out lead somewhere real: another photo, or back to the camera. Neither invents a value,
+ * and manual entry remains reachable from the card beneath this one.
+ */
+@Composable
+private fun PhotoImportFailureCard(
+    reason: ImportedImageStaging.Failure,
+    onChooseAnother: () -> Unit,
+    onDismiss: () -> Unit,
+    cameraAvailable: Boolean,
+) {
+    ScannerCard(review = true) {
+        Text(
+            text = stringResource(
+                when (reason) {
+                    ImportedImageStaging.Failure.UNREADABLE -> R.string.ocr_photo_unreadable
+                    ImportedImageStaging.Failure.TOO_LARGE -> R.string.ocr_photo_too_large
+                    // An empty file and a truncated copy are one statement to the user: the photo
+                    // did not come through. Splitting them further would name a cause they cannot
+                    // act on differently.
+                    ImportedImageStaging.Failure.EMPTY,
+                    ImportedImageStaging.Failure.INCOMPLETE,
+                    -> R.string.ocr_photo_failed
+                },
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Button(
+            onClick = onChooseAnother,
+            shape = RoundedCornerShape(Space.buttonRadius),
+            modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
+        ) { Text(stringResource(R.string.ocr_photo_choose_another)) }
+        TextButton(
+            onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
+        ) {
+            Text(
+                stringResource(
+                    // Without a camera there is nothing to go back to, so the action says what it
+                    // actually does rather than promising a scanner that will not appear.
+                    if (cameraAvailable) R.string.ocr_scan_again else R.string.action_close,
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * The gallery action: read a nutrition label from a photo the user already has (1.0.8).
+ *
+ * ## Why an icon in the camera chrome rather than a button in the card
+ *
+ * The camera must stay the dominant action, and the bottom card is where the shutter lives. A
+ * second full-width button in that card would state two equal primaries and push *Enter manually*
+ * further down at large font scales, where the card is already the tallest thing on screen. An icon
+ * at the bottom-left of the viewport is the idiom every camera app uses for exactly this, reads as
+ * chrome rather than as an alternative to capturing, and costs the card no height at all.
+ *
+ * It reuses [LabelScrimIconButton]'s treatment — the same 48dp target, the same scrim disc, the
+ * same white tint — so it belongs to the same set as Close and the torch rather than looking like
+ * something added later. The scrim is what keeps it legible over an arbitrary camera image in both
+ * themes: the ground behind it is a photograph, not a surface colour, so a theme-tracking tint
+ * would be unreadable against half the scenes it is drawn over.
+ *
+ * While a photo is being read the icon becomes a progress ring in the same disc — the tap stays
+ * acknowledged in place rather than the screen appearing to ignore it, which is the same rule
+ * [CaptureButton] follows for the shutter.
+ */
+@Composable
+internal fun ChoosePhotoButton(
+    reading: Boolean,
+    onChoose: () -> Unit,
+    /**
+     * The spoken label, already resolved for the current [reading] state.
+     *
+     * A parameter rather than a constant because the barcode scanner reuses this button with its
+     * own strings: the two actions look identical and behave identically, but one says it is
+     * choosing a photo of a nutrition label and the other a photo containing a barcode, and a
+     * shared component must not announce the wrong one. Defaulted to the label scanner's own
+     * strings so its call site — and its behaviour — is unchanged.
+     */
+    description: String = stringResource(
+        if (reading) R.string.ocr_photo_reading else R.string.ocr_choose_photo,
+    ),
+) {
+    IconButton(
+        onClick = onChoose,
+        // Not merely visual: a second pick while one is being staged is handled correctly by the
+        // generation guard, but starting it from a control that is visibly busy is a worse
+        // interaction than waiting the moment out.
+        enabled = !reading,
+        modifier = Modifier
+            .size(Space.minTouchTarget)
+            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+            // One node carrying one label, so TalkBack announces the action and its state together
+            // rather than reading a decorative icon and a progress indicator separately.
+            .semantics { contentDescription = description },
+    ) {
+        AnimatedContent(
+            targetState = reading,
+            transitionSpec = {
+                (fadeIn(tween(Motion.QUICK_MS)) togetherWith fadeOut(tween(Motion.QUICK_MS)))
+            },
+            label = "choosePhotoContent",
+        ) { busy ->
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.White,
+                )
+            } else {
+                Icon(
+                    Icons.Filled.PhotoLibrary,
+                    // The button above carries the whole label; a description here would have
+                    // TalkBack announce the same action twice.
+                    contentDescription = null,
+                    tint = Color.White,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun LabelScrimIconButton(
     onClick: () -> Unit,
@@ -2505,6 +3066,24 @@ private fun LabelScrimIconButton(
 }
 
 private enum class CaptureState { IDLE, CAPTURING, PROCESSING }
+
+/**
+ * Where a chosen photograph has got to (1.0.8).
+ *
+ * Deliberately separate from [CaptureState], which describes the camera: the two can be in
+ * different states at once, and on the photo-only path (camera permission declined) there is no
+ * camera to have a state at all.
+ *
+ * [Failed] carries the staging failure so the screen can say what actually went wrong. None of
+ * those messages is a reading — "that photo could not be opened" and "there is no nutrition table
+ * in it" are different statements, and reporting the first as the second would tell the user their
+ * label is unreadable when nothing was ever decoded.
+ */
+private sealed interface PhotoImportState {
+    data object Idle : PhotoImportState
+    data object Reading : PhotoImportState
+    data class Failed(val reason: ImportedImageStaging.Failure) : PhotoImportState
+}
 
 /**
  * How long the shutter waits for focus before firing anyway.

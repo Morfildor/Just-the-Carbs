@@ -1,6 +1,10 @@
 package app.justthecarbs.ui.scan
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -10,6 +14,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,9 +48,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,10 +75,17 @@ import androidx.core.content.ContextCompat
 import app.justthecarbs.R
 import app.justthecarbs.domain.BarcodeAcceptance
 import app.justthecarbs.domain.BarcodeStabilityTracker
+import app.justthecarbs.domain.ImportedBarcodeSelection
+import app.justthecarbs.ocr.ImportedPhotoIntake
+import app.justthecarbs.ocr.OcrDiagnosticsLogger
 import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The scanner (§8, §9).
@@ -84,6 +100,21 @@ fun ScannerScreen(
     onManualBarcode: (String) -> Unit,
     onClose: () -> Unit,
     onEnterManually: () -> Unit,
+    /**
+     * An image shared into the app from elsewhere, already copied into this app's cache (1.0.8).
+     *
+     * Non-null only on the share route, where the user has already been asked what the picture
+     * contains and answered "barcode". It enters the **same** import this screen's own picker
+     * feeds - the same staging, the same [ImportedBarcodeReader], the same
+     * [app.justthecarbs.domain.BarcodeFrameReader] validation, the same choice sheet when several
+     * codes are present, and the same `onBarcode` navigation. A share's only privilege is skipping
+     * the picker.
+     *
+     * A `file://` URI into `cacheDir`, not the sender's `content://`: the sender's grant rides on
+     * the delivered Intent and may be dead by the time the user has answered the chooser, so
+     * `MainActivity` takes the bytes while the grant is certainly live.
+     */
+    sharedImage: Uri? = null,
 ) {
     // §6, startup-hardening pass: one shared five-state gate, used identically by this screen and
     // LabelScannerScreen. Previously each screen tracked only granted/not-granted plus whether a
@@ -96,16 +127,42 @@ fun ScannerScreen(
     // equivalent state for the live-preview branch and must also unbind the camera before leaving.
     var showBarcodeSheet by remember { mutableStateOf(false) }
 
+    // Hoisted: both the photo-import host below and the branch further down need it, and a share
+    // must reach whichever of the two actually composes.
+    val cameraGranted = permission.state == CameraPermissionState.Granted
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        if (permission.state == CameraPermissionState.Granted) {
+        if (cameraGranted) {
             CameraPreview(
                 hapticsEnabled = hapticsEnabled,
                 onBarcode = onBarcode,
                 onManualBarcode = onManualBarcode,
                 onClose = onClose,
                 onEnterManually = onEnterManually,
+                sharedImage = sharedImage,
             )
         } else {
+            // Photo import on the permission-denied branch. Created INSIDE this branch, not
+            // above it, and that placement is load-bearing.
+            //
+            // Hoisted out, this composable and CameraPreview's equivalent both exist across the
+            // moment the permission state settles, and Compose moves the `rememberSaveable`
+            // state between them as one leaves composition and the other enters. Measured on the
+            // emulator: the import effect ran twice for a single delivery under the same key, the
+            // second run found the consumed token its own first run had written, and the screen
+            // sat on "Reading the photo you chose..." with no way out. Scoping it to the branch
+            // that actually uses it means only ever one host exists.
+            val photoOnlyImport = rememberBarcodePhotoImport(
+                onBarcode = onBarcode,
+                // Nothing to pause or resume: no camera was ever bound on this branch.
+                onPauseCamera = {},
+                onResumeCamera = {},
+                // A share reaching this branch means the camera was declined - which costs the
+                // camera and never the app. Reading a barcode out of a picture the user already
+                // has needs no sensor at all.
+                sharedImage = sharedImage,
+            )
+
             CameraPermissionRationale(
                 state = permission.state,
                 onAllow = permission::request,
@@ -115,6 +172,10 @@ fun ScannerScreen(
                 // manual product entry, so the one thing that still works — reading the digits
                 // printed under the bars — was unreachable precisely when it was needed most.
                 onEnterBarcode = { showBarcodeSheet = true },
+                // Reading a barcode out of a photograph needs no camera at all, so the one state
+                // where the user has lost every other way to scan is precisely the state where it
+                // must stay reachable. Declining the camera costs the camera, never the app.
+                onChoosePhoto = photoOnlyImport::choosePhoto,
                 onClose = onClose,
             )
 
@@ -125,6 +186,389 @@ fun ScannerScreen(
                     onConfirm = onManualBarcode,
                     onDismiss = { showBarcodeSheet = false },
                 )
+            }
+
+            BarcodePhotoImportSurfaces(
+                import = photoOnlyImport,
+                // With no camera there is nothing to return to, so the dismissing action says what
+                // it actually does rather than promising a scanner that will not appear.
+                cameraAvailable = false,
+                onEnterManually = { showBarcodeSheet = true },
+            )
+        }
+    }
+}
+
+/**
+ * The photo-import half of the barcode scanner: picker, staging, recognition and what to show.
+ *
+ * ## The one downstream path
+ *
+ * A barcode read from a photograph reaches [onBarcode] — the **same** callback the live analyzer
+ * fires on acceptance, which the nav host routes to the same `Routes.product(barcode)` as a camera
+ * scan and as a typed code. Nothing here looks a product up, and there is no second lookup to
+ * drift: the photograph's only privilege is producing a validated barcode, by the same
+ * [app.justthecarbs.domain.BarcodeFrameReader] boundary the camera uses.
+ *
+ * ## Why the camera is paused for the whole import
+ *
+ * [onPauseCamera] runs the moment a photograph is accepted and [onResumeCamera] only when the
+ * import is finished with. Navigation is one-shot and latched, so a live detection landing while a
+ * photo result is being presented would be two answers competing for it — and the user is by then
+ * looking at a sheet about a picture, not at the preview. Pausing also stops the analyzer doing
+ * work nobody is waiting for while ML Kit reads the still.
+ *
+ * ## Staleness
+ *
+ * Every step re-asks [ImportGeneration.isCurrent] at the point a result would become visible, so a
+ * slow first photograph cannot navigate after a second was chosen, and nothing lands after the user
+ * leaves. Cancellation is passed down to the copy as well, but it is the optimisation — the
+ * generation check is the guarantee.
+ */
+@Composable
+private fun rememberBarcodePhotoImport(
+    onBarcode: (String) -> Unit,
+    onPauseCamera: () -> Unit,
+    onResumeCamera: () -> Unit,
+    /**
+     * An image shared into the app, imported as this composable appears instead of via the picker.
+     *
+     * It is injected into the same `picked` state the launcher writes, so everything below - the
+     * intake rules, staging, recognition, the choice sheet, the navigation - is reached by one
+     * path whichever way the photograph arrived.
+     */
+    sharedImage: Uri? = null,
+): BarcodePhotoImport {
+    val context = LocalContext.current
+    var state by remember { mutableStateOf<BarcodePhotoImportState>(BarcodePhotoImportState.Idle) }
+    val generation = remember { ImportGeneration() }
+
+    // `rememberSaveable`, deliberately: this is the guard against a launcher re-delivering its last
+    // result to a recreated composition (rotation, process death, returning from Settings). A plain
+    // `remember` is discarded by exactly the recreation the replay accompanies, so the result would
+    // arrive looking new and silently re-import a photograph the user already acted on.
+    var consumedPhotoToken by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val disposed = remember { AtomicBoolean(false) }
+    DisposableEffect(Unit) {
+        onDispose {
+            disposed.set(true)
+            // Whatever is in flight must not land on a screen that is gone.
+            generation.invalidate()
+        }
+    }
+
+    val currentOnBarcode by rememberUpdatedState(onBarcode)
+    val currentOnPause by rememberUpdatedState(onPauseCamera)
+    val currentOnResume by rememberUpdatedState(onResumeCamera)
+
+    /**
+     * The launcher's delivery, as a value that changes on **every** delivery.
+     *
+     * Keyed by a monotonic id rather than by the URI alone, because choosing the *same* photograph
+     * twice is an ordinary thing to do — after a "no barcode found", the obvious next act is to try
+     * the same picture again, or to pick it deliberately after a cancel. Keying the effect on the
+     * URI would leave the state unchanged on that second delivery and the import would never run.
+     *
+     * This is not the replay guard: a launcher re-delivering its last result to a recreated
+     * composition is caught by `consumedPhotoToken`, which survives recreation and is compared by
+     * value.
+     */
+    var picked by remember { mutableStateOf<Pair<Long, Uri?>?>(null) }
+    var deliveries by remember { mutableLongStateOf(0L) }
+
+    /**
+     * The share this screen has already delivered onto [picked], so it delivers it once only.
+     *
+     * `rememberSaveable`, and that is the whole point: it must survive the recreation a rotation
+     * causes, which is exactly when a re-delivery would otherwise happen.
+     *
+     * **Measured on the emulator, not reasoned about.** The first version keyed a `LaunchedEffect`
+     * on the URI and wrote `picked` from inside it. That effect ran *twice* for one share - the
+     * import's own first state write recomposes this function, the effect is relaunched, and the
+     * second run then found the token its own first run had just written. The visible result was
+     * a screen stuck on "Reading the photo you chose..." forever, because the second delivery was
+     * refused as ALREADY_CONSUMED after the first had already put the screen into Reading.
+     *
+     * Comparing by value here (rather than a bare boolean) keeps a genuinely new share working:
+     * each one stages to its own cache file, so a second share presents a different path.
+     */
+    var deliveredShare by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // A shared image enters exactly where a picked one does: as a delivery on `picked`.
+    //
+    // In a `SideEffect` rather than written straight into the composable body: this mutates state
+    // the same composition reads, and doing that inline is the "backwards write" Compose warns
+    // about. A `SideEffect` runs after a successful composition, so the write happens once the
+    // frame it belongs to is settled, and the guard above keeps it to one delivery per share.
+    SideEffect {
+        val shared = sharedImage ?: return@SideEffect
+        if (shared.toString() == deliveredShare) return@SideEffect
+        deliveredShare = shared.toString()
+        deliveries += 1
+        picked = deliveries to shared
+    }
+
+    // The system photo picker: no storage or media permission, and the URI it returns carries only
+    // a temporary read grant, which staging consumes immediately and never persists.
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        // Every delivery is handed on, cancellation included: deciding what a null URI means is
+        // ImportedPhotoIntake's rule, and answering it here as well would put one rule in two
+        // places.
+        deliveries += 1
+        picked = deliveries to uri
+    }
+
+    // Keyed on the delivery NUMBER, not on the `picked` pair.
+    //
+    // `Pair` is a data class, so two pairs holding the same values are `equals` - but Compose
+    // restarts a keyed effect whenever the key is not equal to the previous one, and a fresh
+    // `Long` boxed into a new `Pair` on each recomposition was enough to make this effect restart
+    // mid-import. Measured: the import began, wrote `consumedPhotoToken`, that write recomposed
+    // the screen, the effect relaunched and its second run found the token its own first run had
+    // just written - refused as ALREADY_CONSUMED, leaving the screen on "Reading the photo you
+    // chose..." forever with no way out.
+    //
+    // The delivery number is monotonic and changes exactly once per delivery, which is precisely
+    // when this effect should run again.
+    LaunchedEffect(picked?.first) {
+        val delivery = picked ?: return@LaunchedEffect
+        val uri = delivery.second
+        // Whether this delivery came from a share rather than the picker; see the token note below.
+        val isShare = uri != null && uri.toString() == deliveredShare
+
+        // Nothing is cleared here. `picked` is this effect's own key, so assigning it inside the
+        // effect re-keys it and Compose cancels this coroutine before any of the work below runs —
+        // which is what happened the first time this was written, and it presents as a picker that
+        // returns to an unchanged screen with nothing in the log at all.
+
+        // The three intake rules — cancelled, already consumed, newest wins — reused unchanged from
+        // the nutrition-label path, where they are already pinned by their own JVM tests.
+        // `lastConsumedToken` is null for a share, and that is not a loophole - it is what keeps
+        // the two replay questions apart.
+        //
+        // The token guard exists for ONE hazard: `rememberLauncherForActivityResult` handing its
+        // last result to a recreated composition, which would silently re-import a photograph the
+        // user already dealt with. A share is not delivered by the launcher and cannot be replayed
+        // that way; its own once-per-share guard is `deliveredShare` above, plus the Activity
+        // consuming the share the moment the chooser is answered.
+        //
+        // Passing the token here as well was measured to break the feature outright: a keyed
+        // `LaunchedEffect` restarts when its composable leaves and re-enters composition (a
+        // navigation transition is enough), and the restarted run - the only one still alive -
+        // then found the token its own cancelled predecessor had written and refused itself. The
+        // screen sat on "Reading the photo you chose..." with no way out.
+        val decision = ImportedPhotoIntake.decide(
+            hasSelection = uri != null,
+            resultToken = uri?.toString(),
+            lastConsumedToken = if (isShare) null else consumedPhotoToken,
+            beginWork = generation::begin,
+        )
+        val work = when (decision) {
+            is ImportedPhotoIntake.Decision.Import -> decision.workGeneration
+            is ImportedPhotoIntake.Decision.Ignore -> {
+                OcrDiagnosticsLogger.timing("barcode photo import ignored (${decision.reason})")
+                return@LaunchedEffect
+            }
+        }
+        // Non-null by construction: `decide` reports CANCELLED for a null URI, which returned above.
+        val source = requireNotNull(uri)
+        consumedPhotoToken = source.toString()
+
+        currentOnPause()
+        state = BarcodePhotoImportState.Reading
+
+        val staged = withContext(Dispatchers.IO) {
+            ImportedPhotoStaging.stage(
+                context = context,
+                uri = source,
+                cancelled = { disposed.get() || !generation.isCurrent(work) },
+                prefix = ImportedPhotoStaging.BARCODE_PREFIX,
+            )
+        }
+
+        if (!generation.isCurrent(work)) {
+            // A newer photograph (or a departure) superseded this one mid-copy. The file is this
+            // import's alone, so deleting it here is cleanup, not a race with the newer import.
+            (staged as? ImportedPhotoStaging.Result.Staged)?.file?.delete()
+            return@LaunchedEffect
+        }
+
+        when (staged) {
+            is ImportedPhotoStaging.Result.Failed -> {
+                // Every staging failure and an unreadable photograph are one statement to the user:
+                // no usable barcode came out of that picture. Splitting "too large" from "no
+                // barcode" would name a cause they act on identically.
+                OcrDiagnosticsLogger.timing("barcode photo staging failed (${staged.reason})")
+                state = BarcodePhotoImportState.NoBarcode
+            }
+            is ImportedPhotoStaging.Result.Staged -> {
+                val outcome = try {
+                    ImportedBarcodeReader.read(context, staged.file)
+                } finally {
+                    // Read once, then gone. Unlike a label capture, nothing downstream takes
+                    // ownership of this file — there is no crop screen and no evidence record — so
+                    // it is deleted here rather than handed on.
+                    staged.file.delete()
+                }
+
+                // Re-asked after recognition, not only after staging: ML Kit is the slow half, so
+                // this is the check a second photograph is most likely to overtake.
+                if (!generation.isCurrent(work)) return@LaunchedEffect
+
+                when (outcome) {
+                    ImportedBarcodeSelection.Outcome.None ->
+                        state = BarcodePhotoImportState.NoBarcode
+
+                    is ImportedBarcodeSelection.Outcome.Single -> {
+                        // Straight through, with no confirmation step: choosing the photograph is
+                        // the deliberate act the live path's geometry and hold gates exist to
+                        // infer, so re-asking would add a tap that answers nothing.
+                        state = BarcodePhotoImportState.Idle
+                        // Nothing may follow this import, and the camera must not resume behind
+                        // the destination now replacing this screen.
+                        generation.invalidate()
+                        currentOnBarcode(outcome.value)
+                    }
+
+                    is ImportedBarcodeSelection.Outcome.Choice ->
+                        state = BarcodePhotoImportState.Choosing(outcome.values)
+                }
+            }
+        }
+    }
+
+    return remember(generation) {
+        BarcodePhotoImport(
+            stateProvider = { state },
+            chooseAction = {
+                // A fresh pick must be able to re-deliver the same photograph the user chose
+                // before, so the consumed token is cleared as the picker opens: the replay guard
+                // exists to stop the *launcher* re-delivering by itself, never to stop a user
+                // deliberately choosing the same picture twice.
+                consumedPhotoToken = null
+                photoPicker.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
+            },
+            selectAction = { barcode ->
+                state = BarcodePhotoImportState.Idle
+                generation.invalidate()
+                currentOnBarcode(barcode)
+            },
+            dismissAction = {
+                // Back to the live camera with nothing changed — the same outcome cancelling the
+                // picker has, and the reason dismissing a choice is a real answer rather than a
+                // way of being asked again.
+                generation.invalidate()
+                state = BarcodePhotoImportState.Idle
+                currentOnResume()
+            },
+        )
+    }
+}
+
+/**
+ * The actions and state of an in-progress photo import, handed to whichever branch is rendering.
+ *
+ * A class rather than a bundle of lambdas so the call sites read as one thing with a lifetime, and
+ * so `state` is read through a provider — reading it as a captured value would freeze it at the
+ * composition that built this object.
+ */
+internal class BarcodePhotoImport(
+    private val stateProvider: () -> BarcodePhotoImportState,
+    private val chooseAction: () -> Unit,
+    private val selectAction: (String) -> Unit,
+    private val dismissAction: () -> Unit,
+) {
+    val state: BarcodePhotoImportState get() = stateProvider()
+
+    fun choosePhoto() = chooseAction()
+
+    fun select(barcode: String) = selectAction(barcode)
+
+    fun dismiss() = dismissAction()
+}
+
+/**
+ * The two surfaces an import can put on screen: the choice sheet and the no-barcode recovery.
+ *
+ * Shared by both permission branches so the photograph behaves identically whether or not a camera
+ * is available — the only difference is what the dismissing action can offer, which is what
+ * [cameraAvailable] decides.
+ */
+@Composable
+private fun BarcodePhotoImportSurfaces(
+    import: BarcodePhotoImport,
+    cameraAvailable: Boolean,
+    onEnterManually: () -> Unit,
+) {
+    when (val current = import.state) {
+        BarcodePhotoImportState.Idle, BarcodePhotoImportState.Reading -> Unit
+
+        is BarcodePhotoImportState.Choosing -> ImportedBarcodeSheet(
+            barcodes = current.barcodes,
+            onSelect = import::select,
+            onDismiss = import::dismiss,
+        )
+
+        // An OPAQUE surface, and that is not cosmetic. RecoveryPanel draws no background of its
+        // own and colours its text `onSurface`, which is correct over a screen background and
+        // illegible over a live camera preview — the first build of this put the title, both
+        // buttons and the scan frame on top of each other, readable in neither direction. The
+        // camera's own `cameraFailed` branch gets away with a bare panel only because it returns
+        // before the preview is composed at all; this state renders *over* a running preview.
+        //
+        // It also stops the preview reading as still-live while the app is showing a result about
+        // a photograph, which is the same reason the analyzer is paused underneath it.
+        BarcodePhotoImportState.NoBarcode -> Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                // Consumes every tap that misses the panel's own controls. Without it the camera
+                // chrome underneath stays reachable — measured on the device, the torch really was
+                // tappable through this surface — so a tap aimed at the recovery could toggle a
+                // flashlight for a camera the user is not currently looking at. `null` indication
+                // and interaction source because this is a barrier, not a control: it must not
+                // ripple, and it must not be announced to TalkBack as something to activate.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                ),
+        ) {
+            RecoveryPanel(
+                title = stringResource(R.string.scanner_photo_no_barcode),
+                body = null,
+                modifier = Modifier.fillMaxSize().padding(top = 120.dp),
+            ) {
+                Button(
+                    onClick = import::choosePhoto,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                ) { Text(stringResource(R.string.scanner_photo_choose_another)) }
+
+                // Typing the digits printed under the bars is the route that still works when a
+                // photograph does not, and it reaches the real product rather than asking the user
+                // to transcribe a nutrition panel. Preserved from the live-preview chrome.
+                OutlinedButton(
+                    onClick = { import.dismiss(); onEnterManually() },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                ) { Text(stringResource(R.string.scanner_enter_manually)) }
+
+                TextButton(
+                    onClick = import::dismiss,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
+                ) {
+                    Text(
+                        stringResource(
+                            if (cameraAvailable) R.string.ocr_scan_again else R.string.action_close,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -137,6 +581,8 @@ private fun CameraPreview(
     onManualBarcode: (String) -> Unit,
     onClose: () -> Unit,
     onEnterManually: () -> Unit,
+    /** A shared image to import as the screen appears. See [ScannerScreen]'s parameter. */
+    sharedImage: Uri? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -204,6 +650,27 @@ private fun CameraPreview(
         }
     }
 
+    // Photo import, sharing this screen's one-shot barcode callback. The analyzer is paused for
+    // the whole import and resumed only if the user comes back empty-handed, so a live detection
+    // and a photo result can never both reach `onBarcode`.
+    val photoImport = rememberBarcodePhotoImport(
+        onBarcode = { code ->
+            // Through the same teardown a live acceptance performs: the session is ended and the
+            // ML Kit client closed before the destination replaces this screen, so no frame
+            // analysed in the meantime can fire a second navigation.
+            if (!ended.getAndSet(true)) {
+                analyzer.close()
+                acquired = true
+                currentOnBarcode(code)
+            }
+        },
+        onPauseCamera = { analyzer.setPaused(true); holdSteady = false },
+        // `setPaused(false)` also resets the stability tracker, so returning to the camera starts
+        // counting frames afresh rather than resuming a count begun before the photograph.
+        onResumeCamera = { analyzer.setPaused(false) },
+        sharedImage = sharedImage,
+    )
+
     val leave: (() -> Unit) -> Unit = { action ->
         ended.set(true)
         analyzer.close()
@@ -212,7 +679,15 @@ private fun CameraPreview(
     // Deliberately not migrated to PredictiveBackHandler in the 2026-09-14 interaction pass —
     // camera/executor disposal ordering here needs its own dedicated audit; see
     // docs/superpowers/specs/2026-09-14-interaction-polish-design.md.
-    BackHandler(enabled = !showBarcodeDialog) { leave(onClose) }
+    // Back closes whatever the import put on screen before it closes the scanner: pressing back
+    // on a "which barcode?" sheet means "not these", not "leave the app's scanner".
+    BackHandler(enabled = !showBarcodeDialog) {
+        if (photoImport.state == BarcodePhotoImportState.Idle) {
+            leave(onClose)
+        } else {
+            photoImport.dismiss()
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -315,6 +790,7 @@ private fun CameraPreview(
 
         ScanFrame(acquired = acquired, modifier = Modifier.align(Alignment.Center))
 
+
         // Top row: close only. Nothing essential lives up here (§40).
         Row(
             modifier = Modifier
@@ -348,11 +824,12 @@ private fun CameraPreview(
                 .padding(Space.m),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            val reading = photoImport.state == BarcodePhotoImportState.Reading
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Space.s),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (acquired) {
+                if (acquired || reading) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
@@ -365,6 +842,11 @@ private fun CameraPreview(
                             // Names the work actually in progress rather than a bare spinner, so
                             // the wait is attributable to something (§2).
                             acquired -> R.string.scanner_finding_product
+                            // Said here as well as on the button, because this line is the screen's
+                            // polite live region: it is what announces to a TalkBack user that the
+                            // photograph is being read, and what tells a sighted user why the
+                            // preview has stopped responding to what the camera sees.
+                            reading -> R.string.scanner_photo_reading
                             holdSteady -> R.string.scanner_hint_steady
                             else -> R.string.scanner_hint_aim
                         },
@@ -380,6 +862,24 @@ private fun CameraPreview(
             Spacer(Modifier.height(Space.m))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // The second way in, in the same disc treatment the torch and the label scanner's
+                // own gallery action use — one 48dp scrim button among others, so the two scanners
+                // read as a matched pair and the camera stays the dominant action. It sits before
+                // the torch because it is a way of scanning rather than a way of adjusting the
+                // camera, and it is present whether or not the torch is.
+                ChoosePhotoButton(
+                    reading = photoImport.state == BarcodePhotoImportState.Reading,
+                    onChoose = photoImport::choosePhoto,
+                    description = stringResource(
+                        if (photoImport.state == BarcodePhotoImportState.Reading) {
+                            R.string.scanner_photo_reading
+                        } else {
+                            R.string.scanner_choose_photo
+                        },
+                    ),
+                )
+                Spacer(Modifier.width(Space.m))
+
                 if (torchAvailable && !acquired) {
                     ScrimIconButton(
                         onClick = {
@@ -401,7 +901,8 @@ private fun CameraPreview(
                     onClick = { analyzer.setPaused(true); holdSteady = false; showBarcodeDialog = true },
                     // A lookup is already under way and this screen is about to be replaced;
                     // opening the manual dialog on top of it would start a second, competing one.
-                    enabled = !acquired,
+                    // Same reasoning while a photograph is being read: that import may navigate.
+                    enabled = !acquired && !reading,
                     shape = RoundedCornerShape(Space.buttonRadius),
                     modifier = Modifier
                         .heightIn(min = Space.minTouchTarget)
@@ -417,11 +918,23 @@ private fun CameraPreview(
                 ) {
                     Text(
                         text = stringResource(R.string.scanner_enter_manually),
-                        color = Color.White.copy(alpha = if (acquired) 0.38f else 1f),
+                        color = Color.White.copy(alpha = if (acquired || reading) 0.38f else 1f),
                     )
                 }
             }
         }
+
+        // LAST child of this Box, deliberately. Compose paints and hit-tests siblings in
+        // declaration order, so rendered earlier these surfaces sat *under* the camera chrome:
+        // measured on the device, the torch was still tappable straight through the no-barcode
+        // recovery, which meant a tap aimed at the panel could toggle a flashlight for a camera
+        // the user had stopped looking at. Declared last, the recovery's own opaque surface is
+        // what receives the tap.
+        BarcodePhotoImportSurfaces(
+            import = photoImport,
+            cameraAvailable = true,
+            onEnterManually = { showBarcodeDialog = true },
+        )
     }
 }
 

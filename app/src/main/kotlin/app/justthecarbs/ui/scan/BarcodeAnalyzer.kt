@@ -15,11 +15,33 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 
 /**
+ * The symbologies both barcode inputs are configured to detect (§8).
+ *
+ * Shared by the live [BarcodeAnalyzer] and [ImportedBarcodeReader] rather than restated in each,
+ * because "a photograph is read for the same codes the camera is" must be a property of the code
+ * and not a coincidence between two lists that can drift apart in one edit.
+ *
+ * Split into a first format plus the rest only to match `setBarcodeFormats`'s `(Int, vararg Int)`
+ * signature, which both callers pass straight through. There is no significance to which one leads.
+ */
+internal const val PRIMARY_BARCODE_FORMAT = Barcode.FORMAT_EAN_13
+internal val OTHER_BARCODE_FORMATS = intArrayOf(
+    Barcode.FORMAT_EAN_8,
+    Barcode.FORMAT_UPC_A,
+    Barcode.FORMAT_UPC_E,
+)
+
+/**
  * Maps ML Kit's format constant to the domain-level [BarcodeFormat] so `domain/` never imports ML
  * Kit. Any detected format outside the four the scanner is configured for (§8) has no mapping and
  * is treated as unreadable rather than guessed at.
+ *
+ * `internal` rather than file-private so an imported photograph maps its detections through this
+ * exact function. A second copy would be a second place for the mapping to be wrong, in a codebase
+ * whose whole barcode safety argument is that one raw detection takes one route to a validated
+ * value.
  */
-private fun Int.toBarcodeFormat(): BarcodeFormat? = when (this) {
+internal fun Int.toBarcodeFormat(): BarcodeFormat? = when (this) {
     Barcode.FORMAT_EAN_13 -> BarcodeFormat.EAN_13
     Barcode.FORMAT_EAN_8 -> BarcodeFormat.EAN_8
     Barcode.FORMAT_UPC_A -> BarcodeFormat.UPC_A
@@ -52,12 +74,7 @@ class BarcodeAnalyzer(
         BarcodeScannerOptions.Builder()
             // European supermarket products (§8). Restricting the format list measurably speeds up
             // detection, and every extra format is one more thing that can misread.
-            .setBarcodeFormats(
-                Barcode.FORMAT_EAN_13,
-                Barcode.FORMAT_EAN_8,
-                Barcode.FORMAT_UPC_A,
-                Barcode.FORMAT_UPC_E,
-            )
+            .setBarcodeFormats(PRIMARY_BARCODE_FORMAT, *OTHER_BARCODE_FORMATS)
             .build(),
     )
 

@@ -217,6 +217,16 @@ fun CameraPermissionRationale(
      * cannot help.
      */
     onEnterBarcode: (() -> Unit)? = null,
+    /**
+     * Read a nutrition label from a photo the user already has (1.0.8). Null on the barcode
+     * scanner, which has no photo-reading path — offering it there would be an action that cannot
+     * help, the same reason [onEnterBarcode] is null on the label scanner.
+     *
+     * Present here because declining the camera must cost the user the camera, never the app: photo
+     * import needs no camera at all, so the one state where the user has no other way to read a
+     * label is precisely the state where it must stay reachable.
+     */
+    onChoosePhoto: (() -> Unit)? = null,
     onClose: () -> Unit,
 ) {
     Column(
@@ -284,10 +294,23 @@ fun CameraPermissionRationale(
             Spacer(Modifier.height(Space.s))
         }
 
-        // Secondary once barcode entry is available: a filled button beside another filled button
-        // states two equal primaries, and these are not equal.
+        // Above manual entry for the same reason barcode entry is: reading the printed table from a
+        // photograph the user already has reaches a real figure off the real package, whereas
+        // *Enter manually* asks them to transcribe the panel themselves. The better-informed route
+        // should be the one found first.
+        onChoosePhoto?.let { choosePhoto ->
+            Button(
+                onClick = choosePhoto,
+                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
+                shape = RoundedCornerShape(Space.buttonRadius),
+            ) { Text(stringResource(R.string.permission_choose_photo)) }
+            Spacer(Modifier.height(Space.s))
+        }
+
+        // Secondary once another full-strength action is available: a filled button beside another
+        // filled button states two equal primaries, and these are not equal.
         val manualModifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight)
-        if (onEnterBarcode == null) {
+        if (onEnterBarcode == null && onChoosePhoto == null) {
             Button(
                 onClick = onEnterManually,
                 modifier = manualModifier,
