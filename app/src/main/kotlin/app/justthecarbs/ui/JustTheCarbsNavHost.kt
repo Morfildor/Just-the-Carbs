@@ -54,6 +54,8 @@ import app.justthecarbs.ui.product.ProductViewModel
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.ui.scan.LabelScannerScreen
 import app.justthecarbs.ui.scan.ScannerScreen
+import app.justthecarbs.ui.scan.SharedImageChooserScreen
+import app.justthecarbs.ui.scan.SharedImageFailedScreen
 import app.justthecarbs.ui.settings.SettingsScreen
 import app.justthecarbs.ui.settings.SettingsViewModel
 import app.justthecarbs.ui.theme.Motion
@@ -158,6 +160,23 @@ private object Routes {
     const val WELCOME = "welcome"
     const val HOME = "home"
     const val SCAN = "scan"
+
+    /**
+     * "What do you want to scan?" for an image shared in from another app.
+     *
+     * A route of its own rather than a sheet over Home: a share can arrive cold, with nothing
+     * behind it, and a route is the same thing whether the app was cold, warm, or has just
+     * finished its welcome carousel.
+     *
+     * It carries no arguments. The staged file is held in the nav host's own state, because a
+     * filesystem path in a route string is a URL-encoding hazard for no benefit - nothing needs
+     * to deep-link to a specific staged file, and the whole point of the chooser is that it is
+     * about the one share currently in hand.
+     */
+    const val SHARE_CHOOSER = "share"
+
+    /** The unreadable-share message. Same reasoning as [SHARE_CHOOSER] for being a route. */
+    const val SHARE_FAILED = "share_failed"
     const val PRODUCT = "product/{barcode}"
     const val MANUAL =
         "manual?barcode={barcode}&carbs={carbs}&basis={basis}" +
@@ -263,6 +282,20 @@ fun JustTheCarbsNavHost(
      * per-delivery id rather than being a bare destination.
      */
     startupRequest: StartupRequest = StartupRequest.NONE,
+    /**
+     * The image shared into the app from elsewhere, if any (1.0.8).
+     *
+     * Already copied into this app's cache by `MainActivity` - see [SharedImageState] for the
+     * lifecycle and why the bytes are taken at arrival rather than when they are used.
+     */
+    sharedImage: SharedImageState = SharedImageState.None,
+    /**
+     * Tells the Activity the share has been acted on or dismissed, so it is never replayed.
+     *
+     * The boolean is whether the staged file should be deleted: false when a scanner has taken
+     * ownership of it (the label pipeline hands it to the analyzer), true on every dismissal.
+     */
+    onShareConsumed: (Boolean) -> Unit = {},
 ) {
     // The welcome carousel on a genuine first launch, Home on every launch after it.
     //
@@ -295,6 +328,20 @@ fun JustTheCarbsNavHost(
      * configuration change, Home sees the id it has already handled, and does nothing.
      */
     var searchFocusRequest by rememberSaveable { mutableLongStateOf(0L) }
+
+    /**
+     * The staged share currently being fed to a scanner, as a `file://` URI, or null.
+     *
+     * Set when the user answers the chooser and cleared the moment the scanner has it. Held here
+     * rather than passed as a route argument for [Routes.SHARE_CHOOSER]'s reason: a filesystem
+     * path in a route string is an encoding hazard buying nothing.
+     *
+     * Deliberately **not** `rememberSaveable`. Surviving a configuration change is exactly what it
+     * must not do: the scanner has already consumed it by then, and restoring it would re-feed the
+     * same photograph on every rotation. The share's own durability lives in the Activity, which
+     * is where consumption is recorded.
+     */
+    var sharedImageInFlight by remember { mutableStateOf<android.net.Uri?>(null) }
 
     NavHost(
         navController = navController,
@@ -489,7 +536,71 @@ fun JustTheCarbsNavHost(
             )
         }
 
+        composable(Routes.SHARE_CHOOSER) {
+            /**
+             * The chooser asks; it never guesses, and it runs neither recognizer.
+             *
+             * Each choice navigates to the scanner that already owns that pipeline, handing it the
+             * staged file. `popUpTo(SHARE_CHOOSER) { inclusive = true }` takes the chooser off the
+             * stack in the same operation, so Back from the scanner reaches Home rather than
+             * re-asking a question the user has answered - the same treatment the barcode scanner
+             * already gets when a product resolves.
+             *
+             * The share is reported consumed with `deleteFile = false`: the scanner now owns the
+             * file, and deleting it here would pull it out from under an analyzer about to read
+             * it. Consuming it at this point (rather than when the scan finishes) is what stops a
+             * rotation inside the scanner re-opening the chooser.
+             */
+            val stagedPath = (sharedImage as? SharedImageState.Ready)?.path
+
+            SharedImageChooserScreen(
+                onChooseBarcode = {
+                    sharedImageInFlight = stagedPath?.let { android.net.Uri.fromFile(java.io.File(it)) }
+                    onShareConsumed(false)
+                    navController.navigate(Routes.SCAN) {
+                        popUpTo(Routes.SHARE_CHOOSER) { inclusive = true }
+                    }
+                },
+                onChooseLabel = {
+                    sharedImageInFlight = stagedPath?.let { android.net.Uri.fromFile(java.io.File(it)) }
+                    onShareConsumed(false)
+                    navController.navigate(Routes.labelScan()) {
+                        popUpTo(Routes.SHARE_CHOOSER) { inclusive = true }
+                    }
+                },
+                onCancel = {
+                    // Dismissed: the file is deleted, the share is consumed so nothing can replay
+                    // it, and the user is left on Home rather than on a blank stack.
+                    onShareConsumed(true)
+                    navController.popBackStack(navController.graph.startDestinationId, inclusive = false)
+                },
+            )
+        }
+
+        composable(Routes.SHARE_FAILED) {
+            SharedImageFailedScreen(
+                onClose = {
+                    onShareConsumed(true)
+                    navController.popBackStack(navController.graph.startDestinationId, inclusive = false)
+                },
+            )
+        }
+
         composable(Routes.SCAN) {
+            // Read ONCE per visit to this destination, into state of its own.
+            //
+            // The first version of this cleared `sharedImageInFlight` inline, with
+            // `?.also { it = null }`, and that was a real defect measured on the emulator: writing
+            // state during composition recomposes, and the scanner's import host is composed both
+            // before and after the camera-permission state resolves - so the same URI arrived
+            // twice, the second arrival was refused as ALREADY_CONSUMED, and the screen sat on
+            // "Reading the photo you chose..." forever.
+            //
+            // `remember` keyed on the destination entry gives one stable value for as long as this
+            // visit lasts, so every recomposition sees the same thing and the screen's own
+            // consumed-token guard is left to do the job it was written for.
+            val shareForThisVisit = remember { sharedImageInFlight.also { sharedImageInFlight = null } }
+
             ScannerScreen(
                 hapticsEnabled = settings.hapticsEnabled,
                 onBarcode = { barcode ->
@@ -508,6 +619,8 @@ fun JustTheCarbsNavHost(
                         popUpTo(Routes.SCAN) { inclusive = true }
                     }
                 },
+                // A shared image the user said was a barcode.
+                sharedImage = shareForThisVisit,
             )
         }
 
@@ -935,6 +1048,9 @@ fun JustTheCarbsNavHost(
                 }
             }
 
+            // Read once per visit, for the reason recorded at Routes.SCAN above.
+            val shareForThisVisit = remember { sharedImageInFlight.also { sharedImageInFlight = null } }
+
             LabelScannerScreen(
                 hapticsEnabled = settings.hapticsEnabled,
                 onUseValue = { carbs, basis ->
@@ -1042,6 +1158,8 @@ fun JustTheCarbsNavHost(
                         ) { popUpTo(Routes.LABEL_SCAN) { inclusive = true } }
                     }
                 },
+                // A shared image the user said was a nutrition label.
+                sharedImage = shareForThisVisit,
             )
         }
 
@@ -1086,6 +1204,38 @@ fun JustTheCarbsNavHost(
     // Keyed on the whole request, so a *repeat* of the same shortcut still re-runs: keying on the
     // destination alone meant a second "Barcode" tap carried the value the effect had already seen
     // and never fired, leaving the app on Home. Measured on device. See `StartupRequest.id`.
+    /**
+     * Opens the chooser (or the failure message) when a share becomes ready.
+     *
+     * Keyed on the state, so it fires on the transition rather than on every recomposition, and
+     * so a share consumed at the chooser leaves nothing to re-fire. `Staging` deliberately
+     * navigates nowhere: the copy takes a moment, and a screen that appeared and then changed
+     * would be worse than one that appeared once the app had something to ask about.
+     *
+     * `HeldForOnboarding` also navigates nowhere - that is the onboarding gate, and it is
+     * enforced here as well as in [SharedImageRequest], because the release from `Held` to `Ready`
+     * happens in the Activity and this effect only ever acts on the latter.
+     *
+     * `launchSingleTop` plus popping to the graph root: a share delivered into an app already
+     * deep in a calculation must not stack a chooser on top of it, which is the same rule the
+     * launcher shortcuts follow immediately below.
+     */
+    LaunchedEffect(sharedImage) {
+        val route = when (sharedImage) {
+            is SharedImageState.Ready -> Routes.SHARE_CHOOSER
+            is SharedImageState.Failed -> Routes.SHARE_FAILED
+            SharedImageState.None,
+            is SharedImageState.Staging,
+            is SharedImageState.HeldForOnboarding,
+            -> null
+        } ?: return@LaunchedEffect
+
+        navController.navigate(route) {
+            popUpTo(navController.graph.startDestinationId) { inclusive = false }
+            launchSingleTop = true
+        }
+    }
+
     LaunchedEffect(startupRequest) {
         // Search is not a route. Home owns the field, so the shortcut asks for a *state* of the
         // start destination rather than a destination of its own: pop back to Home — which is what

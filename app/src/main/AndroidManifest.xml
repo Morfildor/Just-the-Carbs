@@ -61,6 +61,24 @@
             </intent-filter>
 
             <!--
+              Sharing a picture into this app: a screenshot of a barcode, a photo of a packet, a
+              picture of a nutrition table.
+
+              Exported by necessity — an intent filter another app can resolve is the whole
+              feature — and deliberately the narrowest filter that does the job: ACTION_SEND with
+              a single image, never SEND_MULTIPLE and never a text or URL share. The app takes no
+              storage or media permission for this; the sender grants a temporary read on one URI
+              and MainActivity copies the bytes immediately (see ImportedPhotoStaging).
+
+              What the picture contains is never guessed. It goes to a chooser that asks.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+
+            <!--
               Long-pressing the app icon offers the two scanners directly, so someone already
               holding the packet can start a scan without passing through Home. The list is static
               (see res/xml/shortcuts.xml) because it never changes, and the actions are read and

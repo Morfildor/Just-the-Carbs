@@ -23,7 +23,18 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import android.net.Uri
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.core.content.IntentCompat
 import app.justthecarbs.ui.JustTheCarbsNavHost
+import app.justthecarbs.ui.SharedImageDelivery
+import app.justthecarbs.ui.SharedImageRequest
+import app.justthecarbs.ui.SharedImageState
+import app.justthecarbs.ui.SharedImageTransitions
+import app.justthecarbs.ui.scan.SharedImageIntake
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import app.justthecarbs.ui.StartupDestination
 import app.justthecarbs.ui.StartupRequest
 import app.justthecarbs.ui.StartupState
@@ -71,6 +82,106 @@ class MainActivity : ComponentActivity() {
     private var startupState: StartupState = StartupState.Loading
 
     /**
+     * The share this app is currently working on, as Compose state so the nav host sees it.
+     *
+     * The transitions live in [SharedImageTransitions] rather than here, so every lifecycle rule
+     * this field obeys - newest wins, no replay, held across onboarding, consumed once - is
+     * reachable from a JVM test. An Activity field is exactly the place this project has twice
+     * recorded losing a rule it could not test.
+     */
+    private var sharedImage: SharedImageState by mutableStateOf(SharedImageState.None)
+
+    /** Increments per share delivery, so sharing the same picture twice is still a new request. */
+    private var shareDeliveries by mutableLongStateOf(0L)
+
+    /**
+     * Reads the share off [intent] and clears it, so it cannot be acted on twice.
+     *
+     * Clearing the action on the **Activity's** intent, for [consumeShortcutAction]'s reason: that
+     * is the object Android hands back on recreation, so blanking it is what stops a rotation being
+     * read as a second share. Without it, rotating at the chooser would restart the whole import.
+     *
+     * The bytes are copied immediately, off the main thread, and the result is applied only if this
+     * delivery is still current. That timing is the design: the sender's URI grant rides on this
+     * Intent and may be revoked, or its backing file deleted, long before the user has answered the
+     * chooser or finished the welcome carousel. Taking the bytes now - while the grant is certainly
+     * live - is what makes "the share survives onboarding" true rather than hoped for.
+     */
+    private fun consumeShareIntent(hasSeenOnboarding: Boolean) {
+        val incoming = intent ?: return
+        // `IntentCompat` rather than the deprecated `getParcelableExtra`, which is unchecked and
+        // removed on API 33+.
+        val uri = IntentCompat.getParcelableExtra(incoming, android.content.Intent.EXTRA_STREAM, Uri::class.java)
+
+        val decision = SharedImageRequest.from(
+            action = incoming.action,
+            mimeType = incoming.type,
+            uri = uri?.toString(),
+            hasSeenOnboarding = hasSeenOnboarding,
+        )
+        if (decision is SharedImageRequest.Decision.NotAShare) return
+
+        // Consumed: whatever it turned out to be, it has now been delivered and considered.
+        incoming.action = null
+        incoming.removeExtra(android.content.Intent.EXTRA_STREAM)
+
+        val id = ++shareDeliveries
+        // Newest wins, unconditionally. Whatever the previous share was holding goes now rather
+        // than at cache eviction, which may not come for days.
+        SharedImageIntake.discard(SharedImageTransitions.stagedPath(sharedImage)?.let(::File))
+
+        if (decision is SharedImageRequest.Decision.Invalid || uri == null) {
+            sharedImage = SharedImageState.Failed(id)
+            return
+        }
+
+        sharedImage = SharedImageTransitions.arrive(id)
+        lifecycleScope.launch {
+            val staged = withContext(Dispatchers.IO) {
+                SharedImageIntake.stage(
+                    context = this@MainActivity,
+                    uri = uri,
+                    // Stop copying a photograph nobody is waiting for: a newer share has arrived,
+                    // or this one has been dismissed.
+                    cancelled = { !SharedImageTransitions.isCurrent(sharedImage, id) },
+                )
+            }
+            // Re-read rather than captured: onboarding may have completed during the copy, and a
+            // share that arrived a moment before the carousel ended should not be pinned behind a
+            // gate that has since opened.
+            val seen = (startupState as? StartupState.Ready)?.settings?.hasSeenOnboarding == true
+            val next = when (staged) {
+                is SharedImageIntake.Result.Staged ->
+                    SharedImageTransitions.staged(sharedImage, id, staged.file.absolutePath, seen)
+                is SharedImageIntake.Result.Failed ->
+                    SharedImageTransitions.failed(sharedImage, id)
+            }
+            if (next == null) {
+                // Superseded mid-copy. The file is this delivery's alone, so deleting it here is
+                // cleanup rather than a race with whatever replaced it.
+                (staged as? SharedImageIntake.Result.Staged)?.file?.let(SharedImageIntake::discard)
+                return@launch
+            }
+            sharedImage = next
+        }
+    }
+
+    /**
+     * The share has been acted on or dismissed.
+     *
+     * [deleteFile] is false when a downstream screen has taken the file - the label path hands it
+     * to the analyzer, which owns it from there - and true when nothing did, which is every
+     * dismissal. Deleting a file the analyzer is still reading would be the torn-image failure
+     * this codebase already refuses to risk.
+     */
+    private fun consumeShare(deleteFile: Boolean) {
+        if (deleteFile) {
+            SharedImageIntake.discard(SharedImageTransitions.stagedPath(sharedImage)?.let(::File))
+        }
+        sharedImage = SharedImageTransitions.consume()
+    }
+
+    /**
      * Reads the shortcut action off [intent] and clears it, so it cannot be acted on twice.
      *
      * Clearing the action on the *Activity's* intent (rather than on a copy) is deliberate: that is
@@ -103,6 +214,8 @@ class MainActivity : ComponentActivity() {
         // Settings not yet loaded reads as "not seen", which resolves to DEFAULT and changes nothing.
         val seen = (startupState as? StartupState.Ready)?.settings?.hasSeenOnboarding == true
         startupRequest = consumeShortcutAction(hasSeenOnboarding = seen)
+        // A share into an already-running app. Same gate, same consume-once, same newest-wins.
+        consumeShareIntent(hasSeenOnboarding = seen)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -185,12 +298,29 @@ class MainActivity : ComponentActivity() {
                     // the Intent's action, so this cannot fire again on a configuration change.
                     LaunchedEffect(Unit) {
                         startupRequest = consumeShortcutAction(current.settings.hasSeenOnboarding)
+                        // The cold-start share, read at the same moment and for the same reason:
+                        // it needs the real `hasSeenOnboarding`, which only exists once settings
+                        // have loaded. Consumed once - the Intent's action and extra are cleared -
+                        // so a configuration change cannot restart the import.
+                        consumeShareIntent(current.settings.hasSeenOnboarding)
+                    }
+
+                    // Onboarding finished while a share was waiting behind it: release it now.
+                    // Keyed on the flag, so it fires on the transition rather than every
+                    // recomposition, and `onboardingCompleted` returns every other state
+                    // unchanged - including None, so an ordinary first launch conjures nothing.
+                    LaunchedEffect(current.settings.hasSeenOnboarding) {
+                        if (current.settings.hasSeenOnboarding) {
+                            sharedImage = SharedImageTransitions.onboardingCompleted(sharedImage)
+                        }
                     }
 
                     JustTheCarbsNavHost(
                         container = container,
                         settings = current.settings,
                         startupRequest = startupRequest,
+                        sharedImage = sharedImage,
+                        onShareConsumed = ::consumeShare,
                     )
                 }
             }
