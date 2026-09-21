@@ -170,10 +170,10 @@ class SavedProductAliasSearchTest {
 
     @Test
     fun `merging keeps the remote block in the order it arrived`() {
-        val local = SavedProductSearch.search("breakfast", listOf(saved(localAlias = "Breakfast bread")), limit)
+        val local = SavedProductSearch.searchLocal("breakfast", listOf(saved(localAlias = "Breakfast bread")), limit)
         val remote = listOf(remoteHit("3333333333338"), remoteHit("4444444444449"))
 
-        val merged = SavedProductSearch.merge("breakfast", local, remote, limit)
+        val merged = SavedProductSearch.merge(local, remote, limit)
 
         // An alias is evidence about this device, and re-ordering someone else's ranked page on the
         // strength of it would be re-ranking on strictly less evidence than produced it.
@@ -185,10 +185,10 @@ class SavedProductAliasSearchTest {
 
     @Test
     fun `a saved product appearing remotely is shown once, under the user's name`() {
-        val local = SavedProductSearch.search("breakfast", listOf(saved(localAlias = "Breakfast bread")), limit)
+        val local = SavedProductSearch.searchLocal("breakfast", listOf(saved(localAlias = "Breakfast bread")), limit)
         val remote = listOf(remoteHit("8710496979125", name = "AH Volkoren Tarwebrood 800g"))
 
-        val merged = SavedProductSearch.merge("breakfast", local, remote, limit)
+        val merged = SavedProductSearch.merge(local, remote, limit)
 
         assertEquals(1, merged.count { it.barcode == "8710496979125" })
         // The local payload wins the duplicate — as it did before aliases existed — so the name on
@@ -198,10 +198,10 @@ class SavedProductAliasSearchTest {
 
     @Test
     fun `a full alias match leads the merged list`() {
-        val local = SavedProductSearch.search("breakfast bread", listOf(saved(localAlias = "Breakfast bread")), limit)
+        val local = SavedProductSearch.searchLocal("breakfast bread", listOf(saved(localAlias = "Breakfast bread")), limit)
         val remote = listOf(remoteHit("3333333333338"))
 
-        val merged = SavedProductSearch.merge("breakfast bread", local, remote, limit)
+        val merged = SavedProductSearch.merge(local, remote, limit)
 
         // A local hit matching every word was already on top before the network answered; leaving it
         // there is the arrangement in which the list moves least.

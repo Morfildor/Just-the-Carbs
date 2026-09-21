@@ -257,9 +257,13 @@ class SearchViewModel(
      * [SearchUiState.hits]: what the screen shows is *derived* from both, so neither may be
      * overwritten by the merge. A remote answer arriving must be mergeable with the local hits
      * already on screen, and a remote failure must leave them exactly as they were.
+     *
+     * Held as [SavedProductSearch.LocalMatch] rather than as bare hits, so the strength each was
+     * judged at travels with it into every merge below. A renamed product matched on its canonical
+     * name cannot be re-judged from the alias the row displays — see that type's own note.
      */
     private var localQuery: String? = null
-    private var localHits: List<ProductSearchHit> = emptyList()
+    private var localMatches: List<SavedProductSearch.LocalMatch> = emptyList()
 
     /**
      * The local search's **own** generation counter, deliberately separate from
@@ -437,9 +441,9 @@ class SearchViewModel(
         val keepSaved = terms == localQuery
         if (!keepSaved) {
             localQuery = null
-            localHits = emptyList()
+            localMatches = emptyList()
         }
-        val savedHits = if (keepSaved) localHits else emptyList()
+        val savedHits = if (keepSaved) localMatches else emptyList()
 
         _state.update {
             it.copy(
@@ -449,7 +453,7 @@ class SearchViewModel(
                     // Saved products lead a query that has no remote answer yet; where a narrowed
                     // remote page also exists, the two are merged by the same rule the arriving
                     // answer will use, so a row does not move when the network catches up.
-                    else -> SavedProductSearch.merge(terms, savedHits, narrowedHits, RESULT_LIMIT)
+                    else -> SavedProductSearch.merge(savedHits, narrowedHits, RESULT_LIMIT)
                 },
                 // Verdicts about the *previous* query go immediately either way. "No products found
                 // for X" and a network error are statements about a completed search; keeping them
@@ -509,14 +513,14 @@ class SearchViewModel(
         localInFlight?.cancel()
         localInFlight = viewModelScope.launch {
             val products = runCatching { source.allProducts() }.getOrNull() ?: return@launch
-            val hits = SavedProductSearch.search(terms, products, RESULT_LIMIT)
+            val hits = SavedProductSearch.searchLocal(terms, products, RESULT_LIMIT)
             // The single point where a local result becomes state, and the single place staleness
             // is decided. A newer query has raised the counter, so this read is dropped even if its
             // coroutine was never actually cancelled.
             if (generation != localGeneration) return@launch
 
             localQuery = terms
-            localHits = hits
+            localMatches = hits
             if (hits.isEmpty()) return@launch
 
             _state.update {
@@ -525,7 +529,7 @@ class SearchViewModel(
                 // cannot clear `searching`, resolve `noMatches`, or dismiss an error.
                 val remote = if (remoteQuery == terms) remoteHits else emptyList()
                 it.copy(
-                    hits = SavedProductSearch.merge(terms, hits, remote, RESULT_LIMIT),
+                    hits = SavedProductSearch.merge(hits, remote, RESULT_LIMIT),
                     // A saved product *is* a result, so a screen that was about to say "no products
                     // found" no longer may. The remote search's own verdict is preserved in
                     // `remoteHits`/`remoteQuery` and re-applied if the user edits away and back.
@@ -545,13 +549,13 @@ class SearchViewModel(
     /**
      * The saved hits belonging to [terms], or nothing.
      *
-     * Guarded on the query rather than returning [localHits] outright: a remote answer can arrive
+     * Guarded on the query rather than returning [localMatches] outright: a remote answer can arrive
      * for a query the user has since edited past, and merging the previous word's saved products
      * into it would be the same staleness the generation checks exist to prevent, arriving through
      * the other pipeline.
      */
-    private fun savedHitsFor(terms: String): List<ProductSearchHit> =
-        if (localQuery == terms) localHits else emptyList()
+    private fun savedHitsFor(terms: String): List<SavedProductSearch.LocalMatch> =
+        if (localQuery == terms) localMatches else emptyList()
 
     /** Drop any saved-product work and results — the query is gone or too short to answer. */
     private fun cancelLocalSearch() {
@@ -559,7 +563,7 @@ class SearchViewModel(
         localInFlight?.cancel()
         localInFlight = null
         localQuery = null
-        localHits = emptyList()
+        localMatches = emptyList()
     }
 
     /**
@@ -715,7 +719,6 @@ class SearchViewModel(
                     it.copy(
                         searching = false,
                         hits = SavedProductSearch.merge(
-                            request.terms,
                             savedHitsFor(request.terms),
                             result.hits,
                             RESULT_LIMIT,
@@ -741,7 +744,10 @@ class SearchViewModel(
                 // service; a product on this device is not covered by it, and telling someone their
                 // own saved product does not exist — while it is sitting in the store — would be
                 // the flatly wrong version of an honest empty result.
-                val saved = savedHitsFor(request.terms)
+                // Through `merge` with an empty remote page rather than assigned directly: that is
+                // the same "local hits and nothing else" arrangement, expressed once, so this
+                // branch cannot drift from the ordering every other branch produces.
+                val saved = SavedProductSearch.merge(savedHitsFor(request.terms), emptyList(), RESULT_LIMIT)
                 _state.update {
                     it.copy(
                         searching = false,
@@ -776,7 +782,6 @@ class SearchViewModel(
                 // product already on the device, so a failed or impossible request costs the user
                 // the products they have never saved — and nothing else.
                 val kept = SavedProductSearch.merge(
-                    request.terms,
                     savedHitsFor(request.terms),
                     it.hits,
                     RESULT_LIMIT,

@@ -130,7 +130,56 @@ interface SavedProductSearchSource {
 object SavedProductSearch {
 
     /**
-     * The saved products matching [query], best first.
+     * One saved product that matched, with the strength it matched at.
+     *
+     * ## Why the strength is carried rather than recomputed
+     *
+     * [searchLocal] matches a product against **every** name it goes by — the canonical one the
+     * package prints and the [SavedProduct.localAlias] the user gave it here (see
+     * [SavedProduct.searchableNames]). The [ProductSearchHit] it produces can only show **one** of
+     * them, and shows the alias, because that is what the user calls this product.
+     *
+     * So a hit is strictly poorer in information than the match that produced it, and re-deriving
+     * strength from `hit.name` cannot reproduce the original judgement for the one case the alias
+     * feature exists to create:
+     *
+     * ```
+     *   canonical : AH Volkoren Tarwebrood 800g
+     *   alias     : Breakfast bread
+     *   query     : volkoren tarwebrood      FULL against the canonical name; nothing against the alias
+     * ```
+     *
+     * [merge] asks exactly that question to decide what leads, so re-deriving it made a product the
+     * user had typed the full name of lead the local answer and then **drop below the remote block**
+     * when the network caught up — the list moving under someone for a reason nothing on screen
+     * could explain. Carrying the decision forward makes that unreachable rather than unlikely.
+     *
+     * ## What this deliberately is not
+     *
+     * It is not a field on [ProductSearchHit]. That type is the shared shape of a result from any
+     * provider, and the screen's inability to tell local from remote is the property that lets one
+     * `SearchResultRow` render both. A `strength`, an `isLocal` or a `source` there would put the
+     * answer to "where did this come from" into the one type whose whole point is not having it.
+     * This wrapper lives and dies inside local search: the ViewModel holds it, [merge] reads it, and
+     * what reaches the screen is the plain hit.
+     */
+    data class LocalMatch(
+        val hit: ProductSearchHit,
+        val strength: SearchQueryMatcher.Strength,
+    )
+
+    /**
+     * The saved products matching [query] as plain hits, for callers with no interest in strength.
+     *
+     * A thin adapter over [searchLocal]. Kept because "what does this query find locally" is a
+     * question worth asking on its own, and because a caller that only renders results should not
+     * have to know that the merge needs something extra.
+     */
+    fun search(query: String, products: List<SavedProduct>, limit: Int): List<ProductSearchHit> =
+        searchLocal(query, products, limit).map { it.hit }
+
+    /**
+     * The saved products matching [query], best first, each with the strength it matched at.
      *
      * Ordering, each rule only breaking ties the one before it left:
      *
@@ -151,7 +200,7 @@ object SavedProductSearch {
      * `SearchResultRanking.select` does for the remote page — a list padded with results that share
      * only a brand word reads as though they were answers.
      */
-    fun search(query: String, products: List<SavedProduct>, limit: Int): List<ProductSearchHit> {
+    fun searchLocal(query: String, products: List<SavedProduct>, limit: Int): List<LocalMatch> {
         if (products.isEmpty()) return emptyList()
 
         val terms = query.trim()
@@ -221,21 +270,7 @@ object SavedProductSearch {
         // so the fallback keeps only rows that matched at least one query word.
         val kept = useful.ifEmpty { ordered.filter { matches[it].matchedWords > 0 } }
 
-        return kept.take(limit).map { products[it].toHit() }
-    }
-
-    /**
-     * The strength [search] judged a hit at, for the merge's leading/trailing split.
-     *
-     * Recomputed rather than carried on [ProductSearchHit]: that type is the shared shape of a
-     * search result from any provider, and adding a local-only field to it would put "where did
-     * this come from" into the one type whose whole point is that the screen cannot tell.
-     */
-    fun strengthOf(query: String, hits: List<ProductSearchHit>): List<SearchQueryMatcher.Strength> {
-        if (hits.isEmpty()) return emptyList()
-        val subjects = hits.map { SearchQueryMatcher.Subject(listOf(it.name), it.brand) }
-        val matcher = SearchQueryMatcher(query.trim(), subjects)
-        return subjects.map { matcher.match(it).strength }
+        return kept.take(limit).map { LocalMatch(products[it].toHit(), matches[it].strength) }
     }
 
     /**
@@ -259,25 +294,32 @@ object SavedProductSearch {
      * - **Only FULL local matches lead.** A local hit that matched every word was already on screen
      *   and on top before the remote answer arrived, so leaving it there is the arrangement in which
      *   the list moves least. A strong-but-partial local match has no claim to outrank a remote
-     *   result that may well be better, so it is appended instead.
+     *   result that may well be better, so it is appended instead. "FULL" here is the strength
+     *   [searchLocal] established over **every** name the product goes by, carried in [LocalMatch]
+     *   — not a judgement re-made here from the row's displayed text, which for a renamed product is
+     *   a strictly poorer question and used to demote the very product the user had typed the name
+     *   of. There is no [query] parameter for exactly that reason: this function no longer re-matches
+     *   anything, so it cannot disagree with the search that produced its input.
      * - **Weak local matches never lead**, which is the [search] fallback's one exception: locally
      *   they are better than nothing, but "better than nothing" stops being true the moment real
      *   results exist.
      */
     fun merge(
-        query: String,
-        localHits: List<ProductSearchHit>,
+        localMatches: List<LocalMatch>,
         remoteHits: List<ProductSearchHit>,
         limit: Int,
     ): List<ProductSearchHit> {
-        if (localHits.isEmpty()) return remoteHits.take(limit)
+        val localHits = localMatches.map { it.hit }
+        if (localMatches.isEmpty()) return remoteHits.take(limit)
         if (remoteHits.isEmpty()) return localHits.take(limit)
 
-        val strengths = strengthOf(query, localHits)
+        // The strength each match was judged at, carried from `searchLocal` rather than re-derived
+        // from the row's displayed name — see [LocalMatch] for the renamed-product case that makes
+        // the difference, and the list movement it used to produce.
         val leading = mutableListOf<ProductSearchHit>()
         val trailing = mutableListOf<ProductSearchHit>()
-        localHits.forEachIndexed { index, hit ->
-            if (strengths[index] == SearchQueryMatcher.Strength.FULL) leading += hit else trailing += hit
+        localMatches.forEach { match ->
+            if (match.strength == SearchQueryMatcher.Strength.FULL) leading += match.hit else trailing += match.hit
         }
 
         val localByBarcode = localHits.associateBy { it.barcode }

@@ -17,6 +17,23 @@ class SavedProductMergeTest {
 
     private val limit = 20
 
+    /**
+     * These cases build [ProductSearchHit]s directly rather than going through
+     * [SavedProductSearch.searchLocal], because what they pin is the merge's *arrangement* rules —
+     * order, dedupe, leading/trailing, the limit — over inputs chosen to make each rule visible.
+     *
+     * So the strength each hit is offered at is derived here, from the hit's own name, which is
+     * exactly what these tests meant before strength became a carried value. The renamed-product
+     * case that carrying exists for lives in `SavedProductMergeStabilityTest`, where the two names
+     * genuinely differ; here they cannot, so this helper is faithful rather than a weakening.
+     */
+    private fun asMatches(query: String, hits: List<ProductSearchHit>): List<SavedProductSearch.LocalMatch> {
+        if (hits.isEmpty()) return emptyList()
+        val subjects = hits.map { SearchQueryMatcher.Subject(listOf(it.name), it.brand) }
+        val matcher = SearchQueryMatcher(query.trim(), subjects)
+        return hits.mapIndexed { i, hit -> SavedProductSearch.LocalMatch(hit, matcher.match(subjects[i]).strength) }
+    }
+
     private fun hit(
         barcode: String,
         name: String = "Product $barcode",
@@ -40,18 +57,18 @@ class SavedProductMergeTest {
         // first search, and the state every existing search test runs in — the merge must be the
         // identity function on the remote page.
         val remote = listOf(hit("1"), hit("2"), hit("3"))
-        assertEquals(remote, SavedProductSearch.merge("gouda", emptyList(), remote, limit))
+        assertEquals(remote, SavedProductSearch.merge(asMatches("gouda", emptyList()), remote, limit))
     }
 
     @Test
     fun `no remote hits leaves the local list as it is`() {
         val local = listOf(hit("1"), hit("2"))
-        assertEquals(local, SavedProductSearch.merge("gouda", local, emptyList(), limit))
+        assertEquals(local, SavedProductSearch.merge(asMatches("gouda", local), emptyList(), limit))
     }
 
     @Test
     fun `both empty produces nothing`() {
-        assertEquals(emptyList<ProductSearchHit>(), SavedProductSearch.merge("gouda", emptyList(), emptyList(), limit))
+        assertEquals(emptyList<ProductSearchHit>(), SavedProductSearch.merge(asMatches("gouda", emptyList()), emptyList(), limit))
     }
 
     // ---- order ----------------------------------------------------------------------------------
@@ -66,7 +83,7 @@ class SavedProductMergeTest {
             hit("r3", name = "Mango", carbs = "40"),
         )
         val local = listOf(hit("l1", name = "Gouda jong"))
-        val merged = SavedProductSearch.merge("gouda jong", local, remote, limit)
+        val merged = SavedProductSearch.merge(asMatches("gouda jong", local), remote, limit)
         assertEquals(listOf("r1", "r2", "r3"), merged.filter { it.barcode.startsWith("r") }.map { it.barcode })
     }
 
@@ -74,7 +91,7 @@ class SavedProductMergeTest {
     fun `a full local match leads the remote block`() {
         val local = listOf(hit("l1", name = "Gouda jong"))
         val remote = listOf(hit("r1", name = "Gouda belegen"))
-        assertEquals(listOf("l1", "r1"), SavedProductSearch.merge("gouda jong", local, remote, limit).map { it.barcode })
+        assertEquals(listOf("l1", "r1"), SavedProductSearch.merge(asMatches("gouda jong", local), remote, limit).map { it.barcode })
     }
 
     @Test
@@ -85,7 +102,7 @@ class SavedProductMergeTest {
         val remote = listOf(hit("r1", name = "Gouda belegen extra"))
         assertEquals(
             listOf("r1", "l1"),
-            SavedProductSearch.merge("gouda belegen", local, remote, limit).map { it.barcode },
+            SavedProductSearch.merge(asMatches("gouda belegen", local), remote, limit).map { it.barcode },
         )
     }
 
@@ -95,7 +112,7 @@ class SavedProductMergeTest {
         val remote = listOf(hit("r1", name = "Gouda jong belegen"))
         assertEquals(
             listOf("r1", "l1"),
-            SavedProductSearch.merge("gouda jong", local, remote, limit).map { it.barcode },
+            SavedProductSearch.merge(asMatches("gouda jong", local), remote, limit).map { it.barcode },
         )
     }
 
@@ -105,7 +122,7 @@ class SavedProductMergeTest {
     fun `a product appears once when both sources return it`() {
         val local = listOf(hit("shared", name = "Gouda jong"))
         val remote = listOf(hit("shared", name = "Gouda jong"), hit("r2"))
-        val merged = SavedProductSearch.merge("gouda jong", local, remote, limit)
+        val merged = SavedProductSearch.merge(asMatches("gouda jong", local), remote, limit)
         assertEquals(1, merged.count { it.barcode == "shared" })
     }
 
@@ -115,7 +132,7 @@ class SavedProductMergeTest {
         // remote figure here would show a number the very next screen contradicts.
         val localCopy = hit("shared", name = "Gouda jong", carbs = "2")
         val remoteCopy = hit("shared", name = "Gouda Young Cheese", carbs = "999")
-        val merged = SavedProductSearch.merge("gouda jong", listOf(localCopy), listOf(remoteCopy), limit)
+        val merged = SavedProductSearch.merge(asMatches("gouda jong", listOf(localCopy)), listOf(remoteCopy), limit)
         assertSame(localCopy, merged.single { it.barcode == "shared" })
     }
 
@@ -125,7 +142,7 @@ class SavedProductMergeTest {
         // payload replaces only the contents.
         val local = listOf(hit("shared", name = "Gouda jong", carbs = "2"))
         val remote = listOf(hit("r1"), hit("shared", name = "Gouda Young", carbs = "9"), hit("r3"))
-        val merged = SavedProductSearch.merge("gouda belegen", local, remote, limit)
+        val merged = SavedProductSearch.merge(asMatches("gouda belegen", local), remote, limit)
         assertEquals(listOf("r1", "shared", "r3"), merged.map { it.barcode })
         assertEquals(BigDecimal("2"), merged[1].carbsPer100)
     }
@@ -136,7 +153,7 @@ class SavedProductMergeTest {
         val remote = listOf(hit("shared", name = "Gouda jong", carbs = "9"), hit("r2"))
         assertEquals(
             listOf("shared", "r2"),
-            SavedProductSearch.merge("gouda jong", local, remote, limit).map { it.barcode },
+            SavedProductSearch.merge(asMatches("gouda jong", local), remote, limit).map { it.barcode },
         )
     }
 
@@ -146,7 +163,7 @@ class SavedProductMergeTest {
     fun `remaining useful local hits survive the merge`() {
         val local = listOf(hit("l1", name = "Gouda jong"), hit("l2", name = "Gouda jong extra"))
         val remote = listOf(hit("r1"), hit("r2"))
-        val merged = SavedProductSearch.merge("gouda jong", local, remote, limit).map { it.barcode }
+        val merged = SavedProductSearch.merge(asMatches("gouda jong", local), remote, limit).map { it.barcode }
         assertEquals(setOf("l1", "l2", "r1", "r2"), merged.toSet())
     }
 
@@ -154,7 +171,7 @@ class SavedProductMergeTest {
     fun `the result limit is respected`() {
         val local = (1..5).map { hit("l$it", name = "Gouda jong $it") }
         val remote = (1..30).map { hit("r$it") }
-        assertEquals(10, SavedProductSearch.merge("gouda jong", local, remote, limit = 10).size)
+        assertEquals(10, SavedProductSearch.merge(asMatches("gouda jong", local), remote, limit = 10).size)
     }
 
     @Test
@@ -162,7 +179,7 @@ class SavedProductMergeTest {
         // The limit trims from the end, so what the user typed the name of is what survives.
         val local = listOf(hit("l1", name = "Gouda jong"))
         val remote = (1..30).map { hit("r$it") }
-        val merged = SavedProductSearch.merge("gouda jong", local, remote, limit = 3)
+        val merged = SavedProductSearch.merge(asMatches("gouda jong", local), remote, limit = 3)
         assertEquals(listOf("l1", "r1", "r2"), merged.map { it.barcode })
     }
 }
