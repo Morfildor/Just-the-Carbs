@@ -32,7 +32,6 @@ import app.justthecarbs.ui.SharedImageRequest
 import app.justthecarbs.ui.SharedImageState
 import app.justthecarbs.ui.SharedImageTransitions
 import app.justthecarbs.ui.scan.SharedImageIntake
-import app.justthecarbs.ui.scan.StagedImageSweeper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -245,25 +244,15 @@ class MainActivity : ComponentActivity() {
         // on every recomposition and the Activity is recreated on rotation, so counting there would
         // inflate the number and retire the reminder several launches early. `savedInstanceState ==
         // null` is what distinguishes a genuine launch from a configuration change.
+        //
+        // Note what this guard does NOT mean: it is not a process boundary. Android recreates this
+        // Activity from saved state after killing the process, so a non-null `savedInstanceState`
+        // is perfectly compatible with a brand-new process. It distinguishes a fresh Activity from
+        // a recreated one, which is exactly what the launch counter needs and is all it claims.
+        // Anything that genuinely needs "once per process" belongs in `JustTheCarbsApplication` —
+        // the abandoned-staging sweep used to be here on that mistaken reading and now lives there.
         if (savedInstanceState == null) {
             lifecycleScope.launch { container.settingsRepository.recordLaunch() }
-
-            // Sweep staging files a previous process left behind (1.0.8).
-            //
-            // Ownership of a staged share moves from here to a scanner in one main-thread turn, so
-            // nothing can interleave — but the process can die between the bytes being copied and
-            // the scanner disposing of them, and the in-flight handle is deliberately not saved
-            // (restoring it would re-import the same photograph on every rotation). Nothing left
-            // alive then knows the file exists.
-            //
-            // Guarded on `savedInstanceState == null` for the same reason the launch count is: a
-            // rotation is not a new process, and sweeping then could delete a file an import
-            // running right now owns. On a genuine launch nothing of ours can be in flight yet, so
-            // anything matching an import prefix is by definition from a process that is gone.
-            //
-            // Off the main thread and fire-and-forget: this is a handful of `delete()` calls on
-            // files that are almost always absent, and nothing waits on the result.
-            lifecycleScope.launch(Dispatchers.IO) { StagedImageSweeper.sweep(cacheDir) }
         }
 
         setContent {

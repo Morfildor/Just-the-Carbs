@@ -25,6 +25,8 @@ import app.justthecarbs.domain.GovernedProductSearch
 import app.justthecarbs.domain.ProductSearchSource
 import app.justthecarbs.domain.RemoteSearchGovernor
 import app.justthecarbs.domain.SearchProviderLog
+import app.justthecarbs.ocr.OcrDiagnosticsLogger
+import app.justthecarbs.ui.scan.StagedImageSweeper
 import java.util.Locale
 
 /**
@@ -197,7 +199,59 @@ class JustTheCarbsApplication : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // The staging files that already existed when this process began — the exact set the sweep
+        // below is allowed to delete, and nothing else.
+        //
+        // Read here, synchronously, before the container is built and before any Activity exists,
+        // and therefore before any pick or share can have staged a file. That ordering is the whole
+        // guarantee: a file the *current* process creates is not in this list, so the asynchronous
+        // sweep cannot name it however late it runs. A local rather than a property, so the listing
+        // cannot be retaken at a later, and therefore unsafe, instant.
+        val abandoned = StagedImageSweeper.snapshot(cacheDir)
         container = AppContainer(this)
+        sweepAbandonedStagingFiles(abandoned)
+    }
+
+    /**
+     * Reclaims staging files a previous process abandoned (1.0.8).
+     *
+     * ## Why this is the Application and not the Activity
+     *
+     * It used to run from `MainActivity.onCreate` under `savedInstanceState == null`, described as
+     * "once per process start". It is not: that flag distinguishes a fresh Activity from a
+     * *recreated* one, and Android recreates the Activity **from saved state** when it relaunches a
+     * process it had killed. So on the one launch that certainly follows a dead process — the case
+     * the sweep exists for — `savedInstanceState` is non-null and nothing was swept. Meanwhile a
+     * rotation, which the guard was really aimed at, does not reach `Application.onCreate` at all:
+     * the process is the same, this object is not recreated, and there is no second sweep to
+     * suppress. Moving here therefore fixes both halves at once, and the correctness no longer
+     * depends on an Activity-lifecycle flag meaning something it does not mean.
+     *
+     * ## Why it is safe to run asynchronously
+     *
+     * The deletion is a handful of `delete()` calls on files that are almost always absent, but it
+     * is disk I/O and does not belong on the main thread during startup. Running it in the
+     * background means it can still be working while a cold `ACTION_SEND` stages its photograph —
+     * so it is not given a directory to search. It is given [snapshot], the list already taken in
+     * `onCreate`, and it deletes only members of that list. A file staged by this process was not
+     * in `cacheDir` when that listing was read, so it cannot be in the list, so the sweep cannot
+     * reach it. The race is excluded by construction rather than by a timestamp comparison, which
+     * would have rested on the filesystem recording modification times finely enough to order two
+     * events milliseconds apart — something several filesystems Android runs on do not do.
+     *
+     * Fire-and-forget on a plain thread rather than a coroutine scope: nothing waits on the result,
+     * nothing cancels it, and there is no scope here that outlives the work meaningfully. The whole
+     * body is wrapped, so a failure to start the thread or to delete a file is logged and startup
+     * continues — reclaiming disk space must never be the reason an app fails to open.
+     */
+    private fun sweepAbandonedStagingFiles(snapshot: StagedImageSweeper.Snapshot) {
+        if (snapshot.size == 0) return
+        runCatching {
+            Thread({
+                runCatching { StagedImageSweeper.sweep(snapshot) }
+                    .onFailure { OcrDiagnosticsLogger.failure("Could not sweep abandoned imports", it) }
+            }, "jtc-staging-sweep").apply { isDaemon = true }.start()
+        }.onFailure { OcrDiagnosticsLogger.failure("Could not start the staging sweep", it) }
     }
 
     /**

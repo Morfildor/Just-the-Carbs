@@ -102,9 +102,40 @@ carries the *ownership* rather than a path that might still need staging — whi
 without adding another replay boolean.
 
 `StagedImageSweeper` clears all three prefixes (`shared`, label, barcode) from `cacheDir` once per
-**process** start (`savedInstanceState == null`, the same guard and the same reason as the launch
-counter — a rotation is not a new process). It sweeps files only, never the directory, and never
-touches Coil, OkHttp or evidence.
+**process** start. It sweeps files only, never the directory, and never touches Coil, OkHttp or
+evidence.
+
+**Corrected 2026-09-21 — `savedInstanceState == null` is NOT a process-start guarantee, and this
+paragraph previously said it was.** That flag distinguishes a fresh Activity from a *recreated*
+one; Android recreates the Activity **from saved state** when it relaunches a process it had
+killed, so the sweep was skipped on exactly the launch that inherits the dead process's orphans.
+The call now lives in `JustTheCarbsApplication.onCreate`, the app's only real new-process boundary
+(a rotation does not reach it at all, so no gate is needed to suppress a second sweep).
+
+**Corrected again the same day — a file timestamp is not an ownership proof, and the first fix
+used one.** Because the deletion runs off the main thread it can race a cold `ACTION_SEND` staging
+its photograph, and the first answer was to capture `System.currentTimeMillis()` in
+`Application.onCreate` and delete only files reporting a strictly older `lastModified()`. That
+rests on the filesystem recording modification times finely enough to order two events
+milliseconds apart. **Several filesystems Android runs on do not** — `lastModified` may be
+truncated to whole seconds, so a file created *after* the process started can be stamped at the
+start of that second, read as older than the cutoff, and be deleted while the user is importing
+it. A rule whose correctness depends on clock resolution passes every test on the machine it was
+written on and fails silently on some devices.
+
+Ownership is now established **by enumeration order instead of by clock**.
+`StagedImageSweeper.snapshot(cacheDir)` runs synchronously in `Application.onCreate`, before the
+container is built and before any Activity exists, and freezes the matching files into an
+immutable `Snapshot`; the daemon thread calls `sweep(snapshot)` and deletes only members of that
+list. A file staged afterwards was not in the directory when it was read, so it is not in the
+snapshot, so the sweep has no name for it — the race is structurally unreachable rather than
+merely narrowed, and **no timestamp is consulted anywhere**. `sweep` cannot enumerate: it takes the
+frozen list and no directory, so a caller cannot hand it a live one. Scoping is unchanged and now
+lives in the snapshot: regular files only, top level only, the three import prefixes only. No
+minimum age is applied and none is needed — an orphan is reclaimed on the very next process start.
+`StagedImageSweepLifetimeTest` pins the call site and the ordering structurally: restoring the
+sweep under `savedInstanceState == null` fails by name, and moving the enumeration into the
+background thread fails 6 tests including the live-import race.
 
 ### Four lost-update races, and one the brief did not ask about
 

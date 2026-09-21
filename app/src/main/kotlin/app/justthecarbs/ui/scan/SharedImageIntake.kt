@@ -98,19 +98,46 @@ internal object SharedImageIntake {
  *
  * That is a genuine gap and it is not closeable by making the handoff more careful, because the
  * handoff is not where it happens. It is closed the way this class of orphan is normally closed:
- * on the next launch, anything still lying around is by definition from a process that is gone, so
- * it is swept.
+ * on the next launch, anything already lying around is by definition from a process that is gone,
+ * so it is swept.
  *
- * ## Why this is safe to run at startup
+ * ## Why the sweep is a snapshot and not a timestamp comparison
  *
- * A file matching one of these prefixes is only ever created by an import that is in progress. A
- * *live* import's file belongs to the current process, which has not reached this code — this runs
- * once, from `onCreate`, before any share or pick can have been started. So "exists at startup"
- * and "abandoned" are the same statement.
+ * Two earlier shapes of this were wrong, in instructive ways.
  *
- * Only this app's own import prefixes are considered, never `cacheDir` wholesale: Coil's image
- * cache, OkHttp's response cache and the debug evidence bundles all live there too, and deleting
- * those would be throwing away other components' working state to solve a problem they do not have.
+ * The first swept everything matching a prefix, on the argument that the sweep ran before any
+ * import could have started. That argument rested entirely on *where* it was called from — and the
+ * call site was `MainActivity.onCreate` under `savedInstanceState == null`, which is not a process
+ * boundary at all. A backgrounded process that Android kills is relaunched with the Activity
+ * recreated **from saved state**, so `savedInstanceState` is non-null on precisely the new process
+ * whose predecessor left the orphans. The sweep skipped the case it exists for.
+ *
+ * Moving the call to [app.justthecarbs.JustTheCarbsApplication.onCreate] fixed which processes
+ * sweep, and raised a second question: deletion runs off the main thread, so it can still be
+ * working while a cold `ACTION_SEND` stages its photograph. The second shape answered that by
+ * capturing the process-start instant and deleting only files reporting an older `lastModified()`.
+ *
+ * **That is not a sound ownership proof.** It assumes the filesystem records modification times
+ * finely enough, and granularly enough, to order two events milliseconds apart. Several filesystems
+ * Android runs on do not: `lastModified` may be truncated to whole seconds, so a file genuinely
+ * created *after* the process started can be stamped at the start of that second — earlier than the
+ * captured instant — and be deleted as an orphan while the user is looking at it. A rule whose
+ * correctness depends on clock resolution is a rule that fails silently on some devices and passes
+ * every test on others.
+ *
+ * So ownership is established **by enumeration order instead of by clock**. [snapshot] lists
+ * `cacheDir` synchronously in `Application.onCreate`, before the container is built and before any
+ * Activity — and therefore any pick or share — can exist, and freezes the matching files into an
+ * immutable list. [sweep] deletes only members of that list. A file created afterwards was not in
+ * the directory when it was read, so it is not in the snapshot, so the sweep cannot name it: the
+ * race is not narrowed, it is structurally unreachable, and no timestamp is consulted at any point.
+ * That also means no minimum age is applied and none is needed — an abandoned file is reclaimed on
+ * the very next launch rather than an hour later.
+ *
+ * Only this app's own import prefixes are considered, and only regular files directly in
+ * `cacheDir`, never the directory wholesale: Coil's image cache, OkHttp's response cache and the
+ * debug evidence bundles all live there too, and deleting those would be throwing away other
+ * components' working state to solve a problem they do not have.
  */
 internal object StagedImageSweeper {
 
@@ -122,21 +149,58 @@ internal object StagedImageSweeper {
     )
 
     /**
-     * Deletes every orphaned staging file directly in [cacheDir], returning how many went.
+     * The staging files that existed at the instant this process began.
      *
-     * Failure is swallowed per file: a cache file that will not delete is a disk-space footnote,
-     * and one stubborn file must not stop the rest being cleaned. Only the top level is scanned —
-     * an evidence folder is a directory and is the recorder's to prune.
+     * An opaque, immutable list of exactly the files [sweep] may delete. It is a type rather than a
+     * bare `List<File>` so the two halves cannot be accidentally decoupled: the only way to obtain
+     * one is [snapshot], which is called from `Application.onCreate`, so a caller cannot hand the
+     * sweep a directory listing taken at some later and therefore unsafe moment.
      */
-    fun sweep(cacheDir: File): Int {
-        val orphans = runCatching {
+    @JvmInline
+    value class Snapshot internal constructor(internal val files: List<File>) {
+        val size: Int get() = files.size
+    }
+
+    /**
+     * Freezes the staging files already present in [cacheDir]. **Call synchronously, at process
+     * start, before anything can stage a file.**
+     *
+     * This single `listFiles` call is the whole ownership proof. Everything it returns was on disk
+     * before the current process could create anything, so everything it returns belongs to a
+     * process that is gone. Everything staged from now on is absent from the result and therefore
+     * unreachable by [sweep], whenever that eventually runs.
+     *
+     * Deliberately cheap: one directory listing, no `delete`, no timestamp read, no I/O beyond the
+     * enumeration itself — it runs on the main thread during startup, so the work that can block is
+     * left to [sweep]. A directory that cannot be read yields an empty snapshot, because failing to
+     * reclaim disk space must never be the reason an app fails to open.
+     */
+    fun snapshot(cacheDir: File): Snapshot {
+        val existing = runCatching {
             cacheDir.listFiles { file: File ->
                 file.isFile && PREFIXES.any { file.name.startsWith(it) }
             }
         }.getOrNull().orEmpty()
 
+        return Snapshot(existing.toList())
+    }
+
+    /**
+     * Deletes the files in [snapshot], returning how many went. Blocking; call off the main thread.
+     *
+     * Every file here was named by [snapshot] before this process could stage anything, so no
+     * current-process import can be among them however long the call is delayed. The prefix and
+     * top-level checks were applied at snapshot time and are not re-applied: the list is the
+     * authority, and re-deriving its membership would be a second place for the rule to live.
+     *
+     * A file that has vanished in between (the system trimmed the cache, the user cleared it) is
+     * simply not deleted and does not count. Failure is swallowed per file: a cache file that will
+     * not delete is a disk-space footnote, and one stubborn file must not stop the rest being
+     * cleaned.
+     */
+    fun sweep(snapshot: Snapshot): Int {
         var deleted = 0
-        orphans.forEach { file ->
+        snapshot.files.forEach { file ->
             if (runCatching { file.delete() }.getOrDefault(false)) deleted++
         }
         if (deleted > 0) {
