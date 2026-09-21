@@ -132,6 +132,22 @@ live on Production and says the first update is ready. Work accumulates here unt
   copy already on your phone, which is the one that opens when you tap it. Online results keep the
   order the database returned them in.
 
+- **Read a barcode or a nutrition label from a photo you already have.** Both scanners now offer
+  *Choose a photo*, so a package photographed earlier — or one someone sent you — can be read
+  without pointing the camera at anything. It is the same recognition and the same safety rules as
+  the live path: a barcode still has to pass its check digit, and a nutrition label still has to
+  establish what its figure is measured per before anything is proposed. It is also the way in when
+  camera access is off.
+- **Accept an image shared in from another app.** Sending a photo to Just the Carbs from a gallery,
+  a messaging app or a browser opens a chooser — *Barcode* or *Nutrition label* — and takes it
+  straight to that scanner. The app asks for no storage permission to do it: the image is copied
+  into its own private cache the moment it arrives, read once, and deleted.
+- **Rename a product on this device.** A product's overflow menu now offers *Rename on this
+  device*, for the many cases where a database name is unhelpful ("PRODUIT LAITIER 250G") or simply
+  not what you call it. The new name is yours alone — it is never sent anywhere, the original stays
+  visible beneath it, and *Remove custom name* restores it. Search finds a renamed product by
+  either name.
+
 ### Changed
 
 - **Home cards are laid out in two aligned rows:** the product name with its carb figure, then the
@@ -158,31 +174,67 @@ live on Production and says the first update is ready. Work accumulates here unt
   arithmetic and the wiring are shared, so a device with a taller window gets the rail without
   further work.
 
-### Verified so far
+### Fixed
 
-JVM **2273/2273** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 229 JUnit XML
-files); lint **0 errors, 28 warnings** (unchanged baseline); debug APK and debug test APK both
-build. Instrumented on the `carbscan` emulator (API 36): the `ui` package and `data.local` for the
-earlier slices, plus **132 green** for the search work — `ProductDaoTest` 31, `SearchScreenTest` 34,
-`SearchPresentationRegressionTest` 20, `HomeScreenTest` 36, `SavedProductSearchScreenTest` 6,
-`SearchShortcutFocusTest` 5.
+- **A renamed product no longer loses its place in search.** Search remembered how strongly a
+  product matched what you typed, but then re-derived that judgement from the name shown on the
+  row — which for a renamed product is the custom name. So typing the product's *original* name
+  found it, put it on top, and then dropped it down the list the moment the online results arrived.
+  The judgement is now carried through rather than reconstructed, so a product found by either of
+  its names keeps the position it earned.
+- **A shared image is no longer copied twice.** An image shared in from another app was already
+  being copied into the app's own cache on arrival, and was then copied a second time by the
+  scanner, leaving the first copy behind. Repeated sharing accumulated files. Each image is now
+  owned by exactly one place and deleted as soon as it has been read; cancelling the chooser, a
+  failed recognition and being superseded by a newer share all clean up, and anything left behind
+  by an earlier version is swept on the next launch.
+- **Two settings could no longer overwrite each other.** Marking a product a Favourite, recording a
+  portion you just used, renaming it, and the background refresh each wrote the product's whole
+  row, so two of them happening close together could undo one another — a rename could vanish a
+  moment after it was made. Each now writes only the fields it is actually changing, and the
+  refresh reads and writes in one step so nothing can land in between.
+- **A failed rename now says so.** The new name appeared immediately, as it should, but if the
+  write then failed nothing on screen said so and the old name came back silently on the next
+  visit. The name is now put back and a short line explains it. A rename that fails late can no
+  longer undo a later one that succeeded.
 
-The search benchmarks were re-run and **confirmed executed rather than skipped** —
-`SearchBenchmarkTest` 3/3 and `SearchRelevanceBenchmarkTest` 6/6, along with `SearchResultRankingTest`
-28/28 and the whole provider chain. Neither benchmark was weakened to accommodate local search, and
-the remote request pattern is re-measured with a local source attached: still one request per word,
+### Verified
+
+JVM **2485/2485** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 247 JUnit XML
+files — up from 2273). Lint **0 errors, 28 warnings** — unchanged baseline, and **no
+unused-resource finding**. Debug APK and debug test APK both build.
+
+**Whole instrumented suite on the `carbscan` emulator (API 36): 635 passed, 635 total, in one
+complete run** — 54 classes, 0 failed, 0 ignored, counted from `INSTRUMENTATION_STATUS_CODE`
+(635 × code 1 started, 635 × code 0 passed, no code −2 or −3). Run with
+`notAnnotation=app.justthecarbs.ExploratoryExperiment`, the same exclusion `release-gate.yml`
+applies, so the release gate's own set passed in full. This figure covers everything in this
+version: the OCR corpus (39/39), the Room migrations (16/16), `ProductDaoTest` (48/48), the search
+and benchmark classes, Home and Quick Add, both scanners, the photo-import and share paths, and the
+product/rename UI.
+
+The search benchmarks are **confirmed executed rather than skipped** and neither was weakened. The
+remote request pattern was re-measured with a local source attached: still one request per word,
 still behind the 350 ms settle and the shared budget.
 
 Local-first search was driven by hand on the emulator **with Wi-Fi and mobile data switched off**:
 saved products found by name, by brand, by exact barcode, and by plain `pinar` against a stored
 `Pınar`; a hand-entered product with no barcode found and opened; the failure rendered as the
 compact inline line rather than the recovery panel. Then online: the saved row leading, online
-results joining beneath it without the list reordering. Checked in Light and Dark, at 1.8× text, with
-long names and the keyboard open.
+results joining beneath it without the list reordering. Checked in Light and Dark, at 1.8× text,
+with long names and the keyboard open.
 
-**Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps meant
-to open a product land on the **+** by accident, and — for search — how immediate the local answer
-actually feels on real hardware with a store built up over months rather than six seeded rows.
+**The rename dialog was inspected as images, not only asserted.** At 1.8× text the action row
+wrapped and left *Save* stranded on a line of its own above *Remove custom name* and *Cancel*,
+which reads as a broken dialog and which no assertion caught. *Remove custom name* is now a
+tertiary action inside the dialog body, so *Cancel* and *Save* keep an explicit, full-size row.
+Re-checked at 320dp, 1.0× and 1.8×, Light and Dark, with the keyboard open and with a long product
+name: nothing clipped, nothing overlapping, no touch target under 48dp and no horizontal overflow.
+
+**Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps
+meant to open a product land on the **+** by accident, how immediate the local answer feels on real
+hardware with a store built up over months rather than six seeded rows, reading a real package
+photograph from the gallery, and sharing an image in from a real gallery or messaging app.
 Re-check all of this before the release build; `docs/manual-qa.md` §45 and §46 are the gates.
 
 ### Play Store release notes

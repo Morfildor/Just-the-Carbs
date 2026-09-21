@@ -51,6 +51,154 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Deep stabilization pass (2026-09-21) — 1.0.8, READ FIRST
+
+On `1.0.8-portion-shortcut-barcode`, above `d4b5b6f`. Still `1.0.8` / `versionCode 9`, still
+**HOLD** — nothing built as a release, nothing uploaded, **nothing committed** (the tree is dirty by
+instruction). Nothing about the calculation, the schema, migrations, the §10 lookup priority,
+barcode detection, OCR recognition or the remote search stack changed. No threshold moved and no
+parser rule was relaxed; every change either carries a decision through instead of reconstructing
+it, narrows a write, or adds a refusal.
+
+### The alias search merge rebuilt its own decision from a poorer source
+
+`SavedProductSearch.search()` returned a `ProductSearchHit` whose name is the **alias**, and
+`merge()` then called `strengthOf(hit.name)` to decide whether that hit could lead. So a product
+renamed "Morning milk" and found by typing its canonical `Pınar Süt` matched FULL, led the list,
+and then **lost its lead the moment the remote answer arrived** — the merge re-judged it against a
+name that no longer contains the query.
+
+**The fix is structural rather than a better re-match.** `searchLocal` returns
+`LocalMatch(hit, strength)` — the hit plus the strength the matcher actually produced — and `merge`
+takes those. `strengthOf` is **deleted**, and `merge` **no longer takes the query at all**: that
+missing parameter is the proof it cannot re-derive anything, not a rule someone must remember. A
+hit is strictly poorer in information than the match that produced it, which is the whole finding.
+
+Everything else about the merge is unchanged and pinned: remote order untouched, a duplicate
+appears once keeping the **local** payload at the remote position, FULL locals lead, strong and
+weak locals are appended. `SavedProductMergeStabilityTest` (9 cases) includes an **executable
+negative control** — a test that reconstructs strength from `hit.name` the old way and asserts the
+canonical-name case is lost — so the defect cannot return silently.
+
+### Shared images: converge at an owned File, not at a URI that must always be staged
+
+The ACTION_SEND path was already correct at arrival — `SharedImageIntake` copies the incoming URI
+into a private `justthecarbs-shared-*` file immediately, which is what lets the app hold **no
+storage permission**. Both scanners then sent that already-owned file back through
+`ImportedPhotoStaging`, **staging it a second time**, and the first copy could be abandoned.
+
+`ImportedImageSource` is what makes that unrepresentable: `Picked(uri)` must be staged,
+`Staged(file)` is already owned, and `ImportedImageResolver.resolve` is the one place that decides.
+**Its `context` is a lambda deliberately** — a plain-JVM test passes a supplier that throws, and
+proves the staged branch never touches Android at all. That is a structural proof, not an
+observation about the current call sites.
+
+Ownership is explicit per use: the barcode reader reads then deletes exactly once; a label hands
+the file to the existing analyzer/evidence lifecycle. Picker cancel does nothing, newest-wins
+deletes the superseded file, chooser cancel deletes, recognition failure cleans up, and a
+successful navigation leaves no `justthecarbs-shared-*` behind. `sharedImageInFlight` is now
+typed `ImportedImageSource.Staged?` rather than a URI, so the Activity→chooser→scanner handoff
+carries the *ownership* rather than a path that might still need staging — which closes the gap
+without adding another replay boolean.
+
+`StagedImageSweeper` clears all three prefixes (`shared`, label, barcode) from `cacheDir` once per
+**process** start (`savedInstanceState == null`, the same guard and the same reason as the launch
+counter — a rotation is not a new process). It sweeps files only, never the directory, and never
+touches Coil, OkHttp or evidence.
+
+### Four lost-update races, and one the brief did not ask about
+
+`recordUse`, `setFavorite` and the refresh/verification paths all did read → suspend → copy →
+**whole-row upsert**. Reproduced concretely before fixing: `recordUse` reads `localAlias=null`, a
+rename writes the alias, `recordUse` writes its stale snapshot, and the alias is null again.
+
+Narrow writes replace them — `setFavorite` is a one-column `UPDATE`; `recordUsageColumns` writes
+its coherent usage group in one statement, expressing "keep what is there" as SQL `COALESCE` and
+the grams-mode clearing as `CASE WHEN`, so no prior read exists to go stale. **This is not "turn
+every method into dozens of statements"**: the five usage fields are one fact about one use and are
+written together.
+
+The intentional whole-row writers (verification, remote-value acceptance, both refresh branches)
+genuinely do replace a coherent set of facts, so they keep doing that — but through
+`@Transaction saveProductFacts`, which **reads inside the transaction** and preserves `localAlias`
+and `favorite`. A plain Kotlin re-read was tried first and the race test still failed: **a re-read
+narrows the window, it does not close it.** That failure is what drove the transaction, and the
+fake in `ProductWriteRaceTest` awaits its gate *before* reading precisely so it cannot pass against
+the weaker fix.
+
+**A second race in `saveVerification` was found by the new test and is not in the brief**: a rename
+landing during the basis-change usage clearing made the alias vanish. Same fix.
+
+No global mutex was introduced. The datastore boundary was already the right place.
+
+### A failed rename must not look like a success
+
+The optimistic update stays — the new name appears immediately, and there is **no blocking progress
+dialog**. On failure the name is rolled back and a compact inline line appears, in the same visual
+language as `usageSaveFailed`/`mealAddFailed`.
+
+The part worth keeping is the **generation guard**: rename A starts, B starts and succeeds, A fails
+late — A must never roll B back. `renameGeneration` is captured before the write and re-checked at
+the single point a failure becomes state, the same shape as the search and photo-import counters.
+Removing it fails exactly one test, by name.
+
+### The red Quick Add test was a test bug, and it was proven rather than assumed
+
+`HomeQuickAddScreenTest.largeFontOnANarrowScreenKeepsThePortionAndTheButton` failed at HEAD too,
+which is **not** a reason to weaken it. Measured on the device: `performScrollTo()` reported *could
+not find any node that satisfies: (TestTag = 'home_quick_add')*, and the semantics dump showed
+`home_body` with `rowCount=5` but only two composed children. **LazyColumn non-composition** — the
+node did not exist to scroll to, the fourth instance of this trap in this file. Fixed with
+`performScrollToNode` on `HOME_BODY_TAG`. A touch-target assertion in the same test used
+`boundsInRoot` on a button that is deliberately drawn 44×36dp; corrected to `touchBoundsInRoot`,
+matching its sibling in the same file.
+
+**The corrected test was then demonstrated against a deliberately broken layout**, which took four
+attempts and is the useful part: a 20×16dp button, removing `weight(1f)`, and a 120dp spacer **all
+still passed** — `performScrollToNode` is robust enough that small damage does not reach it. A
+**400dp** spacer finally failed it with "is not displayed". `HomeScreen.kt` was then restored and
+verified byte-identical.
+
+### The rename dialog's real defect was visual and no assertion caught it
+
+At 1.8× text, Material3 wrapped the `AlertDialog` action row and stranded *Save* on its own line
+**above** *Remove custom name* and *Cancel* (measured: save y=673, the other two y=831). Remedied
+as the brief prescribes — *Remove custom name* moved into the dialog **body** as a tertiary
+`TextButton`, so `dismissButton` is *Cancel* alone and both primary actions keep full-size labels
+and touch targets. Found by `RenameProductVisualTest`, which writes screenshots and asserts almost
+nothing, in the same spirit as `TutorialVisualTest`.
+
+**Two harness traps it cost:** the first capture batch was washed out because `waitForIdle()`
+returns before the dialog's enter transition has finished drawing (fixed with a 600 ms sleep), and
+`onRoot` matches **two** nodes because a dialog is its own window — measure against the dialog's
+own field bounds instead.
+
+### Verified
+
+JVM **2485/2485** (0 failures, 0 errors, 0 skipped, `--rerun-tasks`, counted from 247 JUnit XML
+files — up from 2435 at the start of this pass). Lint **0 errors, 28 warnings**, unchanged
+baseline, **no unused-resource finding**. Debug APK and debug test APK both build.
+
+**Whole instrumented suite in one run on `carbscan` (API 36): 635/635**, 54 classes, 0 failed, 0
+ignored, counted from `INSTRUMENTATION_STATUS_CODE` (635 started, 635 passed, no −2 and no −3), with
+`notAnnotation=app.justthecarbs.ExploratoryExperiment` — the exclusion `release-gate.yml` itself
+applies. That run contains the OCR corpus 39/39, Room migrations 16/16, `ProductDaoTest` 48/48, the
+search/benchmark classes, Home and Quick Add, both scanners, photo import, share, and the
+product/rename UI. **No known red tests.**
+
+**Negative controls, each restored and re-verified green:** whole-row `recordUse` fails 3 ·
+whole-row `setFavorite` fails 4 · rename generation guard removed fails 1, by name · the
+search-merge control is executable and lives in the suite permanently · the deliberately broken
+Home layout failed the corrected Quick Add test at 400dp.
+
+### NOT verified
+
+**Nothing in this pass has been seen on physical hardware.** Everything is JVM plus the emulator.
+Specifically open: reading a real package photograph chosen from a real gallery, sharing an image in
+from a real gallery or messaging app (including whether the chooser reads clearly when it arrives
+over another app), the rename dialog under a real IME at 1.8×, and a live TalkBack pass over the
+renamed rows and the new dialog. `docs/manual-qa.md` §45 and §46 are the gates.
+
 ## Local-first saved-product search (2026-09-19) — 1.0.8, READ FIRST
 
 On branch `1.0.8-portion-shortcut-barcode`, above `4dc916a`. Still `1.0.8` / `versionCode 9`, still
@@ -4853,8 +5001,11 @@ before describing the app as live. Do not infer "live" from "uploaded".
   (`f00a7f9`). Further work this cycle lands under `CHANGELOG.md`'s `## 1.0.8` heading.
 - **Work so far is on `1.0.8-portion-shortcut-barcode`, not `main`**: Quick Add / Remove from Recent,
   Share app plus the negative-carb guard and canonical privacy URL, the portion accelerators with the
-  Search shortcut and typed barcode entry (`4dc916a`), and local-first saved-product search — see
-  the pass section at the top of this file. Nothing has been merged to `main` and nothing is built.
+  Search shortcut and typed barcode entry (`4dc916a`), local-first saved-product search
+  (`bd0d23c`), reading a barcode or nutrition label from a photo (`aeb5f02`), accepting a shared
+  image (`1102e77`), and renaming a product on this device (`0d48219`, `d4b5b6f`) — plus an
+  **uncommitted deep stabilization pass** on top of all of it; see the two pass sections at the top
+  of this file. Nothing has been merged to `main` and nothing is built.
 - **HOLD (owner, 2026-09-18):** `1.0.8` is the first update after `1.0.7`. Do not build it for
   release or upload it until the owner confirms `1.0.7` is live on Production and says the first
   update is ready.
