@@ -62,6 +62,14 @@ data class ProductImage(
  */
 data class Product(
     val barcode: String,
+    /**
+     * The canonical product name — the provider's, or the one the user authored.
+     *
+     * This belongs to the product, not to this device: for an Open Food Facts record it may
+     * legitimately change when the provider corrects or re-titles the record, and a refresh is
+     * allowed to replace it. A personal name for the same product is [localAlias], stored beside
+     * this one rather than over it, so renaming can never destroy the identity a lookup resolves by.
+     */
     val name: String,
     val carbsPer100: BigDecimal,
     val basis: NutritionBasis,
@@ -111,7 +119,45 @@ data class Product(
     val lastSelectedPortionUnitId: Long? = null,
     /** The last countable count entered, e.g. `2` for "2 slices" (§11). */
     val lastCount: BigDecimal? = null,
+    /**
+     * A personal name for this product on this device, or null for none.
+     *
+     * Presentation metadata and nothing else. It is **not** provenance, **not** verification and
+     * **not** a product edit: [name], [dataSource] and [verificationStatus] are untouched by
+     * setting one, a remote refresh preserves it rather than overwriting it, and it is never sent
+     * anywhere — there is no upload path in this app for any field, and this one least of all.
+     *
+     * Kept separate from [name] rather than replacing it because the two answer different
+     * questions. [name] is what the product *is*, and the provider may correct it; this is what one
+     * user chose to call it. Storing the alias over the canonical name would make a legitimate
+     * remote correction look like the user's rename being silently reverted, and would leave the
+     * app unable to say what the product is actually called.
+     *
+     * Always null or non-blank — blank is normalised to null at the repository boundary, so
+     * "an alias of spaces" is not a state the rest of the app has to consider.
+     */
+    val localAlias: String? = null,
 ) {
+    /**
+     * The one name to show the user for this product.
+     *
+     * Every new user-facing presentation of a live [Product] reads this rather than [name], so that
+     * "what do we call this product on screen" is answered in one place. Scattering
+     * `localAlias ?: name` through the UI would make it a rule someone has to remember at each new
+     * call site, and the first site that forgot would show the canonical name back to a user who
+     * had renamed it — with nothing on screen to explain why.
+     *
+     * A blank alias resolves to [name]. The repository normalises blank to null on write, so this
+     * is belt-and-braces against a row stored before that rule existed rather than a live case.
+     *
+     * Deliberately **not** applied to values already stored elsewhere. A `MealItem.displayName` is
+     * an immutable snapshot of what was added; renaming a product later does not rewrite history.
+     */
+    val displayName: String get() = localAlias?.takeIf { it.isNotBlank() } ?: name
+
+    /** True when the user has given this product a personal name on this device. */
+    val hasLocalAlias: Boolean get() = !localAlias.isNullOrBlank()
+
     /** The unit the portion field is locked to. Never converted (§17, design decision 3.1). */
     val portionUnit: String get() = basis.unitLabel
 
@@ -140,4 +186,20 @@ data class Product(
      */
     val remoteValueDiffers: Boolean
         get() = latestRemoteBasis != null && latestRemoteCarbs?.let { it.compareTo(carbsPer100) != 0 || latestRemoteBasis != basis } == true
+
+    companion object {
+        /**
+         * The longest personal name a product may be given ([localAlias]).
+         *
+         * Generous rather than tight: the point of a limit here is to keep one field from becoming
+         * a place to store a paragraph, not to make the user count characters. Real aliases are two
+         * or three words ("Breakfast bread"), and 60 leaves ample room for a long one while staying
+         * inside what the product title and a Home card can render at a large font scale.
+         *
+         * Lives on the domain type rather than in the repository so the text field that enforces it
+         * on screen and the write that enforces it on save read the same number. Two copies of a
+         * limit is how a field that accepts 60 characters ends up silently storing 40.
+         */
+        const val MAX_LOCAL_ALIAS_LENGTH: Int = 60
+    }
 }

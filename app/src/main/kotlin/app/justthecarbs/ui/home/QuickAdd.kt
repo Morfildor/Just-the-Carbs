@@ -72,6 +72,9 @@ sealed interface QuickAddPlan {
  * "2 slices", and silently adding "72 g" instead would be a portion they did not pick. So that case
  * — and every other incomplete one — is ineligible, and the card still opens the product on tap.
  */
+// The `displayName` reads below put the user's own name on a meal line the moment Quick Add creates
+// it, while every line already on the plate keeps the name it was added under — the same
+// immutable-snapshot rule `ProductViewModel.buildPendingMealItem` follows, for the same reason.
 fun quickAddPlan(product: Product, unit: PortionUnit?): QuickAddPlan? {
     if (product.barcode.isEmpty()) return null
     val remembered = rememberedCarbs(product, unit) ?: return null
@@ -85,7 +88,7 @@ fun quickAddPlan(product: Product, unit: PortionUnit?): QuickAddPlan? {
         return when (val conversion = unit.conversion) {
             is PortionConversion.DirectCarbs -> QuickAddPlan.DirectCarbs(
                 barcode = product.barcode,
-                displayName = product.name,
+                displayName = product.displayName,
                 exactCarbs = remembered.exactCarbs,
                 basis = product.basis,
                 count = remembered.count,
@@ -95,7 +98,7 @@ fun quickAddPlan(product: Product, unit: PortionUnit?): QuickAddPlan? {
 
             is PortionConversion.WeightBased -> QuickAddPlan.Weighed(
                 barcode = product.barcode,
-                displayName = product.name,
+                displayName = product.displayName,
                 exactCarbs = remembered.exactCarbs,
                 basis = product.basis,
                 // Non-null by construction on this branch; checked rather than asserted so a
@@ -113,7 +116,7 @@ fun quickAddPlan(product: Product, unit: PortionUnit?): QuickAddPlan? {
     if (remembered.portion.signum() <= 0) return null
     return QuickAddPlan.Weighed(
         barcode = product.barcode,
-        displayName = product.name,
+        displayName = product.displayName,
         exactCarbs = remembered.exactCarbs,
         basis = product.basis,
         resolvedAmount = remembered.portion,

@@ -654,4 +654,136 @@ class ProductDaoTest {
     fun anEmptyStoreProjectsNothing() = runTest {
         assertEquals(emptyList<SavedProductSearchRow>(), dao.findAllForSearch())
     }
+
+    // ---- local alias (1.0.8) --------------------------------------------------------------------
+
+    @Test
+    fun anAliasRoundTripsThroughRoom() = runTest {
+        dao.upsert(product("111").copy(localAlias = "Breakfast bread").toEntity())
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertEquals("Breakfast bread", stored.localAlias)
+        assertEquals("Breakfast bread", stored.displayName)
+        // The canonical name is still on the row — the whole reason this is a second column.
+        assertEquals("Product 111", stored.name)
+    }
+
+    @Test
+    fun aProductWithNoAliasReadsBackWithNone() = runTest {
+        dao.upsert(product("111").toEntity())
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertNull(stored.localAlias)
+        assertEquals("Product 111", stored.displayName)
+    }
+
+    @Test
+    fun settingAnAliasChangesOnlyTheAlias() = runTest {
+        val original = product(
+            "111",
+            carbs = "48.2",
+            usedSecondsAfterEpoch = 10,
+            favorite = true,
+            verification = VerificationStatus.USER_VERIFIED,
+        )
+        dao.upsert(original.toEntity())
+
+        dao.setLocalAlias("111", "Breakfast bread")
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        // Compared as a whole object with the alias put back: every other column is byte-identical,
+        // so this covers fields added to Product later without anyone adding an assertion.
+        assertEquals(original, stored.copy(localAlias = null))
+        assertEquals("Breakfast bread", stored.localAlias)
+    }
+
+    @Test
+    fun clearingAnAliasRestoresTheCanonicalName() = runTest {
+        dao.upsert(product("111").copy(localAlias = "Breakfast bread").toEntity())
+
+        dao.setLocalAlias("111", null)
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertNull(stored.localAlias)
+        assertEquals("Product 111", stored.displayName)
+    }
+
+    @Test
+    fun renamingAnUnknownBarcodeCreatesNothing() = runTest {
+        dao.setLocalAlias("nosuchbarcode", "Breakfast bread")
+
+        // An alias is metadata *about* a saved product, never a reason to invent one.
+        assertNull(dao.findByBarcode("nosuchbarcode"))
+        assertEquals(emptyList<SavedProductSearchRow>(), dao.findAllForSearch())
+    }
+
+    @Test
+    fun theSearchProjectionCarriesTheAlias() = runTest {
+        dao.upsert(product("111").copy(localAlias = "Breakfast bread").toEntity())
+        dao.upsert(product("222").toEntity())
+
+        val rows = dao.findAllForSearch().associateBy { it.barcode }
+        assertEquals("Breakfast bread", rows.getValue("111").localAlias)
+        // Both names reach the matcher, which is what lets either one find the product.
+        assertEquals("Product 111", rows.getValue("111").name)
+        assertNull(rows.getValue("222").localAlias)
+    }
+
+    @Test
+    fun clearingRecentHistoryPreservesAliases() = runTest {
+        dao.upsert(
+            product("111", usedSecondsAfterEpoch = 10).copy(localAlias = "Breakfast bread").toEntity(),
+        )
+
+        dao.clearRecentHistory()
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        // *Clear recent history* erases facts about *eating*. What the user calls a product is not
+        // one of those, any more than its name or its carbohydrate value is — and the action's own
+        // label promises nothing about renaming.
+        assertEquals("Breakfast bread", stored.localAlias)
+        assertNull("the usage itself is still cleared", stored.lastUsedAt)
+        assertNull(stored.lastPortion)
+    }
+
+    @Test
+    fun clearingSavedProductsRemovesAliasesWithTheirProducts() = runTest {
+        dao.upsert(product("111").copy(localAlias = "Breakfast bread").toEntity())
+
+        dao.deleteAllProducts()
+
+        // Nothing special is needed: the alias is a column on the row, so deleting the product takes
+        // its personal name with it. This is asserted rather than assumed because "the alias lives
+        // on the product row" is exactly the property that makes it true.
+        assertNull(dao.findByBarcode("111"))
+        assertEquals(emptyList<SavedProductSearchRow>(), dao.findAllForSearch())
+    }
+
+    @Test
+    fun forgettingOneRecentPreservesItsAlias() = runTest {
+        dao.upsert(
+            product("111", usedSecondsAfterEpoch = 10).copy(localAlias = "Breakfast bread").toEntity(),
+        )
+
+        dao.forgetRecentUse("111")
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertEquals("Breakfast bread", stored.localAlias)
+        assertNull(stored.lastUsedAt)
+    }
+
+    @Test
+    fun undoingRemoveFromRecentLeavesTheAliasAlone() = runTest {
+        dao.upsert(product("111", usedSecondsAfterEpoch = 10).toEntity())
+        val snapshot = dao.forgetRecentUse("111")!!
+
+        // Renamed during the Undo window — the same shape as the favourite-toggled-during-Undo case
+        // the restore is already careful about. Undo restores *usage*, so it must not revert this.
+        dao.setLocalAlias("111", "Breakfast bread")
+        dao.restoreRecentUse(snapshot)
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertEquals("a rename during the Undo window must survive it", "Breakfast bread", stored.localAlias)
+        assertEquals(epoch.plusSeconds(10), stored.lastUsedAt)
+    }
 }

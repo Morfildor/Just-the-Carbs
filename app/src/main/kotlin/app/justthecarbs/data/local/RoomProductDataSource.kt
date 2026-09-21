@@ -28,6 +28,9 @@ class RoomProductDataSource(private val dao: ProductDao) : LocalProductDataSourc
     override fun observeRecents(limit: Int): Flow<List<Product>> =
         dao.observeRecents(limit).map { entities -> entities.map { it.toDomain() } }
 
+    override suspend fun setLocalAlias(barcode: String, alias: String?) =
+        dao.setLocalAlias(barcode, alias)
+
     override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
         dao.forgetRecentUse(barcode)?.toDomain()
 

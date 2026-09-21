@@ -96,6 +96,8 @@ data class ProductUiState(
      * silence here reads as success and the user would leave believing the product was kept.
      */
     val quickSaveFailed: Boolean = false,
+    /** The *Rename on this device* editor is open (1.0.8). */
+    val showRenameForm: Boolean = false,
     val showVerifyDialog: Boolean = false,
     /**
      * A newer online value seen during this session (corrections #5, #10).
@@ -789,7 +791,12 @@ class ProductViewModel(
         // line and into the "Remove …" label a screen reader announces — so an empty one is a blank
         // row in the one list whose whole job is saying what is on the plate. The wording comes from
         // the screen for the same reason [portionDescription] does: it lives in resources.
-        val displayName = product.name.ifBlank { fallbackName }
+        // `displayName`, so a meal line created *now* carries the name the user currently uses for
+        // this product. Existing meal lines are untouched by a later rename: a meal item is an
+        // immutable snapshot of what was added, stored as its own string with no join back to the
+        // product, so history says what it said at the time (see MIGRATION_3_4 on why there is no
+        // foreign key). Renaming is not a reason to rewrite the past.
+        val displayName = product.displayName.ifBlank { fallbackName }
 
         return if (directCarbs != null && conversion is PortionConversion.DirectCarbs) {
             val count = PortionParser.parse(_state.value.countText) ?: return null
@@ -1024,6 +1031,36 @@ class ProductViewModel(
      */
     suspend fun rememberUsageAndAwait() {
         writeUsageSnapshot(buildUsageSnapshot())
+    }
+
+    // ---- rename on this device (1.0.8) ---------------------------------------------------------
+
+    /** Opens or closes the rename editor. Only meaningful for a saved product. */
+    fun showRenameForm(show: Boolean) {
+        val product = _state.value.product ?: return
+        if (product.barcode.isEmpty()) return
+        _state.update { it.copy(showRenameForm = show) }
+    }
+
+    /**
+     * Gives this product a personal name on this device, or removes it when [alias] is null.
+     *
+     * State is updated optimistically and the editor closed, then the write is launched — the same
+     * shape as [toggleFavorite], and for the same reason: the title behind the dialog *is* the
+     * confirmation, so making the user watch a round trip before their own name appears would turn
+     * a personalisation into a transaction.
+     *
+     * Only [Product.localAlias] moves. The canonical name, the figure, the basis, provenance and
+     * verification are all untouched here and in the repository, which writes one column.
+     */
+    fun setLocalAlias(alias: String?) {
+        val product = _state.value.product ?: return
+        if (product.barcode.isEmpty()) return
+        val normalised = alias?.trim()?.take(Product.MAX_LOCAL_ALIAS_LENGTH)?.takeIf { it.isNotEmpty() }
+        _state.update {
+            it.copy(product = product.copy(localAlias = normalised), showRenameForm = false)
+        }
+        viewModelScope.launch { repository.setLocalAlias(product.barcode, normalised) }
     }
 
     fun toggleFavorite() {

@@ -427,4 +427,90 @@ class HomeQuickAddTest {
         assertNotNull(rig.local.products["111"])
         assertEquals(Instant.EPOCH, rig.local.products.getValue("111").lastUsedAt)
     }
+
+    // ---- local alias (1.0.8) -------------------------------------------------------------------
+
+    @Test
+    fun `a quick-added line carries the user's own name for the product`() = runTest {
+        val renamed = bread.copy(localAlias = "Breakfast bread")
+        val rig = rig(listOf(renamed))
+
+        rig.vm.quickAdd(RecentEntry(renamed, lastUnit = null), "72 g")
+        dispatcher.scheduler.runCurrent()
+
+        assertEquals("Breakfast bread", rig.meal.added.single().displayName)
+    }
+
+    @Test
+    fun `renaming does not change a meal line that was already added`() = runTest {
+        // **The immutable-snapshot rule.** A meal item is a record of a calculation the user made,
+        // stored as its own row with no join back to the product (see MIGRATION_3_4 on why there is
+        // no foreign key). Renaming the product afterwards is not a reason to rewrite that record:
+        // the plate should still say what it said when the food was put on it.
+        //
+        // Driven through the real ViewModel and a real meal store rather than asserted on a data
+        // class, because the claim is about what the app *does* over time, not about whether one
+        // object is a `val`.
+        val meal = RecordingMeal()
+        val rig = rig(listOf(bread), meal = meal)
+
+        rig.vm.quickAdd(RecentEntry(bread, lastUnit = null), "72 g")
+        dispatcher.scheduler.runCurrent()
+        assertEquals("Wholegrain Bread", meal.added.single().displayName)
+
+        // Past the confirmation window, so the duplicate-tap guard has released this barcode and a
+        // second add is the ordinary thing it would be for a real user coming back later. The guard
+        // itself is untouched by this feature and is covered by its own tests.
+        dispatcher.scheduler.advanceUntilIdle()
+
+        // The user renames the product, then adds it again.
+        val renamed = bread.copy(localAlias = "Breakfast bread")
+        rig.local.products["111"] = renamed
+        rig.vm.quickAdd(RecentEntry(renamed, lastUnit = null), "72 g")
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(2, meal.added.size)
+        // The old line is untouched; only the new one carries the new name. Both are on the plate,
+        // and the meal is legible as the history it is rather than being silently rewritten.
+        assertEquals("Wholegrain Bread", meal.added[0].displayName)
+        assertEquals("Breakfast bread", meal.added[1].displayName)
+    }
+
+    @Test
+    fun `renaming changes nothing about what quick add writes except the name`() = runTest {
+        val plainRig = rig(listOf(bread))
+        plainRig.vm.quickAdd(RecentEntry(bread, lastUnit = null), "72 g")
+        dispatcher.scheduler.runCurrent()
+        val plainItem = plainRig.meal.added.single()
+
+        val renamed = bread.copy(localAlias = "Breakfast bread")
+        val renamedRig = rig(listOf(renamed))
+        renamedRig.vm.quickAdd(RecentEntry(renamed, lastUnit = null), "72 g")
+        dispatcher.scheduler.runCurrent()
+        val renamedItem = renamedRig.meal.added.single()
+
+        // Same barcode, same portion, same basis, same arithmetic — a rename is presentation and
+        // touches neither the calculation nor the eligibility that allowed it.
+        assertEquals(plainItem.productBarcode, renamedItem.productBarcode)
+        assertEquals(plainItem.portionDescription, renamedItem.portionDescription)
+        assertEquals(plainItem.resolvedAmount, renamedItem.resolvedAmount)
+        assertEquals(plainItem.basis, renamedItem.basis)
+        assertEquals(plainItem.carbsPer100, renamedItem.carbsPer100)
+        assertEquals(plainItem.exactCarbs, renamedItem.exactCarbs)
+        assertEquals("Breakfast bread", renamedItem.displayName)
+    }
+
+    @Test
+    fun `renaming does not disturb usage recording`() = runTest {
+        val renamed = bread.copy(localAlias = "Breakfast bread")
+        val rig = rig(listOf(renamed))
+
+        rig.vm.quickAdd(RecentEntry(renamed, lastUnit = null), "72 g")
+        dispatcher.scheduler.runCurrent()
+
+        // The use is still recorded, and the alias survives the write that records it — `recordUse`
+        // reads the product back and saves it, which is exactly the shape that could drop a column.
+        assertEquals(1, rig.usage.rows.size)
+        assertEquals("Breakfast bread", rig.local.products.getValue("111").localAlias)
+    }
 }

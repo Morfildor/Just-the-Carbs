@@ -233,8 +233,11 @@ private val MONOGRAM_HEIGHT = 84.dp
  * Up to two initials — "Hagelslag puur" becomes "HP". Digits and punctuation are skipped so "7Up"
  * does not render as "7".
  */
+// `displayName`, not `name`: the monogram's whole job is to echo the initials of the title printed
+// directly above it. A product renamed to "Breakfast bread" showing "AH" would look like the plate
+// belonged to a different product from the one named beside it.
 private fun Product.monogram(): String =
-    name.split(' ', '-', '/')
+    displayName.split(' ', '-', '/')
         .mapNotNull { word -> word.firstOrNull { it.isLetter() }?.uppercaseChar() }
         .take(2)
         .joinToString("")

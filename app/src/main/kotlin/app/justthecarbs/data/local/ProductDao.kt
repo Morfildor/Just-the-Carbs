@@ -40,6 +40,8 @@ data class RecentUseSnapshotRow(
 data class SavedProductSearchRow(
     val barcode: String,
     val name: String,
+    /** The user's personal name for this product, or null. Matched and rendered like [name]. */
+    val localAlias: String?,
     val brand: String?,
     val carbsPer100: String,
     val basis: String,
@@ -104,11 +106,30 @@ abstract class ProductDao {
      */
     @Query(
         """
-        SELECT barcode, name, brand, carbsPer100, basis, imageUrl, favorite, lastUsedAt
+        SELECT barcode, name, localAlias, brand, carbsPer100, basis, imageUrl, favorite, lastUsedAt
         FROM products
         """,
     )
     abstract suspend fun findAllForSearch(): List<SavedProductSearchRow>
+
+    // ---- local alias (Rename on this device) ----------------------------------------------------
+
+    /**
+     * Sets or clears one product's personal name, touching **only** that column.
+     *
+     * A targeted `UPDATE` rather than an upsert of a `Product` the caller is holding, and the
+     * difference is the whole correctness claim. The screen that offers the rename has had a product
+     * snapshot in memory for as long as the user has been on it; during that time a background
+     * refresh may have landed a newer figure, a favourite may have been toggled, a use recorded.
+     * Writing the whole row back from that snapshot would silently roll every one of those changes
+     * back to whatever they were when the screen opened — a lost update whose symptom is a
+     * *favourite* disappearing because someone renamed something.
+     *
+     * Only rows that exist are affected: renaming a barcode that is not saved matches nothing and
+     * writes nothing, rather than creating a phantom product that has a nickname and no data.
+     */
+    @Query("UPDATE products SET localAlias = :alias WHERE barcode = :barcode")
+    abstract suspend fun setLocalAlias(barcode: String, alias: String?)
 
     /**
      * Every column on `products` that records *that the user ate the thing*, cleared for every row.

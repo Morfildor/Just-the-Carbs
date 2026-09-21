@@ -143,6 +143,10 @@ class ProductRepository(
         // *recorded* so the app can mention that the product may have been reformulated (§24), but
         // the value in use is never replaced.
         if (!latest.isRemoteRefreshable) {
+            // `latest.copy` starts from the stored row, so `localAlias` is carried by construction
+            // here — unlike the refreshable branch below, which starts from the wire. Both branches
+            // are covered by tests, because "preserved by construction" is a property of the shape
+            // of this expression and the next edit to it could silently remove it.
             local.save(
                 latest.copy(
                     latestRemoteCarbs = remoteCarbs,
@@ -178,6 +182,14 @@ class ProductRepository(
                 lastInputMode = usageCompatible.lastInputMode,
                 lastSelectedPortionUnitId = usageCompatible.lastSelectedPortionUnitId,
                 lastCount = usageCompatible.lastCount,
+                // The personal name is device-owned, like the favourite and the remembered portion
+                // above it, and must be carried forward explicitly: `fetched` came off the wire and
+                // therefore holds `Product`'s default (null) for it. Omitting this line would make
+                // an ordinary background refresh silently discard a rename — the user would open a
+                // product they had named, see the provider's name back, and have nothing on screen
+                // to explain it. Remote owns what the product *is*; the device owns what this user
+                // calls it.
+                localAlias = latest.localAlias,
                 // A response may temporarily omit selected_images. Keep previously validated
                 // display metadata rather than turning a cached offline gallery into an empty one.
                 images = fetched.images.ifEmpty { latest.images },
@@ -371,6 +383,32 @@ class ProductRepository(
     suspend fun setFavorite(barcode: String, favorite: Boolean) {
         val existing = requireExisting(barcode)
         local.save(existing.copy(favorite = favorite))
+    }
+
+    /**
+     * Gives this product a personal name on this device, or removes the one it has.
+     *
+     * The normalisation rule lives here, at the one boundary every caller passes through:
+     * surrounding whitespace is trimmed, a blank result becomes `null`, and an alias is capped at
+     * [Product.MAX_LOCAL_ALIAS_LENGTH]. So "an alias of spaces" is not a state the store, the search or the
+     * UI ever has to consider — `Product.localAlias` is null or meaningful, never in between.
+     *
+     * Deliberately **not** implemented as `local.save(existing.copy(localAlias = …))`, which is how
+     * [setFavorite] above works and would have been the obvious symmetry. That shape re-writes every
+     * column from a product the caller is holding, and a rename is the one action most likely to be
+     * performed on a stale snapshot: the product screen loads once and stays open. Writing the whole
+     * row back would roll back a refreshed figure, a toggled favourite or a recorded use that landed
+     * while the user was deciding what to call something. [LocalProductDataSource.setLocalAlias]
+     * writes one column and reads none, so nothing else can be lost.
+     *
+     * Nothing else moves. Provenance, verification, `originalRemoteCarbs`/`latestRemoteCarbs` and
+     * the remembered portion are untouched, and naming a product is emphatically **not** a statement
+     * that its figure has been checked against the package — §23's verification means one specific
+     * thing and a nickname is not evidence for it.
+     */
+    suspend fun setLocalAlias(barcode: String, alias: String?) {
+        val normalised = alias?.trim()?.take(Product.MAX_LOCAL_ALIAS_LENGTH)?.takeIf { it.isNotEmpty() }
+        local.setLocalAlias(barcode, normalised)
     }
 
     fun observeRecents(limit: Int): Flow<List<Product>> = local.observeRecents(limit)

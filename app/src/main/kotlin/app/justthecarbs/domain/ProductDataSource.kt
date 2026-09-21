@@ -86,6 +86,29 @@ interface LocalProductDataSource : ProductDataSource {
     fun observeRecents(limit: Int): Flow<List<Product>>
 
     /**
+     * Sets or clears one product's personal on-device name ([Product.localAlias]).
+     *
+     * Declared as its own narrow operation rather than left to [save], because the two differ in
+     * what they are allowed to touch. [save] writes a whole [Product], which is correct when the
+     * caller *is* the authority on that product; a rename is not — the screen offering it holds a
+     * snapshot that may be minutes old, and writing it back would roll back any refresh, favourite
+     * or recorded use that landed in between. This writes the one column and reads none.
+     *
+     * [alias] is already trimmed and non-blank, or null to remove. A barcode with no stored product
+     * is a no-op: an alias is metadata *about* a saved product, never a reason to create one.
+     *
+     * The default **throws**, deliberately, and is not a silent no-op. It exists so the many test
+     * fakes that have no interest in aliases need not restate an operation they never reach — the
+     * same accommodation [forgetRecentUse] and [restoreRecentUse] already get, and by the same
+     * mechanism those fakes use for them. A default that quietly discarded the write would be far
+     * worse than a compile error: a test asserting a rename had been stored would pass while
+     * nothing was stored, which is the vacuous-green outcome this codebase keeps having to dig out.
+     * Failing loudly means any fake that *is* reached by an alias write says so on the first run.
+     */
+    suspend fun setLocalAlias(barcode: String, alias: String?): Unit =
+        error("this data source does not implement setLocalAlias")
+
+    /**
      * Forgets that one product was ever used, and returns what was forgotten (§43, one barcode).
      *
      * Clears the five remembered-use columns and that barcode's `portion_usage` rows — the same

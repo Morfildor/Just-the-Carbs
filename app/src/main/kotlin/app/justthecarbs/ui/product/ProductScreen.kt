@@ -203,6 +203,10 @@ fun ProductScreen(
     onShowSaveQuickCalculation: (Boolean) -> Unit = {},
     /** Persist the calculation on screen under this name (1.0.3 P1). */
     onSaveQuickCalculation: (String) -> Unit = {},
+    /** Open or close the *Rename on this device* editor (1.0.8). */
+    onShowRenameForm: (Boolean) -> Unit = {},
+    /** Set this product's personal on-device name, or clear it with null (1.0.8). */
+    onSetLocalAlias: (String?) -> Unit = {},
 ) {
     var galleryOpen by remember(state.product?.barcode) { mutableStateOf(false) }
     val galleryImages = remember(state.product?.images) {
@@ -224,9 +228,23 @@ fun ProductScreen(
 
     if (galleryOpen && state.product != null && galleryImages.isNotEmpty()) {
         ProductGalleryDialog(
-            productName = state.product.name,
+            productName = state.product.displayName,
             images = galleryImages,
             onDismiss = { galleryOpen = false },
+        )
+    }
+
+    // Renaming is a presentation change to a product that is already on screen, so the editor sits
+    // over it rather than replacing it: what is being renamed stays in view while the name is
+    // chosen. Only reachable for a saved product — a quick calculation has no row to attach a name
+    // to, which is why the menu that opens this is itself gated on a non-empty barcode.
+    if (state.showRenameForm && state.product != null) {
+        RenameProductDialog(
+            currentDisplayName = state.product.displayName,
+            existingAlias = state.product.localAlias,
+            onSave = onSetLocalAlias,
+            onRemove = { onSetLocalAlias(null) },
+            onDismiss = { onShowRenameForm(false) },
         )
     }
 
@@ -308,6 +326,7 @@ fun ProductScreen(
                 onVerify = onVerify,
                 onVerifyByTyping = onVerifyByTyping,
                 onResetOnline = onResetOnline,
+                onRename = { onShowRenameForm(true) },
             )
 
             when {
@@ -378,6 +397,7 @@ private fun ProductTopBar(
     onVerify: () -> Unit,
     onVerifyByTyping: () -> Unit,
     onResetOnline: () -> Unit,
+    onRename: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val accent = Destination.PRODUCT.accent()
@@ -406,7 +426,10 @@ private fun ProductTopBar(
             // product is the ordinary state of a quick calculation, not a missing field. The title
             // says what the screen *is* rather than leaving a blank where a name would go, which
             // reads as a record that failed to load.
-            text = product?.name?.ifEmpty { stringResource(R.string.quick_title) }.orEmpty(),
+            // `displayName`, so a renamed product is titled by the name its owner gave it — and
+            // titled immediately, because the alias lives on the product this screen already
+            // observes rather than in a second piece of state that would have to be kept in step.
+            text = product?.displayName?.ifEmpty { stringResource(R.string.quick_title) }.orEmpty(),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,
@@ -444,6 +467,15 @@ private fun ProductTopBar(
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.product_verify_typed)) },
                         onClick = { menuOpen = false; onVerifyByTyping() },
+                    )
+                    // Renaming lives in the overflow beside the other things one does *to* a saved
+                    // product, rather than as another button on the calculator. The screen's
+                    // primary job is a carbohydrate figure; personalisation is a rare, deliberate
+                    // act, and giving it button weight would compete with the number for attention
+                    // on a screen the user came to read.
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.product_rename)) },
+                        onClick = { menuOpen = false; onRename() },
                     )
                     // Only offered when there is genuinely an online value to go back to (§23).
                     if (product.canResetToOnlineValue) {
@@ -651,7 +683,7 @@ private fun CalculatorBody(
         // gets its monogram, unchanged.
         //
         // An unsaved quick calculation keeps its short portion controls centred instead.
-        if (!state.unsaved && product.name.isNotEmpty()) {
+        if (!state.unsaved && product.displayName.isNotEmpty()) {
             ProductHeroImage(
                 product = product,
                 compact = imeVisible,

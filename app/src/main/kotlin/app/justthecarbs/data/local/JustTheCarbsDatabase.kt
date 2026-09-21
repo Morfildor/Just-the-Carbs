@@ -28,7 +28,7 @@ import androidx.sqlite.execSQL
         MealItemEntity::class,
         PortionUsageEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class JustTheCarbsDatabase : RoomDatabase() {
@@ -367,6 +367,32 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v8 → v9: `products.localAlias`, the user's personal name for a product on this device.
+         *
+         * Purely additive and nullable, so every existing row survives untouched and reads back with
+         * no alias — which is exactly right: a product nobody has renamed has not been renamed. No
+         * value is back-filled from `name`, because copying the canonical name into the alias column
+         * would make every pre-existing product indistinguishable from one the user had deliberately
+         * renamed to its own name, and the app could then never tell whether *Remove custom name*
+         * had anything to remove.
+         *
+         * Nothing else is read, rewritten or rebuilt: an alias is presentation metadata, so a
+         * migration that introduces it has no business touching a carbohydrate value, a verification
+         * status or a remembered portion.
+         *
+         * Same `PRAGMA table_info` guard as the additive migrations above, and for the same reason —
+         * Room's `MigrationTestHelper` re-invokes migrations during its validation pass, and a naive
+         * `ALTER` then fails with "duplicate column" as a pure testing artefact.
+         */
+        internal val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(connection: SQLiteConnection) {
+                if (!connection.hasColumn("products", "localAlias")) {
+                    connection.execSQL("ALTER TABLE products ADD COLUMN localAlias TEXT")
+                }
+            }
+        }
+
         fun build(context: Context): JustTheCarbsDatabase =
             Room.databaseBuilder(context.applicationContext, JustTheCarbsDatabase::class.java, NAME)
                 .addMigrations(
@@ -377,6 +403,7 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
+                    MIGRATION_8_9,
                 )
                 .build()
     }

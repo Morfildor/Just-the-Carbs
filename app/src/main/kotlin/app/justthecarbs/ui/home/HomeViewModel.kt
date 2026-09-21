@@ -216,7 +216,7 @@ class HomeViewModel(private val repository: ProductRepository) : ViewModel() {
         viewModelScope.launch {
             val snapshot = repository.forgetRecentUse(product.barcode) ?: return@launch
             if (!snapshot.erasedAnything) return@launch
-            _lastForgotten.value = ForgottenRecent(product.name, snapshot)
+            _lastForgotten.value = ForgottenRecent(product.displayName, snapshot)
         }
     }
 

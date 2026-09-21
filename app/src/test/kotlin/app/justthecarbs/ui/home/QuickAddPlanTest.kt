@@ -214,4 +214,50 @@ class QuickAddPlanTest {
     fun `a grams-mode product with no remembered portion is refused`() {
         assertNull(quickAddPlan(product(lastPortion = null, mode = InputMode.GRAMS), unit = null))
     }
+
+    // ---- local alias (1.0.8) -------------------------------------------------------------------
+
+    @Test
+    fun `a weighed plan carries the product's canonical name when it has no alias`() {
+        val plan = quickAddPlan(product(lastPortion = "72", mode = InputMode.GRAMS), unit = null)
+        assertEquals("Wholegrain Bread", plan?.displayName)
+    }
+
+    @Test
+    fun `a weighed plan carries the user's own name when there is one`() {
+        // The meal line a Quick Add creates *now* says what the user currently calls the product.
+        val renamed = product(lastPortion = "72", mode = InputMode.GRAMS).copy(localAlias = "Breakfast bread")
+        assertEquals("Breakfast bread", quickAddPlan(renamed, unit = null)?.displayName)
+    }
+
+    @Test
+    fun `a countable plan carries the user's own name`() {
+        val renamed = product(mode = InputMode.PORTION_UNIT, unitId = 7, count = "2")
+            .copy(localAlias = "Breakfast bread")
+        val plan = quickAddPlan(renamed, unit(PortionConversion.WeightBased(BigDecimal("35"), NutritionBasis.PER_100_G)))
+        assertEquals("Breakfast bread", plan?.displayName)
+    }
+
+    @Test
+    fun `a direct-carb plan carries the user's own name`() {
+        val renamed = product(mode = InputMode.PORTION_UNIT, unitId = 7, count = "2")
+            .copy(localAlias = "Breakfast bread")
+        val plan = quickAddPlan(renamed, unit(PortionConversion.DirectCarbs(BigDecimal("14.2"))))
+        assertEquals("Breakfast bread", plan?.displayName)
+    }
+
+    @Test
+    fun `renaming changes only the name a plan carries, never its figures`() {
+        // The rename is presentation. Eligibility, the remembered portion and the arithmetic are
+        // identical either side of it — asserted by comparing the two plans field for field with
+        // the name put back, so a future field is covered without a new assertion.
+        val plain = product(lastPortion = "72", mode = InputMode.GRAMS)
+        val renamed = plain.copy(localAlias = "Breakfast bread")
+
+        val before = quickAddPlan(plain, unit = null) as QuickAddPlan.Weighed
+        val after = quickAddPlan(renamed, unit = null) as QuickAddPlan.Weighed
+
+        assertEquals("Breakfast bread", after.displayName)
+        assertEquals(before, after.copy(displayName = before.displayName))
+    }
 }

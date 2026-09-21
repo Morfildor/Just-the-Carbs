@@ -1335,7 +1335,7 @@ private fun RecentCard(
             ) {
                 Row(verticalAlignment = Alignment.Top) {
                     Text(
-                        text = product.name,
+                        text = product.displayName,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
@@ -1409,7 +1409,7 @@ private fun RecentCard(
                                 description = stringResource(
                                     R.string.recent_quick_add_description,
                                     portionLabel,
-                                    product.name,
+                                    product.displayName,
                                 ),
                                 onClick = { onQuickAdd(portionLabel) },
                             )
@@ -1423,7 +1423,7 @@ private fun RecentCard(
 
         RecentOptionsMenu(
             expanded = menuOpen,
-            productName = product.name,
+            productName = product.displayName,
             onDismiss = { menuOpen = false },
             onForget = { menuOpen = false; onForget() },
         )

@@ -68,9 +68,12 @@ class SavedProductSearchViewModelTest {
         brand: String? = "De Ruijter",
         favorite: Boolean = false,
         lastUsedAt: Long? = null,
+        /** The user's personal name for this product, if they have given it one (1.0.8). */
+        localAlias: String? = null,
     ) = SavedProduct(
         barcode = barcode,
         name = name,
+        localAlias = localAlias,
         brand = brand,
         carbsPer100 = BigDecimal("67"),
         basis = NutritionBasis.PER_100_G,

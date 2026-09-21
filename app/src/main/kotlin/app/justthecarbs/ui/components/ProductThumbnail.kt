@@ -172,7 +172,8 @@ fun SearchThumbnail(
  * Up to two initials from the product name — "Hagelslag puur" becomes "HP".
  * Digits and punctuation are skipped so a name like "7Up" does not render as "7".
  */
-private fun Product.monogram(): String = monogramOf(name)
+/** Keyed on [Product.displayName] for the same reason the hero's is — see `ProductHeroImage`. */
+private fun Product.monogram(): String = monogramOf(displayName)
 
 private fun monogramOf(name: String): String =
     name.split(' ', '-', '/')

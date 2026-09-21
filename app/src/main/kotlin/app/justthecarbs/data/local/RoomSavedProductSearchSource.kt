@@ -31,6 +31,7 @@ class RoomSavedProductSearchSource(private val dao: ProductDao) : SavedProductSe
             SavedProduct(
                 barcode = row.barcode,
                 name = row.name,
+                localAlias = row.localAlias,
                 brand = row.brand,
                 carbsPer100 = carbs,
                 basis = basis,

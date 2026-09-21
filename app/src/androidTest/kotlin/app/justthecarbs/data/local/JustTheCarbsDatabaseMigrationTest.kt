@@ -440,6 +440,80 @@ class JustTheCarbsDatabaseMigrationTest {
         }
     }
 
+    // ---- v8 -> v9: the local alias (1.0.8) -----------------------------------------------------
+
+    @Test
+    fun migratingFromV8PreservesEveryProductAndLeavesTheAliasNull() {
+        val db = helper.createDatabase(TEST_DB, 8)
+        db.execSQL(
+            """
+            INSERT INTO products (barcode, name, carbsPer100, basis, dataSource, verificationStatus,
+                brand, packageAmount, imageUrl, largeImageUrl, originalRemoteCarbs, latestRemoteCarbs,
+                verifiedAt, lastUsedAt, lastPortion, favorite)
+            VALUES ('8712100849060', 'AH Volkoren Tarwebrood 800g', '41.5', 'PER_100_G',
+                    'OPEN_FOOD_FACTS', 'USER_VERIFIED', 'Albert Heijn', '800', 'http://i', 'http://l',
+                    '40', '42', 1000, 2000, '65', 1)
+            """.trimIndent(),
+        )
+        db.close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 9, true, JustTheCarbsDatabase.MIGRATION_8_9)
+
+        migrated.query(
+            """
+            SELECT name, carbsPer100, basis, dataSource, verificationStatus, brand, packageAmount,
+                   imageUrl, largeImageUrl, originalRemoteCarbs, latestRemoteCarbs, verifiedAt,
+                   lastUsedAt, lastPortion, favorite, localAlias
+            FROM products WHERE barcode = '8712100849060'
+            """.trimIndent(),
+        ).use {
+            assertTrue(it.moveToFirst())
+            // Every pre-existing fact survives: this migration adds a column and reads nothing.
+            assertEquals("AH Volkoren Tarwebrood 800g", it.getString(0))
+            assertEquals("41.5", it.getString(1))
+            assertEquals("PER_100_G", it.getString(2))
+            assertEquals("OPEN_FOOD_FACTS", it.getString(3))
+            assertEquals("USER_VERIFIED", it.getString(4))
+            assertEquals("Albert Heijn", it.getString(5))
+            assertEquals("800", it.getString(6))
+            assertEquals("http://i", it.getString(7))
+            assertEquals("http://l", it.getString(8))
+            assertEquals("40", it.getString(9))
+            assertEquals("42", it.getString(10))
+            assertEquals(1000L, it.getLong(11))
+            assertEquals(2000L, it.getLong(12))
+            assertEquals("65", it.getString(13))
+            assertEquals(1, it.getInt(14))
+            // And the new column is genuinely empty. Deliberately NOT back-filled from `name`:
+            // copying the canonical name in would make every pre-existing product look identical to
+            // one the user had deliberately renamed to its own name, and *Remove custom name* could
+            // then never tell whether it had anything to remove.
+            assertTrue("a product nobody has renamed must have no alias", it.isNull(15))
+        }
+    }
+
+    @Test
+    fun migratingFromV8KeepsEveryRow() {
+        val db = helper.createDatabase(TEST_DB, 8)
+        repeat(3) { i ->
+            db.execSQL(
+                """
+                INSERT INTO products (barcode, name, carbsPer100, basis, dataSource,
+                    verificationStatus, favorite)
+                VALUES ('barcode\$i', 'Product \$i', '10', 'PER_100_G', 'MANUAL', 'UNVERIFIED', 0)
+                """.trimIndent(),
+            )
+        }
+        db.close()
+
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 9, true, JustTheCarbsDatabase.MIGRATION_8_9)
+
+        migrated.query("SELECT COUNT(*) FROM products").use {
+            assertTrue(it.moveToFirst())
+            assertEquals("no product may be lost by adding a column", 3, it.getInt(0))
+        }
+    }
+
     // A unique name per test instance (JUnit creates a fresh instance per @Test method): reusing a
     // fixed name let one test's already-migrated v3 file leak into the next test's "fresh" v2
     // database, since MigrationTestHelper.createDatabase() does not itself guarantee a clean file.

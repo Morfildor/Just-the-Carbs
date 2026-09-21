@@ -26,7 +26,17 @@ data class SavedProduct(
      * [isRealBarcode] exists rather than this being matched directly.
      */
     val barcode: String,
+    /** The canonical product name, as stored. */
     val name: String,
+    /**
+     * The user's personal name for this product on this device, or null.
+     *
+     * Carried here because both names are legitimate ways for *this* user to look for *this*
+     * product: they may search for what they called it, or for what the package says. Matching only
+     * one of the two would mean a rename either hid a product from its own name or made it findable
+     * only by a name the user has stopped thinking of it by.
+     */
+    val localAlias: String?,
     val brand: String?,
     val carbsPer100: BigDecimal,
     val basis: NutritionBasis,
@@ -44,6 +54,28 @@ data class SavedProduct(
      * good identity for dedupe and navigation.
      */
     val isRealBarcode: Boolean get() = !barcode.startsWith(LOCAL_KEY_PREFIX)
+
+    /** The name a search row shows: the user's own if they set one (see [localAlias]). */
+    val displayName: String get() = localAlias?.takeIf { it.isNotBlank() } ?: name
+
+    /**
+     * The names this product can be matched against — its own, plus the user's if different.
+     *
+     * [SearchQueryMatcher.Subject] already takes a *list* of names, which is how the remote page
+     * matches a product's localized variants. An alias is the same kind of thing: another name the
+     * same product genuinely goes by. So this needs no new matching rule and no second code path —
+     * the alias joins the list and every existing strength, folding and word-count rule applies to
+     * it unchanged.
+     *
+     * An alias equal to the canonical name is not added twice: a duplicated name would inflate the
+     * matched-word counts that rank one saved product above another, letting a rename change a
+     * product's position against its neighbours for no reason a user could see.
+     */
+    val searchableNames: List<String>
+        get() = localAlias
+            ?.takeIf { it.isNotBlank() && !it.equals(name, ignoreCase = true) }
+            ?.let { listOf(name, it) }
+            ?: listOf(name)
 
     companion object {
         /** The prefix `ManualEntryViewModel` and `ProductViewModel` mint synthetic keys with. */
@@ -128,7 +160,10 @@ object SavedProductSearch {
             null
         }
 
-        val subjects = products.map { SearchQueryMatcher.Subject(listOf(it.name), it.brand) }
+        // Both of a product's names go into its subject — see [SavedProduct.searchableNames]. This
+        // is local matching only: nothing here reaches the remote provider or changes how its page
+        // is ranked, because the alias is a fact that exists on this device alone.
+        val subjects = products.map { SearchQueryMatcher.Subject(it.searchableNames, it.brand) }
         val matcher = SearchQueryMatcher(terms, subjects)
         val matches = subjects.map(matcher::match)
 
@@ -164,8 +199,9 @@ object SavedProductSearch {
                     .thenBy { if (products[it].favorite) 0 else 1 }
                     // Rule 4 — recency. Null last: never used is not "used long ago".
                     .thenByDescending { products[it].lastUsedAt ?: Long.MIN_VALUE }
-                    // Rule 5 — a total order, so repeated runs cannot differ.
-                    .thenBy { products[it].name }
+                    // Rule 5 — a total order, so repeated runs cannot differ. Keyed on the name
+                    // actually shown, so an alphabetical last resort matches what is on screen.
+                    .thenBy { products[it].displayName }
                     .thenBy { products[it].barcode },
             )
 
@@ -257,7 +293,10 @@ object SavedProductSearch {
 
     private fun SavedProduct.toHit() = ProductSearchHit(
         barcode = barcode,
-        name = name,
+        // The name the user chose, when they chose one. A saved row is rendered by the same
+        // `SearchResultRow` a remote hit is, with no badge and nothing to mark it as local — the row
+        // simply shows what this person calls this product, which is the whole point of the rename.
+        name = displayName,
         brand = brand,
         // Deliberately null. `ProductSearchHit.packageQuantity` is free text *as printed on the
         // package* ("390 gram"), and what the store holds is `packageAmount`, a parsed number with

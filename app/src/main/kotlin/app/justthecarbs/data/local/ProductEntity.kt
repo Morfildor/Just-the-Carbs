@@ -56,6 +56,14 @@ data class ProductEntity(
     val galleryImagesJson: String? = null,
     val originalRemoteBasis: String? = null,
     val latestRemoteBasis: String? = null,
+    /**
+     * The user's personal name for this product on this device (v9). Null for none.
+     *
+     * Its own column rather than an overwrite of [name], so the canonical name the provider (or the
+     * user's own manual entry) supplies is always still on the row. Never blank: the repository
+     * normalises blank to null before writing.
+     */
+    val localAlias: String? = null,
 )
 
 fun Product.toEntity(): ProductEntity = ProductEntity(
@@ -83,6 +91,7 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
     galleryImagesJson = ProductImageCacheCodec.encode(images),
     originalRemoteBasis = originalRemoteBasis?.name,
     latestRemoteBasis = latestRemoteBasis?.name,
+    localAlias = localAlias,
 )
 
 fun ProductEntity.toDomain(): Product = Product(
@@ -110,4 +119,5 @@ fun ProductEntity.toDomain(): Product = Product(
     images = ProductImageCacheCodec.decode(galleryImagesJson),
     originalRemoteBasis = originalRemoteBasis?.let(NutritionBasis::valueOf),
     latestRemoteBasis = latestRemoteBasis?.let(NutritionBasis::valueOf),
+    localAlias = localAlias,
 )

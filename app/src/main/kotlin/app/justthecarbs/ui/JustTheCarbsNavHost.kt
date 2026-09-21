@@ -680,6 +680,12 @@ fun JustTheCarbsNavHost(
                 onAdjustCount = viewModel::adjustCount,
                 onSetPortion = viewModel::setPortion,
                 onToggleFavorite = viewModel::toggleFavorite,
+                // Renaming is offered on the saved-product route only. The quick-calculation
+                // route below has no stored row to attach a personal name to, so its ProductScreen
+                // keeps the default no-op and the overflow item never appears there (the menu is
+                // itself gated on a non-empty barcode).
+                onShowRenameForm = viewModel::showRenameForm,
+                onSetLocalAlias = viewModel::setLocalAlias,
                 onBack = {
                     // The portion is remembered on the way out, not on every keystroke, so a
                     // half-typed number never becomes the pre-fill for next time (§20).

@@ -252,6 +252,21 @@
          next to the number it is about. -->
     <string name="product_verify_inline">Verify</string>
     <string name="product_reset_online">Reset to online value</string>
+
+    <!--
+      Rename on this device (1.0.8). "on this device" is the whole promise in three words: it says
+      the name is personal and local without needing a sentence to explain that nothing is uploaded.
+      Deliberately not "Edit name" or "Rename product", either of which implies the product record
+      itself is being changed — it is not, and the canonical name stays underneath.
+    -->
+    <string name="product_rename">Rename on this device</string>
+    <string name="product_rename_title">Rename on this device</string>
+    <string name="product_rename_body">Only you see this name. The product keeps its own name underneath.</string>
+    <string name="product_rename_label">Your name for it</string>
+    <!-- Shown above the field so the user can see what they are renaming from. -->
+    <string name="product_rename_current">Currently: %1$s</string>
+    <string name="product_rename_save">Save</string>
+    <string name="product_rename_remove">Remove custom name</string>
     <string name="product_scan_label">Scan nutrition label</string>
 
     <!-- Quick adjust (§16) -->
