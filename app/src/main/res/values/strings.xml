@@ -267,6 +267,12 @@
     <string name="product_rename_current">Currently: %1$s</string>
     <string name="product_rename_save">Save</string>
     <string name="product_rename_remove">Remove custom name</string>
+    <!--
+      Says what happened and what is still true. Deliberately not "try again": the editor is still
+      there and the name is back to what is actually stored, so the next step is visible without
+      being instructed.
+    -->
+    <string name="product_rename_failed">Could not save that name. The product is still called what it was.</string>
     <string name="product_scan_label">Scan nutrition label</string>
 
     <!-- Quick adjust (§16) -->

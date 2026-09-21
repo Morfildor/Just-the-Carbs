@@ -143,6 +143,9 @@ const val PRODUCT_RESULT_TAG = "product_result"
 /** Stable handle for the inline Verify action beside the per-100 figure, used by instrumented tests. */
 const val PRODUCT_VERIFY_INLINE_TAG = "product_verify_inline"
 
+/** The compact line reporting that a rename could not be stored (1.0.8). */
+const val PRODUCT_RENAME_FAILED_TAG = "product_rename_failed"
+
 /**
  * The calculator — the screen §14 says deserves the majority of the UI attention.
  *
@@ -689,6 +692,26 @@ private fun CalculatorBody(
                 compact = imeVisible,
                 onClick = onOpenGallery,
                 modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
+            )
+        }
+
+        // A rename that could not be stored, reported where the name it is about is on screen.
+        //
+        // The title behind the dialog is the confirmation, so an optimistic update is right — but a
+        // failed write would otherwise leave the new name showing while storage held the old one.
+        // The ViewModel has already rolled it back; this is what stops that rollback looking like
+        // the app forgetting what the user typed. A compact line in the app's existing failure
+        // language, like `usageSaveFailed`, never a dialog: nothing is lost but the new name and
+        // the menu that opens the editor is one tap away.
+        if (state.renameFailed) {
+            Text(
+                text = stringResource(R.string.product_rename_failed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.screenEdge, vertical = Space.xs)
+                    .testTag(PRODUCT_RENAME_FAILED_TAG),
             )
         }
 

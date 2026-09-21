@@ -98,6 +98,20 @@ data class ProductUiState(
     val quickSaveFailed: Boolean = false,
     /** The *Rename on this device* editor is open (1.0.8). */
     val showRenameForm: Boolean = false,
+    /**
+     * A rename was rolled back because it could not be stored (1.0.8).
+     *
+     * The title updates the moment the user saves, because that title *is* the confirmation and
+     * making someone watch a round trip before their own name appears turns a personalisation into
+     * a transaction. The cost of that optimism is that a failed write would otherwise leave the new
+     * name on screen while storage still held the old one — the app showing something that is not
+     * true, indefinitely, with nothing to correct it.
+     *
+     * So a failure rolls the name back and says so. A compact recoverable line, like
+     * [usageSaveFailed] beside it, rather than a dialog: nothing was lost but the new name, the
+     * editor is still there, and trying again is one tap.
+     */
+    val renameFailed: Boolean = false,
     val showVerifyDialog: Boolean = false,
     /**
      * A newer online value seen during this session (corrections #5, #10).
@@ -1036,10 +1050,21 @@ class ProductViewModel(
     // ---- rename on this device (1.0.8) ---------------------------------------------------------
 
     /** Opens or closes the rename editor. Only meaningful for a saved product. */
+    /**
+     * Which rename attempt is current, so a late failure cannot roll back a newer success.
+     *
+     * Its own counter rather than a shared one, for the reason `SearchViewModel` records about its
+     * two generations: a counter shared with an unrelated pipeline is either a number this one
+     * bumps and that one misreads, or a number this one reads and does not control.
+     */
+    private var renameGeneration = 0L
+
     fun showRenameForm(show: Boolean) {
         val product = _state.value.product ?: return
         if (product.barcode.isEmpty()) return
-        _state.update { it.copy(showRenameForm = show) }
+        // Clears a previous attempt's message, for `showSaveQuickCalculationForm`'s reason: a
+        // failure notice left standing would describe an attempt the user has moved on from.
+        _state.update { it.copy(showRenameForm = show, renameFailed = false) }
     }
 
     /**
@@ -1057,11 +1082,45 @@ class ProductViewModel(
         val product = _state.value.product ?: return
         if (product.barcode.isEmpty()) return
         val normalised = alias?.trim()?.take(Product.MAX_LOCAL_ALIAS_LENGTH)?.takeIf { it.isNotEmpty() }
+        val previous = product.localAlias
+
+        // This rename's identity, captured before the write and re-checked at the one point a
+        // failure becomes state — the same staleness rule the search pipeline and the photo imports
+        // already use, for the same reason. Without it a slow *failed* rename landing after a fast
+        // *successful* one would roll the newer name back to a value two renames old, and the user
+        // would watch a name they had just set revert for no reason they could see.
+        val generation = ++renameGeneration
+
         _state.update {
-            it.copy(product = product.copy(localAlias = normalised), showRenameForm = false)
+            it.copy(
+                product = product.copy(localAlias = normalised),
+                showRenameForm = false,
+                // A new attempt clears the previous one's message: a failure notice standing beside
+                // a name that has since been set would describe something that is no longer true.
+                renameFailed = false,
+            )
         }
-        viewModelScope.launch { repository.setLocalAlias(product.barcode, normalised) }
+
+        viewModelScope.launch {
+            val stored = runCatching { repository.setLocalAlias(product.barcode, normalised) }
+            if (stored.isSuccess) return@launch
+            // Superseded. A newer rename owns the name now, and this failure is about an attempt the
+            // user has already replaced.
+            if (generation != renameGeneration) return@launch
+            _state.update { current ->
+                val onScreen = current.product ?: return@update current
+                current.copy(
+                    // Back to what was actually stored — which is what `previous` is, since the
+                    // optimistic write above is the only thing that changed it.
+                    product = onScreen.copy(localAlias = previous),
+                    renameFailed = true,
+                )
+            }
+        }
     }
+
+    /** Dismisses the rename-failure line. */
+    fun dismissRenameFailure() = _state.update { it.copy(renameFailed = false) }
 
     fun toggleFavorite() {
         val product = _state.value.product ?: return

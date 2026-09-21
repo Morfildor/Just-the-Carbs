@@ -73,9 +73,57 @@ class RenameProductTest {
 
     /** Column-accurate, like `LocalAliasTest`'s: `setLocalAlias` writes one field and reads none. */
     private class RecordingLocal(seed: Product) : LocalProductDataSource {
+
+        // Preserves the device-owned columns, as the real `@Transaction saveProductFacts` does.
+        // A fake that simply forwarded to `save` would make the lost-update tests pass while the
+        // defect sat in production — the trap `LocalAliasTest` already records for the alias write.
+        override suspend fun saveProductFacts(product: Product) {
+            val current = stored[product.barcode]
+            save(
+                if (current == null) {
+                    product
+                } else {
+                    product.copy(localAlias = current.localAlias, favorite = current.favorite)
+                },
+            )
+        }
+
         val stored = mutableMapOf(seed.barcode to seed)
         val aliasWrites = mutableListOf<Pair<String, String?>>()
         val fullSaves = mutableListOf<Product>()
+
+        // Column-accurate, like the real `UPDATE`s in `ProductDao` (1.0.8 lost-update hardening).
+        // Implementing these as whole-row copies would make every preservation test in this repo
+        // pass while the defect they exist to catch sat in production.
+        override suspend fun setFavorite(barcode: String, favorite: Boolean) {
+            stored[barcode] = stored[barcode]?.copy(favorite = favorite) ?: return
+        }
+
+        override suspend fun recordUsageColumns(
+            barcode: String,
+            lastPortion: java.math.BigDecimal?,
+            lastUsedAt: java.time.Instant,
+            lastInputMode: app.justthecarbs.domain.InputMode?,
+            lastSelectedPortionUnitId: Long?,
+            lastCount: java.math.BigDecimal?,
+        ) {
+            val existing = stored[barcode] ?: return
+            stored[barcode] = existing.copy(
+                lastPortion = lastPortion ?: existing.lastPortion,
+                lastUsedAt = lastUsedAt,
+                lastInputMode = lastInputMode ?: existing.lastInputMode,
+                lastSelectedPortionUnitId = if (lastInputMode == app.justthecarbs.domain.InputMode.GRAMS) {
+                    null
+                } else {
+                    lastSelectedPortionUnitId ?: existing.lastSelectedPortionUnitId
+                },
+                lastCount = if (lastInputMode == app.justthecarbs.domain.InputMode.GRAMS) {
+                    null
+                } else {
+                    lastCount ?: existing.lastCount
+                },
+            )
+        }
 
         override suspend fun fetch(barcode: String) =
             stored[barcode]?.let { ProductFetchResult.Found(it) } ?: ProductFetchResult.NotFound
@@ -87,8 +135,25 @@ class RenameProductTest {
 
         override fun observeRecents(limit: Int): Flow<List<Product>> = flowOf(stored.values.toList())
 
+        /**
+         * Fails the next [failAliasWrites] alias writes, then behaves normally.
+         *
+         * A counter rather than a boolean so a test can fail the *first* of two renames and let the
+         * second succeed — which is the only way to reach the stale-failure rule, where a late
+         * failure must not roll back a newer success.
+         */
+        var failAliasWrites = 0
+
+        /** Completed by the test to release a parked alias write, for ordering two renames. */
+        var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+
         override suspend fun setLocalAlias(barcode: String, alias: String?) {
+            gate?.await()
             aliasWrites += barcode to alias
+            if (failAliasWrites > 0) {
+                failAliasWrites--
+                throw java.io.IOException("the write failed")
+            }
             stored[barcode] = stored[barcode]?.copy(localAlias = alias) ?: return
         }
 
@@ -326,5 +391,152 @@ class RenameProductTest {
         // menu being hidden, so the rule does not depend on a composable staying the way it is.
         assertFalse(rig.viewModel.state.value.showRenameForm)
         assertTrue(rig.local.aliasWrites.isEmpty())
+    }
+
+    // ---- when the write fails (1.0.8 P2) ----------------------------------------------------------
+
+    @Test
+    fun `a successful save leaves no failure message`() = runTest(dispatcher) {
+        val rig = rig()
+        rig.viewModel.load(barcode)
+        advanceUntilIdle()
+
+        rig.viewModel.setLocalAlias("Breakfast bread")
+        advanceUntilIdle()
+
+        // The optimistic path stays quiet. A confirmation for something the user can already see on
+        // the title would be noise.
+        assertFalse(rig.viewModel.state.value.renameFailed)
+        assertEquals("Breakfast bread", rig.viewModel.state.value.product?.localAlias)
+    }
+
+    @Test
+    fun `a failed save rolls the name back and says so`() = runTest(dispatcher) {
+        val rig = rig()
+        rig.viewModel.load(barcode)
+        advanceUntilIdle()
+        rig.local.failAliasWrites = 1
+
+        rig.viewModel.setLocalAlias("Breakfast bread")
+        advanceUntilIdle()
+
+        val state = rig.viewModel.state.value
+        // Showing a name storage does not hold would be the app stating something untrue,
+        // indefinitely, with nothing on screen to correct it.
+        assertNull("the name must go back to what is stored", state.product?.localAlias)
+        assertTrue("and the failure must be reported", state.renameFailed)
+        assertEquals("AH Volkoren Tarwebrood 800g", state.product?.displayName)
+    }
+
+    @Test
+    fun `a failed removal restores the alias it was removing`() = runTest(dispatcher) {
+        val rig = rig(alias = "Breakfast bread")
+        rig.viewModel.load(barcode)
+        advanceUntilIdle()
+        rig.local.failAliasWrites = 1
+
+        rig.viewModel.setLocalAlias(null)
+        advanceUntilIdle()
+
+        val state = rig.viewModel.state.value
+        // Removal has identical failure semantics: the screen must not claim the custom name is
+        // gone while the store still has it.
+        assertEquals("Breakfast bread", state.product?.localAlias)
+        assertTrue(state.renameFailed)
+    }
+
+    @Test
+    fun `a late failure never rolls back a newer successful rename`() = runTest(dispatcher) {
+        val rig = rig()
+        rig.viewModel.load(barcode)
+        advanceUntilIdle()
+
+        // Rename A is parked mid-write and will fail. Rename B then runs to completion.
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        rig.local.gate = gate
+        rig.local.failAliasWrites = 1
+        rig.viewModel.setLocalAlias("First name")
+
+        rig.local.gate = null
+        rig.viewModel.setLocalAlias("Second name")
+        advanceUntilIdle()
+
+        // A's failure lands last, and must be ignored: the user has already replaced that attempt,
+        // and rolling back would revert a name they can see to one two renames old.
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val state = rig.viewModel.state.value
+        assertEquals("the newer rename owns the name", "Second name", state.product?.localAlias)
+        assertFalse("and a superseded failure says nothing", state.renameFailed)
+    }
+
+    @Test
+    fun `a new attempt clears the previous failure`() = runTest(dispatcher) {
+        val rig = rig()
+        rig.viewModel.load(barcode)
+        advanceUntilIdle()
+        rig.local.failAliasWrites = 1
+        rig.viewModel.setLocalAlias("Breakfast bread")
+        advanceUntilIdle()
+        assertTrue(rig.viewModel.state.value.renameFailed)
+
+        rig.viewModel.setLocalAlias("Breakfast bread")
+        advanceUntilIdle()
+
+        // A message about a failure that has since been superseded would describe something no
+        // longer true.
+        assertFalse(rig.viewModel.state.value.renameFailed)
+        assertEquals("Breakfast bread", rig.viewModel.state.value.product?.localAlias)
+    }
+
+    @Test
+    fun `the editor is still usable after a failure`() = runTest(dispatcher) {
+        val rig = rig()
+        rig.viewModel.load(barcode)
+        advanceUntilIdle()
+        rig.local.failAliasWrites = 1
+        rig.viewModel.setLocalAlias("Breakfast bread")
+        advanceUntilIdle()
+
+        // Reopening is the retry surface, and it clears the stale message on the way in.
+        rig.viewModel.showRenameForm(true)
+
+        val state = rig.viewModel.state.value
+        assertTrue("the editor must reopen", state.showRenameForm)
+        assertFalse("without carrying the old message into a fresh attempt", state.renameFailed)
+    }
+
+    @Test
+    fun `the failure can be dismissed`() = runTest(dispatcher) {
+        val rig = rig()
+        rig.viewModel.load(barcode)
+        advanceUntilIdle()
+        rig.local.failAliasWrites = 1
+        rig.viewModel.setLocalAlias("Breakfast bread")
+        advanceUntilIdle()
+
+        rig.viewModel.dismissRenameFailure()
+
+        assertFalse(rig.viewModel.state.value.renameFailed)
+    }
+
+    @Test
+    fun `a failure never blocks the calculation`() = runTest(dispatcher) {
+        val rig = rig()
+        rig.viewModel.load(barcode)
+        advanceUntilIdle()
+        rig.viewModel.onPortionChanged("65")
+        advanceUntilIdle()
+        val before = rig.viewModel.state.value.result
+        rig.local.failAliasWrites = 1
+
+        rig.viewModel.setLocalAlias("Breakfast bread")
+        advanceUntilIdle()
+
+        // A name is presentation. Failing to store one must not disturb the number the user is here
+        // for, which is the same rule a successful rename already obeys.
+        assertEquals(before?.exact, rig.viewModel.state.value.result?.exact)
+        assertEquals("65", rig.viewModel.state.value.portionText)
     }
 }

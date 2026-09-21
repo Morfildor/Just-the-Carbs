@@ -2,7 +2,7 @@ package app.justthecarbs.ui.product
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -134,6 +134,31 @@ fun RenameProductDialog(
                         .focusRequester(focusRequester)
                         .testTag(RENAME_FIELD_TAG),
                 )
+
+                // *Remove custom name* lives in the body, not in the action row, and that placement
+                // was decided by a screenshot rather than by taste.
+                //
+                // Three text buttons in `dismissButton` + `confirmButton` fit at the default font
+                // scale and **wrapped at 1.8x**: Material3's AlertDialog moved Save onto its own
+                // line, leaving it stranded above and to the right of Remove and Cancel. Every
+                // assertion still passed — each control was displayed, inside the dialog,
+                // non-overlapping, with a 48dp touch target — because "the primary action no longer
+                // reads as the primary action" is not a property a bounds check can state.
+                //
+                // Here it is a tertiary action attached to the thing it acts on (the name in the
+                // field above it), the action row keeps exactly the two buttons a dialog is
+                // expected to have, and nothing wraps. It is also the honest hierarchy: removing is
+                // a destructive write and was sitting beside Cancel, the one control that changes
+                // nothing.
+                if (existingAlias != null) {
+                    TextButton(
+                        onClick = onRemove,
+                        contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.xs),
+                        modifier = Modifier.testTag(RENAME_REMOVE_TAG),
+                    ) {
+                        Text(stringResource(R.string.product_rename_remove))
+                    }
+                }
             }
         },
         confirmButton = {
@@ -146,22 +171,13 @@ fun RenameProductDialog(
             }
         },
         dismissButton = {
-            // Cancel is always present here, whatever else is in this slot: tapping outside or the
-            // back gesture already dismiss, so a dialog that omitted the button while keeping those
-            // two would make the explicit and implicit ways to back out disagree about which
-            // controls exist. Removing the alias is a separate, tertiary action shown alongside it
-            // only when there is something to remove — not a replacement for Cancel, since removing
-            // is a destructive write and cancelling is the no-op escape that must never depend on
-            // whether an alias happens to exist.
-            Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                if (existingAlias != null) {
-                    TextButton(onClick = onRemove, modifier = Modifier.testTag(RENAME_REMOVE_TAG)) {
-                        Text(stringResource(R.string.product_rename_remove))
-                    }
-                }
-                TextButton(onClick = onDismiss, modifier = Modifier.testTag(RENAME_CANCEL_TAG)) {
-                    Text(stringResource(R.string.verify_cancel))
-                }
+            // Cancel is always present, unconditionally: tapping outside or the back gesture already
+            // dismiss, so a dialog that omitted the button while keeping those two would make the
+            // explicit and implicit ways to back out disagree about which controls exist. It is also
+            // the one control here that changes nothing, which is why *Remove custom name* is no
+            // longer beside it — see the body above.
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag(RENAME_CANCEL_TAG)) {
+                Text(stringResource(R.string.verify_cancel))
             }
         },
     )
