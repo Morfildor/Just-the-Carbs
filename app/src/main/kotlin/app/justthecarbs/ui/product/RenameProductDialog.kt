@@ -2,6 +2,7 @@ package app.justthecarbs.ui.product
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -32,6 +33,7 @@ import app.justthecarbs.ui.theme.Space
 const val RENAME_FIELD_TAG = "product_rename_field"
 const val RENAME_SAVE_TAG = "product_rename_save"
 const val RENAME_REMOVE_TAG = "product_rename_remove"
+const val RENAME_CANCEL_TAG = "product_rename_cancel"
 
 /**
  * *Rename on this device* — a personal name for a saved product (1.0.8).
@@ -144,16 +146,22 @@ fun RenameProductDialog(
             }
         },
         dismissButton = {
-            // Removing is offered only when there is something to remove, in the dismiss slot
-            // rather than as a third button: a dialog with Save, Cancel and Remove makes the user
-            // read three options to do the one thing they opened it for. Cancel remains reachable
-            // by tapping outside or by the back gesture.
-            if (existingAlias != null) {
-                TextButton(onClick = onRemove, modifier = Modifier.testTag(RENAME_REMOVE_TAG)) {
-                    Text(stringResource(R.string.product_rename_remove))
+            // Cancel is always present here, whatever else is in this slot: tapping outside or the
+            // back gesture already dismiss, so a dialog that omitted the button while keeping those
+            // two would make the explicit and implicit ways to back out disagree about which
+            // controls exist. Removing the alias is a separate, tertiary action shown alongside it
+            // only when there is something to remove — not a replacement for Cancel, since removing
+            // is a destructive write and cancelling is the no-op escape that must never depend on
+            // whether an alias happens to exist.
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                if (existingAlias != null) {
+                    TextButton(onClick = onRemove, modifier = Modifier.testTag(RENAME_REMOVE_TAG)) {
+                        Text(stringResource(R.string.product_rename_remove))
+                    }
                 }
-            } else {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.verify_cancel)) }
+                TextButton(onClick = onDismiss, modifier = Modifier.testTag(RENAME_CANCEL_TAG)) {
+                    Text(stringResource(R.string.verify_cancel))
+                }
             }
         },
     )

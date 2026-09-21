@@ -22,6 +22,7 @@ import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.VerificationStatus
+import app.justthecarbs.ui.product.RENAME_CANCEL_TAG
 import app.justthecarbs.ui.product.RENAME_FIELD_TAG
 import app.justthecarbs.ui.product.RENAME_REMOVE_TAG
 import app.justthecarbs.ui.product.RENAME_SAVE_TAG
@@ -230,9 +231,47 @@ class RenameProductScreenTest {
     fun cancelIsOfferedWhenThereIsNoNameToRemove() {
         val result = showEditor()
 
-        compose.onNodeWithText("Cancel").assertIsDisplayed().performClick()
+        compose.onNodeWithTag(RENAME_CANCEL_TAG).assertIsDisplayed().performClick()
 
         assertTrue(result.dismissed)
+    }
+
+    @Test
+    fun cancelIsStillOfferedAlongsideRemoveWhenAnAliasExists() {
+        // Cancel must not be replaced by Remove custom name: the no-op escape has to stay reachable
+        // whether or not there is something to remove, exactly like tapping outside or back already
+        // are.
+        val result = showEditor(alias = "Breakfast bread")
+
+        compose.onNodeWithTag(RENAME_CANCEL_TAG).assertIsDisplayed().performClick()
+
+        assertTrue(result.dismissed)
+        assertTrue("cancelling is not a removal", !result.removed)
+    }
+
+    @Test
+    fun removingDoesNotAlsoDismiss() {
+        // Save, Cancel and Remove must each invoke only their own callback — tapping one must not
+        // also fire another.
+        val result = showEditor(alias = "Breakfast bread")
+
+        compose.onNodeWithTag(RENAME_REMOVE_TAG).performClick()
+
+        assertTrue(result.removed)
+        assertTrue("removing is not a cancel", !result.dismissed)
+        assertNull("removing is not a save", result.saved)
+    }
+
+    @Test
+    fun savingDoesNotAlsoDismissOrRemove() {
+        val result = showEditor()
+
+        compose.onNodeWithTag(RENAME_FIELD_TAG).performTextInput("Breakfast bread")
+        compose.onNodeWithTag(RENAME_SAVE_TAG).performClick()
+
+        assertEquals("Breakfast bread", result.saved)
+        assertTrue("saving is not a cancel", !result.dismissed)
+        assertTrue("saving is not a removal", !result.removed)
     }
 
     // ---- accessibility ----------------------------------------------------------------------------

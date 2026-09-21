@@ -70,10 +70,17 @@ data class SavedProduct(
      * An alias equal to the canonical name is not added twice: a duplicated name would inflate the
      * matched-word counts that rank one saved product above another, letting a rename change a
      * product's position against its neighbours for no reason a user could see.
+     *
+     * Equality here is [SearchQueryMatcher.fold]'s, not [String.equals]: the matcher already treats
+     * `Pınar süt` and `Pinar sut` as the same text, so a raw case-insensitive comparison would still
+     * add the alias as a second, distinct-looking name and double every match on it — the exact
+     * word-count inflation this rule exists to prevent, just missed by a narrower definition of
+     * "the same name". Folding here reuses the matcher's own function rather than a second
+     * normalization, so the two can never judge two names differently.
      */
     val searchableNames: List<String>
         get() = localAlias
-            ?.takeIf { it.isNotBlank() && !it.equals(name, ignoreCase = true) }
+            ?.takeIf { it.isNotBlank() && SearchQueryMatcher.fold(it) != SearchQueryMatcher.fold(name) }
             ?.let { listOf(name, it) }
             ?: listOf(name)
 

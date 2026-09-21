@@ -84,6 +84,50 @@ class SavedProductSearchTest {
         assertEquals(listOf("GOUDA JONG"), namesFor("gouda", saved(name = "GOUDA JONG", brand = null)))
     }
 
+    // ---- alias dedupe ---------------------------------------------------------------------------
+
+    @Test
+    fun `a folding-equivalent alias is excluded from searchableNames, not merely deduped in the result`() {
+        val product = saved(name = "Pınar süt", brand = null, localAlias = "Pinar sut")
+        assertEquals(listOf("Pınar süt"), product.searchableNames)
+    }
+
+    @Test
+    fun `a folding-equivalent alias never doubles a whole-word match count`() {
+        // Two names that fold identically must contribute exactly one whole-word hit, the same as a
+        // product with no alias at all — never two, which would let a renamed-to-itself product
+        // outrank an equally exact match that has no alias.
+        val aliased = SearchQueryMatcher.Subject(
+            saved(name = "Pınar süt", brand = null, localAlias = "Pinar sut").searchableNames,
+            null,
+        )
+        val plain = SearchQueryMatcher.Subject(saved(name = "Pınar süt", brand = null).searchableNames, null)
+        val matcher = SearchQueryMatcher("pinar sut", listOf(aliased, plain))
+        assertEquals(matcher.match(plain).matchedWords, matcher.match(aliased).matchedWords)
+        assertEquals(matcher.match(plain).wholeWords, matcher.match(aliased).wholeWords)
+    }
+
+    @Test
+    fun `renaming a product to a folding-equivalent spelling of its own name does not change its rank against an unaliased twin`() {
+        // The concrete ranking failure the dedupe rule exists to prevent: two products with the
+        // exact same underlying name must stay tied even after one of them is "renamed" to a
+        // spelling the matcher folds to the same text.
+        val renamed = saved(barcode = "1", name = "Pınar süt", brand = null, localAlias = "Pinar sut")
+        val untouched = saved(barcode = "2", name = "Pınar süt", brand = null)
+        val hits = SavedProductSearch.search("pinar sut", listOf(renamed, untouched), limit)
+        // Both are still decided by the deterministic name/barcode tail, not by an inflated count
+        // the alias should never have produced.
+        assertEquals(listOf("1", "2"), hits.map { it.barcode })
+    }
+
+    @Test
+    fun `a genuinely different alias is still added and still searchable`() {
+        // The dedupe rule must not overreach into refusing every alias — only ones the matcher
+        // treats as the same text as the canonical name.
+        val product = saved(name = "Chocoladehagel puur", brand = null, localAlias = "Breakfast bread")
+        assertEquals(listOf("Chocoladehagel puur", "Breakfast bread"), product.searchableNames)
+    }
+
     // ---- barcode --------------------------------------------------------------------------------
 
     @Test
