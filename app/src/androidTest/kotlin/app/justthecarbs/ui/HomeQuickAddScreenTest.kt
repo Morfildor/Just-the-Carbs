@@ -26,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -51,6 +52,7 @@ import app.justthecarbs.domain.ProductDataSource
 import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
+import app.justthecarbs.ui.home.HOME_BODY_TAG
 import app.justthecarbs.ui.home.HOME_QUICK_ADD_TAG
 import app.justthecarbs.ui.home.HOME_RECENT_FORGET_TAG
 import app.justthecarbs.ui.home.HomeScreen
@@ -344,18 +346,46 @@ class HomeQuickAddScreenTest {
             widthDp = 320,
         )
 
-        // At 1.8x the recents start below the fold (the entry points come first by design), so
-        // scroll the card in before judging its layout.
+        // At 1.8x the recents start below the fold — the entry points come first by design — so the
+        // card must be scrolled in before its layout can be judged.
+        //
+        // `performScrollToNode` on the list, NOT `performScrollTo` on the button. Home's body is a
+        // `LazyColumn`, and a LazyColumn composes only what is near the viewport: measured here at
+        // 320dp/1.8x, the list reported `rowCount=5` while holding exactly two composed children
+        // (`home_scan_barcode`, `home_scan_label`). The Quick Add button did not merely sit below
+        // the fold — **it did not exist as a node**, so `performScrollTo` failed with "could not
+        // find any node" rather than with anything about layout.
+        //
+        // That distinction is what this file had wrong, and it is the same trap this project has
+        // hit before: an item ordered after tall content is never composed at a large font scale,
+        // and a semantics query for it reports absence, not invisibility. `performScrollToNode`
+        // asks the *list* to bring the item into view, which composes it first.
+        compose.onNodeWithTag(HOME_BODY_TAG)
+            .performScrollToNode(hasTestTag(HOME_QUICK_ADD_TAG))
+
         val button = compose.onNodeWithTag(HOME_QUICK_ADD_TAG, useUnmergedTree = true)
-        button.performScrollTo()
         compose.onNodeWithText("65 g").assertIsDisplayed()
         button.assertIsDisplayed()
+
         val buttonBounds = button.fetchSemanticsNode().boundsInRoot
         val portionBounds = compose.onNodeWithText("65 g").fetchSemanticsNode().boundsInRoot
         assertTrue("portion is not squeezed: ${portionBounds.width}", portionBounds.width > 0f)
         assertTrue(
             "button fits inside the 320dp column: $buttonBounds",
             buttonBounds.right <= with(compose.density) { 320.dp.toPx() },
+        )
+        // The accessibility floor the narrow/large-font case exists to protect: a control that fit
+        // the column by being shrunk out of reach would satisfy every assertion above.
+        //
+        // Measured on `touchBoundsInRoot`, not `boundsInRoot` — the capsule segment is *drawn*
+        // compact (44x36dp) by design and Compose expands its touch area to the 48dp minimum around
+        // it. Asserting on the drawn box would be asserting that the design is different, which is
+        // the mistake the sibling test above this one already avoids.
+        val touchBounds = button.fetchSemanticsNode().touchBoundsInRoot
+        val minTouchTargetPx = with(compose.density) { 48.dp.toPx() }
+        assertTrue(
+            "the button keeps a 48dp touch target at 1.8x on a 320dp screen: $touchBounds",
+            touchBounds.width >= minTouchTargetPx && touchBounds.height >= minTouchTargetPx,
         )
     }
 
