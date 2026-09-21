@@ -94,6 +94,29 @@ class HomeViewModelTest {
         override suspend fun save(product: Product) {}
         override fun observeRecents(limit: Int): Flow<List<Product>> = flowOf(recents)
 
+        // This fake stores nothing at all — its `save` is empty and `observeRecents` returns a
+        // fixed list — so these are no-ops rather than column-accurate writes. That is faithful:
+        // nothing here can observe a stored column, and pretending otherwise would invent state the
+        // tests in this file do not read.
+        override suspend fun setFavorite(barcode: String, favorite: Boolean) {
+            Unit
+        }
+
+        override suspend fun recordUsageColumns(
+            barcode: String,
+            lastPortion: java.math.BigDecimal?,
+            lastUsedAt: java.time.Instant,
+            lastInputMode: app.justthecarbs.domain.InputMode?,
+            lastSelectedPortionUnitId: Long?,
+            lastCount: java.math.BigDecimal?,
+        ) {
+            Unit
+        }
+
+        override suspend fun saveProductFacts(product: Product) {
+            save(product)
+        }
+
         override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
             error("this fake does not implement forgetRecentUse")
 

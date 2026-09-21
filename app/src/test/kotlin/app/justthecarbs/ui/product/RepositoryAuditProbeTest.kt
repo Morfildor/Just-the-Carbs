@@ -30,6 +30,39 @@ class RepositoryAuditProbeTest {
         override suspend fun save(product: Product) { this.product = product }
         override fun observeRecents(limit: Int) = flowOf(listOf(product))
 
+        // Column-accurate, like the real `UPDATE`s and `@Transaction` in `ProductDao` (1.0.8
+        // lost-update hardening). Implementing these as whole-row copies would make every
+        // preservation test in this repo pass while the defect they exist to catch sat in
+        // production — the trap `LocalAliasTest` already records for the alias write.
+        override suspend fun setFavorite(barcode: String, favorite: Boolean) {
+            product = product.copy(favorite = favorite)
+        }
+
+        override suspend fun recordUsageColumns(
+            barcode: String,
+            lastPortion: java.math.BigDecimal?,
+            lastUsedAt: java.time.Instant,
+            lastInputMode: app.justthecarbs.domain.InputMode?,
+            lastSelectedPortionUnitId: Long?,
+            lastCount: java.math.BigDecimal?,
+        ) {
+            product = product.copy(
+                lastPortion = lastPortion ?: product.lastPortion,
+                lastUsedAt = lastUsedAt,
+                lastInputMode = lastInputMode ?: product.lastInputMode,
+                lastSelectedPortionUnitId =
+                    if (lastInputMode == app.justthecarbs.domain.InputMode.GRAMS) null
+                    else lastSelectedPortionUnitId ?: product.lastSelectedPortionUnitId,
+                lastCount =
+                    if (lastInputMode == app.justthecarbs.domain.InputMode.GRAMS) null
+                    else lastCount ?: product.lastCount,
+            )
+        }
+
+        override suspend fun saveProductFacts(product: Product) {
+            save(product.copy(localAlias = this.product.localAlias, favorite = this.product.favorite))
+        }
+
         override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
             error("this fake does not implement forgetRecentUse")
 

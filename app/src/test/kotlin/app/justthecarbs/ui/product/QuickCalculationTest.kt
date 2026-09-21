@@ -72,7 +72,10 @@ class QuickCalculationTest {
     /** Records every product write, so "no product was created" is a measurement, not an assumption. */
     private class RecordingLocal : LocalProductDataSource {
         val saved = mutableListOf<Product>()
-        private val stored = mutableMapOf<String, Product>()
+        // Readable so a test can assert the *stored row* rather than the last whole-row write.
+        // Since the 1.0.8 lost-update hardening `recordUse` writes only the five usage columns, so
+        // the write log no longer ends with a row carrying the remembered portion — the store does.
+        val stored = mutableMapOf<String, Product>()
 
         override suspend fun fetch(barcode: String) =
             stored[barcode]?.let { ProductFetchResult.Found(it) } ?: ProductFetchResult.NotFound
@@ -83,6 +86,44 @@ class QuickCalculationTest {
         }
 
         override fun observeRecents(limit: Int): Flow<List<Product>> = flowOf(stored.values.toList())
+
+        // Column-accurate, like the real `UPDATE`s and `@Transaction` in `ProductDao` (1.0.8
+        // lost-update hardening). Implementing these as whole-row copies would make every
+        // preservation test in this repo pass while the defect they exist to catch sat in
+        // production — the trap `LocalAliasTest` already records for the alias write.
+        override suspend fun setFavorite(barcode: String, favorite: Boolean) {
+            stored[barcode] = stored[barcode]?.copy(favorite = favorite) ?: return
+        }
+
+        override suspend fun recordUsageColumns(
+            barcode: String,
+            lastPortion: java.math.BigDecimal?,
+            lastUsedAt: java.time.Instant,
+            lastInputMode: app.justthecarbs.domain.InputMode?,
+            lastSelectedPortionUnitId: Long?,
+            lastCount: java.math.BigDecimal?,
+        ) {
+            val existing = stored[barcode] ?: return
+            stored[barcode] = existing.copy(
+                lastPortion = lastPortion ?: existing.lastPortion,
+                lastUsedAt = lastUsedAt,
+                lastInputMode = lastInputMode ?: existing.lastInputMode,
+                lastSelectedPortionUnitId =
+                    if (lastInputMode == app.justthecarbs.domain.InputMode.GRAMS) null
+                    else lastSelectedPortionUnitId ?: existing.lastSelectedPortionUnitId,
+                lastCount =
+                    if (lastInputMode == app.justthecarbs.domain.InputMode.GRAMS) null
+                    else lastCount ?: existing.lastCount,
+            )
+        }
+
+        override suspend fun saveProductFacts(product: Product) {
+            val current = stored[product.barcode]
+            save(
+                if (current == null) product
+                else product.copy(localAlias = current.localAlias, favorite = current.favorite),
+            )
+        }
 
         override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
             error("this fake does not implement forgetRecentUse")
@@ -443,10 +484,15 @@ class QuickCalculationTest {
             assertEquals(0, BigDecimal("48").compareTo(saved.carbsPer100))
             assertEquals(NutritionBasis.PER_100_G, saved.basis)
             assertTrue("a saved product needs a stable key for Recents", saved.barcode.isNotEmpty())
+            // Asserted against the stored ROW, not the last whole-row write. `recordUse` now writes
+            // only the five remembered-use columns (so a concurrent rename or star cannot be rolled
+            // back by its snapshot), which means the portion lands on the row without appearing in
+            // the write log. The claim here — the product reaches Recents remembering its portion —
+            // is unchanged and is now checked where it is actually true.
             assertEquals(
                 "the saved product must reach Recents with its portion remembered",
                 0,
-                BigDecimal("35").compareTo(saved.lastPortion),
+                BigDecimal("35").compareTo(fixture.local.stored.getValue(saved.barcode).lastPortion),
             )
         }
 

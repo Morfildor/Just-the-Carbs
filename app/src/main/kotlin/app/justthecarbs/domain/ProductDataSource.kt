@@ -2,6 +2,7 @@ package app.justthecarbs.domain
 
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
+import java.time.Instant
 
 /** Why a lookup could not produce a value. Each maps to a distinct, actionable message (§36). */
 enum class LookupError {
@@ -107,6 +108,79 @@ interface LocalProductDataSource : ProductDataSource {
      */
     suspend fun setLocalAlias(barcode: String, alias: String?): Unit =
         error("this data source does not implement setLocalAlias")
+
+    /**
+     * Sets or clears one product's favourite flag ([Product.favorite]).
+     *
+     * Narrow for [setLocalAlias]'s reason, applied to the other independently owned piece of user
+     * metadata. The previous implementation was `save(existing.copy(favorite = …))`, a whole-row
+     * write from a snapshot the caller held — so starring a product from a screen that had been
+     * open a while rolled back a rename, a recorded use or a refreshed figure that had landed in
+     * between. The star and the name answer different questions asked at different moments, and
+     * neither may carry the other backwards.
+     *
+     * An unknown barcode is a no-op: a favourite is metadata *about* a saved product, never a
+     * reason to create one.
+     *
+     * The default throws for [setLocalAlias]'s reason: a silent no-op would let a test assert that
+     * a star had been stored while nothing was.
+     */
+    suspend fun setFavorite(barcode: String, favorite: Boolean): Unit =
+        error("this data source does not implement setFavorite")
+
+    /**
+     * Writes a product's facts, preserving the columns the device owns, in one transaction.
+     *
+     * For the three operations that legitimately replace a coherent set of product facts —
+     * verifying a figure against the package, accepting a newer online figure, resetting to the
+     * online one. Those columns move together and must not be seen half-applied, so this is a
+     * whole-row write by nature.
+     *
+     * What it must not do is carry [Product.localAlias] or [Product.favorite] backwards. Each of
+     * those is owned by a different action at a different moment and is no part of what a figure
+     * change replaces. Preserving them **inside the transaction** rather than re-reading just
+     * beforehand is what makes that unreachable rather than merely unlikely: a read and a write in
+     * Kotlin are two statements with a gap between them, and the gap is exactly where the lost
+     * update lived.
+     *
+     * The remembered-portion columns are deliberately not preserved: they are cleared on purpose
+     * when the basis changes, and a portion in grams is meaningless once a product is measured per
+     * 100 ml.
+     *
+     * The default throws for [setLocalAlias]'s reason.
+     */
+    suspend fun saveProductFacts(product: Product): Unit =
+        error("this data source does not implement saveProductFacts")
+
+    /**
+     * Records that the product was used, writing only the five remembered-use columns.
+     *
+     * Those five are a coherent group — together they say "this is how it was last eaten" — so they
+     * move together, in one statement. That is what makes a single write right here and wrong for
+     * the alias or the star, which are independent facts.
+     *
+     * The coalescing rules belong to the implementation rather than the caller, deliberately:
+     * applying them in Kotlin means reading the row first, and that read is the stale snapshot this
+     * whole change exists to remove.
+     *
+     * - [lastPortion] null **preserves** the stored value rather than erasing it. It is strictly a
+     *   resolved mass or volume in the product's own basis unit, and a direct-carb portion resolves
+     *   none; writing the count there would make "4 slices" reappear as "4 g".
+     * - [lastInputMode] null likewise preserves.
+     * - [lastSelectedPortionUnitId] and [lastCount] are **cleared** when the mode is
+     *   [InputMode.GRAMS] — a positive statement that the user has stopped counting items — and
+     *   otherwise preserved when null.
+     *
+     * An unknown barcode is a no-op, for the reason above.
+     */
+    suspend fun recordUsageColumns(
+        barcode: String,
+        lastPortion: BigDecimal?,
+        lastUsedAt: Instant,
+        lastInputMode: InputMode?,
+        lastSelectedPortionUnitId: Long?,
+        lastCount: BigDecimal?,
+    ): Unit = error("this data source does not implement recordUsageColumns")
 
     /**
      * Forgets that one product was ever used, and returns what was forgotten (§43, one barcode).

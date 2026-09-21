@@ -1,5 +1,6 @@
 package app.justthecarbs.data.local
 
+import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.LocalProductDataSource
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductFetchResult
@@ -30,6 +31,33 @@ class RoomProductDataSource(private val dao: ProductDao) : LocalProductDataSourc
 
     override suspend fun setLocalAlias(barcode: String, alias: String?) =
         dao.setLocalAlias(barcode, alias)
+
+    override suspend fun setFavorite(barcode: String, favorite: Boolean) =
+        dao.setFavorite(barcode, favorite)
+
+    override suspend fun saveProductFacts(product: Product) =
+        dao.saveProductFacts(product.toEntity())
+
+    // The five remembered-use columns as one statement, with the coalescing and the grams-mode
+    // clearing expressed in SQL. Doing either in Kotlin would mean reading the row first, and that
+    // read is the snapshot a concurrent rename or favourite used to be rolled back from.
+    override suspend fun recordUsageColumns(
+        barcode: String,
+        lastPortion: BigDecimal?,
+        lastUsedAt: Instant,
+        lastInputMode: InputMode?,
+        lastSelectedPortionUnitId: Long?,
+        lastCount: BigDecimal?,
+    ) = dao.recordUsageColumns(
+        barcode = barcode,
+        // TEXT, like every other stored quantity: `65` and `65.0` must not be different portions.
+        lastPortion = lastPortion?.stripTrailingZeros()?.toPlainString(),
+        lastUsedAt = lastUsedAt.toEpochMilli(),
+        lastInputMode = lastInputMode?.name,
+        lastSelectedPortionUnitId = lastSelectedPortionUnitId,
+        lastCount = lastCount?.stripTrailingZeros()?.toPlainString(),
+        gramsMode = lastInputMode == InputMode.GRAMS,
+    )
 
     override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
         dao.forgetRecentUse(barcode)?.toDomain()

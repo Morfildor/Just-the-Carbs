@@ -70,6 +70,50 @@ abstract class ProductDao {
     abstract suspend fun upsert(product: ProductEntity)
 
     /**
+     * Writes a product's facts while preserving the columns the **device** owns, atomically.
+     *
+     * ## Why this exists rather than a plain [upsert]
+     *
+     * Three operations legitimately replace a coherent set of product facts: verifying a figure
+     * against the package, accepting a newer online figure, and resetting to the online one. Each is
+     * a whole-row write by nature — the value, the basis, the verification status and the audit
+     * columns move together and must not be seen half-applied.
+     *
+     * But each is also built from a snapshot read moments earlier, and between that read and this
+     * write the repository suspends (clearing usage rows for a basis change). A rename or a
+     * favourite landing in that window was rolled back by the write — not overwritten with a newer
+     * value, but reverted to one that was already stale when it was read.
+     *
+     * Re-reading in Kotlin just before calling [upsert] narrows that window without closing it: the
+     * gap between the read and the write is still two statements. Here the read and the write are
+     * **one transaction**, so there is no window at all. That is the difference between making the
+     * race unlikely and making it unreachable, and this codebase has recorded before that the first
+     * is not good enough.
+     *
+     * ## What counts as device-owned
+     *
+     * [ProductEntity.localAlias] and [ProductEntity.favorite]: the name this user gave the product
+     * and whether they starred it. Neither is a claim about what the product *is*, so neither may be
+     * carried backwards by a change to the figure. The remembered-portion columns are deliberately
+     * **not** in this list — they are cleared on purpose when the basis changes, because a portion
+     * in grams is meaningless once a product is measured per 100 ml, and preserving them here would
+     * silently undo that.
+     *
+     * A product that does not exist yet is simply inserted: there is nothing to preserve.
+     */
+    @Transaction
+    open suspend fun saveProductFacts(product: ProductEntity) {
+        val current = findByBarcode(product.barcode)
+        upsert(
+            if (current == null) {
+                product
+            } else {
+                product.copy(localAlias = current.localAlias, favorite = current.favorite)
+            },
+        )
+    }
+
+    /**
      * Recents for the home screen (§21), with favourites floated to the top (§22) rather than given
      * a tab of their own.
      *
@@ -130,6 +174,75 @@ abstract class ProductDao {
      */
     @Query("UPDATE products SET localAlias = :alias WHERE barcode = :barcode")
     abstract suspend fun setLocalAlias(barcode: String, alias: String?)
+
+    /**
+     * Sets or clears one product's favourite flag, writing that column and reading none.
+     *
+     * The same rule [setLocalAlias] states, applied to the other independently owned piece of user
+     * metadata. `setFavorite` was `local.save(existing.copy(favorite = …))` — a whole-row write
+     * from a snapshot the caller was holding — so starring a product from a screen that had been
+     * open for a while rolled back anything that had landed in the meantime: a rename, a recorded
+     * use, a refreshed figure.
+     *
+     * The star and the name are owned by different actions and belong to different moments; neither
+     * is evidence about the other, and neither may carry the other backwards.
+     *
+     * An unknown barcode matches nothing and writes nothing. A favourite is metadata *about* a
+     * saved product, never a reason to create one.
+     */
+    @Query("UPDATE products SET favorite = :favorite WHERE barcode = :barcode")
+    abstract suspend fun setFavorite(barcode: String, favorite: Boolean)
+
+    /**
+     * Writes the five remembered-use columns as one statement.
+     *
+     * These five are a **coherent group** rather than five independent facts: together they say
+     * "this is how the product was last eaten", and a reader that saw a new `lastCount` beside an
+     * old `lastInputMode` would pre-fill a portion the user never entered. So they move together —
+     * which is what makes one statement right here and wrong for, say, the alias.
+     *
+     * The coalescing rules are expressed in SQL rather than in Kotlin, and that is the point: doing
+     * them in Kotlin means reading the row first, and *that read* is the snapshot a concurrent
+     * rename or favourite used to be rolled back from.
+     *
+     * - `lastPortion` advances only on a real resolved amount. A direct-carb portion ("4 slices ×
+     *   14.2 g carbs") resolves no weight at all, so null preserves the previous value instead of
+     *   erasing it — writing the *count* there would make "4 slices" reappear as "4 g".
+     * - `lastInputMode` likewise only advances when the caller states one.
+     * - The unit and the count are **cleared** in grams mode and otherwise coalesced. Grams mode is
+     *   a positive statement that the user is no longer counting items, so leaving a stale unit
+     *   behind would re-offer a countable portion they have just stopped using.
+     *
+     * [gramsMode] is passed separately rather than compared against [lastInputMode] inside the
+     * statement because "no mode stated" and "grams" are different answers, and only the second one
+     * clears.
+     */
+    @Query(
+        """
+        UPDATE products SET
+            lastPortion = COALESCE(:lastPortion, lastPortion),
+            lastUsedAt = :lastUsedAt,
+            lastInputMode = COALESCE(:lastInputMode, lastInputMode),
+            lastSelectedPortionUnitId = CASE
+                WHEN :gramsMode THEN NULL
+                ELSE COALESCE(:lastSelectedPortionUnitId, lastSelectedPortionUnitId)
+            END,
+            lastCount = CASE
+                WHEN :gramsMode THEN NULL
+                ELSE COALESCE(:lastCount, lastCount)
+            END
+        WHERE barcode = :barcode
+        """,
+    )
+    abstract suspend fun recordUsageColumns(
+        barcode: String,
+        lastPortion: String?,
+        lastUsedAt: Long,
+        lastInputMode: String?,
+        lastSelectedPortionUnitId: Long?,
+        lastCount: String?,
+        gramsMode: Boolean,
+    )
 
     /**
      * Every column on `products` that records *that the user ate the thing*, cleared for every row.

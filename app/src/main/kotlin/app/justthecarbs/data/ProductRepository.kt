@@ -147,7 +147,12 @@ class ProductRepository(
             // here — unlike the refreshable branch below, which starts from the wire. Both branches
             // are covered by tests, because "preserved by construction" is a property of the shape
             // of this expression and the next edit to it could silently remove it.
-            local.save(
+            //
+            // Written transactionally as well, which makes that construction argument a belt to the
+            // transaction's braces: `latest` was read before this function's own `refreshPortion‑
+            // UnitFromCandidate` and the basis-change clearing, and a rename landing in either
+            // window would otherwise be rolled back here.
+            local.saveProductFacts(
                 latest.copy(
                     latestRemoteCarbs = remoteCarbs,
                     latestRemoteBasis = fetched.basis,
@@ -174,7 +179,11 @@ class ProductRepository(
         // since `fetched` — a value straight off the wire — carries `Product`'s defaults (null) for
         // all three.
         val usageCompatible = clearUsageForBasisChange(latest, fetched.basis)
-        local.save(
+        // Transactional: this branch starts from `fetched`, a value straight off the wire that
+        // holds `Product`'s defaults for every device-owned column, so the preservation below is
+        // load-bearing rather than incidental — and the transaction is what makes it hold against a
+        // rename or a star landing during the network call or the usage clearing above.
+        local.saveProductFacts(
             fetched.copy(
                 favorite = latest.favorite,
                 lastPortion = usageCompatible.lastPortion,
@@ -229,13 +238,27 @@ class ProductRepository(
             else -> existing.originalRemoteCarbs ?: existing.carbsPer100
         }
         val compatible = clearUsageForBasisChange(existing, basis)
+        // Re-read immediately before writing, exactly as [refreshFromRemote] does and for the same
+        // reason: `clearUsageForBasisChange` above suspends whenever the basis actually changes
+        // (it deletes this product's usage rows), and a rename or a favourite landing in that
+        // window would be rolled back by this whole-row save.
+        //
+        // Only the **independently owned** columns are taken from the newer row. Everything else
+        // here is a coherent set of product facts the user is deliberately replacing, and must come
+        // from the snapshot the decisions above were made from — re-deriving `originalRemoteCarbs`
+        // from a row that may itself have been re-verified in the meantime would overwrite the
+        // first online value with a correction of it, which is the thing the `?:` chain above
+        // exists to prevent.
         val originalBasis = when {
             existing.dataSource.isUserAuthored -> null
             existing.originalRemoteCarbs != null -> existing.originalRemoteBasis
             existing.verificationStatus == VerificationStatus.UNVERIFIED -> existing.basis
             else -> null
         }
-        local.save(
+        // The transactional write: the alias and the star are preserved *inside* the transaction,
+        // so there is no window between reading them and writing the row. A Kotlin re-read here
+        // would only narrow that window — the read and the write would still be two statements.
+        local.saveProductFacts(
             compatible.copy(
                 name = name ?: existing.name,
                 carbsPer100 = verifiedCarbsPer100,
@@ -262,7 +285,9 @@ class ProductRepository(
         val latest = existing.latestRemoteCarbs ?: return
         val basis = existing.latestRemoteBasis ?: return
         val compatible = clearUsageForBasisChange(existing, basis)
-        local.save(
+        // Transactional, for [saveVerification]'s reason: the name and the star are not part of
+        // what accepting a newer figure replaces.
+        local.saveProductFacts(
             compatible.copy(
                 basis = basis,
                 carbsPer100 = latest,
@@ -283,7 +308,9 @@ class ProductRepository(
         val online = existing.originalRemoteCarbs ?: return
         val basis = existing.originalRemoteBasis ?: return
         val compatible = clearUsageForBasisChange(existing, basis)
-        local.save(
+        // Transactional, for [saveVerification]'s reason. Undoing a verification is a statement
+        // about a figure and about nothing else the user owns.
+        local.saveProductFacts(
             compatible.copy(
                 basis = basis,
                 carbsPer100 = online,
@@ -346,15 +373,25 @@ class ProductRepository(
     ) {
         val existing = requireExisting(barcode)
         if (expectedBasis != null && expectedBasis != existing.basis) return
-        local.save(
-            existing.copy(
-                // Only ever advanced by a real resolved amount; a direct-carb use preserves it.
-                lastPortion = portion ?: existing.lastPortion,
-                lastUsedAt = clock.instant(),
-                lastInputMode = mode ?: existing.lastInputMode,
-                lastSelectedPortionUnitId = if (mode == InputMode.GRAMS) null else portionUnitId ?: existing.lastSelectedPortionUnitId,
-                lastCount = if (mode == InputMode.GRAMS) null else count ?: existing.lastCount,
-            ),
+
+        // A narrow write over the five remembered-use columns, not `save(existing.copy(...))`.
+        //
+        // Those five are a coherent group and move together, which is why they are one statement.
+        // Everything *else* on the row is independently owned — the alias, the star, the figure,
+        // verification — and a whole-row save from `existing` would roll each of them back to
+        // whatever it was when this function read, discarding anything that landed while the
+        // suspension below it ran. The measured case: a rename saved during a recorded use came
+        // back null. The coalescing and the grams-mode clearing now live in the statement, because
+        // applying them here is precisely what required the stale snapshot.
+        local.recordUsageColumns(
+            barcode = barcode,
+            // Null preserves: only ever advanced by a real resolved amount, so a direct-carb use
+            // leaves the previously remembered weight exactly as it was.
+            lastPortion = portion,
+            lastUsedAt = clock.instant(),
+            lastInputMode = mode,
+            lastSelectedPortionUnitId = portionUnitId,
+            lastCount = count,
         )
 
         // Feed *Usual* from the same event that already means "the user settled on this portion"
@@ -380,9 +417,21 @@ class ProductRepository(
             lastInputMode = null, lastSelectedPortionUnitId = null, lastCount = null)
     }
 
+    /**
+     * Stars or unstars a product, writing that one column.
+     *
+     * Deliberately **not** `local.save(existing.copy(favorite = …))`, which is what this was and
+     * which is the same shape [setLocalAlias] already refuses. A star is toggled from Home or from
+     * a product screen that may have been open for minutes, so the snapshot behind it is exactly
+     * the one most likely to be stale — and writing it back would roll back a rename, a recorded
+     * use or a refreshed figure that landed while it was open.
+     *
+     * The read is kept so an unknown barcode still fails the way every other metadata write on this
+     * repository fails, rather than silently doing nothing; the *write* reads none of it.
+     */
     suspend fun setFavorite(barcode: String, favorite: Boolean) {
-        val existing = requireExisting(barcode)
-        local.save(existing.copy(favorite = favorite))
+        requireExisting(barcode)
+        local.setFavorite(barcode, favorite)
     }
 
     /**

@@ -15,6 +15,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -715,6 +716,131 @@ class ProductDaoTest {
         // An alias is metadata *about* a saved product, never a reason to invent one.
         assertNull(dao.findByBarcode("nosuchbarcode"))
         assertEquals(emptyList<SavedProductSearchRow>(), dao.findAllForSearch())
+    }
+
+    // ---- narrow writes and the device-owned columns (1.0.8 lost-update hardening) -------------
+
+    @Test
+    fun starringAProductWritesOneColumn() = runTest {
+        val original = product("111").copy(localAlias = "Breakfast bread")
+        dao.upsert(original.toEntity())
+
+        dao.setFavorite("111", true)
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        // Whole-object comparison with the star put back, for the alias test's reason: every other
+        // column must be byte-identical, including ones added to Product later.
+        assertEquals(original, stored.copy(favorite = false))
+        assertTrue(stored.favorite)
+    }
+
+    @Test
+    fun starringAnUnknownBarcodeCreatesNothing() = runTest {
+        dao.setFavorite("nosuchbarcode", true)
+
+        assertNull(dao.findByBarcode("nosuchbarcode"))
+    }
+
+    @Test
+    fun recordingAUseWritesOnlyTheUsageColumns() = runTest {
+        val original = product("111").copy(localAlias = "Breakfast bread", favorite = true)
+        dao.upsert(original.toEntity())
+
+        dao.recordUsageColumns(
+            barcode = "111",
+            lastPortion = "65",
+            lastUsedAt = 1_700_000_000_000L,
+            lastInputMode = "GRAMS",
+            lastSelectedPortionUnitId = null,
+            lastCount = null,
+            gramsMode = true,
+        )
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertEquals("the name is not part of a recorded use", "Breakfast bread", stored.localAlias)
+        assertTrue("nor is the star", stored.favorite)
+        assertEquals(BigDecimal("65"), stored.lastPortion)
+    }
+
+    @Test
+    fun aDirectCarbUsePreservesTheRememberedWeight() = runTest {
+        // `lastPortion` null must preserve, not erase: a direct-carb portion resolves no weight, and
+        // writing the count there would make "4 slices" reappear as "4 g".
+        dao.upsert(product("111").copy(lastPortion = BigDecimal("65")).toEntity())
+
+        dao.recordUsageColumns(
+            barcode = "111",
+            lastPortion = null,
+            lastUsedAt = 1_700_000_000_000L,
+            lastInputMode = "PORTION_UNIT",
+            lastSelectedPortionUnitId = 7L,
+            lastCount = "4",
+            gramsMode = false,
+        )
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertEquals(BigDecimal("65"), stored.lastPortion)
+        assertEquals(BigDecimal("4"), stored.lastCount)
+        assertEquals(7L, stored.lastSelectedPortionUnitId)
+    }
+
+    @Test
+    fun aGramsUseClearsTheRememberedCountAndUnit() = runTest {
+        dao.upsert(
+            product("111").copy(
+                lastInputMode = InputMode.PORTION_UNIT,
+                lastSelectedPortionUnitId = 7L,
+                lastCount = BigDecimal("2"),
+            ).toEntity(),
+        )
+
+        dao.recordUsageColumns(
+            barcode = "111",
+            lastPortion = "65",
+            lastUsedAt = 1_700_000_000_000L,
+            lastInputMode = "GRAMS",
+            lastSelectedPortionUnitId = null,
+            lastCount = null,
+            gramsMode = true,
+        )
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertNull("grams mode forgets the unit", stored.lastSelectedPortionUnitId)
+        assertNull("and the count", stored.lastCount)
+    }
+
+    @Test
+    fun savingProductFactsKeepsTheNameAndTheStar() = runTest {
+        // The transactional write the three figure-changing operations use. The alias and the star
+        // are read and preserved *inside* the transaction, so a whole-row write built from a stale
+        // snapshot cannot carry them backwards.
+        dao.upsert(product("111").copy(localAlias = "Breakfast bread", favorite = true).toEntity())
+
+        // A "verification" arriving with the defaults a stale snapshot would carry.
+        dao.saveProductFacts(
+            product("111").copy(
+                carbsPer100 = BigDecimal("44"),
+                verificationStatus = VerificationStatus.USER_VERIFIED,
+                localAlias = null,
+                favorite = false,
+            ).toEntity(),
+        )
+
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertEquals("the name survives a figure change", "Breakfast bread", stored.localAlias)
+        assertTrue("and so does the star", stored.favorite)
+        assertEquals(BigDecimal("44"), stored.carbsPer100)
+        assertEquals(VerificationStatus.USER_VERIFIED, stored.verificationStatus)
+    }
+
+    @Test
+    fun savingProductFactsForANewProductInsertsItUnchanged() = runTest {
+        // Nothing to preserve, so nothing is: an alias supplied on a first write is kept.
+        val fresh = product("999").copy(localAlias = "My bread", favorite = true)
+
+        dao.saveProductFacts(fresh.toEntity())
+
+        assertEquals(fresh, dao.findByBarcode("999")!!.toDomain())
     }
 
     @Test

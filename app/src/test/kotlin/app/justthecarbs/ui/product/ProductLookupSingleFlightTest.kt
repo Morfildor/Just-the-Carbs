@@ -119,6 +119,44 @@ class ProductLookupSingleFlightTest {
 
         override fun observeRecents(limit: Int): Flow<List<Product>> = flowOf(stored.values.toList())
 
+        // Column-accurate, like the real `UPDATE`s and `@Transaction` in `ProductDao` (1.0.8
+        // lost-update hardening). Implementing these as whole-row copies would make every
+        // preservation test in this repo pass while the defect they exist to catch sat in
+        // production — the trap `LocalAliasTest` already records for the alias write.
+        override suspend fun setFavorite(barcode: String, favorite: Boolean) {
+            stored[barcode] = stored[barcode]?.copy(favorite = favorite) ?: return
+        }
+
+        override suspend fun recordUsageColumns(
+            barcode: String,
+            lastPortion: java.math.BigDecimal?,
+            lastUsedAt: java.time.Instant,
+            lastInputMode: app.justthecarbs.domain.InputMode?,
+            lastSelectedPortionUnitId: Long?,
+            lastCount: java.math.BigDecimal?,
+        ) {
+            val existing = stored[barcode] ?: return
+            stored[barcode] = existing.copy(
+                lastPortion = lastPortion ?: existing.lastPortion,
+                lastUsedAt = lastUsedAt,
+                lastInputMode = lastInputMode ?: existing.lastInputMode,
+                lastSelectedPortionUnitId =
+                    if (lastInputMode == app.justthecarbs.domain.InputMode.GRAMS) null
+                    else lastSelectedPortionUnitId ?: existing.lastSelectedPortionUnitId,
+                lastCount =
+                    if (lastInputMode == app.justthecarbs.domain.InputMode.GRAMS) null
+                    else lastCount ?: existing.lastCount,
+            )
+        }
+
+        override suspend fun saveProductFacts(product: Product) {
+            val current = stored[product.barcode]
+            save(
+                if (current == null) product
+                else product.copy(localAlias = current.localAlias, favorite = current.favorite),
+            )
+        }
+
         override suspend fun forgetRecentUse(barcode: String): RecentUseSnapshot? =
             error("this fake does not implement forgetRecentUse")
 
