@@ -1,6 +1,5 @@
 package app.justthecarbs.ui.scan
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -110,11 +109,13 @@ fun ScannerScreen(
      * codes are present, and the same `onBarcode` navigation. A share's only privilege is skipping
      * the picker.
      *
-     * A `file://` URI into `cacheDir`, not the sender's `content://`: the sender's grant rides on
-     * the delivered Intent and may be dead by the time the user has answered the chooser, so
-     * `MainActivity` takes the bytes while the grant is certainly live.
+     * An [ImportedImageSource.Staged] holding a cache file this app already owns — never the
+     * sender's `content://`. The sender's grant rides on the delivered Intent and may be dead by
+     * the time the user has answered the chooser, so `MainActivity` takes the bytes while the grant
+     * is certainly live. Typed as a staged file rather than a `file://` URI precisely so this
+     * screen cannot stage it a second time; see [ImportedImageSource].
      */
-    sharedImage: Uri? = null,
+    sharedImage: ImportedImageSource? = null,
 ) {
     // §6, startup-hardening pass: one shared five-state gate, used identically by this screen and
     // LabelScannerScreen. Previously each screen tracked only granted/not-granted plus whether a
@@ -237,7 +238,7 @@ private fun rememberBarcodePhotoImport(
      * intake rules, staging, recognition, the choice sheet, the navigation - is reached by one
      * path whichever way the photograph arrived.
      */
-    sharedImage: Uri? = null,
+    sharedImage: ImportedImageSource? = null,
 ): BarcodePhotoImport {
     val context = LocalContext.current
     var state by remember { mutableStateOf<BarcodePhotoImportState>(BarcodePhotoImportState.Idle) }
@@ -274,7 +275,7 @@ private fun rememberBarcodePhotoImport(
      * composition is caught by `consumedPhotoToken`, which survives recreation and is compared by
      * value.
      */
-    var picked by remember { mutableStateOf<Pair<Long, Uri?>?>(null) }
+    var picked by remember { mutableStateOf<Pair<Long, ImportedImageSource?>?>(null) }
     var deliveries by remember { mutableLongStateOf(0L) }
 
     /**
@@ -303,8 +304,8 @@ private fun rememberBarcodePhotoImport(
     // frame it belongs to is settled, and the guard above keeps it to one delivery per share.
     SideEffect {
         val shared = sharedImage ?: return@SideEffect
-        if (shared.toString() == deliveredShare) return@SideEffect
-        deliveredShare = shared.toString()
+        if (shared.token == deliveredShare) return@SideEffect
+        deliveredShare = shared.token
         deliveries += 1
         picked = deliveries to shared
     }
@@ -316,9 +317,10 @@ private fun rememberBarcodePhotoImport(
     ) { uri ->
         // Every delivery is handed on, cancellation included: deciding what a null URI means is
         // ImportedPhotoIntake's rule, and answering it here as well would put one rule in two
-        // places.
+        // places. A picked URI is somebody else's bytes, so it enters as `Picked` and will be
+        // staged; a share arrives already staged and must not be.
         deliveries += 1
-        picked = deliveries to uri
+        picked = deliveries to uri?.let(ImportedImageSource::Picked)
     }
 
     // Keyed on the delivery NUMBER, not on the `picked` pair.
@@ -335,9 +337,9 @@ private fun rememberBarcodePhotoImport(
     // when this effect should run again.
     LaunchedEffect(picked?.first) {
         val delivery = picked ?: return@LaunchedEffect
-        val uri = delivery.second
+        val source = delivery.second
         // Whether this delivery came from a share rather than the picker; see the token note below.
-        val isShare = uri != null && uri.toString() == deliveredShare
+        val isShare = source != null && source.token == deliveredShare
 
         // Nothing is cleared here. `picked` is this effect's own key, so assigning it inside the
         // effect re-keys it and Compose cancels this coroutine before any of the work below runs —
@@ -361,8 +363,8 @@ private fun rememberBarcodePhotoImport(
         // then found the token its own cancelled predecessor had written and refused itself. The
         // screen sat on "Reading the photo you chose..." with no way out.
         val decision = ImportedPhotoIntake.decide(
-            hasSelection = uri != null,
-            resultToken = uri?.toString(),
+            hasSelection = source != null,
+            resultToken = source?.token,
             lastConsumedToken = if (isShare) null else consumedPhotoToken,
             beginWork = generation::begin,
         )
@@ -373,17 +375,20 @@ private fun rememberBarcodePhotoImport(
                 return@LaunchedEffect
             }
         }
-        // Non-null by construction: `decide` reports CANCELLED for a null URI, which returned above.
-        val source = requireNotNull(uri)
-        consumedPhotoToken = source.toString()
+        // Non-null by construction: `decide` reports CANCELLED for a null selection, above.
+        val resolvedSource = requireNotNull(source)
+        consumedPhotoToken = resolvedSource.token
 
         currentOnPause()
         state = BarcodePhotoImportState.Reading
 
+        // Staged only when there is something to stage. A shared image was copied into this app's
+        // cache at arrival, so it is returned as it is rather than copied a second time — see
+        // [ImportedImageSource]. Either way this screen owns exactly one file afterwards.
         val staged = withContext(Dispatchers.IO) {
-            ImportedPhotoStaging.stage(
-                context = context,
-                uri = source,
+            ImportedImageResolver.resolve(
+                context = { context },
+                source = resolvedSource,
                 cancelled = { disposed.get() || !generation.isCurrent(work) },
                 prefix = ImportedPhotoStaging.BARCODE_PREFIX,
             )
@@ -391,26 +396,30 @@ private fun rememberBarcodePhotoImport(
 
         if (!generation.isCurrent(work)) {
             // A newer photograph (or a departure) superseded this one mid-copy. The file is this
-            // import's alone, so deleting it here is cleanup, not a race with the newer import.
-            (staged as? ImportedPhotoStaging.Result.Staged)?.file?.delete()
+            // import's alone — whether staged here or handed over by the share — so deleting it is
+            // cleanup rather than a race with the newer import, and it is what stops an abandoned
+            // share being left in `cacheDir`.
+            (staged as? ImportedImageResolver.Result.Ready)?.file?.delete()
             return@LaunchedEffect
         }
 
         when (staged) {
-            is ImportedPhotoStaging.Result.Failed -> {
+            is ImportedImageResolver.Result.Failed -> {
                 // Every staging failure and an unreadable photograph are one statement to the user:
                 // no usable barcode came out of that picture. Splitting "too large" from "no
                 // barcode" would name a cause they act on identically.
                 OcrDiagnosticsLogger.timing("barcode photo staging failed (${staged.reason})")
                 state = BarcodePhotoImportState.NoBarcode
             }
-            is ImportedPhotoStaging.Result.Staged -> {
+            is ImportedImageResolver.Result.Ready -> {
                 val outcome = try {
                     ImportedBarcodeReader.read(context, staged.file)
                 } finally {
-                    // Read once, then gone. Unlike a label capture, nothing downstream takes
-                    // ownership of this file — there is no crop screen and no evidence record — so
-                    // it is deleted here rather than handed on.
+                    // Read once, then gone — the single disposal this path promises. Unlike a label
+                    // capture, nothing downstream takes ownership of this file (there is no crop
+                    // screen and no evidence record), and that is equally true of a shared image:
+                    // it is the same file the Activity staged, so deleting it here is what keeps a
+                    // successful share from leaving a `justthecarbs-shared-*` behind.
                     staged.file.delete()
                 }
 
@@ -582,7 +591,7 @@ private fun CameraPreview(
     onClose: () -> Unit,
     onEnterManually: () -> Unit,
     /** A shared image to import as the screen appears. See [ScannerScreen]'s parameter. */
-    sharedImage: Uri? = null,
+    sharedImage: ImportedImageSource? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current

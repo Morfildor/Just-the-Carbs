@@ -280,7 +280,7 @@ fun LabelScannerScreen(
      * Staging copying it a second time is a local file copy - cheap, and the price of there being
      * exactly one way into the pipeline rather than two that must be kept in agreement.
      */
-    sharedImage: Uri? = null,
+    sharedImage: ImportedImageSource? = null,
 ) {
     // §6, startup-hardening pass: the same shared five-state gate ScannerScreen uses. Previously
     // this screen carried its own copy of the granted/not-granted-plus-requested tracking, with the
@@ -374,7 +374,7 @@ private fun LabelCamera(
      * Handed to the same `importPhoto` a picked photo goes to. See the public screen's parameter
      * of the same name for why it is a staged `file://` rather than the sender's `content://`.
      */
-    sharedImage: Uri? = null,
+    sharedImage: ImportedImageSource? = null,
     /** Leave the photo-only visit, returning to whatever sent the user here. */
     onExitPhotoOnly: () -> Unit = {},
 ) {
@@ -1727,7 +1727,7 @@ private fun LabelCamera(
      * belong to a different image entirely. Corroborating an imported reading with them would be
      * cross-image contamination of the most literal kind.
      */
-    fun importPhoto(uri: Uri, fromShare: Boolean = false) {
+    fun importPhoto(source: ImportedImageSource, fromShare: Boolean = false) {
         // For a share, `lastConsumedToken` is null, and that keeps two different replay questions
         // apart rather than loosening one.
         //
@@ -1738,7 +1738,7 @@ private fun LabelCamera(
         // two are conflated: the screen strands on "Reading..." with no way out.
         val decision = ImportedPhotoIntake.decide(
             hasSelection = true,
-            resultToken = uri.toString(),
+            resultToken = source.token,
             lastConsumedToken = if (fromShare) null else consumedPhotoToken,
             beginWork = coordinator::beginNewWork,
         )
@@ -1749,7 +1749,7 @@ private fun LabelCamera(
                 return
             }
         }
-        consumedPhotoToken = uri.toString()
+        consumedPhotoToken = source.token
 
         // A genuinely new aim: this image has no live camera stream behind it, so nothing recorded
         // while the user was pointing the phone somewhere else may corroborate it.
@@ -1786,13 +1786,17 @@ private fun LabelCamera(
             // belongs on the main thread, and the whole block is cancellable — leaving the screen
             // cancels `saveScope`, which stops the copy between chunks rather than finishing work
             // nobody is waiting for.
+            // Staged only when there is something to stage: a shared image was already copied into
+            // this app's cache at arrival, and copying it again would orphan the original. Either
+            // way what comes back is one file this screen owns — see [ImportedImageSource].
             val staged = withContext(Dispatchers.IO) {
-                ImportedPhotoStaging.stage(
-                    context = context,
-                    uri = uri,
+                ImportedImageResolver.resolve(
+                    context = { context },
+                    source = source,
                     // Two independent reasons to stop: the screen is gone, or a newer selection (or
                     // capture) has superseded this one.
                     cancelled = { disposed.get() || !coordinator.isCurrentWork(workGeneration) },
+                    prefix = ImportedPhotoStaging.LABEL_PREFIX,
                 )
             }
 
@@ -1800,12 +1804,15 @@ private fun LabelCamera(
             // photo or left. Checked before anything is shown, exactly as the capture path checks
             // its own result.
             if (!coordinator.isCurrentWork(workGeneration)) {
-                (staged as? ImportedPhotoStaging.Result.Staged)?.file?.delete()
+                // Superseded or abandoned. The file is this import's alone — staged here, or handed
+                // over by the share — so deleting it is the single disposal this path owes, and is
+                // what stops an abandoned share sitting in `cacheDir`.
+                (staged as? ImportedImageResolver.Result.Ready)?.file?.delete()
                 return@launch
             }
 
             when (staged) {
-                is ImportedPhotoStaging.Result.Failed -> {
+                is ImportedImageResolver.Result.Failed -> {
                     importState = PhotoImportState.Failed(staged.reason)
                     // Nothing was decoded, so there is no reading to report — and `NotFound` would
                     // be a lie about a photograph that was never read. The camera comes back so the
@@ -1813,7 +1820,7 @@ private fun LabelCamera(
                     if (cameraEnabled) analyzer.resume()
                 }
 
-                is ImportedPhotoStaging.Result.Staged -> {
+                is ImportedImageResolver.Result.Ready -> {
                     // The photograph now exists as a file, so show it for the rest of the wait —
                     // the same frozen-preview treatment a capture gets, for the same reason.
                     capturedPreview = staged.file
@@ -1869,7 +1876,9 @@ private fun LabelCamera(
     LaunchedEffect(pickedPhoto) {
         val uri = pickedPhoto ?: return@LaunchedEffect
         pickedPhoto = null
-        importPhoto(uri)
+        // A picked URI is somebody else's bytes behind a temporary grant, so it enters as `Picked`
+        // and is staged. A share enters as `Staged` and is not.
+        importPhoto(ImportedImageSource.Picked(uri))
     }
 
     // Opens the picker for the photo-only entry path, where the user asked for a photo from the
@@ -1900,8 +1909,8 @@ private fun LabelCamera(
     // happens after the composition that reads it has settled, rather than inline in the body.
     SideEffect {
         val shared = sharedImage ?: return@SideEffect
-        if (shared.toString() == importedShare) return@SideEffect
-        importedShare = shared.toString()
+        if (shared.token == importedShare) return@SideEffect
+        importedShare = shared.token
         importPhoto(shared, fromShare = true)
     }
 

@@ -123,11 +123,22 @@ class ImportedBarcodePipelineConvergenceTest {
     fun `the imported barcode is staged by the same object a label import uses`() {
         // Staging reuse, asserted rather than claimed: one implementation of the URI copy, with
         // one size ceiling, one cancellation poll and one partial-file delete.
+        //
+        // Reached via `ImportedImageResolver` since the 1.0.8 ownership correction. That object is
+        // a router, not a second implementation — a picked URI still goes through
+        // `ImportedPhotoStaging.stage`, unchanged, and an already-owned shared file goes through
+        // nothing at all, which is the point. The claim this test makes is unchanged: the screen
+        // does not copy bytes itself.
         val scannerCode = codeOf(scanner)
         assertTrue(
-            "ScannerScreen must stage through ImportedPhotoStaging rather than copying a URI " +
+            "ScannerScreen must resolve through ImportedImageResolver rather than copying a URI " +
                 "itself — a second copy would have to re-derive every rule that one already holds.",
-            scannerCode.contains("ImportedPhotoStaging.stage("),
+            scannerCode.contains("ImportedImageResolver.resolve("),
+        )
+        assertTrue(
+            "the resolver must still delegate a picked URI to the one staging implementation",
+            codeOf(sourceFile("app/src/main/kotlin/app/justthecarbs/ui/scan/ImportedImageSource.kt"))
+                .contains("ImportedPhotoStaging.stage("),
         )
         assertTrue(
             "the barcode import must pass BARCODE_PREFIX, so its cache file is never mistaken " +

@@ -54,6 +54,7 @@ import app.justthecarbs.ui.product.ProductViewModel
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.ui.scan.LabelScannerScreen
 import app.justthecarbs.ui.scan.ScannerScreen
+import app.justthecarbs.ui.scan.ImportedImageSource
 import app.justthecarbs.ui.scan.SharedImageChooserScreen
 import app.justthecarbs.ui.scan.SharedImageFailedScreen
 import app.justthecarbs.ui.settings.SettingsScreen
@@ -340,8 +341,13 @@ fun JustTheCarbsNavHost(
      * must not do: the scanner has already consumed it by then, and restoring it would re-feed the
      * same photograph on every rotation. The share's own durability lives in the Activity, which
      * is where consumption is recorded.
+     *
+     * Typed as [ImportedImageSource.Staged] rather than as a `file://` `Uri`, and that is the whole
+     * ownership correction: the file here is one **this app already owns**, copied at arrival. A URI
+     * said nothing about that, so the scanners staged it again — copying a cache file into a second
+     * cache file and orphaning the first. A `Staged` cannot be staged; there is no URI in it.
      */
-    var sharedImageInFlight by remember { mutableStateOf<android.net.Uri?>(null) }
+    var sharedImageInFlight by remember { mutableStateOf<ImportedImageSource.Staged?>(null) }
 
     NavHost(
         navController = navController,
@@ -555,14 +561,20 @@ fun JustTheCarbsNavHost(
 
             SharedImageChooserScreen(
                 onChooseBarcode = {
-                    sharedImageInFlight = stagedPath?.let { android.net.Uri.fromFile(java.io.File(it)) }
+                    sharedImageInFlight = stagedPath?.let { ImportedImageSource.Staged(java.io.File(it)) }
+                    // Ownership moves here, and `deleteFile = false` says so: the file is now the
+                    // scanner's, which disposes of it exactly once (after its single read, or on
+                    // supersession/abandonment). Deleting it here would pull it out from under a
+                    // recognizer about to read it.
                     onShareConsumed(false)
                     navController.navigate(Routes.SCAN) {
                         popUpTo(Routes.SHARE_CHOOSER) { inclusive = true }
                     }
                 },
                 onChooseLabel = {
-                    sharedImageInFlight = stagedPath?.let { android.net.Uri.fromFile(java.io.File(it)) }
+                    sharedImageInFlight = stagedPath?.let { ImportedImageSource.Staged(java.io.File(it)) }
+                    // As above: the label analyzer's evidence path takes the file from here and
+                    // gives it the same retained/deleted/renamed lifecycle a camera capture gets.
                     onShareConsumed(false)
                     navController.navigate(Routes.labelScan()) {
                         popUpTo(Routes.SHARE_CHOOSER) { inclusive = true }

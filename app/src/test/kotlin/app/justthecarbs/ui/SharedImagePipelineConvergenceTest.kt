@@ -128,19 +128,62 @@ class SharedImagePipelineConvergenceTest {
     @Test
     fun `both scanners receive the share through their existing import parameter`() {
         // The convergence itself: one named parameter on each screen, and the nav host passes the
-        // same in-flight URI to both.
+        // same in-flight staged file to both.
+        //
+        // The type is `ImportedImageSource`, not `Uri`, and that is the 1.0.8 ownership correction
+        // rather than a rename. A `file://` URI said nothing about who owned the bytes, so both
+        // scanners staged an already-owned cache file a second time and orphaned the first. A
+        // `Staged` cannot be staged — there is no URI in it to stage.
         assertTrue(
-            "ScannerScreen must accept a sharedImage",
-            codeOf(scanner).contains(Regex("""sharedImage:\s*Uri\?""")),
+            "ScannerScreen must accept a sharedImage as an owned source",
+            codeOf(scanner).contains(Regex("""sharedImage:\s*ImportedImageSource\?""")),
         )
         assertTrue(
-            "LabelScannerScreen must accept a sharedImage",
-            codeOf(labelScanner).contains(Regex("""sharedImage:\s*Uri\?""")),
+            "LabelScannerScreen must accept a sharedImage as an owned source",
+            codeOf(labelScanner).contains(Regex("""sharedImage:\s*ImportedImageSource\?""")),
         )
         assertEquals(
             "the nav host must hand the staged share to exactly the two scanners",
             2,
             Regex("""sharedImage = shareForThisVisit""").findAll(codeOf(navHost)).count(),
+        )
+    }
+
+    @Test
+    fun `neither scanner stages an image itself, so a share cannot be copied twice`() {
+        // The structural half of the ownership fix. Both scanners must go through
+        // `ImportedImageResolver`, which is the single place that knows a share is already owned;
+        // a direct `ImportedPhotoStaging.stage(` call from either screen is the exact shape of the
+        // defect — it stages unconditionally, so it would copy a cache file into a second cache
+        // file and abandon the first. Prefix constants are still referenced from both, which is why
+        // this matches the call rather than the object's name.
+        for ((name, file) in listOf("ScannerScreen" to scanner, "LabelScannerScreen" to labelScanner)) {
+            assertEquals(
+                "$name must resolve through ImportedImageResolver, never stage directly",
+                0,
+                Regex("""ImportedPhotoStaging\.stage\(""").findAll(codeOf(file)).count(),
+            )
+            assertEquals(
+                "$name must resolve exactly once",
+                1,
+                Regex("""ImportedImageResolver\.resolve\(""").findAll(codeOf(file)).count(),
+            )
+        }
+    }
+
+    @Test
+    fun `the nav host hands over an owned file rather than a URI`() {
+        // `Uri.fromFile` here was how an owned cache file was disguised as something to stage.
+        val code = codeOf(navHost)
+        assertEquals(
+            "the nav host must not turn the staged share back into a URI",
+            0,
+            Regex("""Uri\.fromFile\(""").findAll(code).count(),
+        )
+        assertEquals(
+            "both chooser branches must hand over the staged file itself",
+            2,
+            Regex("""ImportedImageSource\.Staged\(""").findAll(code).count(),
         )
     }
 

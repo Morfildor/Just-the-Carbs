@@ -82,3 +82,66 @@ internal object SharedImageIntake {
             .onFailure { OcrDiagnosticsLogger.failure("Could not delete the staged share", it) }
     }
 }
+
+/**
+ * Deletes staged import files left behind by a previous process (1.0.8).
+ *
+ * ## The one window no handoff can close
+ *
+ * Ownership of a staged share passes from the Activity to a scanner in a single main-thread turn:
+ * the chooser records the file, reports the share consumed, and navigates. Nothing can interleave
+ * there. What *can* happen is that the process dies — killed in the background, crashed, or
+ * stopped from the recents list — between the bytes being copied and the scanner disposing of
+ * them. The in-flight handle is deliberately **not** `rememberSaveable` (restoring it would
+ * re-import the same photograph on every rotation), so after such a death nothing in the app knows
+ * the file exists.
+ *
+ * That is a genuine gap and it is not closeable by making the handoff more careful, because the
+ * handoff is not where it happens. It is closed the way this class of orphan is normally closed:
+ * on the next launch, anything still lying around is by definition from a process that is gone, so
+ * it is swept.
+ *
+ * ## Why this is safe to run at startup
+ *
+ * A file matching one of these prefixes is only ever created by an import that is in progress. A
+ * *live* import's file belongs to the current process, which has not reached this code — this runs
+ * once, from `onCreate`, before any share or pick can have been started. So "exists at startup"
+ * and "abandoned" are the same statement.
+ *
+ * Only this app's own import prefixes are considered, never `cacheDir` wholesale: Coil's image
+ * cache, OkHttp's response cache and the debug evidence bundles all live there too, and deleting
+ * those would be throwing away other components' working state to solve a problem they do not have.
+ */
+internal object StagedImageSweeper {
+
+    /** The three prefixes an import can create, and nothing else in `cacheDir`. */
+    private val PREFIXES = listOf(
+        SharedImageIntake.PREFIX,
+        ImportedPhotoStaging.LABEL_PREFIX,
+        ImportedPhotoStaging.BARCODE_PREFIX,
+    )
+
+    /**
+     * Deletes every orphaned staging file directly in [cacheDir], returning how many went.
+     *
+     * Failure is swallowed per file: a cache file that will not delete is a disk-space footnote,
+     * and one stubborn file must not stop the rest being cleaned. Only the top level is scanned —
+     * an evidence folder is a directory and is the recorder's to prune.
+     */
+    fun sweep(cacheDir: File): Int {
+        val orphans = runCatching {
+            cacheDir.listFiles { file: File ->
+                file.isFile && PREFIXES.any { file.name.startsWith(it) }
+            }
+        }.getOrNull().orEmpty()
+
+        var deleted = 0
+        orphans.forEach { file ->
+            if (runCatching { file.delete() }.getOrDefault(false)) deleted++
+        }
+        if (deleted > 0) {
+            OcrDiagnosticsLogger.timing("swept $deleted abandoned import file(s) from a previous run")
+        }
+        return deleted
+    }
+}

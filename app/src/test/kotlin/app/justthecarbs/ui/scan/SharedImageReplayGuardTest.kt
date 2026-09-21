@@ -106,13 +106,16 @@ class SharedImageReplayGuardTest {
     fun `the picker path keeps its own replay guard untouched`() {
         // The exemption is for shares only. A picker result must still be compared against the
         // consumed token, or the original defect this guard exists for comes back.
+        // Written from `ImportedImageSource.token` since the ownership correction: the URI string
+        // for a picked photo, the cache path for a share. Both are per-delivery and both are
+        // compared by value, so the guard is the same guard — only its input is now typed.
         assertTrue(
             "the barcode screen must still write the consumed token for picker results",
-            codeOf(scanner).contains(Regex("""consumedPhotoToken = source\.toString\(\)""")),
+            codeOf(scanner).contains(Regex("""consumedPhotoToken = resolvedSource\.token""")),
         )
         assertTrue(
             "the label screen must still write the consumed token",
-            codeOf(labelScanner).contains(Regex("""consumedPhotoToken = uri\.toString\(\)""")),
+            codeOf(labelScanner).contains(Regex("""consumedPhotoToken = source\.token""")),
         )
     }
 }
