@@ -441,11 +441,22 @@ private fun SearchNutritionColumn(
         modifier = if (beneathText) modifier else modifier.widthIn(min = 90.dp),
         horizontalAlignment = if (beneathText) Alignment.Start else Alignment.End,
     ) {
+        // Ink, not primary blue.
+        //
+        // A column of eight blue numbers down a list of search results read as eight links, and it
+        // competed with the only genuinely interactive blue on the screen. The figure is
+        // *information about* the row -- the whole row is the tap target, and the number is not
+        // separately tappable -- so it is set in ink like the name above it.
+        //
+        // This also restores the distinction the design system means to draw: tomato marks a
+        // confirmed carbohydrate RESULT (the dock, a meal row, a recent card's remembered figure),
+        // and this is a per-100 PREVIEW attached to a hit the user has not chosen yet. So it is
+        // neither blue nor red; it is ink, at `titleMedium` so it still reads as a figure.
         Text(
             text = "${ResultFormatter.quantity(value)} $carbsSuffix",
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             textAlign = textAlign,
         )

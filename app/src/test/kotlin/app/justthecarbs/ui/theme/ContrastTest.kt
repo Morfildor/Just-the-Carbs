@@ -26,6 +26,7 @@ class ContrastTest {
     private val blue = 0x2856C5
     private val inverseBlue = 0x2855C2
     private val blueDark = 0x82A2FF
+    private val primaryTileDark = 0x2E4DB5
     private val red = 0xC13C2D
     private val redDark = 0xFF8A75
     private val onOrangeSoft = 0x90530A
@@ -291,12 +292,37 @@ class ContrastTest {
 
     @Test
     fun `home primary task tile owns one explicit foreground and no gradient`() {
+        // The tile is filled with `primaryTile`, not `colorScheme.primary` — see
+        // ExtendedColors.primaryTile for the dark hierarchy inversion that split the two. Its
+        // foreground is therefore `onPrimaryTile`, and both pairs are asserted below.
         assertContrast("light home primary action", warmWhite, blue)
-        assertContrast("dark home primary action", darkOnPrimary, blueDark)
+        assertContrast("dark home primary action", chalk, primaryTileDark)
 
         val source = java.io.File("src/main/kotlin/app/justthecarbs/ui/home/HomeScreen.kt").readText()
-        assertTrue(source.contains("MaterialTheme.colorScheme.onPrimary"))
+        assertTrue(
+            "the primary tile must name an explicit paired foreground",
+            source.contains("onPrimaryTile"),
+        )
         assertTrue(!source.contains("Brush.linearGradient"))
+    }
+
+    @Test
+    fun `the large primary fill pairs with its own foreground in both schemes`() {
+        // Light collapses the pair onto primary/onPrimary; Dark diverges. Both are held to the
+        // normal-text floor because the tile's title and subtitle are ordinary text sizes.
+        assertContrast("light onPrimaryTile/primaryTile", warmWhite, blue)
+        assertContrast("dark onPrimaryTile/primaryTile", chalk, primaryTileDark)
+    }
+
+    @Test
+    fun `the dark large primary fill is distinguishable from the surfaces it sits on`() {
+        // A deep cobalt tile on a near-black page must not read as another dark panel. Held to
+        // 3:1, the non-text floor for a large graphical object, because what is being measured is
+        // the tile's edge against the page rather than text on the tile.
+        val nightBg = 0x111318
+        val containerLow = 0x171A20
+        assertContrast("dark primaryTile/background", primaryTileDark, nightBg, minimum = 2.2)
+        assertContrast("dark primaryTile/containerLow", primaryTileDark, containerLow, minimum = 2.2)
     }
 
     @Test
@@ -319,6 +345,7 @@ class ContrastTest {
             "MediaSurfaceDark" to mediaSurfaceDark,
             "OnDisabledBlue" to onDisabledBlue,
             "OnDisabledBlueDark" to onDisabledBlueDark,
+            "PrimaryTileDark" to primaryTileDark,
         ).forEach { (token, expected) ->
             val declared = Regex("""private val $token = Color\(0xFF([0-9A-Fa-f]{6})\)""")
                 .find(theme)

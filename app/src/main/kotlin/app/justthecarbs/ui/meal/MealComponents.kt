@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.CarbResult
 import app.justthecarbs.domain.ResultFormatter
+import app.justthecarbs.ui.components.jtcOutlinedButtonBorder
 import app.justthecarbs.ui.components.rememberSuccessPulse
 import app.justthecarbs.ui.theme.Space
 
@@ -77,11 +79,25 @@ fun MealActions(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
+        // Outlined with a PRIMARY label and border, not Material's default.
+        //
+        // The default takes its content colour from `onSurfaceVariant` -- the same grey this app
+        // uses for supporting text -- so `Add to meal` read as a disabled control sitting beside a
+        // filled blue `Add & scan next`. It is a real alternative, and now looks like one. Built
+        // out of the same pieces as `JtcOutlinedButton` rather than calling it, because this
+        // button's label is a slot: it swaps to a check icon plus `Added` on success.
         OutlinedButton(
             onClick = onAdd,
             enabled = enabled,
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.weight(1f).testTag(MEAL_ADD_TAG),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.primary,
+            ),
+            border = jtcOutlinedButtonBorder(enabled),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = Space.secondaryButtonHeight)
+                .testTag(MEAL_ADD_TAG),
         ) {
             if (showAdded) {
                 Icon(
@@ -102,7 +118,10 @@ fun MealActions(
             onClick = onAddAndScanNext,
             enabled = enabled,
             shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.weight(1f).testTag(MEAL_ADD_AND_SCAN_TAG),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = Space.primaryButtonHeight)
+                .testTag(MEAL_ADD_AND_SCAN_TAG),
         ) {
             Text(stringResource(R.string.meal_add_and_scan))
         }

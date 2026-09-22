@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,6 +80,9 @@ private val ChalkMuted = Color(0xFFB7B2A8)
 private val LineDark = Color(0xFF353943)
 private val LineStrongDark = Color(0xFF848997)
 private val BlueDark = Color(0xFF82A2FF)
+// Large-fill cobalt for Dark — see ExtendedColors.primaryTile. Measured: luminance 0.0922, under
+// the dark result red's 0.4072 so it recedes behind the answer, and 6.48:1 with Chalk text.
+private val PrimaryTileDark = Color(0xFF2E4DB5)
 private val BlueSoftDark = Color(0xFF263454)
 private val RedDark = Color(0xFFFF8A75)
 private val OrangeDark = Color(0xFFFFC078)
@@ -106,6 +110,24 @@ data class ExtendedColors(
     val accentBackdropAlpha: Float,
     val accents: AccentPalette,
     val mediaSurface: Color,
+    /**
+     * The fill for a *large* primary surface — Home's scan tile, the label scanner's capture
+     * button. Distinct from `colorScheme.primary`, which is correct for text, icons, borders and
+     * ordinary buttons but wrong at tile scale in Dark.
+     *
+     * In Light the two are the same colour. In Dark they diverge, and that divergence is the whole
+     * reason this token exists: `primary` there is the pale cobalt `#82A2FF`, which is right for a
+     * 17sp link and inverts the hierarchy when it is spread over an 88dp tile — the tile became
+     * the brightest object on the screen, brighter than the coral carbohydrate result it must never
+     * outrank. [primaryTile] is a deep cobalt instead, so the tile reads as the dominant *action*
+     * by area and saturation while the result stays dominant by luminance.
+     *
+     * Pinned by `ContrastTest` (>= 4.5:1 with [onPrimaryTile]) and `AccentRecessionTest`
+     * (luminance below the result red's), because "looks fine" is exactly how the pale version
+     * shipped.
+     */
+    val primaryTile: Color,
+    val onPrimaryTile: Color,
 )
 
 /**
@@ -143,6 +165,8 @@ private val LightExtendedColors = ExtendedColors(
     accentBackdropAlpha = 0.16f,
     accents = LightAccents,
     mediaSurface = MediaSurfaceLight,
+    primaryTile = Blue,
+    onPrimaryTile = WarmWhite,
 )
 
 private val DarkExtendedColors = ExtendedColors(
@@ -157,6 +181,8 @@ private val DarkExtendedColors = ExtendedColors(
     accentBackdropAlpha = 0.26f,
     accents = DarkAccents,
     mediaSurface = MediaSurfaceDark,
+    primaryTile = PrimaryTileDark,
+    onPrimaryTile = Chalk,
 )
 
 /**
@@ -260,14 +286,28 @@ object Space {
     val xl = 32.dp
     val xxl = 48.dp
 
-    /** Card radius (design tokens: 16-22px, 18 most common). */
-    val cardRadius = 22.dp
+    /**
+     * Card radius.
+     *
+     * Stepped 22 -> 16 in the 2026-09-22 visual pass. At 22dp on an 80dp-tall container the corner
+     * arc consumes more than a quarter of the edge, which reads as bubbly rather than precise; the
+     * personality is carried by the wordmark, the numerals and the tomato red, not the corners.
+     */
+    val cardRadius = 16.dp
 
-    /** Buttons and inputs (design tokens: 14-18px). */
-    val buttonRadius = 14.dp
+    /** Buttons and inputs (stepped 14 -> 12 with [cardRadius], so a control inside a card nests). */
+    val buttonRadius = 12.dp
 
-    /** Product imagery. */
-    val mediaRadius = 20.dp
+    /** Product imagery and thumbnails. Matches [buttonRadius] so media and controls agree. */
+    val mediaRadius = 12.dp
+
+    /**
+     * Small accent icon plates (the 40dp and 36dp squares behind a destination icon).
+     *
+     * Tighter than [buttonRadius] because the plate is smaller: the same radius on a 36dp square
+     * would read as a circle-ish blob rather than a square with softened corners.
+     */
+    val plateRadius = 10.dp
 
     /** Chips stay pill-shaped — their whole affordance is "chip", and it should not be diluted. */
     val chipRadius = 999.dp
@@ -294,8 +334,26 @@ object Space {
     val resultElevation = 6.dp
     val cardElevation = 0.dp
 
-    /** Pinned bottom sheet top corners (design tokens: 32px). */
-    val sheetTopRadius = 28.dp
+    /** Pinned bottom sheet / result dock top corners (stepped 28 -> 24 with the radius system). */
+    val sheetTopRadius = 24.dp
+
+    /**
+     * A secondary action's height, and the height of a text field.
+     *
+     * Three control heights exist and no more: [primaryButtonHeight] 56dp, this 48dp, and
+     * [valueButtonHeight] 40dp for compact numeric shortcuts. Equal to [minTouchTarget], which is
+     * the point — a secondary action is exactly as tall as it has to be to be tappable.
+     */
+    val secondaryButtonHeight = 48.dp
+
+    /**
+     * A compact value button (`-25`, `1/2 pack`, a usual portion).
+     *
+     * Below [minTouchTarget] as a *visual* height only: every call site adds 4dp of vertical
+     * padding around the row so the touch target still clears 48dp. These appear in rows of four,
+     * and at 48dp each the adjust and pack rows alone were 96dp of the calculator's height.
+     */
+    val valueButtonHeight = 40.dp
 }
 
 /**
@@ -321,14 +379,31 @@ object Motion {
  * carbohydrate result. Both are given weights and sizes nothing else on the screen competes with.
  */
 object NumberType {
-    /** The dominant result, e.g. `31 g`. */
+    /**
+     * The dominant result, e.g. `31 g`.
+     *
+     * `lineHeight` equals `fontSize` and the extra leading is trimmed, which is what lets the unit
+     * sit on the numeral's own baseline.
+     *
+     * Material's default leading adds space above the ascent and below the descent. With
+     * `Alignment.Bottom` (what this Row used before) the *box* bottoms were aligned rather than the
+     * baselines, and because the 72sp numeral carries far more descent padding than the 26sp unit,
+     * the `g` was pushed below the numeral's baseline and rendered as a subscript — visible on
+     * every result surface in the app. Baseline alignment alone does not fix it either: an
+     * untrimmed line box still reserves asymmetric leading that offsets the first baseline. So the
+     * leading is removed here and `alignByBaseline()` is applied in [ResultValue].
+     */
     val result = TextStyle(
         fontFamily = SpaceGrotesk,
         fontSize = 72.sp,
-        lineHeight = 76.sp,
+        lineHeight = 72.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = (-2).sp,
         textAlign = TextAlign.Center,
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both,
+        ),
     )
 
     /**
@@ -367,8 +442,15 @@ object NumberType {
     val resultUnit = TextStyle(
         fontFamily = SpaceGrotesk,
         fontSize = 26.sp,
+        lineHeight = 26.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = (-0.5).sp,
+        // Trimmed for the same reason as [result]: two text boxes can only share a baseline
+        // cleanly when neither reserves leading the other does not.
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both,
+        ),
     )
 
     /** The portion being edited. */

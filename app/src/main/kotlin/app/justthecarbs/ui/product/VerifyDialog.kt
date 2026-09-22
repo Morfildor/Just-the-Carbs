@@ -29,6 +29,8 @@ import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.Product
 import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.jtcDialogOutline
+import app.justthecarbs.ui.components.JtcFilterChip
+import app.justthecarbs.ui.components.jtcTextFieldColors
 import app.justthecarbs.ui.theme.Space
 import java.math.BigDecimal
 
@@ -87,31 +89,38 @@ fun VerifyDialog(
                     label = { Text(stringResource(R.string.manual_name)) },
                     singleLine = true,
                     shape = RoundedCornerShape(Space.buttonRadius),
+                    colors = jtcTextFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
 
                 OutlinedTextField(
                     value = carbs,
                     onValueChange = { carbs = it },
-                    label = { Text(stringResource(R.string.manual_carbs)) },
+                    // The unit argument, which was missing: `manual_carbs` is
+                    // "Carbs per 100 %1$s", and resolving it with no argument rendered the literal
+                    // placeholder to the user -- in the one dialog whose whole job is transcribing
+                    // a figure off a package. It tracks the selected chip below, so switching
+                    // g/ml relabels the field, exactly as it does on the manual-entry screen.
+                    label = { Text(stringResource(R.string.manual_carbs, basis.unitLabel)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = carbs.isNotBlank() && validCarbs == null,
                     shape = RoundedCornerShape(Space.buttonRadius),
+                    colors = jtcTextFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                    FilterChip(
+                    JtcFilterChip(
                         selected = basis == NutritionBasis.PER_100_G,
                         onClick = { basis = NutritionBasis.PER_100_G },
-                        label = { Text(stringResource(R.string.manual_basis_g)) },
+                        label = stringResource(R.string.manual_basis_g),
                         modifier = Modifier.heightIn(min = Space.minTouchTarget),
                     )
-                    FilterChip(
+                    JtcFilterChip(
                         selected = basis == NutritionBasis.PER_100_ML,
                         onClick = { basis = NutritionBasis.PER_100_ML },
-                        label = { Text(stringResource(R.string.manual_basis_ml)) },
+                        label = stringResource(R.string.manual_basis_ml),
                         modifier = Modifier.heightIn(min = Space.minTouchTarget),
                     )
                 }

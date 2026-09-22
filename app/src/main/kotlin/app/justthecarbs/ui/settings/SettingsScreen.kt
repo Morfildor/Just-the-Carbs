@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -58,7 +60,6 @@ import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.ThemeChoice
 import app.justthecarbs.ocr.ScanEvidenceExport
 import app.justthecarbs.ocr.ScanEvidenceRecorder
-import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.SectionLabel
@@ -101,10 +102,9 @@ fun SettingsScreen(
     val context = LocalContext.current
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        AccentBackdrop(
-            accent = Destination.SETTINGS.accent(),
-            modifier = Modifier.align(Alignment.TopEnd),
-        )
+        // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
+        // it sat behind the top bar's trailing controls, and decoration may not share a level with
+        // a control. The destination is identified by JtcTopBar's DestinationMarker instead.
 
         Column(
             modifier = Modifier
@@ -209,15 +209,14 @@ fun SettingsScreen(
                 HorizontalDivider()
 
                 SectionLabel(stringResource(R.string.settings_about))
-                Text(
-                    text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                // The one item in this section that is marketing rather than utility, so it leads
-                // rather than sitting between Feedback and the safety box as one more plain text row.
-                RateUsCard(
+                // A plain row with a leading amber star, not a bordered card with a five-star
+                // graphic, a headline, a body paragraph and a gold button.
+                //
+                // That treatment was the loudest object on a screen of quiet rows, and it was the
+                // only place in the app spending a saturated fill on something that is not an
+                // action the user came to take. A row named `Rate on Google Play` beside one
+                // amber star says the same thing and lets the list read as a list.
+                RateRow(
                     failed = rateLinkFailed,
                     onClick = {
                         try {
@@ -321,6 +320,19 @@ fun SettingsScreen(
                     modifier = Modifier.padding(top = Space.xs),
                 )
 
+                // The version, last.
+                //
+                // It used to be the FIRST thing under `About`, in bodyMedium, above the rating
+                // card and the privacy and feedback rows -- so the section opened with the one
+                // line in it nobody navigates to. It is a colophon: useful when reporting a bug,
+                // and otherwise the quietest thing on the screen.
+                Text(
+                    text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Space.s),
+                )
+
                 // Debug builds only, and gated on the recorder's own flag rather than a second copy of
                 // the condition — in a release build `enabled` is a compile-time false, so this whole
                 // block is removed along with the recorder itself. It is intentionally the last thing on
@@ -391,6 +403,9 @@ fun SettingsScreen(
     // values go too, because that is the part the user would regret.
     if (confirmClearRecents) {
         ConfirmDialog(
+            // The title names the row that opened it, so the modal is unambiguous about which of
+            // the two destructive actions is about to run.
+            title = stringResource(R.string.settings_clear_recents),
             message = stringResource(R.string.settings_clear_recents_confirm),
             onConfirm = { confirmClearRecents = false; onClearRecents() },
             onDismiss = { confirmClearRecents = false },
@@ -398,6 +413,7 @@ fun SettingsScreen(
     }
     if (confirmClearProducts) {
         ConfirmDialog(
+            title = stringResource(R.string.settings_clear_products),
             message = stringResource(R.string.settings_clear_products_confirm),
             onConfirm = { confirmClearProducts = false; onClearProducts() },
             onDismiss = { confirmClearProducts = false },
@@ -406,22 +422,11 @@ fun SettingsScreen(
 }
 
 /**
- * The Play Store rating ask (§43 amendment): our own marketing, so it reads as an invitation rather
- * than one more configuration row. Amber rather than the primary blue — blue is already spent on
- * every ordinary action/link in this screen, and amber is the accent already associated with a
- * "gold star" reading elsewhere in the palette (see [app.justthecarbs.ui.theme.AccentPalette]).
+ * The Appearance / Result-style segmented control.
  *
- * The card tint stays at the same low, text-safe opacity the safety card uses for `orangeSoft`
- * rather than introducing a second saturated fill: the accent-recession rule that keeps this app's
- * accents out of the result figure's way applies just as much to a card that competes for attention
- * on this screen with the actual settings controls. The button itself is the one deliberate
- * exception — `colorScheme.tertiary` (the brighter, saturated `Orange`/`OrangeDark` token, already
- * used for the meal accent) rather than the text-safe amber, because a call-to-action is meant to
- * stand out and amber measured as too close in hue to the safety card immediately below it to read
- * as a distinct, inviting action. White text on that fill fails contrast badly (measured 1.9:1 in
- * light, 1.7:1 in dark — nowhere near the 4.5:1 floor every other label in this app clears), so the
- * button label uses tertiary's explicit paired foreground, which clears it by a wide margin
- * (9.15:1 / 10.8:1) without coupling the CTA to the page background.
+ * Kept exactly as it was -- it is on the report's preserve list. (The KDoc that used to sit here
+ * described `RateUsCard`, which lived further down the file; that card is gone and its
+ * documentation with it.)
  */
 @Composable
 private fun SettingsChoiceSegment(
@@ -476,62 +481,43 @@ private fun SettingsChoiceSegment(
     }
 }
 
+/**
+ * `Rate on Google Play`, as one settings row.
+ *
+ * Replaces a bordered, amber-tinted card carrying a five-star graphic, a headline, a body
+ * paragraph and a saturated gold button. All of that was doing marketing work on the one screen
+ * where the user came to change a setting, and it was the loudest object on it -- a saturated fill
+ * spent on something that is not the task at hand, directly above the orange informational box
+ * that IS meant to be the screen's one coloured surface.
+ *
+ * What survives is the amber, at 20dp, as a single leading star. The row is then structurally the
+ * same as every other row in this section, so the list reads as a list.
+ */
 @Composable
-private fun RateUsCard(failed: Boolean, onClick: () -> Unit) {
+private fun RateRow(failed: Boolean, onClick: () -> Unit) {
     val amber = MaterialTheme.extendedColors.accents.amber
-    val gold = MaterialTheme.colorScheme.tertiary
-    val onGold = MaterialTheme.colorScheme.onTertiary
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Space.cardRadius))
-            .background(amber.copy(alpha = 0.12f))
-            .border(1.dp, amber.copy(alpha = 0.35f), RoundedCornerShape(Space.cardRadius))
-            .padding(Space.m),
-        verticalArrangement = Arrangement.spacedBy(Space.s),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-            repeat(5) {
-                Icon(
-                    imageVector = Icons.Filled.Star,
-                    contentDescription = null,
-                    tint = amber,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-        Text(
-            text = stringResource(R.string.settings_rate_headline),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = stringResource(R.string.settings_rate_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    val label = stringResource(R.string.settings_rate)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
-                .padding(top = Space.xs)
+                .fillMaxWidth()
                 .heightIn(min = Space.minTouchTarget)
-                .clip(RoundedCornerShape(Space.buttonRadius))
-                .background(gold)
                 .clickable(onClick = onClick)
-                .semantics(mergeDescendants = true) { role = Role.Button }
-                .padding(horizontal = Space.m),
+                .semantics(mergeDescendants = true) { role = Role.Button },
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            Text(
-                text = stringResource(R.string.settings_rate),
-                style = MaterialTheme.typography.labelLarge,
-                color = onGold,
-            )
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                imageVector = Icons.Filled.Star,
                 contentDescription = null,
-                tint = onGold,
-                modifier = Modifier.size(18.dp),
+                tint = amber,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(Space.s + Space.xs))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
         if (failed) {
@@ -539,6 +525,7 @@ private fun RateUsCard(failed: Boolean, onClick: () -> Unit) {
                 text = stringResource(R.string.settings_rate_link_failed),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = Space.s),
             )
         }
     }
@@ -568,7 +555,19 @@ private fun SettingsAction(
     destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val labelColor = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    // Every settings row's label is ink, including the destructive ones.
+    //
+    // This reverses the earlier decision to colour `Clear recent history` and `Clear saved
+    // products` in `error` red. The reasoning then was that colour was the only signal available
+    // on this row shape -- true at the time, and the fix chosen made a settings list read as a
+    // warning screen with two alarms permanently lit, which is how a real warning stops being
+    // noticed. The red moves to where the decision actually is: the confirm button inside the
+    // dialog, which is also where the row's verb now appears (`Clear`).
+    //
+    // The safety net is unchanged and was always the real one: both rows still gate behind a
+    // confirmation dialog, and that dialog now states its title, so the destructive nature is
+    // carried in words rather than by hue alone -- which is this app's standing accessibility rule.
+    val labelColor = MaterialTheme.colorScheme.onSurface
     if (supporting == null) {
         Text(
             text = text,
@@ -579,7 +578,10 @@ private fun SettingsAction(
                 .heightIn(min = Space.minTouchTarget)
                 .clickable(enabled = enabled, onClick = onClick)
                 .semantics { role = Role.Button }
-                .padding(vertical = 12.dp),
+                // `heightIn(48)` above plus centring, rather than 12dp of padding on top of an
+                // already-48dp floor, which made every plain row 24dp taller than it needed to be
+                // and stretched a four-row section down the page.
+                .wrapContentHeight(Alignment.CenterVertically),
         )
         return
     }
@@ -606,8 +608,23 @@ private fun SettingsAction(
     }
 }
 
+/**
+ * A destructive confirmation.
+ *
+ * Titled, and the confirm button says the row's own verb.
+ *
+ * It used to be untitled with a generic confirm label, so a modal that permanently deletes stored
+ * products opened with a paragraph of body text and two equally-weighted words. The title names
+ * what is about to happen and the verb matches the row that opened it, which is what lets the
+ * destructive rows above drop their red -- the decision point carries the weight, not the list.
+ */
 @Composable
-private fun ConfirmDialog(message: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+private fun ConfirmDialog(
+    title: String,
+    message: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.jtcDialogOutline(),
@@ -617,9 +634,15 @@ private fun ConfirmDialog(message: String, onConfirm: () -> Unit, onDismiss: () 
         titleContentColor = JtcDialogDefaults.titleContentColor,
         textContentColor = JtcDialogDefaults.textContentColor,
         tonalElevation = JtcDialogDefaults.tonalElevation,
+        title = { Text(title) },
         text = { Text(message) },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.settings_confirm)) }
+            TextButton(onClick = onConfirm) {
+                Text(
+                    text = stringResource(R.string.settings_confirm_clear),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.settings_cancel)) }

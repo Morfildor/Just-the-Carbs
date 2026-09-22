@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -42,7 +41,9 @@ fun ResultValue(
     testTag: String? = null,
 ) {
     Row(
-        verticalAlignment = Alignment.Bottom,
+        // Baselines, not box bottoms. See NumberType.result's KDoc for the subscript defect this
+        // replaced: the unit is a label on the numeral and must sit on the numeral's own baseline.
+        // Each child adds alignByBaseline(); the Row needs no verticalAlignment of its own.
         modifier = modifier
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             // One coherent node for TalkBack: without this the numeral and the unit are two
@@ -60,6 +61,7 @@ fun ResultValue(
             // Shrinks rather than clips — see NumberType.resultAutoSize's own KDoc.
             autoSize = NumberType.resultAutoSize,
             textAlign = TextAlign.Start,
+            modifier = Modifier.alignByBaseline(),
         )
         Spacer(Modifier.width(Space.xs))
         Text(
@@ -67,6 +69,7 @@ fun ResultValue(
             style = NumberType.resultUnit,
             color = color,
             maxLines = 1,
+            modifier = Modifier.alignByBaseline(),
         )
     }
 }

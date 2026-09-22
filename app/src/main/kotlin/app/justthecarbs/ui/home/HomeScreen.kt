@@ -148,6 +148,7 @@ import app.justthecarbs.ui.search.SearchingLine
 import app.justthecarbs.ui.search.SearchViewModel
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.Motion
+import app.justthecarbs.ui.components.jtcTextFieldColors
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
@@ -618,11 +619,15 @@ private fun HomeSearchField(
         value = query,
         onValueChange = onQueryChanged,
         singleLine = true,
-        // Labelled "Search products", not just hinted: the placeholder alone ("Product or brand
-        // name") never says the word *search*, which left the magnifier glyph carrying the entire
-        // discovery burden for one of the app's three ways in.
-        label = { Text(stringResource(R.string.home_search_label)) },
-        placeholder = { Text(stringResource(R.string.search_hint)) },
+        // The placeholder now says "Search products" and there is no floating `label`.
+        //
+        // The label was added because the old placeholder ("Product or brand name") never used the
+        // word *search*, leaving the magnifier glyph to carry the whole affordance. That problem is
+        // real and this keeps the fix -- it just moves the words into the placeholder rather than
+        // showing both. A floating label on a search bar animates up on focus and then sits in the
+        // field's top border, which is one more moving edge on the screen the pass is de-cluttering,
+        // and search bars across the platform are placeholder-only.
+        placeholder = { Text(stringResource(R.string.home_search_label)) },
         // Tapping the leading icon also submits: it sits where a "search" affordance is expected,
         // in addition to the IME action, without adding a second visible button to this compact field.
         //
@@ -662,12 +667,10 @@ private fun HomeSearchField(
             }
         },
         shape = RoundedCornerShape(Space.buttonRadius),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-        ),
+        // The shared field colours: a quiet fill with no border at rest, primary only on focus.
+        // The permanent `outlineVariant` border this replaces was the topmost of the stacked edges
+        // that made Home read as a column of boxes.
+        colors = jtcTextFieldColors(),
         modifier = modifier.fillMaxWidth().testTag(HOME_SEARCH_FIELD_TAG),
     )
 }
@@ -1001,10 +1004,23 @@ private fun HomeActionCard(
 ) {
     val shape = RoundedCornerShape(Space.cardRadius)
     val description = stringResource(R.string.home_action_description, title, subtitle)
-    val containerColor = if (filled) accent else MaterialTheme.colorScheme.surfaceContainerLowest
-    val contentColor = if (filled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    // `primaryTile`, not the passed `accent`, for the filled variant.
+    //
+    // In Light the two are the same cobalt. In Dark `colorScheme.primary` is the pale `#82A2FF`,
+    // which spread over an 88dp tile made the tile the brightest object on the screen -- brighter
+    // than the coral carbohydrate result it must never outrank. See ExtendedColors.primaryTile.
+    val containerColor = if (filled) {
+        MaterialTheme.extendedColors.primaryTile
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerLowest
+    }
+    val contentColor = if (filled) {
+        MaterialTheme.extendedColors.onPrimaryTile
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
     val supportingColor = if (filled) {
-        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.88f)
+        MaterialTheme.extendedColors.onPrimaryTile.copy(alpha = 0.88f)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -1012,16 +1028,23 @@ private fun HomeActionCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = if (filled) 5.dp else 0.dp,
-                shape = shape,
-                ambientColor = accent.copy(alpha = 0.18f),
-                spotColor = accent.copy(alpha = 0.18f),
-            )
             .clip(shape)
             .background(containerColor)
+            // Flat, and outlined with the ordinary card hairline rather than a tinted accent border.
+            //
+            // Two changes, both about edges. The filled tile had a 5dp accent-tinted shadow: the
+            // result dock is meant to be the only elevated surface in the app, and a second one on
+            // Home diluted that to "elevation is decoration". The outlined tile had a 1dp border at
+            // 52% of its destination accent -- the teal ring the report singles out -- which made
+            // the quiet sibling of a pair read as a differently-coloured object rather than as the
+            // same object, quieter. The teal now appears only inside the icon plate, which is the
+            // one place a destination accent is allowed at this size.
             .then(
-                if (filled) Modifier else Modifier.border(1.dp, accent.copy(alpha = 0.52f), shape),
+                if (filled) {
+                    Modifier
+                } else {
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                },
             )
             .clickable(onClick = onClick)
             .semantics(mergeDescendants = true) {
@@ -1031,16 +1054,25 @@ private fun HomeActionCard(
             .padding(horizontal = Space.m, vertical = Space.m + Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // The icon plate is where a destination accent is allowed to appear, and the only place
+        // on this card: a 40dp square at `plateRadius`, 10-16% tint, accent-tinted icon.
         Box(
             modifier = Modifier
                 .size(Space.minTouchTarget)
                 .background(
                     if (filled) contentColor.copy(alpha = 0.16f) else accent.copy(alpha = 0.12f),
-                    RoundedCornerShape(12.dp),
+                    RoundedCornerShape(Space.plateRadius),
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(24.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                // The accent on the quiet tile, so the pair is one loud and one quiet version of
+                // the same anatomy rather than two different cards.
+                tint = if (filled) contentColor else accent,
+                modifier = Modifier.size(22.dp),
+            )
         }
 
         Column(modifier = Modifier.weight(1f).padding(horizontal = Space.m)) {
@@ -1056,7 +1088,7 @@ private fun HomeActionCard(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = contentColor,
+            tint = if (filled) contentColor else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -1084,7 +1116,10 @@ private fun TutorialReminderCard(onStart: () -> Unit, onDismiss: () -> Unit) {
             .fillMaxWidth()
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-            .border(1.dp, accent.copy(alpha = 0.35f), shape)
+            // The ordinary card hairline. A violet-tinted border made this the third differently
+            // outlined object in Home's first screenful, alongside the search field and the teal
+            // label tile -- the violet now lives only in the icon plate.
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .padding(Space.m)
             .testTag(HOME_TUTORIAL_REMINDER_TAG),
         verticalArrangement = Arrangement.spacedBy(Space.s),
@@ -1093,7 +1128,10 @@ private fun TutorialReminderCard(onStart: () -> Unit, onDismiss: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(36.dp)
-                    .background(accent.copy(alpha = 0.14f), CircleShape),
+                    // A square at `plateRadius`, like every other icon plate in the app. The
+                    // circle here was the odd one out: four plate shapes existed across the app
+                    // (48/12, 36/10, 36 circle, 40 circle) for one job.
+                    .background(accent.copy(alpha = 0.14f), RoundedCornerShape(Space.plateRadius)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -1220,13 +1258,14 @@ private fun RecentCard(
         }
     }
 
-    // Recent items share the primary spine; favourites use violet alongside the visible star.
-    // Colour reinforces hierarchy but never carries the favourite state alone.
-    val spine = if (product.favorite) {
-        MaterialTheme.extendedColors.accents.violet
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
+    // No spine. It was a 4dp accent bar down the card's leading edge, blue on an ordinary recent
+    // and violet on a favourite -- a second, quieter statement of a fact the filled star already
+    // makes unambiguously, spending the interaction colour on a decoration attached to every row.
+    //
+    // The accessibility rule it was written under is unaffected and still holds: the favourite
+    // state was NEVER carried by the spine's colour alone, which is exactly why removing it costs
+    // nothing. The star is filled or not, and `FavoriteButton` announces "Remove favourite" or
+    // "Add favourite" either way.
 
     // The card's own options, opened by long press and by nothing else on screen.
     //
@@ -1267,23 +1306,17 @@ private fun RecentCard(
                         menuOpen = true
                     },
                 )
-                // The spine needs its own left margin. At `start = 0.dp` it sat flush against the
-                // card's 18dp corner radius and read as overflowing the rounded edge rather than
-                // sitting inside it — the same defect the top bar's spine had at 8dp, on a surface
-                // whose curve makes it more obvious. Visible only on a device; the layout is
-                // "correct" either way and no assertion looks at it.
-                .padding(start = Space.s + Space.xs, top = Space.s + 2.dp, bottom = Space.s + 2.dp, end = Space.s + Space.xs),
+                // A plain 12dp inset now the spine is gone. It used to be 12dp to the spine plus
+                // 12dp from the spine to the thumbnail, which with the spine removed would have
+                // left the thumbnail floating 24dp in from a card edge nothing else respects.
+                .padding(
+                    start = Space.s + Space.xs,
+                    top = Space.s + 2.dp,
+                    bottom = Space.s + 2.dp,
+                    end = Space.s + Space.xs,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(spine),
-            )
-            Spacer(Modifier.width(Space.s + Space.xs))
-
             ProductThumbnail(product = product)
 
             // Two rows that line up across the card: identity with its answer, then the remembered

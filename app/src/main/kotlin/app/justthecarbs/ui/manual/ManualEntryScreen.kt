@@ -49,7 +49,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
-import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
@@ -73,10 +72,9 @@ fun ManualEntryScreen(
     onBack: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        AccentBackdrop(
-            accent = Destination.MANUAL.accent(),
-            modifier = Modifier.align(Alignment.TopEnd),
-        )
+        // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
+        // it sat behind the top bar's trailing controls, and decoration may not share a level with
+        // a control. The destination is identified by JtcTopBar's DestinationMarker instead.
 
         Column(
             modifier = Modifier

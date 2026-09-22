@@ -48,7 +48,6 @@ import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.AppSettings
-import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
@@ -59,6 +58,7 @@ import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 
 /** Stable handles for instrumented tests. */
 const val MEAL_TOTAL_TAG = "meal_total"
@@ -140,10 +140,9 @@ fun MealScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        AccentBackdrop(
-            accent = Destination.MEAL.accent(),
-            modifier = Modifier.align(Alignment.TopEnd),
-        )
+        // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
+        // it sat behind the top bar's trailing controls, and decoration may not share a level with
+        // a control. The destination is identified by JtcTopBar's DestinationMarker instead.
 
         Column(
             modifier = Modifier
@@ -247,8 +246,30 @@ private fun EmptyMeal(modifier: Modifier = Modifier) {
 private fun MealItemRow(item: MealItem, onRemove: () -> Unit) {
     val removeLabel = stringResource(R.string.meal_remove_item, item.displayName)
 
+    // The carbohydrate figure is separated from the portion metadata.
+    //
+    // It used to be the second half of one grey supporting line -- "35 g · 23.5 g" in
+    // `onSurfaceVariant` -- so the number the user came for was typographically identical to the
+    // portion beside it, and both were quieter than the product name. A meal is a list of answers;
+    // the answers now sit in their own trailing column in result-red, the same red the calculator
+    // and the total use for the same fact.
+    //
+    // The spoken description is unchanged and still reads the two together as one sentence: the
+    // visual split is a sighted-reading affordance, and separating them for TalkBack would make a
+    // screen-reader user reassemble the row from fragments.
+    val spokenSummary = stringResource(
+        R.string.meal_item_summary,
+        item.portionDescription,
+        ResultFormatter.decimal(item.exactCarbs),
+    )
+
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = Space.s),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = Space.s)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${item.displayName}. $spokenSummary"
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -259,15 +280,23 @@ private fun MealItemRow(item: MealItem, onRemove: () -> Unit) {
                 maxLines = 2,
             )
             Text(
-                text = stringResource(
-                    R.string.meal_item_summary,
-                    item.portionDescription,
-                    ResultFormatter.decimal(item.exactCarbs),
-                ),
+                text = item.portionDescription,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+
+        Spacer(Modifier.width(Space.s))
+
+        Text(
+            text = stringResource(
+                R.string.meal_row_carbs,
+                ResultFormatter.decimal(item.exactCarbs),
+            ),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.extendedColors.result,
+            maxLines = 1,
+        )
 
         IconButton(
             onClick = onRemove,
@@ -300,9 +329,19 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
             .clip(panelShape)
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .navigationBarsPadding()
-            .padding(horizontal = Space.screenEdge, vertical = Space.l),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .padding(
+                start = Space.screenEdge,
+                end = Space.screenEdge,
+                top = Space.m,
+                bottom = Space.l,
+            ),
+        // Left, not centred.
+        //
+        // Centring was the ONLY thing the two docks disagreed about: identical surface, identical
+        // elevation, identical eyebrow/numeral/whole-gram anatomy, one centred and one left. The
+        // result of a calculation and the total of a meal are the same kind of number in the same
+        // place, and reading them in two different alignments made the app look like two apps.
+        horizontalAlignment = Alignment.Start,
     ) {
         Text(
             text = stringResource(R.string.meal_total_label),
@@ -345,20 +384,22 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
             // The button is placed in the spacer that balances it on the left, so the total itself
             // stays optically centred in the panel rather than being pushed off-centre by the
             // button's width. Both spacers are the same minimum touch target the button occupies.
+            // The numeral leads and the copy button sits at the trailing edge, exactly as it does
+            // on the calculator. The balancing left spacer that used to keep a centred total
+            // optically centred is gone with the centring.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Spacer(Modifier.width(Space.minTouchTarget))
-
                 ResultValue(
                     dominant = dominantNumeral,
                     unit = resultUnit,
                     accessibleLabel = accessibleResult,
                     testTag = MEAL_TOTAL_TAG,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f),
                 )
+
+                Spacer(Modifier.width(Space.s))
 
                 CopyResultButton(
                     value = ResultFormatter.clipboardValue(total, settings.resultStyle),

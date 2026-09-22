@@ -9,9 +9,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
-import app.justthecarbs.ui.components.ProductHeroImage
+import app.justthecarbs.ui.components.JtcFilterChip
+import app.justthecarbs.ui.components.JtcValueButton
+import app.justthecarbs.ui.components.ProductIdentityRow
+import app.justthecarbs.ui.components.jtcTextFieldColors
 import app.justthecarbs.ui.components.ProductGalleryDialog
-import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.DestinationMarker
 import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
@@ -38,6 +40,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -45,8 +49,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -280,11 +286,9 @@ fun ProductScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // Compact nutrition-bar motif: decorative, behind content, and never touch-interactive.
-        AccentBackdrop(
-            accent = Destination.PRODUCT.accent(),
-            modifier = Modifier.align(Alignment.TopEnd),
-        )
+        // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
+        // it sat behind the top bar's trailing controls, and decoration may not share a level with
+        // a control. The destination is identified by JtcTopBar's DestinationMarker instead.
 
         Column(
             modifier = Modifier
@@ -597,12 +601,6 @@ private fun CalculatorBody(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // Saved-product identity leads the scrolling content (brief §4, §19).
-        //
-        // The hero image is the first thing on the screen because the first question the user has,
-        // before they trust any number, is "is this the package in my hand?". It compacts while the
-        // keyboard is open: identification matters before typing, the portion and result matter
-        // during it.
         // Read from the IME inset's height rather than the experimental `isImeVisible`, which is a
         // stable API giving the same fact. Non-zero means the keyboard is taking screen space.
         val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -611,18 +609,70 @@ private fun CalculatorBody(
         val countableActive = state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null
         val portionScroll = rememberScrollState()
 
-        // A quick calculation has no product image. Keep its summary above the centred input,
-        // while a saved product scrolls its identity together with the portion controls. On a
-        // short screen this lets the pinned result panel claim its natural height first instead
-        // of being squeezed by the fixed image and summary above it.
-        if (state.unsaved) {
-            ProductSummary(
+        // The reading order is identity -> portion -> result, and it is now a fixed frame rather
+        // than a stack whose first element could grow without limit.
+        //
+        // What changed in the 2026-09-22 visual pass, and why: the identity block used to open
+        // with a photo sized at 28% of the screen height (150-280dp), which together with a
+        // three-line provenance block and a dock carrying both a meal bar and a provenance
+        // sentence pushed the portion field underneath the dock on the reference phone, and off
+        // the screen entirely at 360x720dp or 1.3x text. Identity is now one compact row. See
+        // [app.justthecarbs.ui.components.ProductIdentityRow].
+        //
+        // The meal strip moved OUT of the dock and up here, directly under the top bar. It is
+        // status -- "there is a meal in progress" -- not part of the answer, and inside the dock
+        // it competed with the result for the one elevated surface on the screen while taking
+        // height from the controls above it. It sits below the bar rather than in it, so a
+        // two-line product title cannot collide with it.
+        MealBarIfPresent(
+            itemCount = state.mealItems.size,
+            total = state.mealTotal,
+            onClick = onOpenMeal,
+            modifier = Modifier.padding(horizontal = Space.screenEdge),
+        )
+
+        // Identity: a compact thumbnail beside the per-100 figure, its provenance badge and the
+        // Verify link. One row, whatever the product is. A quick calculation has no name, so
+        // ProductIdentityRow omits the thumbnail rather than rendering a monogram plate derived
+        // from an empty string -- which read as a product record that had failed to load.
+        //
+        // OUTSIDE the scrolling zone, pinned under the top bar -- except while the keyboard is
+        // open, when it is hidden entirely.
+        //
+        // Hiding it is the last height available on the tightest configuration the report names:
+        // 360x720dp at 1.3x text with the IME up leaves about 390dp for the whole screen once the
+        // keyboard has taken its third. With the identity row pinned, the portion field was still
+        // cut through its lower edge by the dock -- measured, after the dock and the field had
+        // already given back everything they could.
+        //
+        // It is the right thing to drop, and this screen already applies the same rule to the
+        // badge hint, the provenance line and the save action. Identity answers "is this the right
+        // product?", which is a question the user has already answered by the time they are typing
+        // a portion into it; the name stays in the top bar throughout, so nothing that identifies
+        // the product actually leaves the screen. It returns the instant the keyboard closes.
+        //
+        // It was briefly inside it, and centring the zone's contents then floated the whole
+        // identity block 200px down the page, detached from the title it belongs to -- a worse
+        // defect than the trailing gap the centring was fixing. Identity is the answer to "is this
+        // the right product?", which is a question about the top of the screen; the portion group
+        // is what may float. It is short and fixed-height, so keeping it out of the scroll costs
+        // nothing even at a large font scale.
+        if (!imeVisible) {
+            ProductIdentityRow(
                 product = product,
-                compact = imeVisible,
-                onVerify = onVerify,
-                onVerifyByTyping = onVerifyByTyping,
-                modifier = Modifier.padding(horizontal = Space.screenEdge),
-            )
+                modifier = Modifier.padding(
+                    start = Space.screenEdge,
+                    end = Space.screenEdge,
+                    top = Space.s,
+                ),
+                onOpenGallery = onOpenGallery,
+            ) {
+                ProductSummary(
+                    product = product,
+                    onVerify = onVerify,
+                    onVerifyByTyping = onVerifyByTyping,
+                )
+            }
         }
 
         Column(
@@ -630,40 +680,35 @@ private fun CalculatorBody(
                 .weight(1f)
                 .fadeOutWhenMoreBelow(portionScroll)
                 .verticalScroll(portionScroll),
-            verticalArrangement = if (state.unsaved) Arrangement.Center else Arrangement.Top,
+            // The portion group floats in the middle of whatever room the dock leaves it.
+            //
+            // With the hero photo gone the controls no longer fill this zone at the default font
+            // scale, and anchored to the top that left ~145dp of empty page between the last
+            // control and the dock -- measured on the emulator, content ending at y=1297 against a
+            // zone ending at y=1906 -- which reads as an unfinished screen. The same defect the
+            // 2026-08-15 Home pass and the 2026-08-29 quick-calculation pass each hit once.
+            //
+            // Two other fixes were built and measured on the device first, and both are worse:
+            //
+            //  - `weight(1f, fill = false)` on this zone, or a weighted spacer as a SIBLING of it,
+            //    unpins the dock from the bottom edge. Seen on the emulator: the dock floated at
+            //    y=1133 with cream page below it, covering the pack row. This is exactly what the
+            //    2026-08-16 pass measured and rejected for this screen, and re-measuring it was
+            //    worth the round trip -- the argument that "the dock is still the last child of a
+            //    fillMaxSize Column so it must stay on the bottom" is wrong, and only running the
+            //    app showed that.
+            //  - Padding the zone by a fixed amount: a guess that is wrong at every font scale but
+            //    the one it was measured at.
+            //
+            // Centring is only safe because the identity row is pinned ABOVE this zone. While it
+            // was inside, centring floated identity 200px down the page away from the title it
+            // belongs to -- also measured, also on the device.
+            //
+            // It degrades correctly: the moment the content is taller than the zone there is no
+            // free space to distribute, and the layout is identical to `Top` with the scroll doing
+            // the work. That is the large-font-scale and short-screen case.
+            verticalArrangement = Arrangement.Center,
         ) {
-
-        // A quick calculation has no photo and no name, so the hero would identify nothing: the
-        // monogram is derived from the name printed above it, and with no name it renders as an
-        // empty coloured plate under an empty title — which reads as a product record that failed to
-        // load rather than as the reading the user just took. A *saved* product with no photo still
-        // gets its monogram, unchanged.
-        //
-        // An unsaved quick calculation keeps its short portion controls centred instead.
-        if (!state.unsaved && product.name.isNotEmpty()) {
-            ProductHeroImage(
-                product = product,
-                compact = imeVisible,
-                onClick = onOpenGallery,
-                modifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.s),
-            )
-        }
-
-        // The per-100 figure and its provenance, directly under the image they describe.
-        //
-        // `compact` drops the badge's advisory second line while the keyboard is open, for the same
-        // reason the hero shrinks there: "Check package if needed" is guidance to read *before*
-        // committing to a number, and during typing the portion field and the result need the room.
-        // Nothing is hidden that the user has not already had on screen.
-        if (!state.unsaved) {
-            ProductSummary(
-                product = product,
-                compact = imeVisible,
-                onVerify = onVerify,
-                onVerifyByTyping = onVerifyByTyping,
-                modifier = Modifier.padding(horizontal = Space.screenEdge),
-            )
-        }
 
         // Correction #5/#10: a newer online figure is offered, never imposed. The calculation the
         // user is looking at does not move unless they say so.
@@ -680,51 +725,54 @@ private fun CalculatorBody(
         // The product identity and controls share this scrolling space. The equation and result
         // stay in the pinned panel below; scrolling a long product never steals their height.
         Column(modifier = Modifier.padding(horizontal = Space.screenEdge)) {
-            // Dropped while the keyboard is open, for the same reason `SourceBadge` drops its
-            // advisory line: it is a prompt to start, and once the user is typing into a focused
-            // field it has been answered. Keeping it cost real legibility rather than height alone
-            // — with the IME up, the pinned result panel cut the line through the middle of its
-            // glyphs, and a half-rendered sentence reads as a broken screen. Verified on the
-            // emulator at 65 g with the keyboard open.
-            if (!imeVisible) {
-                Text(
-                    text = stringResource(R.string.product_portion_question),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center,
-                )
-            }
-
-            // Only rendered when countable units genuinely exist (§11 of the countable-portions
-            // brief) — a product with none keeps today's exact single-field layout, unchanged.
-            if (state.portionUnits.isNotEmpty()) {
-                Spacer(Modifier.height(Space.m))
-                PortionModeRow(
-                    units = state.portionUnits,
-                    selectedUnitId = state.selectedPortionUnitId,
-                    isGramsSelected = state.inputMode == InputMode.GRAMS,
-                    onSelectGrams = onSwitchToGrams,
-                    onSelectUnit = onSwitchToPortionUnit,
-                )
-            }
-
-            // Usual portions, above the input rather than below it: they are an alternative to
-            // typing, so they have to be seen before the user starts (§13). Absent entirely until a
-            // portion has been used twice, which is most of the time.
-            if (state.usualPortions.isNotEmpty()) {
-                Spacer(Modifier.height(Space.m))
-                UsualPortionRow(
-                    usages = state.usualPortions,
-                    units = state.portionUnits,
-                    basisUnit = product.portionUnit,
-                    onSelect = onSelectUsualPortion,
-                )
-            }
-
             Spacer(Modifier.height(Space.m))
+
+            // The portion group has a label, and the mode chips share its line.
+            //
+            // This replaces a centred `How much are you eating?` sentence, which did a field
+            // label's job in a full line of centred bodyLarge -- the only centred body text on the
+            // screen. The label plus the field's own greyed `0` placeholder say the same thing in
+            // a quarter of the height, and reclaiming that height is part of what makes the
+            // portion control a first-class object again rather than an afterthought under a photo.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.product_portion_group_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.weight(1f))
+                // Only rendered when countable units genuinely exist (§11 of the
+                // countable-portions brief) -- a product with none keeps a single field.
+                if (state.portionUnits.isNotEmpty()) {
+                    PortionModeRow(
+                        units = state.portionUnits,
+                        selectedUnitId = state.selectedPortionUnitId,
+                        isGramsSelected = state.inputMode == InputMode.GRAMS,
+                        onSelectGrams = onSwitchToGrams,
+                        onSelectUnit = onSwitchToPortionUnit,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(Space.s))
             if (countableActive) {
-                CountField(value = state.countText, unit = selectedUnit!!, onValueChange = onCountChanged)
+                // The countable branch has no adjust or pack rows to group the shortcuts with, so
+                // Usual stays above the field here -- it is the only alternative to typing on this
+                // path, and below the field it would sit under the status row instead of beside
+                // the input it fills.
+                if (state.usualPortions.isNotEmpty()) {
+                    UsualPortionRow(
+                        usages = state.usualPortions,
+                        units = state.portionUnits,
+                        basisUnit = product.portionUnit,
+                        onSelect = onSelectUsualPortion,
+                    )
+                    Spacer(Modifier.height(Space.s))
+                }
+                CountField(value = state.countText, unit = selectedUnit, onValueChange = onCountChanged)
                 Spacer(Modifier.height(Space.s))
                 PortionUnitStatusRow(
                     unit = selectedUnit,
@@ -763,9 +811,32 @@ private fun CalculatorBody(
                     // back from the meal), so focus is claimed once on arrival and never stolen back
                     // mid-session.
                     autoFocus = state.unsaved && state.portionText.isEmpty(),
+                    compact = imeVisible,
                 )
 
-                Spacer(Modifier.height(Space.m))
+                // Usual portions, immediately under the field they fill.
+                //
+                // They used to sit ABOVE the input, on the stated ground that an alternative to
+                // typing must be seen before the user starts. That reasoning held when the input
+                // was preceded by a photo and a centred question; it does not survive the new
+                // order, where the label already announces the group and the shortcuts read as
+                // "or one of these" beside the adjust and pack rows they are typographically
+                // identical to. Grouping the three shortcut rows together is what removes the
+                // interleaving of labels, fields and buttons that made this zone feel like a form.
+                //
+                // Still absent entirely until a portion has been used twice, and still never
+                // pre-selected -- a tap sets the portion, and without a tap the field is untouched.
+                if (state.usualPortions.isNotEmpty()) {
+                    Spacer(Modifier.height(Space.s))
+                    UsualPortionRow(
+                        usages = state.usualPortions,
+                        units = state.portionUnits,
+                        basisUnit = product.portionUnit,
+                        onSelect = onSelectUsualPortion,
+                    )
+                }
+
+                Spacer(Modifier.height(Space.s))
                 QuickAdjustRow(onAdjust = onAdjust, packageAmount = product.packageAmount)
 
                 // Only offered when the package size was read confidently. A guessed pack size
@@ -887,9 +958,9 @@ private fun ProductSummary(
 ) {
     // Stacked rather than side by side. The badge is itself a two-part block (a pill plus, for
     // unverified online data, a "Check package if needed" line), so putting it beside the per-100
-    // figure produced a ragged two-line arrangement where neither element had a clean baseline —
+    // figure produced a ragged two-line arrangement where neither element had a clean baseline --
     // visible only once a real product was on screen.
-    Column(modifier = modifier.fillMaxWidth().padding(vertical = Space.xs)) {
+    Column(modifier = modifier.fillMaxWidth()) {
         // Weighted deliberately heavier than the product name in the top bar above it.
         //
         // This is the figure every result on the screen derives from, and it is the one an
@@ -909,29 +980,44 @@ private fun ProductSummary(
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
         )
         Spacer(Modifier.height(Space.xs))
-        SourceBadge(product, showHint = !compact)
-        // Discoverable verification, not just buried in the overflow menu. Only when it is
-        // actually relevant: a value the app itself never checked against the package, and not
-        // user-authored (isRemoteRefreshable is exactly "not user-authored AND unverified" —
-        // the same condition the app already uses to decide whether a background refresh may
-        // touch this product, so this reuses an existing fact rather than inventing a new one).
+        // The badge and the Verify link share one line.
         //
-        // Deliberately worded and styled as a neutral action, not a warning: SourceBadge's own
-        // orange-soft badge already carries the "not verified" signal, so this must not repeat
-        // or escalate it.
-        if (!compact && product.isRemoteRefreshable) {
-            Spacer(Modifier.height(Space.xs))
-            TextButton(
-                onClick = onVerify,
-                contentPadding = PaddingValues(horizontal = 0.dp, vertical = Space.xs),
-                modifier = Modifier.heightIn(min = Space.minTouchTarget).testTag(PRODUCT_VERIFY_INLINE_TAG),
-            ) {
-                Text(
-                    text = stringResource(R.string.product_verify_inline),
-                    style = MaterialTheme.typography.labelLarge,
-                )
+        // `showHint = false`, always. The badge's second line ("Check package if needed") is
+        // deleted from this screen rather than merely hidden while the keyboard is open: the
+        // result dock now carries one provenance sentence at the number itself, which is where the
+        // user is actually deciding whether to act on the figure. Two statements of the same fact,
+        // one of them 250dp above the other, is what made this block three lines tall.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SourceBadge(product, showHint = false)
+            // Discoverable verification, not just buried in the overflow menu. Only when it is
+            // actually relevant: a value the app itself never checked against the package, and not
+            // user-authored (isRemoteRefreshable is exactly "not user-authored AND unverified" --
+            // the same condition the app already uses to decide whether a background refresh may
+            // touch this product, so this reuses an existing fact rather than inventing a new one).
+            //
+            // Deliberately worded and styled as a neutral action, not a warning: SourceBadge's own
+            // orange-soft badge already carries the "not verified" signal, so this must not repeat
+            // or escalate it.
+            //
+            // Still dropped while the keyboard is open. It is not height this time -- the row is
+            // the badge's own height either way -- but a tap target that navigates away, sitting
+            // beside a field the user is mid-keystroke in.
+            if (!compact && product.isRemoteRefreshable) {
+                TextButton(
+                    onClick = onVerify,
+                    contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.xs),
+                    modifier = Modifier
+                        .heightIn(min = Space.minTouchTarget)
+                        .testTag(PRODUCT_VERIFY_INLINE_TAG),
+                ) {
+                    Text(
+                        text = stringResource(R.string.product_verify_inline),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
             }
         }
     }
@@ -944,6 +1030,17 @@ private fun PortionField(
     onValueChange: (String) -> Unit,
     /** Claim focus and open the keyboard once, on arrival. See the call site for when and why. */
     autoFocus: Boolean = false,
+    /**
+     * True while the soft keyboard is open, which drops the field's resting height.
+     *
+     * The field only needs to be a large, obvious target while the user is looking for something
+     * to tap. Once they are typing into it they have already found it, and the height is better
+     * spent keeping the field clear of the pinned dock -- measured at 360x720dp with 1.3x text,
+     * where the full-height field was cut through mid-glyph by the dock's top edge.
+     *
+     * The typed numeral does not change size, only the box around it.
+     */
+    compact: Boolean = false,
 ) {
     val focusManager = LocalFocusManager.current
     val portionLabel = stringResource(R.string.product_portion_label, unit)
@@ -993,8 +1090,17 @@ private fun PortionField(
             Text(text = unit, style = MaterialTheme.typography.titleMedium)
         },
         shape = RoundedCornerShape(Space.buttonRadius),
+        // A quiet fill with no border at rest, and a primary border only on focus. See
+        // `jtcTextFieldColors`: the permanent grey outline this replaces was one of the edges that
+        // put a box around every level of the screen.
+        colors = jtcTextFieldColors(),
         modifier = Modifier
             .fillMaxWidth()
+            // A floor, not a fixed height: 88dp holds the 52sp numeral comfortably at the default
+            // scale, and `heightIn` lets the field grow rather than clip the digits at 1.3x/1.8x.
+            // Without it Material adds its own vertical padding to the numeral's line box and the
+            // field measured ~165dp -- taller than the result dock's numeral slot, for an input.
+            .heightIn(min = if (compact) PORTION_FIELD_HEIGHT_COMPACT else PORTION_FIELD_HEIGHT)
             .focusRequester(focusRequester)
             // A real label, not an empty one. This field has no visible `label`, so
             // `contentDescription = ""` left TalkBack announcing an unnamed edit box on the screen's
@@ -1004,6 +1110,18 @@ private fun PortionField(
             .semantics { contentDescription = portionLabel },
     )
 }
+
+/**
+ * The portion field's resting height.
+ *
+ * Tall enough to be the screen's obvious input and to hold `NumberType.portion` (52sp) without
+ * crowding it, and deliberately shorter than the result dock's own numeral slot -- the answer
+ * outranks the input, and that ordering should hold in height as well as in type size.
+ */
+private val PORTION_FIELD_HEIGHT = 88.dp
+
+/** What the field shrinks to while the keyboard is open. See [PortionField]'s `compact`. */
+private val PORTION_FIELD_HEIGHT_COMPACT = 72.dp
 
 /**
  * The step size the ± buttons move by, chosen from the package size (§16).
@@ -1043,7 +1161,11 @@ private fun QuickAdjustRow(onAdjust: (Int) -> Unit, packageAmount: BigDecimal? =
     val steps = listOf(-large, -small, small, large)
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // 4dp above and below a 40dp button is a 48dp target, so the compact visual height
+            // costs nothing in reachability.
+            .padding(vertical = Space.xs),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
         steps.forEach { delta ->
@@ -1053,24 +1175,21 @@ private fun QuickAdjustRow(onAdjust: (Int) -> Unit, packageAmount: BigDecimal? =
                 if (delta > 0) R.string.adjust_plus else R.string.adjust_minus,
                 kotlin.math.abs(delta),
             )
-            OutlinedButton(
+            // A value button, not an outlined one. Four blue-bordered buttons spent the
+            // interaction colour on arithmetic and read as four competing actions beside the real
+            // primary action in the dock; these are conveniences for filling a field.
+            //
+            // The row's own vertical padding keeps the touch target at 48dp while the buttons
+            // themselves are 40dp -- see Space.valueButtonHeight. `+10` no longer truncates at a
+            // large font scale because JtcValueButton's padding is 12dp rather than a button's
+            // default 24dp.
+            JtcValueButton(
+                text = if (delta > 0) "+$delta" else "$delta",
                 onClick = { onAdjust(delta) },
-                shape = RoundedCornerShape(Space.buttonRadius),
-                // A button's default 24dp side padding leaves too little room for "+10" at a large
-                // font scale, where it truncates to "+1" — a control that lies about what it does.
-                // heightIn rather than height so the row grows instead of clipping (§39).
-                contentPadding = PaddingValues(horizontal = Space.xs, vertical = 0.dp),
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = Space.minTouchTarget)
                     .semantics { contentDescription = description },
-            ) {
-                Text(
-                    text = if (delta > 0) "+$delta" else "$delta",
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
+            )
         }
     }
 }
@@ -1102,24 +1221,16 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
     )
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(vertical = Space.xs),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
         fractions.forEach { (label, amount) ->
-            OutlinedButton(
+            // Same treatment as the adjust row: these set a portion, they are not actions.
+            JtcValueButton(
+                text = stringResource(label),
                 onClick = { onSetPortion(amount) },
-                shape = RoundedCornerShape(Space.buttonRadius),
-                // Tighter horizontal padding than the default so three labels fit one row at a
-                // large font scale — the constraint that keeps ¾ out.
-                contentPadding = PaddingValues(horizontal = Space.xs, vertical = Space.s),
-                modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
-            ) {
-                Text(
-                    text = stringResource(label),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                )
-            }
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -1191,7 +1302,7 @@ private fun UsualPortionRow(
         )
         Spacer(Modifier.height(Space.xs))
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(vertical = Space.xs),
             horizontalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             usages.forEach { usage ->
@@ -1204,14 +1315,11 @@ private fun UsualPortionRow(
                     stringResource(R.string.product_usual_grams, amount, basisUnit)
                 }
 
-                OutlinedButton(
+                JtcValueButton(
+                    text = label,
                     onClick = { onSelect(usage) },
-                    shape = RoundedCornerShape(Space.chipRadius),
-                    contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.xs),
-                    modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
-                ) {
-                    Text(text = label, textAlign = TextAlign.Center, maxLines = 1)
-                }
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -1231,25 +1339,26 @@ private fun PortionModeRow(
 ) {
     // Every chip carries the app's minimum touch height, as Settings' and manual entry's already
     // did. Material's FilterChip defaults to 32dp, and these are the control that decides whether
-    // the number on screen means grams or slices — the one mis-tap here changes what the result is
+    // the number on screen means grams or slices -- the one mis-tap here changes what the result is
     // *of*, not merely its size. Measured at 84px on a 420dpi device before this.
+    //
+    // No longer `fillMaxWidth`: the row shares the portion group's label line and sizes to its
+    // chips, so a product with one countable unit does not stretch two chips across the screen.
     Row(
-        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.xs),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        FilterChip(
+        JtcFilterChip(
             selected = isGramsSelected,
             onClick = onSelectGrams,
-            label = { Text(stringResource(R.string.product_mode_grams)) },
-            shape = RoundedCornerShape(Space.chipRadius),
+            label = stringResource(R.string.product_mode_grams),
             modifier = Modifier.heightIn(min = Space.minTouchTarget),
         )
         units.forEach { unit ->
-            FilterChip(
+            JtcFilterChip(
                 selected = !isGramsSelected && unit.id == selectedUnitId,
                 onClick = { onSelectUnit(unit.id) },
-                label = { Text(unit.chipLabel()) },
-                shape = RoundedCornerShape(Space.chipRadius),
+                label = unit.chipLabel(),
                 modifier = Modifier.heightIn(min = Space.minTouchTarget),
             )
         }
@@ -1284,6 +1393,7 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
 
     OutlinedTextField(
         value = fieldValue,
+        colors = jtcTextFieldColors(),
         onValueChange = {
             fieldValue = it
             onValueChange(it.text)
@@ -1778,6 +1888,22 @@ private fun ResultPanel(
 
     val panelShape = RoundedCornerShape(topStart = Space.sheetTopRadius, topEnd = Space.sheetTopRadius)
 
+    // The numeral slot gives height back while the keyboard is open.
+    //
+    // Measured at 360x720dp with 1.3x text and the IME up: the full-height dock left the portion
+    // field cut through mid-glyph by the dock's top edge -- the original P0-1 defect, in the
+    // hardest configuration the report names. This surface is welded to the bottom, so every dp it
+    // holds is taken from the field above it.
+    //
+    // Safe for the same reason the other IME-time reductions on this screen are: `resultAutoSize`
+    // shrinks the numeral to fit rather than clipping it, so the figure stays whole and legible --
+    // just smaller, and only while the user is producing it rather than reading it. It returns to
+    // full size the instant the keyboard closes.
+    //
+    // Both branches read this one value, so the pending slot and the result slot cannot disagree
+    // and the dock still does not change height when the first digit is typed.
+    val resultSlotHeight = if (imeVisible) RESULT_SLOT_HEIGHT_COMPACT else RESULT_SLOT_HEIGHT
+
     // Whether the provenance line renders, decided once.
     //
     // Both the padding above and the Text below read this single value: computing the condition
@@ -1806,36 +1932,23 @@ private fun ResultPanel(
             .padding(
                 start = Space.screenEdge,
                 end = Space.screenEdge,
-                // The panel gives back the height the meal bar takes, rather than growing by it.
-                // Growing pushed the whole panel up over the portion field, so the user could no
-                // longer read the number they were typing — the third layout defect in this area
-                // that only running the app revealed.
+                top = Space.m,
+                // The one remaining give-back. The provenance line is a single sentence now, so
+                // this pays for it out of the bottom padding rather than letting the surface grow.
                 //
-                // The provenance line below follows the same rule: when it is present the padding
-                // shrinks to pay for it, so this surface's height stays a fixed budget rather than
-                // a starting point that each new element adds to.
-                top = if (state.mealItems.isEmpty() && !showsProvenanceLine) Space.l else Space.s,
+                // Four separate layout defects in this app have come from this panel growing --
+                // the meal bar three times and the provenance block once, the last of which put
+                // the quick-adjust row physically underneath the panel so "+10" silently did
+                // nothing. The panel is welded to the bottom edge, so every dp it gains is taken
+                // from the controls above it. Treat its height as a budget, never as a starting
+                // point.
                 bottom = if (showsProvenanceLine) Space.m else Space.l,
             ),
         horizontalAlignment = Alignment.Start,
     ) {
-        // The running meal total, present only while a meal is actually in progress (§10). An
-        // always-visible "0 items" strip would make the app look like a tracker with a permanent
-        // dashboard, which is precisely what it is not.
-        //
-        // It belongs in this pinned surface, and finding that out took running the app three times.
-        // Placed in the fixed header above, its ~56 dp came straight out of the portion controls:
-        // "How much are you eating?" was clipped behind it and "+ Add portion unit" was pushed off
-        // the bottom of the screen. Moved into the scrolling zone, it was simply not on screen once
-        // the keyboard was open — a running total you cannot see is not a running total. Here it
-        // shares the one surface that is always visible, for the same reason the equation does,
-        // and in its compact form so the panel does not grow over the field above it.
-        MealBarIfPresent(
-            itemCount = state.mealItems.size,
-            total = state.mealTotal,
-            onClick = onOpenMeal,
-            compact = true,
-        )
+        // The meal bar is deliberately NOT here any more -- it moved to the top of the screen,
+        // under the top bar. See `CalculatorBody`. It is status, not part of the answer, and this
+        // is the one elevated surface on the screen.
 
         // The conversion equation lives INSIDE the result surface (brief §3.2).
         //
@@ -1876,7 +1989,7 @@ private fun ResultPanel(
             // not a result, it is the input to one, and a per-100 figure that looked like an answer
             // would be the worst possible confusion on this screen.
             Box(
-                modifier = Modifier.height(96.dp).fillMaxWidth(),
+                modifier = Modifier.height(resultSlotHeight).fillMaxWidth(),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Column(horizontalAlignment = Alignment.Start) {
@@ -1917,8 +2030,12 @@ private fun ResultPanel(
             val resultUnit = stringResource(R.string.result_unit_grams)
             val accessibleResult = stringResource(R.string.result_accessible_grams, dominantNumeral)
 
+            // A fixed 80dp, matching the pending slot below, so the dock's height does not change
+            // when the first digit is typed. `height`, not `heightIn`: the numeral shrinks to fit
+            // via `resultAutoSize` rather than pushing the row taller, which is what keeps the
+            // portion field from moving under the user mid-keystroke.
             Row(
-                modifier = Modifier.fillMaxWidth().height(96.dp),
+                modifier = Modifier.fillMaxWidth().height(resultSlotHeight),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Animated only on the digits changing, not on every recomposition, and only for
@@ -2011,6 +2128,7 @@ private fun ResultPanel(
             // Only once there is a number worth adding. Offered under the result, never in place
             // of it: the app answers a carbohydrate question first and builds a meal second (§9).
             Spacer(Modifier.height(Space.m))
+
             MealActions(
                 onAdd = onAddToMeal,
                 onAddAndScanNext = onAddToMealAndScanNext,
@@ -2038,5 +2156,24 @@ private fun ResultPanel(
     }
 }
 
+/**
+ * The height reserved for the result numeral, whether or not a result exists yet.
+ *
+ * One constant for both the pending and the calculated state, because the whole point is that the
+ * dock does not change height when the first digit is typed -- the field above it must not move
+ * under the user. 80dp holds the 72sp numeral with its trimmed leading; the old 96dp was sized for
+ * an untrimmed line box and left a visible gap under the number.
+ */
+private val RESULT_SLOT_HEIGHT = 80.dp
+
+/**
+ * The numeral slot while the soft keyboard is open. See `ResultPanel` for the measurement.
+ *
+ * Still far larger than anything else on the screen, so the result keeps its place in the
+ * hierarchy even in the worst case -- the same argument `NumberType.resultAutoSize`'s own floor
+ * rests on.
+ */
+private val RESULT_SLOT_HEIGHT_COMPACT = 60.dp
+
 // PrimaryAction / SecondaryAction moved to ui.components alongside RecoveryPanel, which they are
-// only ever used inside — the search screen needs the same pair for the same panel.
+// only ever used inside -- the search screen needs the same pair for the same panel.

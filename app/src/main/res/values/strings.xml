@@ -141,6 +141,9 @@
     <string name="remote_changed_body">The database now reports %1$s g / 100 %2$s. Your current value is unchanged.</string>
     <string name="remote_changed_apply">Use new value</string>
     <string name="product_portion_question">How much are you eating?</string>
+    <!-- The portion group's own label on the calculator, replacing the centred question above.
+         A noun, not a question: the field below it and its `0` placeholder already ask. -->
+    <string name="product_portion_group_label">Portion</string>
     <!-- Screen-reader labels for the two amount fields. Neither has a visible `label`: the
          question above them names them for sighted users, but that heading is a separate node and
          is not read as part of the field. -->
@@ -190,7 +193,9 @@
     -->
     <string name="product_mode_grams" tools:ignore="MissingTranslation">Grams</string>
     <string name="product_count_equation" tools:ignore="MissingTranslation">%1$s %2$s × %3$s %4$s = %5$s %4$s</string>
-    <string name="product_add_portion_unit" tools:ignore="MissingTranslation">+ Add portion unit</string>
+    <!-- No leading `+` in the text: the button draws a real 18dp Add icon instead, so the glyph
+         scales with the font and is not a punctuation mark pretending to be an affordance. -->
+    <string name="product_add_portion_unit" tools:ignore="MissingTranslation">Add portion unit</string>
     <string name="product_add_portion_unit_title" tools:ignore="MissingTranslation">Add portion unit</string>
     <string name="product_portion_unit_type" tools:ignore="MissingTranslation">Portion type</string>
     <string name="product_portion_unit_custom_name" tools:ignore="MissingTranslation">Name</string>
@@ -249,7 +254,13 @@
     <string name="meal_clear" tools:ignore="MissingTranslation">Clear meal</string>
     <string name="meal_clear_confirm" tools:ignore="MissingTranslation">Clear this meal? The items are not saved anywhere.</string>
     <string name="meal_remove_item" tools:ignore="MissingTranslation">Remove %1$s</string>
+    <!-- Kept for the row's spoken description, where the portion and the figure must be read as
+         one sentence. The VISIBLE row now splits them: the portion stays in the supporting line
+         and the carbohydrate figure moves to its own trailing column in result-red, so a meal
+         reads as a list of answers rather than as a list of grey metadata. -->
     <string name="meal_item_summary" tools:ignore="MissingTranslation">%1$s · %2$s g</string>
+    <!-- The visible carbohydrate figure in a meal row's trailing column. -->
+    <string name="meal_row_carbs" tools:ignore="MissingTranslation">%1$s g</string>
     <string name="meal_open" tools:ignore="MissingTranslation">Open meal total</string>
     <string name="meal_scan_next" tools:ignore="MissingTranslation">Scan next item</string>
     <string name="meal_item_removed" tools:ignore="MissingTranslation">Removed %1$s</string>
@@ -683,6 +694,10 @@
     <string name="settings_clear_recents_confirm">Clear recent history for every product, including favourites? Your saved products, verified values and favourites are kept.</string>
     <string name="settings_clear_products_confirm">Delete every saved product, including values you verified, and every portion saved for them? This cannot be undone.</string>
     <string name="settings_confirm">Delete</string>
+    <!-- The confirm button's verb, matching the `Clear ...` rows that open these dialogs. `Delete`
+         named an action neither row does: clearing recent history deletes no product, and the row
+         the user tapped said `Clear`. A confirm button should repeat the verb it is confirming. -->
+    <string name="settings_confirm_clear">Clear</string>
     <string name="settings_cancel">Cancel</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Version %1$s</string>
@@ -694,7 +709,12 @@
     <string name="settings_feedback_link_failed" tools:ignore="MissingTranslation">No email app found. You can reach us at %1$s.</string>
     <string name="settings_rate_headline" tools:ignore="MissingTranslation">Enjoying Just the Carbs?</string>
     <string name="settings_rate_body" tools:ignore="MissingTranslation">A quick rating on the Play Store helps other people find the app.</string>
-    <string name="settings_rate" tools:ignore="MissingTranslation">Rate JustTheCarbs</string>
+    <!-- `Rate on Google Play` rather than `Rate <app name>`: the row is one of a list of plain
+         settings rows, and naming the app inside its own settings screen is the marketing register
+         the rest of this screen was toned down to avoid. It also sidesteps the defect this
+         replaces, where the string had the namespace spelling `JustTheCarbs` rather than the
+         product's actual name, `Just the Carbs`. -->
+    <string name="settings_rate" tools:ignore="MissingTranslation">Rate on Google Play</string>
     <string name="settings_rate_link_failed" tools:ignore="MissingTranslation">Could not open the Play Store.</string>
     <!--
       Two licences, two lines: the database and the photographs are licensed separately by Open

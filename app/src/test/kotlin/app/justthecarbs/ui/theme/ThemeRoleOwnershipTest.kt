@@ -98,33 +98,42 @@ class ThemeRoleOwnershipTest {
     }
 
     @Test
-    fun `page ground is painted before every decorative backdrop`() {
+    fun `the decorative backdrop lives on Home only, over a painted page ground`() {
+        // The backdrop moved to Home alone in the 2026-09-22 visual pass (report P1-6): on every
+        // other screen it sat BEHIND the top bar's trailing controls -- measured collisions with
+        // Product's star and overflow, the open overflow menu, and Meal's `Clear meal` -- and
+        // decoration may not share a level with a control. Those screens identify themselves with
+        // JtcTopBar's DestinationMarker instead.
+        //
+        // This test keeps its original purpose, which was never "every screen has a backdrop": it
+        // is that a backdrop is never drawn onto an unpainted ground, where it would composite
+        // against whatever happened to be behind the window. That claim is now checked on the one
+        // screen that still has one, and the other five are checked for its ABSENCE -- so a future
+        // change that reintroduces a backdrop on a secondary screen fails here rather than
+        // silently restoring the collision.
+        val home = java.io.File("src/main/kotlin/app/justthecarbs/ui/home/HomeScreen.kt")
+            .readText()
+            .replace(Regex("""\s+"""), " ")
+        assertTrue(
+            "HomeScreen must paint the opaque page ground below AccentBackdrop",
+            home.contains(
+                "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { AccentBackdrop(",
+            ),
+        )
+
         listOf(
-            "home/HomeScreen.kt",
             "manual/ManualEntryScreen.kt",
             "meal/MealScreen.kt",
+            "product/ProductScreen.kt",
             "search/SearchScreen.kt",
             "settings/SettingsScreen.kt",
         ).forEach { relativePath ->
-            val source = java.io.File("src/main/kotlin/app/justthecarbs/ui/$relativePath")
-                .readText()
-                .replace(Regex("""\s+"""), " ")
+            val source = java.io.File("src/main/kotlin/app/justthecarbs/ui/$relativePath").readText()
             assertTrue(
-                "$relativePath must paint the opaque page ground below AccentBackdrop",
-                source.contains(
-                    "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { AccentBackdrop(",
-                ),
+                "$relativePath must not draw the backdrop motif -- it belongs to Home alone, " +
+                    "because on a screen with trailing top-bar controls it collides with them",
+                !source.contains("AccentBackdrop("),
             )
         }
-
-        val product = java.io.File(
-            "src/main/kotlin/app/justthecarbs/ui/product/ProductScreen.kt",
-        ).readText().replace(Regex("""\s+"""), " ")
-        assertTrue(
-            "ProductScreen must paint the opaque page ground below its decorative motif",
-            product.indexOf(
-                "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))",
-            ) in 0 until product.indexOf("AccentBackdrop("),
-        )
     }
 }
