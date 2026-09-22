@@ -117,20 +117,37 @@ live on Production and says the first update is ready. Work accumulates here unt
   explanation instead of silently saving them as empty or zero.
 - A late product lookup or refresh can no longer replace a newer barcode's screen state, editor
   values, or update notices when an underlying source completes after cancellation.
+- **Pack shortcuts no longer lose half their name at large text sizes.** At 1.8x on a narrow screen
+  `Full pack` rendered as `Full` (and `¼ pack` as `¼`), because the three equal-width buttons
+  clipped their labels to one line. A label that no longer fits now takes a second line, and all
+  three buttons grow together so the row still reads as one group. Nothing is renamed, dropped or
+  shrunk; at ordinary sizes the row is unchanged.
 
 ### Internal
 
 - Search-row geometry checks now use explicit viewport widths and font scales, and release-candidate
   pushes to `release/**` automatically start the blocking pre-upload release gate.
+- Stabilization pass (2026-09-22): the two `CountablePortionScreenTest` failures were a stale
+  matcher (`"+ Add portion unit"` after the `7231bb2` copy change dropped the `+`) and now read the
+  label from resources; the hanging `ProductScreenTest.theResultIsNotClippedAtTheLargestFontScale`
+  no longer invokes `GetTextLayoutResult` against the full screen (that action leaves the
+  composition permanently non-idle there) and its overflow invariant now lives in
+  `ResultValueTest` at the screen's own 320dp x 80dp slot geometry; new
+  `PackShortcutsResponsiveTest` pins the label wrap and equal heights.
 
 ### Verified so far
 
 JVM 2151/2151 (0 skipped, `--rerun-tasks`); lint 0 errors, 28 warnings; API 36 non-exploratory
-instrumentation 462/463 (0 skipped) on the `carbscan` emulator. The remaining failure is
-`HomeQuickAddScreenTest.largeFontOnANarrowScreenKeepsThePortionAndTheButton`, which also fails alone
-because the tagged quick-add node is absent. **Not yet seen on a physical device**: the Quick Add
-haptic, a live TalkBack pass, and whether taps meant to open a product land on the **+** by accident.
-Re-check all of this, and resolve the instrumented failure, before the release build.
+instrumentation on the `carbscan` emulator **476/476 ran, 473 passed, 3 failed, 0 ignored**
+(2026-09-22 stabilization pass). The 3 failures are one environmental class — tests that wait for
+the IME inset inside `createComposeRule`, which never arrives on this AVD although the keyboard is
+shown; they pass on CI's API 36 emulator and fail identically at the pre-pass baseline. The
+2026-09-18 `largeFontOnANarrowScreenKeepsThePortionAndTheButton` failure no longer reproduces.
+**Two Home LazyColumn tests fail on CI's profile-less 320x480 API 36 emulator** (they pass here;
+reproducible with `adb shell wm size 320x480`) and will block `release-gate.yml` until fixed.
+**Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps
+meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
+text. Re-check all of this, and resolve the CI failures, before the release build.
 
 ### Play Store release notes
 

@@ -165,7 +165,17 @@ fun JtcValueButton(
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
-            maxLines = 1,
+            // Two lines, not one.
+            //
+            // This was `maxLines = 1`, which on a narrow screen at a large font scale clipped the
+            // label rather than wrapping it -- `Full pack` rendered as `Full`, measured at 1.8x on
+            // a 320dp window. A value button whose name is cut in half is unreadable in the one way
+            // that matters: two shortcuts become indistinguishable.
+            //
+            // Two lines is the ceiling, so a long label wraps once and the row grows by one line
+            // rather than without limit. At every ordinary size the labels still fit on one line
+            // and nothing moves. See `PackShortcutsResponsiveTest`.
+            maxLines = 2,
             textAlign = TextAlign.Center,
         )
     }

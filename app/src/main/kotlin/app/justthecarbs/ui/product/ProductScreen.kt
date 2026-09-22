@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -1162,7 +1164,7 @@ private val PORTION_FIELD_HEIGHT_COMPACT = 72.dp
  * base-unit path as a typed portion — no separate calculation.
  */
 @Composable
-private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) {
+internal fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) {
     // Scale 2 with HALF_UP: a 355 ml can quartered is 88.75 ml, and truncating to a whole number
     // would silently change the portion the user asked for.
     val fractions = listOf(
@@ -1171,8 +1173,40 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
         R.string.product_full_pack to pack,
     )
 
+    // THE LABELS WRAP RATHER THAN TRUNCATE, AND THE ROW ITSELF IS UNCHANGED.
+    //
+    // The three equal `weight(1f)` buttons stay: at every ordinary size they are the compact
+    // 3-across row they have always been, and the arrangement is byte-for-byte what it was. What
+    // changed is one line in `JtcValueButton` -- `maxLines` 1 -> 2 -- so a label that no longer
+    // fits its third of the width takes a second line instead of being clipped.
+    //
+    // The defect this fixes was measured, not reported by eye: at 1.8x on a 320dp window -- the
+    // narrowest the app supports, at an ordinary accessibility setting -- `Full pack` rendered as
+    // `Full`, and `¼ pack` overflowed too (238.5px of text into 202px of button). A shortcut that
+    // silently loses half its name is worse than one that takes a second line, because `Full` and
+    // `½ pack` then read as the same kind of thing.
+    //
+    // A `FlowRow` that wraps the BUTTONS to a 2+1 arrangement was built and measured first, and it
+    // is NOT what ships: with `weight(1f)` every item still shares one line, so it never wrapped
+    // and added an experimental API for nothing; and sizing the buttons to `IntrinsicSize.Max`
+    // instead gave each Text exactly its own intrinsic width with no slack, which still reported
+    // overflow (239px of text in a 239px box). Wrapping the text is the smaller and more robust
+    // fix, and it needs no breakpoint, no device width and no font-scale threshold.
+    //
+    // Nothing is dropped, renamed or shrunk below the design system's own type, and the touch
+    // target only ever grows -- `JtcValueButton` sets a minimum height, not a fixed one.
+    //
+    // `height(IntrinsicSize.Min)` on the row plus `fillMaxHeight()` on each button is what keeps
+    // the three the SAME height once one of them wraps. Without it the first screenshot of the
+    // wrapped state showed `Full pack` standing 92px taller than its two neighbours in the same
+    // row (226px against 134px at 1.8x) -- three shortcuts that no longer read as one control
+    // group. The row now measures to its tallest child and the other two stretch to match. At
+    // every size where nothing wraps all three already agree, so this changes nothing there.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = Space.xs),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .padding(vertical = Space.xs),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
         fractions.forEach { (label, amount) ->
@@ -1180,7 +1214,7 @@ private fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) 
             JtcValueButton(
                 text = stringResource(label),
                 onClick = { onSetPortion(amount) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
     }

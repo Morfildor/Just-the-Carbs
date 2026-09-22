@@ -37,6 +37,8 @@ import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.product.PRODUCT_RESULT_TAG
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
+import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.R
 import org.junit.Rule
 import org.junit.Test
 import java.math.BigDecimal
@@ -75,6 +77,32 @@ class CountablePortionScreenTest {
      *
      * No retry, no sleep, and no weakened assertion was used.
      */
+
+    /**
+     * The *Add portion unit* action's label, read from the app's own resources rather than
+     * transcribed into the test.
+     *
+     * This is not tidiness. Both failing cases in this class were hardcoded as `"+ Add portion
+     * unit"`; the visual pass in `7231bb2` dropped the `+ ` prefix from the string and nothing
+     * failed at compile time, so the matcher silently addressed a node that no longer existed and
+     * both tests died on their FIRST line -- before any of the IME, scroll or Save interaction the
+     * surrounding comments discuss. Reading the resource means the next rewording moves the test
+     * with it instead of breaking it.
+     */
+    private val addPortionUnitLabel: String
+        get() = InstrumentationRegistry.getInstrumentation().targetContext
+            .getString(R.string.product_add_portion_unit)
+
+    /**
+     * The form's own title. Deliberately a SEPARATE resource from [addPortionUnitLabel] even
+     * though both currently read "Add portion unit": the action is replaced by the form when it
+     * expands (see `AddPortionUnitAction`'s early return), so exactly one of the two is ever on
+     * screen and matching by text is unambiguous. Measured, not assumed -- a probe against the
+     * open form counted exactly one node for this text and one "Save".
+     */
+    private val addPortionUnitTitle: String
+        get() = InstrumentationRegistry.getInstrumentation().targetContext
+            .getString(R.string.product_add_portion_unit_title)
 
     private val now = Instant.parse("2026-08-14T10:00:00Z")
 
@@ -315,7 +343,7 @@ class CountablePortionScreenTest {
     fun addingAPortionUnitThroughTheInlineFormMakesItImmediatelyUsable() {
         showCalculator(product(), initialUnits = emptyList())
 
-        compose.onNodeWithText("+ Add portion unit").performScrollTo().performClick()
+        compose.onNodeWithText(addPortionUnitLabel).performScrollTo().performClick()
         // Addressed by tag, not by position. This previously indexed into "every text field on
         // screen" ([1]), which is what made the test order-dependent: the set of fields present
         // depends on prior state, so the index silently addressed a different field rather than
@@ -336,12 +364,12 @@ class CountablePortionScreenTest {
     fun theAddPortionUnitFormRejectsSavingWithNoAmount() {
         showCalculator(product(), initialUnits = emptyList())
 
-        compose.onNodeWithText("+ Add portion unit").performScrollTo().performClick()
+        compose.onNodeWithText(addPortionUnitLabel).performScrollTo().performClick()
         compose.onNodeWithText("Save").performScrollTo().performClick()
 
         // Nothing was added: the mode row still does not exist, and the form is still open.
         compose.onAllNodesWithText("Slices").assertCountEquals(0)
-        compose.onNodeWithText("Add portion unit").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(addPortionUnitTitle).performScrollTo().assertIsDisplayed()
     }
 
     @Test

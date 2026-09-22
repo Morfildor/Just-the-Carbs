@@ -51,6 +51,96 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Stabilization pass (2026-09-22) — 1.0.8 / versionCode 9, READ FIRST
+
+A targeted pass on `main` above `f59d668` while `1.0.7` is under Production review. Still `1.0.8` /
+`versionCode 9`, not built for release, not uploaded, the owner's hold unchanged. **Two production
+lines changed** (`JtcValueButton` `maxLines` 1 → 2; `PackShortcuts` row `height(IntrinsicSize.Min)`
++ `fillMaxHeight()`), plus `PackShortcuts` made `internal` for a component test. Everything else is
+tests and docs. Nothing about search, OCR, scanners, navigation, persistence, meal semantics, the
+Home Back/IME state machine or the result hierarchy changed.
+
+### The two CountablePortionScreenTest failures were a stale matcher, not the IME
+
+`addingAPortionUnitThroughTheInlineFormMakesItImmediatelyUsable` and
+`theAddPortionUnitFormRejectsSavingWithNoAmount` both died on their **first line**:
+`onNodeWithText("+ Add portion unit")`. The visual pass `7231bb2` dropped the `+ ` from
+`product_add_portion_unit` and nothing failed at compile time. None of the hypotheses in the brief
+(scroll, IME, Save visibility, focus, node ambiguity) was ever reached. A probe against the open form
+measured exactly one "Add portion unit" node (the action is *replaced* by the form — see the early
+return in `AddPortionUnitAction`) and exactly one "Save", so text matching is unambiguous. Both
+labels are now read from `R.string` through `InstrumentationRegistry`, so a reword moves the test
+instead of breaking it. Negative control: removing the empty-amount guard fails
+`theAddPortionUnitFormRejectsSavingWithNoAmount`; production restored byte-identically.
+
+### The autosize test hung because `GetTextLayoutResult` breaks idle inside ProductScreen
+
+`ProductScreenTest.theResultIsNotClippedAtTheLargestFontScale` hung at whichever idle-waiting call
+came next, which is why it looked like `performScrollTo` one run and `assertTrue` the next. Thread
+dump: the main thread spinning in `ComposeIdlingResource.checkLayoutBusy`. Controls: the full
+ProductScreen at that density and width settles fine until the action is invoked; the identical
+action on `ResultValue` alone settles in seconds (`ResultValueTest`); removing `autoSize` changes
+the failure, not the hang; and `performScrollTo` on the portion field at 2.0x/320dp hangs on its
+own even without the action. **Test-harness defect, not production** — the owner's device shows
+`125.3 g` unclipped, and the worst-case probe below shows the same.
+
+The invariant moved, not weakened:
+`ResultValueTest.theWidestRealResultFitsTheScreensOwnSlotAtTheLargestFontScale` asserts
+`!hasVisualOverflow` on the real `ResultValue` in the screen's own 320dp x 80dp slot geometry
+(negative control: removing `autoSize` fails it with 463px of text in the slot). The full-screen test
+keeps what it can prove without the action — the whole value present and the portion field composed.
+**Do not reintroduce `GetTextLayoutResult` against the full screen.**
+
+### `Full pack` → `Full`: fixed by wrapping the label; the FlowRow route was measured and dropped
+
+Measured at 1.8x on 320dp, not by eye: `Full pack` rendered one of nine characters and `¼ pack`
+one of six (238.5px of text in a 202px button). `JtcValueButton` clipped at `maxLines = 1`. The fix
+is `maxLines = 2` plus equal heights for the row. A `FlowRow` 2+1 arrangement was built first and
+does not work: with `weight(1f)` every item still shares one line so it never wraps, and
+`IntrinsicSize.Max` buttons get exactly their text width and still report overflow. The first
+`maxLines` version left `Full pack` 92px taller than its neighbours (226 vs 134px) — seen only in a
+screenshot — hence the `IntrinsicSize.Min` row. `PackShortcutsResponsiveTest` (6 cases) asserts
+character completeness via `getLineEnd`, not `hasVisualOverflow`, which is too strict at an
+exact-fit width (127.5px in 128px reports overflow on correct rendering, identically at baseline).
+Blast radius: the usual-portions row and `ValueButtonSlot` share `JtcValueButton`; their labels are
+short and unchanged at every size measured.
+
+### Residual QA
+
+**Active-meal worst case** (long name, meal bar, 800 g pack, 125.3 g result, 1.8x, real 411dp
+window): no overlap; the portion field's lower edge sits under the zone's designed fade at rest and
+`performScrollTo` reaches it; the pack row wraps to three equal 226px buttons. Screenshots inspected.
+
+**CI at `f59d668`** — the API 36 job never finishes: the cancelled `f160b85` run shows the two
+countable failures above, then ~2h46m of silence before the 3h timeout, which is the autosize hang.
+That job is `continue-on-error`, so it never blocked and nobody saw it. The same log shows two Home
+failures not in this brief: `HomeQuickAddScreenTest.favouritesAndRecentsUseTheSameQuickAdd`
+("Expected 2 nodes but found 1") and
+`HomeScreenTest.choosingRemoveFromRecentReportsTheProductExactlyOnce`. Both pass on the 1080x2400
+`carbscan` AVD and **reproduce exactly at `wm size 320x480` / `wm density 160`** — the profile-less
+CI emulator composes fewer LazyColumn items. Pre-baseline (`f160b85`), not fixed here.
+**`release-gate.yml` uses the same emulator with nothing tolerated, so these will block a 1.0.8
+release build** until fixed (`performScrollToNode`) or the CI profile is set.
+
+**One local Home failure, pre-existing:** `theFirstBackDismissesTheKeyboardAndKeepsTheSearch` (added
+in `f59d668`) fails 3/3 here and identically at clean `f59d668` (stash control). A timeline probe
+showed `dumpsys input_method` `mInputShown=true` for the whole wait while the test's
+`WindowInsets.ime` sample stayed 0: the keyboard is up; `createComposeRule`'s activity is not
+edge-to-edge like `MainActivity`, so the inset never reaches the test composition. Not the Back/IME
+state machine. Its sibling `theSecondBackClearsTheSearchExactlyOnce` passes only because its wait
+times out silently. Hardware-keyboard hypothesis ruled out (`hw.keyboard=no`; toggling
+`show_ime_with_hard_keyboard` changes nothing).
+
+### Verified
+
+JVM **2151/2151** (0 failures, 0 errors, 0 skipped, 220 XML files, `--rerun-tasks`, on the final
+tree). Lint **0 errors, 28 warnings** (unchanged baseline). Targeted instrumented: `CountablePortionScreenTest` 12/12 (was 10/12);
+`ProductScreenTest` + `ResultValueTest` + `PackShortcutsResponsiveTest` green — 58/58 in one run
+before the equal-height fix and 6/6 responsive after it. Release-gate suite locally
+(`notAnnotation=ExploratoryExperiment`, final debug APK `ef67cba9…`): **476/476 ran, 473 passed, 3 failed, 0 ignored** (15m28s, counted from instrumentation status codes; `numtests=476`). The 3 are `HomeScreenTest.theFirstBackDismissesTheKeyboardAndKeepsTheSearch`, `SearchPresentationRegressionTest.homesNoMatchActionsStayAboveTheKeyboard` and `…searchScreensNoMatchActionsStayAboveTheKeyboard` — one class of failure: each waits for `WindowInsets.ime` to become non-zero in the test composition and it never does on this AVD, while `dumpsys input_method` shows the keyboard up. The two no-match cases date from `3e08d41` (2026-09-17), **passed on CI's API 36 emulator at `f160b85`** and passed here on 2026-09-17 (445/447); the Home one fails identically at clean `f59d668`. `adb unroot` control: still 3/3 failing. Local-environment, pre-existing, not a code regression — but unexplained: the AVD was resized to 4 GB today and nothing else in its config changed.
+
+**Not verified on physical hardware.** Everything above is JVM plus the `carbscan` emulator.
+
 ## Search trust + label languages pass (2026-09-17) — 1.0.7, READ FIRST
 
 A pre-release stabilization pass on `main` above `120817d`. Still `1.0.7` / `versionCode 8`, not
