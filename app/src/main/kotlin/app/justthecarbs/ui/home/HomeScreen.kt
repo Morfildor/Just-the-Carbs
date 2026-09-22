@@ -993,7 +993,15 @@ private fun HomeBody(
  * title and the subtitle as three separate stops inside one tappable thing.
  */
 @Composable
-private fun HomeActionCard(
+/**
+ * `internal` so `TutorialPreview` can draw the real card rather than an imitation of it.
+ *
+ * Safe to share because it is purely presentational: every parameter is appearance plus one
+ * `onClick`, there is no ViewModel, no navigation and no state of its own. The tutorial passes a
+ * no-op click, and its preview root already carries `clearAndSetSemantics {}`, so the card's own
+ * `Role.Button` cannot be reached by TalkBack inside the overlay.
+ */
+internal fun HomeActionCard(
     icon: ImageVector,
     title: String,
     subtitle: String,

@@ -16,13 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Scale
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -32,20 +30,16 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import app.justthecarbs.BuildConfig
 import app.justthecarbs.R
-import app.justthecarbs.ui.theme.NumberType
+import app.justthecarbs.ui.components.ResultValue
+import app.justthecarbs.ui.home.HomeActionCard
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 
@@ -103,33 +97,45 @@ private fun HomePreview(anchors: TutorialAnchors, teachingTop: Dp, teachingHeigh
             Column(Modifier.fillMaxWidth().tutorialAnchor(anchors, TutorialAnchor.FIND_ACTIONS)) {
                 PreviewSearchField(anchors, compact)
                 Spacer(Modifier.height(if (compact) Space.xs else Space.s))
-                PreviewActionCard(
+                // The REAL cards, with a no-op click (P0-4).
+                //
+                // These were two locally-declared gradient tiles -- cobalt-to-indigo and
+                // teal-to-green -- with circular icon plates, which is a Home screen the app has
+                // never had and, since the visual pass, is not even close to. A tutorial that
+                // teaches a different design than the one behind it is worse than no tutorial: the
+                // user learns to look for a green card that is not there.
+                HomeActionCard(
                     icon = Icons.Filled.QrCodeScanner,
                     title = stringResource(R.string.home_scan_button),
                     subtitle = stringResource(R.string.home_action_barcode_subtitle),
-                    gradient = listOf(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.extendedColors.accents.indigo,
-                    ),
-                    compact = compact,
+                    accent = MaterialTheme.colorScheme.primary,
+                    filled = true,
+                    onClick = {},
                     modifier = Modifier.tutorialAnchor(anchors, TutorialAnchor.SCAN_BARCODE),
                 )
                 Spacer(Modifier.height(if (compact) Space.xs else Space.s))
-                PreviewActionCard(
+                HomeActionCard(
                     icon = Icons.Filled.DocumentScanner,
                     title = stringResource(R.string.home_empty_scan_label),
                     subtitle = stringResource(R.string.home_action_label_subtitle),
-                    gradient = listOf(
-                        MaterialTheme.extendedColors.accents.teal,
-                        MaterialTheme.extendedColors.accents.green,
-                    ),
-                    compact = compact,
+                    accent = MaterialTheme.extendedColors.accents.teal,
+                    onClick = {},
                     modifier = Modifier.tutorialAnchor(anchors, TutorialAnchor.SCAN_LABEL),
                 )
             }
+            // The rhythm strip is the first thing to go when the region is tight.
+            //
+            // The teaching region has a FIXED height (`teachingTop`), and the real action cards are
+            // taller than the gradient tiles they replaced -- so on this step `weight(1f)` resolves
+            // to nothing and the strip's roundels ride up against the card above. Measured on
+            // device at 411x914; a minimum-height spacer was tried first and changed nothing,
+            // because there is no slack for it to claim.
+            //
+            // It is dropped rather than squeezed. CLAUDE.md records this strip as visible "only as
+            // context" on START, and the step's own teaching copy already names all three routes
+            // in words ("Scan a barcode, search by name, or scan the nutrition label"). The cards
+            // it was colliding with ARE the subject of this step; the decoration is not.
             Spacer(Modifier.weight(1f))
-            PreviewRhythm(compact)
-            Spacer(Modifier.height(Space.s))
         }
 
         Spacer(Modifier.height(teachingHeight))
@@ -142,21 +148,15 @@ private fun HomePreview(anchors: TutorialAnchors, teachingTop: Dp, teachingHeigh
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(Space.s))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = Space.minTouchTarget)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(Space.buttonRadius))
-                    .padding(horizontal = Space.m),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.home_manual_button),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
+            // A borderless label, matching Home's own `TextButton`. The outlined box drawn here
+            // before was a third bordered rectangle stacked under two bordered cards, and Home has
+            // never rendered this control that way.
+            Text(
+                text = stringResource(R.string.home_manual_button),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.heightIn(min = Space.minTouchTarget).wrapContentHeight(),
+            )
             Spacer(Modifier.height(Space.m))
             Text(
                 text = stringResource(R.string.home_recent_title),
@@ -196,89 +196,7 @@ private fun PreviewSearchField(anchors: TutorialAnchors, compact: Boolean) {
     }
 }
 
-@Composable
-private fun PreviewActionCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    gradient: List<Color>,
-    compact: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val contentColor = MaterialTheme.extendedColors.onAccent
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Space.cardRadius))
-            .background(Brush.linearGradient(gradient))
-            .padding(horizontal = Space.m, vertical = if (compact) Space.xs else 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(if (compact) 32.dp else 40.dp)
-                .background(contentColor.copy(alpha = 0.20f), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, null, tint = contentColor, modifier = Modifier.size(if (compact) 20.dp else 24.dp))
-        }
-        Column(Modifier.padding(start = Space.m)) {
-            Text(
-                text = title,
-                style = if (compact) {
-                    MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp)
-                } else {
-                    MaterialTheme.typography.titleMedium
-                },
-                color = contentColor,
-            )
-            if (!compact) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = contentColor.copy(alpha = PREVIEW_ACCENT_SUPPORTING_ALPHA),
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
 private const val PREVIEW_ACCENT_SUPPORTING_ALPHA = 0.96f
-
-@Composable
-private fun PreviewRhythm(compact: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(Space.s),
-        verticalAlignment = Alignment.Top,
-    ) {
-        listOf(
-            Triple(Icons.Filled.QrCodeScanner, R.string.tutorial_rhythm_find, MaterialTheme.colorScheme.primary),
-            Triple(Icons.Filled.Scale, R.string.tutorial_rhythm_portion, MaterialTheme.colorScheme.tertiary),
-            Triple(Icons.Filled.Calculate, R.string.tutorial_rhythm_carbs, MaterialTheme.extendedColors.result),
-        ).forEach { (icon, label, tint) ->
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier
-                        .size(if (compact) 32.dp else 40.dp)
-                        .background(tint.copy(alpha = 0.14f), CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(icon, null, tint = tint, modifier = Modifier.size(if (compact) 18.dp else 20.dp))
-                }
-                Spacer(Modifier.height(Space.xs))
-                Text(
-                    text = stringResource(label),
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ProductPreview(anchors: TutorialAnchors, teachingTop: Dp, teachingHeight: Dp, compact: Boolean) {
@@ -306,19 +224,26 @@ private fun ProductPreview(anchors: TutorialAnchors, teachingTop: Dp, teachingHe
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(if (compact) Space.xs else Space.s))
+            // The portion group as the calculator now states it: a left-aligned group label, not
+            // the centred question `product_portion_question` -- which the visual pass removed
+            // from the real screen, and which a user following this tutorial would then look for
+            // and not find.
             Text(
-                text = stringResource(R.string.product_portion_question),
-                style = MaterialTheme.typography.bodySmall,
+                text = stringResource(R.string.product_portion_group_label),
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(Space.xs))
+            // A quiet fill with no border, matching `jtcTextFieldColors()` at rest. The 1dp
+            // `outline` ring drawn here before is the treatment the design system replaced: the
+            // fill alone is what says "field".
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(if (compact) 52.dp else 64.dp)
                     .clip(RoundedCornerShape(Space.buttonRadius))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(Space.buttonRadius)),
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -332,13 +257,15 @@ private fun ProductPreview(anchors: TutorialAnchors, teachingTop: Dp, teachingHe
                 text = stringResource(R.string.product_result_label),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Text(
-                text = EXAMPLE_RESULT,
-                style = if (compact) MaterialTheme.typography.headlineMedium else NumberType.result,
-                color = MaterialTheme.extendedColors.result,
-                maxLines = 1,
-                autoSize = if (compact) null else NumberType.resultAutoSize,
+            // The REAL result component, so the tutorial inherits the baseline fix (P0-2) rather
+            // than re-drawing the numeral and hanging its own unit off the bottom of it.
+            ResultValue(
+                dominant = EXAMPLE_RESULT_VALUE,
+                unit = EXAMPLE_RESULT_UNIT,
+                accessibleLabel = EXAMPLE_RESULT,
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.weight(1f))
             Box(
@@ -419,19 +346,20 @@ private fun MealPreview(anchors: TutorialAnchors, teachingTop: Dp, teachingHeigh
                     .tutorialAnchor(anchors, TutorialAnchor.MEAL_TOTAL)
                     .navigationBarsPadding()
                     .padding(horizontal = Space.screenEdge, vertical = if (compact) Space.s else Space.m),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                // Left-aligned, matching `MealTotalPanel` since the visual pass. Centring it here
+                // put the total on a different axis from the rows it totals.
+                horizontalAlignment = Alignment.Start,
             ) {
                 Text(
                     text = stringResource(R.string.meal_total_label),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    text = "26.4 g",
-                    style = if (compact) MaterialTheme.typography.headlineMedium else NumberType.result,
-                    color = MaterialTheme.extendedColors.result,
-                    maxLines = 1,
-                    autoSize = if (compact) null else NumberType.resultAutoSize,
+                ResultValue(
+                    dominant = EXAMPLE_TOTAL_VALUE,
+                    unit = EXAMPLE_RESULT_UNIT,
+                    accessibleLabel = "$EXAMPLE_TOTAL_VALUE $EXAMPLE_RESULT_UNIT",
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -441,10 +369,11 @@ private fun MealPreview(anchors: TutorialAnchors, teachingTop: Dp, teachingHeigh
 @Composable
 private fun PreviewMealRow(name: String, portion: String, carbs: String, compact: Boolean) {
     Row(
+        // Borderless, like the real `MealItemRow`. A box around every row turned a two-item list
+        // into two cards, which is the "box inside a box" the visual direction removes.
         Modifier
             .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(Space.cardRadius))
-            .padding(horizontal = Space.m, vertical = if (compact) Space.s else Space.m),
+            .padding(vertical = if (compact) Space.s else Space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -471,3 +400,16 @@ private const val ACCESSIBILITY_PREVIEW_FONT_SCALE = 1.5f
 private const val EXAMPLE_CARBS = "48"
 private const val EXAMPLE_PORTION = "35"
 private const val EXAMPLE_RESULT = "16.8 g"
+
+/**
+ * The same figure as [EXAMPLE_RESULT], split the way `ResultValue` takes it.
+ *
+ * Held as two constants rather than split at the space, because the numeral and its unit are two
+ * different typographic roles -- a substring is a guess about a display string that happens to be
+ * right today.
+ */
+private const val EXAMPLE_RESULT_VALUE = "16.8"
+private const val EXAMPLE_RESULT_UNIT = "g"
+
+/** The two example portions added together, as the meal total. */
+private const val EXAMPLE_TOTAL_VALUE = "26.4"

@@ -78,10 +78,32 @@ class ThemeRoleOwnershipTest {
         assertTrue(home.contains("MaterialTheme.colorScheme.onPrimary"))
         assertFalse("Home actions are solid task tiles, not ornamental gradients", home.contains("Brush.linearGradient"))
 
+        // The tutorial previews no longer paint an accent fill of their own, so there is no
+        // foreground of their own to declare.
+        //
+        // They used to draw local gradient tiles and pair them with `extendedColors.onAccent`,
+        // which is what this assertion checked. The visual pass replaced those with the REAL
+        // `HomeActionCard`, which owns its own `onPrimaryTile` foreground -- a stronger guarantee
+        // than the one being asserted here, because it cannot diverge from what Home renders.
+        //
+        // The rule is therefore checked the other way round: the previews must not reintroduce a
+        // fill of their own. `Brush` is the specific mechanism P0-4 removed, and a locally-declared
+        // action card is how it would come back.
         val tutorial = java.io.File(
             "src/main/kotlin/app/justthecarbs/ui/onboarding/TutorialPreview.kt",
         ).readText()
-        assertTrue(tutorial.contains("MaterialTheme.extendedColors.onAccent"))
+        assertTrue(
+            "the tutorial must render the real Home action card, not an imitation",
+            tutorial.contains("HomeActionCard("),
+        )
+        assertFalse(
+            "tutorial previews must not paint gradients of their own",
+            tutorial.contains("Brush."),
+        )
+        assertFalse(
+            "a local preview action card is how the imitation comes back",
+            tutorial.contains("fun PreviewActionCard"),
+        )
     }
 
     @Test
