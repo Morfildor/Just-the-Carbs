@@ -155,7 +155,9 @@ first-Back IME case (so it is not local-only), and four 320dp-geometry cases in 
 `QuickCalculationScreenTest`, `SearchPresentationRegressionTest` and `TouchTargetSizeTest` — listed
 in CLAUDE.md, not yet classified (four reproduce alone at 320x640/160; the Quick Calculation one
 passes alone). Local non-exploratory API 36 suite after the fix: **476/476 ran, 473 passed, 3 failed
-(the IME-inset class), 0 ignored**.
+(the IME-inset class), 0 ignored**. Real `release-gate.yml` at `6143db3`: JVM/lint green,
+instrumented **476 run, 0 skipped, 4 failed** — the four geometry cases (the first-Back IME case
+passed there, so it is intermittent on CI); release build skipped. Those four block the gate.
 **Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps
 meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
 text. Re-check all of this, and resolve the CI failures, before the release build.
