@@ -20,6 +20,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -29,6 +30,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -878,6 +880,14 @@ class HomeScreenTest {
             recents = listOf(recentEntry(barcode = "1"), recentEntry(barcode = "2", name = "Melk")),
             onForgetRecent = { removed += it.barcode },
         )
+
+        // Bring the second card fully into view first. On CI's profile-less 320x640 @160dpi
+        // emulator the second card is composed only at the bottom edge, so the long press on "Melk"
+        // never reached it and the options menu never opened (`home_recent_forget` not found); on a
+        // shorter screen the "Melk" node does not exist at all. `performScrollToNode` on the owning
+        // list, not `performScrollTo` on the target: the latter needs the node to exist already.
+        // Reproduce with `wm size 320x640` / `wm density 160`.
+        compose.onNodeWithTag(HOME_BODY_TAG).performScrollToNode(hasText("Melk"))
 
         // `useUnmergedTree` puts the gesture on the product name. The merged node is the whole card,
         // and its geometric centre now falls on the card's Quick Add pill — a tap there is an add,

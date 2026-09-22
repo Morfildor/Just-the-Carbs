@@ -205,14 +205,40 @@ class HomeQuickAddScreenTest {
 
     @Test
     fun favouritesAndRecentsUseTheSameQuickAdd() {
+        val added = mutableListOf<Pair<String, String>>()
         show(
             recents = listOf(
                 RecentEntry(product(barcode = "1", favorite = true), null),
                 RecentEntry(product(barcode = "2", name = "Melk"), null),
             ),
+            onQuickAdd = { entry, description -> added += entry.product.barcode to description },
         )
 
-        compose.onAllNodes(hasTestTag(HOME_QUICK_ADD_TAG), useUnmergedTree = true).assertCountEquals(2)
+        // Per card, not a global count. This used to assert two `HOME_QUICK_ADD_TAG` nodes straight
+        // after rendering, which is not a property a LazyColumn offers: on CI's profile-less
+        // 320x640 @160dpi emulator only the first card is composed (its pill sits at y=572 of 640),
+        // so the second pill does not exist in the semantics tree and the count read 1. The
+        // contract is that each card type exposes the same Quick Add, so each card is scrolled into
+        // the composition and judged on its own. Reproduce with `wm size 320x640` / `wm density 160`.
+        val body = compose.onNodeWithTag(HOME_BODY_TAG)
+        val favouriteLabel = stringOf(R.string.recent_quick_add_description, "65 g", "Hagelslag puur")
+        val recentLabel = stringOf(R.string.recent_quick_add_description, "65 g", "Melk")
+
+        body.performScrollToNode(hasContentDescription(favouriteLabel))
+        compose.onNodeWithContentDescription(favouriteLabel)
+            .assert(hasTestTag(HOME_QUICK_ADD_TAG))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+            .performClick()
+
+        body.performScrollToNode(hasContentDescription(recentLabel))
+        compose.onNodeWithContentDescription(recentLabel)
+            .assert(hasTestTag(HOME_QUICK_ADD_TAG))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+            .performClick()
+
+        assertEquals(listOf("1" to "65 g", "2" to "65 g"), added)
     }
 
     // ---- interaction -------------------------------------------------------------------------

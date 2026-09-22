@@ -117,10 +117,42 @@ That job is `continue-on-error`, so it never blocked and nobody saw it. The same
 failures not in this brief: `HomeQuickAddScreenTest.favouritesAndRecentsUseTheSameQuickAdd`
 ("Expected 2 nodes but found 1") and
 `HomeScreenTest.choosingRemoveFromRecentReportsTheProductExactlyOnce`. Both pass on the 1080x2400
-`carbscan` AVD and **reproduce exactly at `wm size 320x480` / `wm density 160`** — the profile-less
-CI emulator composes fewer LazyColumn items. Pre-baseline (`f160b85`), not fixed here.
-**`release-gate.yml` uses the same emulator with nothing tolerated, so these will block a 1.0.8
-release build** until fixed (`performScrollToNode`) or the CI profile is set.
+`carbscan` AVD and reproduce on CI's real geometry — the profile-less emulator boots with
+`androidboot.qemu.skin=320x640` at 160 dpi (read from the job log), so **`wm size 320x640` /
+`wm density 160`** is the faithful local reproduction. (`320x480` reproduces them too but is
+harsher than CI: at that height 20 of the 54 Home tests fail, 18 of which pass on CI — do not use
+it as the CI stand-in.) Pre-baseline (`f160b85`).
+
+**Fixed later the same day, in the tests only (`HomeQuickAddScreenTest`, `HomeScreenTest`;
+production byte-identical).** The Quick Add test asserted a global count of two `HOME_QUICK_ADD_TAG`
+nodes straight after rendering, which is not a property a LazyColumn offers: at 320x640 the
+favourite's pill sits at y=572 of 640 and the second card is never composed. It now scrolls the
+`HOME_BODY_TAG` list to each card's own pill (matched by its content description), asserts the same
+tag, `Role.Button` and `OnClick` on each, taps both and checks the two reported barcodes. The
+Remove test long-pressed "Melk" without scrolling; at 320x640 that card is composed only at the
+bottom edge, the press never reached it and `home_recent_forget` was never found (CI's reason text,
+matched locally word for word). It now scrolls the list to `hasText("Melk")` first. Negative
+controls, each restored and hash-checked: hiding Quick Add on favourites fails the corrected test
+("no node ... Add 65 g of Hagelslag puur"), hiding it on ordinary recents fails it on the second
+card, and double-firing the recent card's forget callback fails the Remove test with `[2, 2]`.
+Both Home classes: **53/54 at 320x640/160 and 53/54 at 1080x2400/420**, the one failure being the
+IME-inset case below in both runs.
+
+**CI at `1a77c92` — the API 36 job now completes (19m43s, 476 run, 0 skipped) instead of hanging,
+and reports 7 failures.** Two are the Home tests fixed above. The other five are new information and
+**will block `release-gate.yml`** until each is investigated: `HomeScreenTest.theFirstBackDismisses‑
+TheKeyboardAndKeepsTheSearch` ("precondition: the keyboard must be up" — the IME-inset class, so it
+is NOT local-only after all; the two `NoMatchActionsStayAboveTheKeyboard` cases pass there);
+`ProductScreenTest.theLargerProductImageLeavesThePortionFieldAndResultOnScreen` (`product_result`
+not displayed); `QuickCalculationScreenTest.theDetectedValueAndBasisAreShown` (`48 g carbs / 100 g`
+not displayed); `SearchPresentationRegressionTest.atTheDefaultScaleTheFigureSitsBesideTheName`
+(value wraps under the name at 320dp: name `y=164..188`, value `y=208..232`); and
+`TouchTargetSizeTest.portionModeChipsMeetTheMinimumAtLargeFontScale` (`Verify = 13x218dp`). All
+four geometry cases run on a 320dp-wide screen; none was classified as harness or product defect in
+this pass and none was changed. Run alone at `wm size 320x640` / `wm density 160` on `carbscan`,
+four of the five reproduce with CI's exact reason text (the search rects differ by 10px of y);
+`theDetectedValueAndBasisAreShown` **passes** alone there, so its CI failure depends on what ran
+before it — the soft-keyboard-leakage shape this file already records for `MealScreenTest`.
 
 **One local Home failure, pre-existing:** `theFirstBackDismissesTheKeyboardAndKeepsTheSearch` (added
 in `f59d668`) fails 3/3 here and identically at clean `f59d668` (stash control). A timeline probe
@@ -137,7 +169,7 @@ JVM **2151/2151** (0 failures, 0 errors, 0 skipped, 220 XML files, `--rerun-task
 tree). Lint **0 errors, 28 warnings** (unchanged baseline). Targeted instrumented: `CountablePortionScreenTest` 12/12 (was 10/12);
 `ProductScreenTest` + `ResultValueTest` + `PackShortcutsResponsiveTest` green — 58/58 in one run
 before the equal-height fix and 6/6 responsive after it. Release-gate suite locally
-(`notAnnotation=ExploratoryExperiment`, final debug APK `ef67cba9…`): **476/476 ran, 473 passed, 3 failed, 0 ignored** (15m28s, counted from instrumentation status codes; `numtests=476`). The 3 are `HomeScreenTest.theFirstBackDismissesTheKeyboardAndKeepsTheSearch`, `SearchPresentationRegressionTest.homesNoMatchActionsStayAboveTheKeyboard` and `…searchScreensNoMatchActionsStayAboveTheKeyboard` — one class of failure: each waits for `WindowInsets.ime` to become non-zero in the test composition and it never does on this AVD, while `dumpsys input_method` shows the keyboard up. The two no-match cases date from `3e08d41` (2026-09-17), **passed on CI's API 36 emulator at `f160b85`** and passed here on 2026-09-17 (445/447); the Home one fails identically at clean `f59d668`. `adb unroot` control: still 3/3 failing. Local-environment, pre-existing, not a code regression — but unexplained: the AVD was resized to 4 GB today and nothing else in its config changed.
+(`notAnnotation=ExploratoryExperiment`, final debug APK `ef67cba9…`): **476/476 ran, 473 passed, 3 failed, 0 ignored** (15m28s, counted from instrumentation status codes; `numtests=476`). Re-run after the Home test fix on byte-identical production: **476/476 ran, 473 passed, 3 failed, 0 ignored** (15m32s), the same three IME-inset cases. The 3 are `HomeScreenTest.theFirstBackDismissesTheKeyboardAndKeepsTheSearch`, `SearchPresentationRegressionTest.homesNoMatchActionsStayAboveTheKeyboard` and `…searchScreensNoMatchActionsStayAboveTheKeyboard` — one class of failure: each waits for `WindowInsets.ime` to become non-zero in the test composition and it never does on this AVD, while `dumpsys input_method` shows the keyboard up. The two no-match cases date from `3e08d41` (2026-09-17), **passed on CI's API 36 emulator at `f160b85`** and passed here on 2026-09-17 (445/447); the Home one fails identically at clean `f59d668`. `adb unroot` control: still 3/3 failing. Local-environment, pre-existing, not a code regression — but unexplained: the AVD was resized to 4 GB today and nothing else in its config changed.
 
 **Not verified on physical hardware.** Everything above is JVM plus the `carbscan` emulator.
 

@@ -133,7 +133,10 @@ live on Production and says the first update is ready. Work accumulates here unt
   no longer invokes `GetTextLayoutResult` against the full screen (that action leaves the
   composition permanently non-idle there) and its overflow invariant now lives in
   `ResultValueTest` at the screen's own 320dp x 80dp slot geometry; new
-  `PackShortcutsResponsiveTest` pins the label wrap and equal heights.
+  `PackShortcutsResponsiveTest` pins the label wrap and equal heights. Later the same day the two
+  Home tests that failed on CI's 320x640 emulator (`favouritesAndRecentsUseTheSameQuickAdd`,
+  `choosingRemoveFromRecentReportsTheProductExactlyOnce`) were corrected to scroll the Home list to
+  the card under test instead of assuming every card is composed; production untouched.
 
 ### Verified so far
 
@@ -143,8 +146,16 @@ instrumentation on the `carbscan` emulator **476/476 ran, 473 passed, 3 failed, 
 the IME inset inside `createComposeRule`, which never arrives on this AVD although the keyboard is
 shown; they pass on CI's API 36 emulator and fail identically at the pre-pass baseline. The
 2026-09-18 `largeFontOnANarrowScreenKeepsThePortionAndTheButton` failure no longer reproduces.
-**Two Home LazyColumn tests fail on CI's profile-less 320x480 API 36 emulator** (they pass here;
-reproducible with `adb shell wm size 320x480`) and will block `release-gate.yml` until fixed.
+The two Home LazyColumn tests that failed on CI's profile-less API 36 emulator (320x640 @160dpi;
+reproduce with `adb shell wm size 320x640` / `wm density 160`) are fixed in the tests, which now
+scroll the Home list to the card they act on; both Home classes are 53/54 at that geometry and at
+1080x2400, the remainder being the IME-inset case. **CI at `1a77c92` completes the API 36 job
+again (19m43s) and reports five further failures that will block `release-gate.yml`**: the Home
+first-Back IME case (so it is not local-only), and four 320dp-geometry cases in `ProductScreenTest`,
+`QuickCalculationScreenTest`, `SearchPresentationRegressionTest` and `TouchTargetSizeTest` — listed
+in CLAUDE.md, not yet classified (four reproduce alone at 320x640/160; the Quick Calculation one
+passes alone). Local non-exploratory API 36 suite after the fix: **476/476 ran, 473 passed, 3 failed
+(the IME-inset class), 0 ignored**.
 **Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps
 meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
 text. Re-check all of this, and resolve the CI failures, before the release build.
