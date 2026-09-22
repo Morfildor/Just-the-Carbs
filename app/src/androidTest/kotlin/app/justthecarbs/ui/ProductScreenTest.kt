@@ -1,5 +1,6 @@
 package app.justthecarbs.ui
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
@@ -21,8 +22,10 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -33,6 +36,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import app.justthecarbs.ui.components.ProductIdentityRow
 import app.justthecarbs.ui.components.PRODUCT_HERO_TAG
 import app.justthecarbs.ui.components.PRODUCT_GALLERY_NEXT_TAG
 import app.justthecarbs.ui.components.PRODUCT_GALLERY_PREVIOUS_TAG
@@ -54,6 +58,7 @@ import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -109,11 +114,14 @@ class ProductScreenTest {
     private fun showCalculator(
         product: Product = product(),
         settings: AppSettings = AppSettings(),
+        /** Overrides the window density/font scale, for the cases that are about running out of height. */
+        density: Density? = null,
     ) {
         compose.setContent {
             var portion by remember { mutableStateOf("") }
             val parsed = app.justthecarbs.domain.PortionParser.parse(portion)
 
+            val content = @androidx.compose.runtime.Composable {
             JustTheCarbsTheme {
                 ProductScreen(
                     state = ProductUiState(
@@ -127,11 +135,6 @@ class ProductScreenTest {
                     ),
                     settings = settings,
                     onPortionChanged = { portion = it },
-                    onAdjust = { delta ->
-                        val current = app.justthecarbs.domain.PortionParser.parse(portion) ?: BigDecimal.ZERO
-                        portion = current.add(BigDecimal(delta)).max(BigDecimal.ZERO)
-                            .stripTrailingZeros().toPlainString()
-                    },
                     onSetPortion = { portion = it.stripTrailingZeros().toPlainString() },
                     onToggleFavorite = {},
                     onBack = {},
@@ -143,6 +146,12 @@ class ProductScreenTest {
                     onEnterManually = {},
                     onRetry = {},
                 )
+            }
+            }
+            if (density != null) {
+                CompositionLocalProvider(LocalDensity provides density, content = content)
+            } else {
+                content()
             }
         }
     }
@@ -190,56 +199,90 @@ class ProductScreenTest {
         compose.onAllNodesWithText("0 g").assertCountEquals(0)
     }
 
-    // ---- §16 quick adjustment ----------------------------------------------------------------
+    // ---- the generic +/- adjust row is gone (2026-09-22 refinement) --------------------------
 
+    /**
+     * The four arithmetic buttons are absent, on a product where they would previously have shown.
+     *
+     * **Replaces `quickAdjustChangesThePortionAndTheResultTogether` and
+     * `quickAdjustNeverProducesANegativePortion`, which pinned the controls this approved change
+     * removes.** Neither test's *purpose* is lost: they were about portion arithmetic and its
+     * clamp at zero, which live in `ProductViewModel.adjustPortion` and are unchanged and still
+     * covered in the JVM suite. What is deleted is the claim that this screen renders buttons to
+     * drive them with.
+     *
+     * Stated as a negative because that is the actual contract — a row that reappears is exactly
+     * the regression this guards. Checked by label across the whole screen rather than by tag, so
+     * it cannot be satisfied by a row that is merely re-tagged.
+     */
     @Test
-    fun quickAdjustChangesThePortionAndTheResultTogether() {
-        showCalculator()
+    fun noGenericAdjustmentButtonsAreOffered() {
+        // 390 g: large enough that the old ladder would have rendered -50/-25/+25/+50.
+        showCalculator(product(packageAmount = "390"))
         typePortion("65")
 
-        // Scrolled into view before clicking, and that is not defensive padding.
-        //
-        // On a phone-sized window the quick-adjust row sits below the visible fold of the portion
-        // zone's scroll container. A node scrolled out of view is still `isPlaced == true` and still
-        // has a size, but Compose reports its `boundsInRoot` as an empty rect at the origin — it has
-        // no clickable area. `performClick()` on it does not throw; it clicks nothing, `onAdjust`
-        // never fires, and the portion silently stays where it was.
-        //
-        // Measured, not inferred: before the scroll the button reports
-        // `bounds=Rect(0,0,0,0) size=228x126`; after it, `bounds=Rect(799,861,1027,987)` and the
-        // click moves the portion 65 -> 75.
-        //
-        // Same family as the keyboard-covered control recorded in CLAUDE.md — a control the user
-        // cannot currently reach is a control `performClick()` cannot press.
-        compose.onNodeWithText("+10").performScrollTo().performClick()
-
-        // 48.2 x 75 / 100 = 36.15
-        //
-        // Scoped to the result's own node rather than searching the whole screen for the text: the
-        // portion field carries a value and a unit suffix too, so a bare text search can match the
-        // input instead of the result — which is how this assertion could pass while saying nothing
-        // about the result at all. The numeral and unit are now separate sibling Text nodes
-        // (ResultValue), so the merged accessible description is what carries "36.2 g" as one string.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("36.2 grams")
+        listOf("+25", "-25", "+50", "-50", "+10", "-10", "+5", "-5").forEach { label ->
+            compose.onAllNodesWithText(label).assertCountEquals(0)
+        }
+        compose.onAllNodesWithContentDescription("Plus 25").assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("Minus 25").assertCountEquals(0)
     }
 
+    /**
+     * The shortcuts that name something real are kept: a fraction of the package in the user's
+     * hand. Removing the arithmetic row must not have taken these with it.
+     */
     @Test
-    fun quickAdjustNeverProducesANegativePortion() {
-        showCalculator()
-        typePortion("5")
+    fun thePackShortcutsRemainWhenThePackageSizeIsKnown() {
+        showCalculator(product(packageAmount = "390"))
 
-        // Scrolled first, for the reason given in full on the sibling test above: below the fold,
-        // this button has empty bounds and `performClick()` presses nothing.
-        compose.onNodeWithText("-10").performScrollTo().performClick()
+        compose.onNodeWithText("¼ pack").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("½ pack").assertIsDisplayed()
+        compose.onNodeWithText("Full pack").assertIsDisplayed()
+    }
 
-        // Clamped at zero: a negative portion is not a thing you can eat.
-        //
-        // Asserted on the result's own tag rather than by searching for the text "0.0 g": once the
-        // portion field is showing `0`, a plain text search matches the *field* as well as the
-        // result, and the assertion silently stops being about the result at all. The numeral and
-        // unit are now separate sibling Text nodes (ResultValue), so the merged accessible
-        // description is what carries "0.0 g" as one string.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("0.0 grams")
+    /**
+     * And they stay absent when no package size was read confidently — a guessed pack size would be
+     * a wrong portion presented as a shortcut (§14, §13). Unchanged by this pass; asserted here so
+     * the removal of the sibling row cannot quietly relax the gate.
+     */
+    @Test
+    fun thePackShortcutsAreAbsentWhenThePackageSizeIsUnknown() {
+        showCalculator(product(packageAmount = null))
+
+        compose.onAllNodesWithText("¼ pack").assertCountEquals(0)
+        compose.onAllNodesWithText("½ pack").assertCountEquals(0)
+        compose.onAllNodesWithText("Full pack").assertCountEquals(0)
+    }
+
+    /**
+     * The larger product image (96dp, up from 56dp) must not push the portion field or the result
+     * off the screen — the defect that motivated shrinking the 245dp hero in the first place.
+     *
+     * Asserted at 1.3x text, the scale at which this zone first overflows, so the check is made
+     * where the height actually runs out rather than at the comfortable default.
+     */
+    @Test
+    fun theLargerProductImageLeavesThePortionFieldAndResultOnScreen() {
+        showCalculator(density = Density(density = 2.75f, fontScale = 1.3f))
+
+        // A portion is typed first, because the result node exists only once there is a result to
+        // show -- an empty field renders the "Enter a portion" prompt in that slot instead. Without
+        // this the case failed on a missing node and said nothing at all about layout.
+        typePortion("65")
+
+        // Both measured against the window rather than merely asserted to exist: "off-screen" is
+        // exactly the failure mode being guarded, and a node pushed under the dock is still present
+        // in the tree. `assertIsDisplayed` is what tests visibility against the window.
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertIsDisplayed()
+
+        // The field itself, identified the way the user finds it -- by its own label, since it
+        // carries no test tag. It holds "65" now, so the prompt is gone.
+        compose.onNodeWithText("Portion").assertIsDisplayed()
+
+        // And the thumbnail that prompted this case is on screen too, so the test cannot pass by
+        // the identity row having silently disappeared.
+        compose.onNodeWithTag(PRODUCT_HERO_TAG).assertIsDisplayed()
     }
 
     // ---- design decision 3.1: ml is never converted to g -------------------------------------
@@ -258,12 +301,25 @@ class ProductScreenTest {
 
     // ---- §23 / §25 provenance is always visible ----------------------------------------------
 
+    /**
+     * Unverified remote data still says so — plainly, and without a second sentence.
+     *
+     * **Updated: this had been failing since the 2026-09-22 visual pass** (confirmed at clean HEAD),
+     * which simplified provenance on this screen to the badge alone and passes
+     * `SourceBadge(showHint = false)`. The advisory line "Check package if needed" is no longer
+     * rendered here, so asserting it pinned a structure the app had deliberately dropped.
+     *
+     * The safety-relevant half is kept and is what this test is for: an Open Food Facts figure must
+     * be *labelled* as an online value, so the user knows it was never checked against the package.
+     * The second assertion now states the removal, so a re-added advisory line is a deliberate
+     * decision rather than something that drifts back in.
+     */
     @Test
     fun unverifiedRemoteDataSaysSoWithoutAlarmingTheUser() {
         showCalculator()
 
         compose.onNodeWithText("Online value").assertIsDisplayed()
-        compose.onNodeWithText("Check package if needed").assertIsDisplayed()
+        compose.onAllNodesWithText("Check package if needed").assertCountEquals(0)
     }
 
     @Test
@@ -324,7 +380,10 @@ class ProductScreenTest {
             .height
 
         with(compose.density) {
-            // 52 dp is Space.thumbnail, what Recents uses.
+            // 52dp is Space.thumbnail, what Recents uses. The calculator's plate is 96dp (72dp on a
+            // short device), so this floor is what would catch a regression back toward the 56dp
+            // the 2026-09-22 visual pass briefly shipped -- a tile too small to identify a package,
+            // which is the whole reason this assertion exists.
             assert(heroHeight.toDp() > 72.dp) {
                 "hero image was ${heroHeight.toDp()}, expected well above the 52dp thumbnail"
             }
@@ -332,28 +391,49 @@ class ProductScreenTest {
     }
 
     /**
-     * A product that genuinely has a photo gets a much taller plate than a monogram placeholder.
+     * A photo and a monogram occupy the **same** plate, so a late-arriving image cannot reflow the
+     * screen under the user's thumb.
      *
-     * That size is what answers "is this the package in my hand?", and it is proportional to the
-     * screen rather than a fixed dp — so the assertion is stated as "clearly taller than the
-     * monogram plate" rather than as a pixel value that would only hold on one display.
+     * **Replaces `aProductWithAPhotoGetsATallerHeroThanOneWithout`, which asserted the opposite and
+     * had been failing since the 2026-09-22 visual pass** (measured at clean HEAD: it reported
+     * "photo hero was 56.0.dp, expected clearly taller than the 84dp monogram plate"). That test
+     * belonged to the deleted 245dp hero, which sized itself as a share of the screen and gave a
+     * photo more room than a placeholder. The identity row deliberately does not: the plate is a
+     * fixed square either way, which is what makes the image load free of layout cost.
+     *
+     * Its purpose — "the photo is big enough to identify the package" — is not lost; it moved to
+     * `theProductHeroImageIsSubstantiallyLargerThanARecentThumbnail` above, which is the assertion
+     * that still has a meaning.
      */
     @Test
-    fun aProductWithAPhotoGetsATallerHeroThanOneWithout() {
-        showCalculator(
-            product().copy(imageUrl = "https://images.openfoodfacts.org/images/products/front.jpg"),
-        )
-
-        val photoHeight = compose.onNodeWithTag(PRODUCT_HERO_TAG)
-            .fetchSemanticsNode().size.height
-
-        with(compose.density) {
-            // The monogram plate is 84 dp; a real photo must be substantially beyond it.
-            assert(photoHeight.toDp() > 120.dp) {
-                "photo hero was ${photoHeight.toDp()}, expected clearly taller than the 84dp " +
-                    "monogram plate"
+    fun aPhotoAndAMonogramOccupyTheSamePlate() {
+        // One composition holding both, because the rule permits only a single `setContent` per
+        // test — and rendering them side by side is a stronger statement than comparing two runs
+        // anyway: any difference would be visible in one frame.
+        compose.setContent {
+            JustTheCarbsTheme {
+                Row {
+                    ProductIdentityRow(
+                        product = product(),
+                        modifier = Modifier.weight(1f).testTag("monogram_case"),
+                    ) {}
+                    ProductIdentityRow(
+                        product = product().copy(
+                            imageUrl = "https://images.openfoodfacts.org/images/products/front.jpg",
+                        ),
+                        modifier = Modifier.weight(1f).testTag("photo_case"),
+                    ) {}
+                }
             }
         }
+
+        val plates = compose.onAllNodesWithTag(PRODUCT_HERO_TAG).fetchSemanticsNodes()
+        assertEquals("both cases must render a plate", 2, plates.size)
+        assertEquals(
+            "the plate must not change size when an image exists",
+            plates[0].size,
+            plates[1].size,
+        )
     }
 
     /**
@@ -520,7 +600,6 @@ class ProductScreenTest {
                             ),
                             settings = AppSettings(),
                             onPortionChanged = {},
-                            onAdjust = {},
                             onSetPortion = {},
                             onToggleFavorite = {},
                             onBack = {},
@@ -681,9 +760,16 @@ class ProductScreenTest {
      * cards" with dead space between them).
      *
      * This regression exists because the first version of the hero layout left roughly a quarter of
-     * the screen blank between the per-100 figure and "How much are you eating?" — something no
-     * assertion caught and only appeared when the screen was actually looked at. Measuring the gap
-     * turns that into something a test can hold.
+     * the screen blank between the per-100 figure and the portion input — something no assertion
+     * caught and only appeared when the screen was actually looked at. Measuring the gap turns that
+     * into something a test can hold.
+     *
+     * **Anchor updated: this had been failing since the 2026-09-22 visual pass** (confirmed at clean
+     * HEAD), which replaced the centred question "How much are you eating?" with a left-aligned
+     * group label, "Portion". Only the anchor text moved — the gap being measured, and the reason
+     * for measuring it, are unchanged, and the 2026-09-22 refinement pass makes it more relevant
+     * rather than less: it both enlarges the thumbnail above this gap and removes a control row
+     * below it.
      */
     @Test
     fun thePortionControlsFollowTheProductHeaderWithoutALargeDeadBand() {
@@ -693,7 +779,7 @@ class ProductScreenTest {
             .fetchSemanticsNode()
             .boundsInRoot
             .bottom
-        val questionTop = compose.onNodeWithText("How much are you eating?")
+        val questionTop = compose.onNodeWithText("Portion")
             .fetchSemanticsNode()
             .boundsInRoot
             .top
@@ -876,7 +962,6 @@ class ProductScreenTest {
                     ),
                     settings = AppSettings(),
                     onPortionChanged = { portion = it },
-                    onAdjust = {},
                     onSetPortion = {},
                     onToggleFavorite = {},
                     onBack = {},

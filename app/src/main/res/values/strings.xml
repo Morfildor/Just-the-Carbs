@@ -179,12 +179,6 @@
     <string name="product_reset_online">Reset to online value</string>
     <string name="product_scan_label">Scan nutrition label</string>
 
-    <!-- Quick adjust (§16) -->
-    <!-- Parameterised because the step size now scales with the package size: ±5 on a biscuit is a
-         quarter of the item, while on a 500 g pack it is noise. See quickAdjustStep(). -->
-    <string name="adjust_minus">Minus %1$d</string>
-    <string name="adjust_plus">Plus %1$d</string>
-
     <!--
       Countable portions (countable-portions brief §3-§12). English only: the owner corrected the
       original brief's Dutch requirement mid-implementation — no values-nl entries for these keys.

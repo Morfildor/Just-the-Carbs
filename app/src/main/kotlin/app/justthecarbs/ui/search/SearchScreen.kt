@@ -1,8 +1,6 @@
 package app.justthecarbs.ui.search
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,8 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -55,6 +51,7 @@ import app.justthecarbs.R
 import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.ui.components.JtcTopBar
+import app.justthecarbs.ui.components.dismissKeyboardOnTouch
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.components.RefreshErrorBanner
@@ -107,6 +104,20 @@ fun SearchScreen(
     onBack: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
+
+    // Back peels one layer at a time: keyboard first, screen second — and this screen needs no code
+    // to get the first step, only the discipline not to break it.
+    //
+    // This screen opens with the field focused and the IME up, and the platform dismisses the
+    // keyboard on Back before the press reaches any app handler. So the first Back already puts the
+    // keyboard away and the second already reaches the nav host's own pop. Measured on the
+    // emulator: Back with no handler registered moves the IME inset 883px -> 0; with an IME-gated
+    // handler registered it fires and the inset stays at 883, i.e. adding a handler here would
+    // SWALLOW the dismissal rather than implement it.
+    //
+    // Recorded as an explicit non-change so the next reader does not "fix" the apparent omission.
+    // The hazard is the Home one in reverse: there a handler keyed on the query destroyed the
+    // search, here a handler keyed on the IME would freeze the keyboard.
 
     // The field is focused on arrival, so this screen opens ready to type.
     //
@@ -439,30 +450,10 @@ private fun SearchResults(
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = Space.screenEdge)
-                // Reaching for the list puts the keyboard away.
-                //
-                // Live search means results arrive while the field still has focus and the IME is
-                // still up — the user never pressed Enter, so nothing has dismissed it. The state
-                // region stops at the keyboard, so the list is not covered, but the viewport is
-                // roughly halved, so the moment someone stops typing and starts
-                // *reading*, the list they are reading is the smallest thing on screen.
-                //
-                // `Initial` rather than `Main`, and `requireUnconsumed = false`, so this handler
-                // only ever OBSERVES the gesture. It runs before the row's own clickable sees the
-                // event and consumes nothing, so a single tap both dismisses the keyboard and
-                // selects the product rather than being spent on the dismissal.
-                //
-                // That is the reason for the choice, NOT a reproduced defect: a control run on
-                // `Main` still passes `tappingAResultStillSelectsItOnTheFirstTap`, because
-                // Compose's synthetic `performClick` does not model the consumption ordering a
-                // real finger produces. The test pins the property on the shipped code; it is not
-                // a discriminator between the two passes. Hardware is the discriminating check.
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        onListTouched()
-                    }
-                }
+                // Reaching for the list puts the keyboard away, without spending the touch that
+                // did it. The rule, and why it is `Initial`/non-consuming, lives on the shared
+                // modifier — Home's inline results use the same one.
+                .dismissKeyboardOnTouch(onListTouched)
                 .testTag(SEARCH_RESULTS_TAG),
         ) {
             items(state.hits, key = { it.barcode }) { hit ->

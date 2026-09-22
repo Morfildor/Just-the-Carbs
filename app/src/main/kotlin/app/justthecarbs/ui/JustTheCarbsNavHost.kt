@@ -537,7 +537,6 @@ fun JustTheCarbsNavHost(
                 state = state,
                 settings = settings,
                 onPortionChanged = viewModel::onPortionChanged,
-                onAdjust = viewModel::adjustPortion,
                 onSetPortion = viewModel::setPortion,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onBack = {
@@ -700,7 +699,6 @@ fun JustTheCarbsNavHost(
                 state = state,
                 settings = settings,
                 onPortionChanged = viewModel::onPortionChanged,
-                onAdjust = viewModel::adjustPortion,
                 onSetPortion = viewModel::setPortion,
                 onToggleFavorite = {},
                 onBack = { navController.popBackStack() },

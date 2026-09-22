@@ -123,7 +123,6 @@ class UsualPortionScreenTest {
                     ),
                     settings = AppSettings(),
                     onPortionChanged = { portion = it },
-                    onAdjust = {},
                     onSetPortion = { portion = it.stripTrailingZeros().toPlainString() },
                     onToggleFavorite = {},
                     onBack = {},

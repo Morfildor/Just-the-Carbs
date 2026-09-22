@@ -105,7 +105,6 @@ class DirectCarbResultScreenTest {
                     ),
                     settings = AppSettings(),
                     onPortionChanged = {},
-                    onAdjust = {},
                     onSetPortion = {},
                     onToggleFavorite = {},
                     onBack = {},

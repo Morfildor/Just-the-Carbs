@@ -34,10 +34,12 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -139,6 +141,7 @@ import app.justthecarbs.ui.components.ProductThumbnail
 import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.components.RefreshErrorBanner
 import app.justthecarbs.ui.components.SearchResultRow
+import app.justthecarbs.ui.components.dismissKeyboardOnTouch
 import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.meal.MealBarIfPresent
 import app.justthecarbs.ui.product.unitLabel
@@ -218,18 +221,47 @@ fun HomeScreen(
     onStartTutorial: () -> Unit = {},
     onDismissTutorialReminder: () -> Unit = {},
 ) {
-    // Home is the start destination, so the system back button has no back-stack entry to pop and
-    // would otherwise close the app while the user is mid-search. Intercept only while there is a
-    // query to leave — clearing it is the same action the field's own X button performs — and let
-    // an empty query fall through to the default (close) behaviour, unchanged.
-    // Deliberately not migrated to PredictiveBackHandler in the 2026-09-14 interaction pass — this
-    // handler does not navigate anywhere (Home is the start destination), it clears the search field
-    // in place of the default close-the-app behaviour. A predictive-back gesture here would show the
-    // system's close/home preview mid-drag for an action that, on release, keeps the app open and
-    // only clears text — a misleading preview rather than a cleanup-ordering hazard, but still a
-    // reason to leave it as an ordinary BackHandler; see
+    // Back peels one layer at a time: keyboard, then search, then the app.
+    //
+    // **This replaces a handler keyed on the query alone, which destroyed the search it was meant
+    // to protect.** It read `enabled = query.isNotBlank()` and cleared the query outright, so the
+    // universal Android gesture for "put the keyboard away" — the first Back after typing — threw
+    // away the query, the results and the in-flight request together. The user had asked for less
+    // keyboard and lost the whole search; the only route back was to type it again, and a
+    // re-typed query costs a fresh Open Food Facts request against a 10/min budget.
+    //
+    // The keyboard's visibility is read from the real IME inset, never inferred from the query.
+    // Those two facts are independent — a query is non-blank for as long as results are on screen,
+    // which is mostly with the keyboard down — and conflating them is precisely the defect above.
+    //
+    // Dismissing the IME touches nothing else: no `onSearchQueryChanged("")`, so the query, the
+    // hits, and any searching/pending state are all exactly as they were. Only the second press,
+    // once the keyboard is genuinely gone, clears the search. With no query at all neither branch
+    // is enabled and Back falls through to the platform default (Home is the start destination, so
+    // that is closing the app), unchanged.
+    //
+    // Deliberately not migrated to PredictiveBackHandler in the 2026-09-14 interaction pass —
+    // neither branch navigates anywhere (Home is the start destination); they dismiss a keyboard
+    // and clear a field. A predictive-back gesture would show the system's close/home preview
+    // mid-drag for an action that, on release, keeps the app open — a misleading preview rather
+    // than a cleanup-ordering hazard, but still a reason to leave these as ordinary handlers; see
     // docs/superpowers/specs/2026-09-14-interaction-polish-design.md.
-    BackHandler(enabled = searchState.query.isNotBlank()) {
+    val searchFocusManager = LocalFocusManager.current
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+    // **There is deliberately NO handler for the keyboard-up case, and that is the fix.** The
+    // platform already dismisses the IME on Back before the press reaches any app handler, so the
+    // only thing this screen has to do is stay out of the way while that happens: `!imeVisible`
+    // disables the clear, and the press does its ordinary job.
+    //
+    // Measured on the emulator rather than assumed, because the obvious implementation is wrong in
+    // a way that looks right. With no handler registered, Back moves the IME inset 883px -> 0. With
+    // an IME-gated handler registered -- one that calls `focusManager.clearFocus()`, which is what
+    // this pass first shipped -- the handler fires and the inset stays at 883: the app has
+    // swallowed the very press the system needed, and `clearFocus()` does not close a keyboard. The
+    // first Back would then appear to do nothing at all, which is worse than the defect being
+    // fixed.
+    BackHandler(enabled = !imeVisible && searchState.query.isNotBlank()) {
         onSearchQueryChanged("")
     }
 
@@ -408,6 +440,7 @@ fun HomeScreen(
                     onScanLabel = onSearchScanLabel,
                     onEnterManually = onSearchEnterManually,
                     onRetry = onSearchRetry,
+                    onListTouched = { searchFocusManager.clearFocus() },
                     // Stops at the keyboard. Edge-to-edge means `adjustResize` no longer shrinks the
                     // window, so without this the region ran on underneath the IME and the centred
                     // recovery panels put their actions behind it (measured: "Enter manually" at
@@ -683,6 +716,7 @@ private fun HomeSearchResults(
     onScanLabel: () -> Unit,
     onEnterManually: () -> Unit,
     onRetry: () -> Unit,
+    onListTouched: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -720,6 +754,11 @@ private fun HomeSearchResults(
                         .weight(1f)
                         .fillMaxWidth()
                         .padding(horizontal = Space.screenEdge)
+                        // Parity with the search screen: reaching for the list puts the keyboard
+                        // away without spending the touch. Home's inline results had no such
+                        // handler at all, so the only way to see more than half a list here was
+                        // the Back button -- which, before this pass, deleted the search.
+                        .dismissKeyboardOnTouch(onListTouched)
                         .testTag(HOME_SEARCH_RESULTS_TAG),
                 ) {
                     items(state.hits, key = { it.barcode }) { hit ->

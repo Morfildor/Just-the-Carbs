@@ -347,7 +347,6 @@ class MealScreenTest {
                     ),
                     settings = AppSettings(),
                     onPortionChanged = { portion = it },
-                    onAdjust = {},
                     onSetPortion = {},
                     onToggleFavorite = {},
                     onBack = {},

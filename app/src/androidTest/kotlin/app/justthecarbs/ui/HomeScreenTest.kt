@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
@@ -15,6 +17,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -28,6 +31,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -115,13 +119,23 @@ class HomeScreenTest {
         onManualEntry: () -> Unit = {},
         onSearchSubmit: () -> Unit = {},
         onSearchQueryChanged: (String) -> Unit = {},
+        onSearchSelect: (ProductSearchHit) -> Unit = {},
         onOpenProduct: (String) -> Unit = {},
         onForgetRecent: (Product) -> Unit = {},
         forgotten: ForgottenRecent? = null,
         onUndoForgetRecent: () -> Unit = {},
         density: Density? = null,
+        /**
+         * Reports the live IME inset in px on every composition.
+         *
+         * The keyboard-vs-Back cases are about a window inset the system owns, and there is no
+         * Compose assertion for it — so the screen's own view of it is sampled from inside the
+         * composition, which is exactly the value the shipped `BackHandler` is gated on.
+         */
+        probeImeBottom: (Int) -> Unit = {},
     ) {
         compose.setContent {
+            probeImeBottom(WindowInsets.ime.getBottom(LocalDensity.current))
             val content = @androidx.compose.runtime.Composable {
                 JustTheCarbsTheme {
                     HomeScreen(
@@ -143,6 +157,7 @@ class HomeScreenTest {
                         searchState = searchState,
                         onSearchSubmit = onSearchSubmit,
                         onSearchQueryChanged = onSearchQueryChanged,
+                        onSearchSelect = onSearchSelect,
                     )
                 }
             }
@@ -151,6 +166,23 @@ class HomeScreenTest {
             } else {
                 content()
             }
+        }
+    }
+
+    /**
+     * Waits for the soft keyboard to finish appearing or disappearing.
+     *
+     * The IME animates, and `waitForIdle` does not wait for a window the app does not own, so a
+     * bare read straight after `pressBack` catches the inset mid-slide. Polls the sampled value
+     * instead of sleeping a fixed time, so a slow emulator lengthens the wait rather than failing.
+     */
+    private fun awaitIme(present: Boolean, timeoutMs: Long = 5_000, read: () -> Int) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if ((read() > 0) == present) return
+            compose.mainClock.advanceTimeBy(100)
+            compose.waitForIdle()
+            Thread.sleep(50)
         }
     }
 
@@ -292,21 +324,165 @@ class HomeScreenTest {
     /**
      * Home is the app's start destination, so it sits at the bottom of the back stack — the system
      * back button has nothing to pop and would otherwise close the app while the user is mid-search.
-     * Pressing back with a query present must clear it instead, the same action the field's own X
-     * button performs, rather than exiting.
+     * With the keyboard already down, back must clear the query instead, the same action the
+     * field's own X button performs, rather than exiting.
+     *
+     * **Revised 2026-09-22.** This case previously drove back with no regard for keyboard state and
+     * asserted the query was cleared — which is exactly what the defect did, so the test protected
+     * it. It now states the narrower rule it was always meant to: clearing is the *second* step,
+     * reached once the IME is gone. `theFirstBackDismissesTheKeyboardAndKeepsTheSearch` below owns
+     * the first step.
      */
     @Test
-    fun systemBackClearsAnActiveSearchInsteadOfClosingTheApp() {
+    fun systemBackClearsAnActiveSearchOnceTheKeyboardIsAlreadyDown() {
         var cleared: String? = null
         show(
             recents = emptyList(),
             searchState = SearchUiState(query = "haribo"),
             onSearchQueryChanged = { cleared = it },
         )
+        // Nothing has focused the field, so no IME is up: this is the keyboard-down state.
+        compose.waitForIdle()
 
         androidx.test.espresso.Espresso.pressBack()
 
         assertEquals("", cleared)
+    }
+
+    /**
+     * The first back after typing puts the keyboard away and leaves the search completely alone.
+     *
+     * **This is the defect the 2026-09-22 pass fixed, and it was a data-loss bug, not a nicety.**
+     * The handler was keyed on `query.isNotBlank()` and cleared the query outright, so the
+     * universal Android gesture for "dismiss the keyboard" destroyed the query, the results and
+     * the in-flight request together. The only recovery was retyping, which costs a fresh Open
+     * Food Facts request against a 10/min budget.
+     *
+     * Asserted on the IME inset itself plus `onSearchQueryChanged` never firing. Those two together
+     * are the whole contract: the keyboard is gone, and the screen never asked for the query (which
+     * the ViewModel owns) to be changed.
+     *
+     * **The keyboard is dismissed by the platform, not by this screen, and the test is written that
+     * way on purpose.** Measured on the emulator: Back with no handler registered moves the inset
+     * 883px -> 0, while an IME-gated `BackHandler` calling `clearFocus()` fires and leaves the
+     * inset at 883 — an app handler here swallows the dismissal instead of performing it. So what
+     * Home must do while the keyboard is up is nothing, and this case fails if a future change
+     * adds an interception.
+     */
+    @Test
+    fun theFirstBackDismissesTheKeyboardAndKeepsTheSearch() {
+        val changes = mutableListOf<String>()
+        var imeBottom = -1
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(query = "haribo", hits = listOf(searchHit())),
+            onSearchQueryChanged = { changes += it },
+            probeImeBottom = { imeBottom = it },
+        )
+
+        // Focus the field, which is what brings the IME up.
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).performClick()
+        compose.waitForIdle()
+        awaitIme(present = true) { imeBottom }
+        assertTrue("precondition: the keyboard must be up", imeBottom > 0)
+
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitForIdle()
+        awaitIme(present = false) { imeBottom }
+
+        assertEquals("back must not change the query while the keyboard is up", emptyList<String>(), changes)
+        assertEquals("the first back must put the keyboard away", 0, imeBottom)
+        // The results the user was about to read are still there.
+        compose.onNodeWithTag(HOME_SEARCH_RESULTS_TAG).assertIsDisplayed()
+    }
+
+    /**
+     * The two presses together, in order, and the query is cleared exactly once.
+     *
+     * Runs both steps in one test because the contract is about the *sequence*: a handler that
+     * cleared on both presses would pass each single-step case above on its own.
+     */
+    @Test
+    fun theSecondBackClearsTheSearchExactlyOnce() {
+        val changes = mutableListOf<String>()
+        var imeBottom = -1
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(query = "haribo", hits = listOf(searchHit())),
+            onSearchQueryChanged = { changes += it },
+            probeImeBottom = { imeBottom = it },
+        )
+
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).performClick()
+        compose.waitForIdle()
+        awaitIme(present = true) { imeBottom }
+
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitForIdle()
+        awaitIme(present = false) { imeBottom }
+        assertEquals("the first back is the keyboard only", emptyList<String>(), changes)
+
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitForIdle()
+
+        assertEquals("the second back clears, and only the second", listOf(""), changes)
+    }
+
+    /**
+     * Reaching for the results puts the keyboard away without touching the search — Home's inline
+     * list now behaves exactly like the search screen's.
+     *
+     * Before this pass Home had no such handler at all, so with live results arriving under an open
+     * keyboard the only way to see more than half a list was the back button, which deleted the
+     * search.
+     */
+    @Test
+    fun touchingTheResultsDismissesTheKeyboardWithoutClearingTheSearch() {
+        val changes = mutableListOf<String>()
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(query = "haribo", hits = listOf(searchHit())),
+            onSearchQueryChanged = { changes += it },
+        )
+
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(HOME_SEARCH_RESULTS_TAG).performTouchInput { swipeUp() }
+        compose.waitForIdle()
+
+        assertEquals("scrolling must not change the query", emptyList<String>(), changes)
+        // Focus left the field, which is what takes the keyboard with it. Asserted on focus rather
+        // than the inset because this dismissal IS the app's own doing (unlike Back's), so focus is
+        // the thing the screen actually controls.
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).assertIsNotFocused()
+        compose.onNodeWithTag(HOME_SEARCH_RESULTS_TAG).assertIsDisplayed()
+    }
+
+    /**
+     * The dismissal observes the gesture rather than consuming it, so a tap on a row still selects
+     * that row on the *first* press — it is not spent putting the keyboard away.
+     *
+     * Note what this does and does not establish: Compose's synthetic `performClick` does not model
+     * the pointer-consumption ordering a real finger produces, so this passes against both an
+     * `Initial`/non-consuming handler and a `Main` one. It pins the property on the shipped code;
+     * hardware is the discriminating check (see `dismissKeyboardOnTouch`).
+     */
+    @Test
+    fun tappingAResultStillSelectsItOnTheFirstTap() {
+        var selected: ProductSearchHit? = null
+        show(
+            recents = emptyList(),
+            searchState = SearchUiState(query = "haribo", hits = listOf(searchHit())),
+            onSearchSelect = { selected = it },
+        )
+
+        compose.onNodeWithTag(HOME_SEARCH_FIELD_TAG).performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Chocoladehagel puur").performClick()
+
+        assertEquals(searchHit().barcode, selected?.barcode)
     }
 
     /**

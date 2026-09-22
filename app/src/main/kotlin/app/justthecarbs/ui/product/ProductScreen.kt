@@ -157,7 +157,6 @@ fun ProductScreen(
     state: ProductUiState,
     settings: AppSettings,
     onPortionChanged: (String) -> Unit,
-    onAdjust: (Int) -> Unit,
     onSetPortion: (BigDecimal) -> Unit,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
@@ -321,7 +320,6 @@ fun ProductScreen(
                     state = state,
                     settings = settings,
                     onPortionChanged = onPortionChanged,
-                    onAdjust = onAdjust,
                     onSetPortion = onSetPortion,
                     onApplyNewerRemote = onApplyNewerRemote,
                     onDismissNewerRemote = onDismissNewerRemote,
@@ -574,7 +572,6 @@ private fun CalculatorBody(
     state: ProductUiState,
     settings: AppSettings,
     onPortionChanged: (String) -> Unit,
-    onAdjust: (Int) -> Unit,
     onSetPortion: (BigDecimal) -> Unit,
     onApplyNewerRemote: () -> Unit = {},
     onDismissNewerRemote: () -> Unit = {},
@@ -707,7 +704,21 @@ private fun CalculatorBody(
             // It degrades correctly: the moment the content is taller than the zone there is no
             // free space to distribute, and the layout is identical to `Top` with the scroll doing
             // the work. That is the large-font-scale and short-screen case.
-            verticalArrangement = Arrangement.Center,
+            //
+            // **Corrected 2026-09-22: centred, but biased toward the top.** Centring was measured
+            // when this zone held one more control row than it does now. With the +/- row removed
+            // the remaining content is short enough that true centring split the slack in two and
+            // put a band above the group as well as below it -- measured on the emulator at 271px
+            // (~103dp) between the identity row and the "Portion" label, with the group floating
+            // clear of both ends. Seen only by looking at a screenshot; every assertion passed.
+            //
+            // `Top` anchors the group under the identity row it belongs to and lets the slack
+            // collect in one place, at the bottom, where the pinned dock already terminates the
+            // screen -- one gap the eye reads as "the screen ends here" rather than two that read
+            // as things having come loose. It is NOT `weight(1f, fill = false)` on the zone and NOT
+            // a weighted spacer as a SIBLING of it: both of those unpin the dock from the bottom
+            // edge, which is the arrangement this file has now measured and rejected twice.
+            verticalArrangement = Arrangement.Top,
         ) {
 
         // Correction #5/#10: a newer online figure is offered, never imposed. The calculation the
@@ -820,9 +831,9 @@ private fun CalculatorBody(
                 // typing must be seen before the user starts. That reasoning held when the input
                 // was preceded by a photo and a centred question; it does not survive the new
                 // order, where the label already announces the group and the shortcuts read as
-                // "or one of these" beside the adjust and pack rows they are typographically
-                // identical to. Grouping the three shortcut rows together is what removes the
-                // interleaving of labels, fields and buttons that made this zone feel like a form.
+                // "or one of these" beside the pack row they are typographically identical to.
+                // Grouping the shortcut rows together is what removes the interleaving of labels,
+                // fields and buttons that made this zone feel like a form.
                 //
                 // Still absent entirely until a portion has been used twice, and still never
                 // pre-selected -- a tap sets the portion, and without a tap the field is untouched.
@@ -836,8 +847,19 @@ private fun CalculatorBody(
                     )
                 }
 
-                Spacer(Modifier.height(Space.s))
-                QuickAdjustRow(onAdjust = onAdjust, packageAmount = product.packageAmount)
+                // The generic +/- adjust row is gone (2026-09-22 refinement pass).
+                //
+                // Four arithmetic buttons sat between the field and the pack shortcuts, and they
+                // were the densest thing in a zone whose whole job is "type a number". They said
+                // nothing about *this* product -- a scaled step is still an arbitrary numeric
+                // template -- while the two rows that remain both name something real: a portion
+                // the user has actually eaten, and a fraction of the package in their hand. With
+                // the row removed the field, its shortcuts and the result sit within one screen of
+                // each other again.
+                //
+                // `ProductViewModel.adjustPortion` is deliberately left in place: it is portion
+                // arithmetic with its own JVM coverage, not presentation, and this pass does not
+                // touch calculation APIs.
 
                 // Only offered when the package size was read confidently. A guessed pack size
                 // would be a wrong portion presented as a shortcut (§14, §13).
@@ -1122,77 +1144,6 @@ private val PORTION_FIELD_HEIGHT = 88.dp
 
 /** What the field shrinks to while the keyboard is open. See [PortionField]'s `compact`. */
 private val PORTION_FIELD_HEIGHT_COMPACT = 72.dp
-
-/**
- * The step size the ± buttons move by, chosen from the package size (§16).
- *
- * A fixed ±5 g is wrong at both ends of the range this app serves: on a 400 g loaf or a 500 g pasta
- * pack it is roughly one-hundredth of the package and takes twenty taps to do anything, while on a
- * 20 g biscuit it is a quarter of the item. One absolute step cannot serve both.
- *
- * The package size is the signal already trusted elsewhere on this screen — [PackShortcuts] renders
- * only when [app.justthecarbs.domain.PackageQuantityParser] read one confidently — so scaling to it
- * introduces no new guess. When no package size was read, the original ±5/±10 stands: it is the
- * safe default for an unknown product, and inventing a step from a size the app does not have would
- * be exactly the guessed-shortcut problem §14 rules out.
- *
- * Steps stay round numbers. A "+37" button is arithmetically defensible and useless to someone
- * adjusting a portion by feel.
- */
-internal fun quickAdjustStep(packageAmount: BigDecimal?): Int {
-    val pack = packageAmount?.toInt() ?: return 5
-    return when {
-        pack >= 750 -> 50
-        pack >= 300 -> 25
-        pack >= 120 -> 10
-        else -> 5
-    }
-}
-
-@Composable
-private fun QuickAdjustRow(onAdjust: (Int) -> Unit, packageAmount: BigDecimal? = null) {
-    // Order runs negative → positive so the row reads like a number line (§16).
-    //
-    // Two steps per direction, the second twice the first, so the row spans a useful range without
-    // a fourth button — the constraint that keeps every label inside its button at large font
-    // scales, the same one that keeps ¾ out of PackShortcuts.
-    val small = quickAdjustStep(packageAmount)
-    val large = small * 2
-    val steps = listOf(-large, -small, small, large)
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            // 4dp above and below a 40dp button is a 48dp target, so the compact visual height
-            // costs nothing in reachability.
-            .padding(vertical = Space.xs),
-        horizontalArrangement = Arrangement.spacedBy(Space.s),
-    ) {
-        steps.forEach { delta ->
-            // Spoken as "Minus 25" / "Plus 25" rather than the glyph, which TalkBack would
-            // otherwise read as a mathematical operator detached from its amount.
-            val description = stringResource(
-                if (delta > 0) R.string.adjust_plus else R.string.adjust_minus,
-                kotlin.math.abs(delta),
-            )
-            // A value button, not an outlined one. Four blue-bordered buttons spent the
-            // interaction colour on arithmetic and read as four competing actions beside the real
-            // primary action in the dock; these are conveniences for filling a field.
-            //
-            // The row's own vertical padding keeps the touch target at 48dp while the buttons
-            // themselves are 40dp -- see Space.valueButtonHeight. `+10` no longer truncates at a
-            // large font scale because JtcValueButton's padding is 12dp rather than a button's
-            // default 24dp.
-            JtcValueButton(
-                text = if (delta > 0) "+$delta" else "$delta",
-                onClick = { onAdjust(delta) },
-                modifier = Modifier
-                    .weight(1f)
-                    .semantics { contentDescription = description },
-            )
-        }
-    }
-}
 
 /**
  * ¼ · ½ · Full pack (development-pass brief §14).
