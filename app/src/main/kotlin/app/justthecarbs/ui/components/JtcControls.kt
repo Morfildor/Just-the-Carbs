@@ -2,7 +2,9 @@ package app.justthecarbs.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
@@ -112,6 +114,23 @@ fun JtcValueButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    val shape = RoundedCornerShape(Space.buttonRadius)
+    // In Dark the fill alone is not a boundary, so the button takes a hairline there.
+    //
+    // Measured: the dark page is `Night` (#111318, relative luminance 0.0065) and the fill is
+    // `surfaceContainerLow` (#171A20, 0.0103) -- a contrast ratio of **1.07:1**, against the 3:1
+    // WCAG asks of a control boundary. On a near-black page no fill can reach that without becoming
+    // a card: even `surfaceContainerHighest` manages about 1.5:1. So the edge has to come from a
+    // line, and `outline` (#848997) gives **5.31:1**.
+    //
+    // `ContrastTest` did not catch this because it checks text against its ground, and these
+    // labels pass comfortably. What was failing was the surface that makes a button look like a
+    // button, which no assertion was looking at. Found by looking at the screen in Dark.
+    //
+    // Light is unchanged and deliberately keeps no border: there the same two tokens are #FBF8F1
+    // on cream, which reads as a control without one, and adding an edge there would put back one
+    // of the borders this pass exists to remove.
+    val needsBorder = isSystemInDarkTheme() && enabled
     Box(
         modifier = modifier
             .heightIn(min = Space.valueButtonHeight)
@@ -121,11 +140,18 @@ fun JtcValueButton(
                 } else {
                     Color.Transparent
                 },
-                shape = RoundedCornerShape(Space.buttonRadius),
+                shape = shape,
+            )
+            .then(
+                if (needsBorder) {
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outline, shape)
+                } else {
+                    Modifier
+                },
             )
             // Clip before clickable so the ripple follows the rounded corner instead of
             // painting a square over it.
-            .clip(RoundedCornerShape(Space.buttonRadius))
+            .clip(shape)
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = Space.s + Space.xs, vertical = Space.s),
         contentAlignment = Alignment.Center,

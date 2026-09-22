@@ -140,7 +140,6 @@
     <string name="remote_changed_title">Online value changed</string>
     <string name="remote_changed_body">The database now reports %1$s g / 100 %2$s. Your current value is unchanged.</string>
     <string name="remote_changed_apply">Use new value</string>
-    <string name="product_portion_question">How much are you eating?</string>
     <!-- The portion group's own label on the calculator, replacing the centred question above.
          A noun, not a question: the field below it and its `0` placeholder already ask. -->
     <string name="product_portion_group_label">Portion</string>
@@ -382,6 +381,13 @@
 
     <!-- Unknown product (§26) -->
     <string name="notfound_title">Product not found</string>
+    <!-- A NAME search that matched nothing, which is a different statement from a barcode lookup
+         that missed. `notfound_title` answers "this specific product is not in the database"; this
+         one answers "nothing matched what you typed", where the wording must not imply the product
+         does not exist, since the query may simply be spelled differently. Kept separate rather
+         than reworded in place, because Product's barcode failure legitimately still says the
+         first thing. -->
+    <string name="search_no_matches_title">No matches</string>
     <string name="notfound_body">This barcode isn\'t in the product database. You can read the value from the package instead.</string>
     <string name="notfound_barcode">Barcode %1$s</string>
     <string name="notfound_scan_again">Scan barcode again</string>
@@ -698,7 +704,6 @@
     <string name="settings_clear_products">Clear saved products</string>
     <string name="settings_clear_recents_confirm">Clear recent history for every product, including favourites? Your saved products, verified values and favourites are kept.</string>
     <string name="settings_clear_products_confirm">Delete every saved product, including values you verified, and every portion saved for them? This cannot be undone.</string>
-    <string name="settings_confirm">Delete</string>
     <!-- The confirm button's verb, matching the `Clear ...` rows that open these dialogs. `Delete`
          named an action neither row does: clearing recent history deletes no product, and the row
          the user tapped said `Clear`. A confirm button should repeat the verb it is confirming. -->
@@ -712,8 +717,6 @@
     <string name="settings_feedback_subject" tools:ignore="MissingTranslation">JustTheCarbs feedback</string>
     <string name="settings_feedback_body_prompt" tools:ignore="MissingTranslation">Please describe what happened.\n\nIf this concerns a nutrition-label scan, you can also attach an exported Scan Evidence ZIP.</string>
     <string name="settings_feedback_link_failed" tools:ignore="MissingTranslation">No email app found. You can reach us at %1$s.</string>
-    <string name="settings_rate_headline" tools:ignore="MissingTranslation">Enjoying Just the Carbs?</string>
-    <string name="settings_rate_body" tools:ignore="MissingTranslation">A quick rating on the Play Store helps other people find the app.</string>
     <!-- `Rate on Google Play` rather than `Rate <app name>`: the row is one of a list of plain
          settings rows, and naming the app inside its own settings screen is the marketing register
          the rest of this screen was toned down to avoid. It also sidesteps the defect this
@@ -797,9 +800,6 @@
     <string name="tutorial_body_total" tools:ignore="MissingTranslation">Everything you add is combined here.</string>
 
     <!-- The find → portion → carbs strip on the tutorial's first step. -->
-    <string name="tutorial_rhythm_find" tools:ignore="MissingTranslation">Scan</string>
-    <string name="tutorial_rhythm_portion" tools:ignore="MissingTranslation">Portion</string>
-    <string name="tutorial_rhythm_carbs" tools:ignore="MissingTranslation">Carbs</string>
 
     <!--
       The example product in the tutorial's preview. A generic food, deliberately not a real brand:

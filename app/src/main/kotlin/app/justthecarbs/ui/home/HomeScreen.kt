@@ -772,7 +772,7 @@ private fun HomeSearchResults(
 
             state.noMatches -> Box(modifier = region.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 RecoveryPanel(
-                    title = stringResource(R.string.notfound_title),
+                    title = stringResource(R.string.search_no_matches_title),
                     body = stringResource(R.string.search_no_matches, state.query),
                 ) {
                     PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)

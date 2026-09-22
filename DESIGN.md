@@ -64,7 +64,11 @@ confirmation must not use confirmed-result styling.
 
 A calculated result renders its dominant number and its unit as two related but distinct text
 styles rather than one string — the number is the answer, the unit is a label on it — sharing one
-coherent accessible node so a screen reader still reports them together. The same shape scales down
+coherent accessible node so a screen reader still reports them together. **They share a baseline**:
+both are aligned with `alignByBaseline()` and both trim their line height, because two text boxes
+can only sit on one baseline when neither reserves leading the other does not. Aligning their boxes
+instead dropped the unit below the numeral as a subscript, which is the app’s most-looked-at pair
+of glyphs rendered wrong. The same shape scales down
 for smaller previews, such as a search row's trailing figure, provided the styling never borrows
 confirmed-result colour for a value nothing has confirmed yet. Space Grotesk's bundled instance does
 not currently expose tabular figures, so digits in this shape may shift width slightly during a
@@ -76,26 +80,50 @@ missed design requirement.
 Spacing uses the 4/8/16/24/32/48dp scale. Screens use a 20dp horizontal edge. Touch targets are at
 least 48dp and primary text actions use a 56dp minimum, never a fixed text-bearing height.
 
-- Cards: 22dp radius, normally tonal or bordered rather than elevated.
-- Buttons and fields: 14dp radius.
-- Media: 20dp radius.
-- Sheets/result docks: 28dp top radius.
+Rounding is restrained: precise rather than bubbly, and one step down across the board from the
+original handoff figures.
+
+- Cards: 16dp radius, normally tonal or bordered rather than elevated.
+- Buttons and fields: 12dp radius.
+- Media: 12dp radius.
+- Icon plates: 10dp radius.
+- Sheets/result docks: 24dp top radius.
 - Chips: pill-shaped only when the affordance is genuinely a compact chip.
+- Fully round (`CircleShape`) is reserved for the scanner scrim buttons, which float over a camera
+  preview and are the only place it appears.
 - Result dock: 6dp elevation; ordinary cards: flat.
 
 Warm surface steps separate page, field, card, and modal layers. The result dock is the one ordinary
-content surface allowed a meaningful shadow because its separation is functional. Root screens
-paint an opaque page before the decorative motif; the motif is a compact 92×96dp set of unequal
-nutrition bars, not a full-page tint.
+content surface allowed a meaningful shadow because its separation is functional. **Fewer edges** is
+the governing rule: no box inside a box, no border around every control, no decorative outline, and
+no second elevated surface competing with the dock. A field at rest is a quiet fill with no border
+at all; the border appears on focus.
+
+A raised surface moves *away* from the page’s own luminance, which means `surfaceContainerLowest`
+in Light and `surfaceContainerHigh` in Dark. Modals follow that rule rather than one fixed token.
+
+The decorative motif — a compact 92×96dp set of unequal nutrition bars — is drawn on **Home only**,
+over an opaque page. It was previously painted on every root screen, where it collided with the
+trailing controls at the bottom of the content; the other screens keep their `DestinationMarker`,
+which is the same motif at top-bar scale and is identity rather than decoration.
 
 ## Component vocabulary
 
 - `JtcTopBar`: flexible 64dp minimum, ordinary-ink navigation, one-line title, and compact
   nutrition-bar destination marker. Product keeps a two-line intrinsic-height variant.
-- Home task tile: one solid cobalt primary tile for barcode scanning and one quieter outlined teal
-  tile for label scanning. No decorative gradients.
+- Home task tile: one solid `primaryTile` card for barcode scanning and one quieter hairline-outlined
+  card for label scanning, each with a square 40dp icon plate. No decorative gradients, no accent
+  shadow, and no accent-tinted border — the destination accent appears only inside the icon plate.
+  `primaryTile` is a separate token from `colorScheme.primary` because in Dark the latter is pale
+  enough that an 88dp tile of it would outrank the carbohydrate result.
+- `JtcOutlinedButton` (48dp, primary label and border), `JtcValueButton` (40dp, quiet fill, no
+  border) and `PrimaryAction` (56dp) are the three button roles; controls migrate by role rather
+  than uniformly.
+- Scanner chrome is shared between both cameras: circular scrim buttons, no title band over the
+  preview, and one dark bottom dock carrying the task, the guidance line and the actions.
 - `SearchResultRow`: a 76dp minimum row with product identity on the left and carb summary aligned
-  on the right; the full row is the touch target.
+  on the right; the full row is the touch target. Its figure is ordinary ink, not the result colour
+  — a search hit is a candidate, and nothing about it has been calculated yet.
 - `SourceBadge`: compact worded provenance, never colour-only.
 - Settings segment: full-width radio semantics, equal options, clear selected container; it replaces
   a loose collection of oversized filter pills.

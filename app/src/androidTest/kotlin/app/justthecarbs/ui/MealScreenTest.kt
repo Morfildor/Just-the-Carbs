@@ -174,7 +174,19 @@ class MealScreenTest {
     fun eachItemShowsThePortionInTheWordsTheUserChose() {
         showMeal(listOf(item(1, "Bread", "2 slices", "48.2", "34.704")))
 
-        compose.onNodeWithText("2 slices · 34.7 g").assertIsDisplayed()
+        // Two nodes, not one string.
+        //
+        // The row used to render `2 slices · 34.7 g` as a single supporting line. The visual pass
+        // split it: the portion stays in the supporting line and the carbohydrate figure moved to
+        // its own right-aligned column in the result colour, so a meal reads as a column of
+        // figures rather than as a column of sentences. Both facts are still on screen, which is
+        // what this test is about; only their arrangement changed.
+        compose.onNodeWithText("2 slices").assertIsDisplayed()
+        compose.onNodeWithText("34.7 g").assertIsDisplayed()
+
+        // The two are still announced together as one phrase, so a screen-reader user hears the
+        // portion and its figure in one breath rather than as two unrelated nodes.
+        compose.onNodeWithContentDescription("Bread. 2 slices · 34.7 g").assertExists()
     }
 
     /**
@@ -483,13 +495,17 @@ class MealScreenTest {
         showMeal(listOf(item(1, "Bread", "2 slices", "48.2", "34.704")))
 
         compose.onNodeWithContentDescription("Remove Bread").performClick()
-        compose.onNodeWithText("2 slices · 34.7 g").assertDoesNotExist()
+        compose.onNodeWithText("2 slices").assertDoesNotExist()
+        compose.onNodeWithText("34.7 g").assertDoesNotExist()
 
         compose.onNodeWithText("Undo").performClick()
 
         // The exact snapshot returns — same portion wording, same carbohydrate figure. A restore
-        // that recomputed from the product could produce a different number here.
-        compose.onNodeWithText("2 slices · 34.7 g").assertIsDisplayed()
+        // that recomputed from the product could produce a different number here. (Two nodes since
+        // the row split its supporting line from its figure; see
+        // `eachItemShowsThePortionInTheWordsTheUserChose`.)
+        compose.onNodeWithText("2 slices").assertIsDisplayed()
+        compose.onNodeWithText("34.7 g").assertIsDisplayed()
     }
 
     @Test

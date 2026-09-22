@@ -47,6 +47,8 @@ class ContrastTest {
     private val orangeSoft = 0xFFE8CC
     private val blueSoft = 0xE6ECFF
     private val darkSurfaceLowest = 0x0C0E12
+    private val darkSurfaceContainerLow = 0x171A20
+    private val darkOutline = 0x848997     // LineStrongDark
 
     private val normalText = 4.5
 
@@ -381,6 +383,49 @@ class ContrastTest {
             "dark onPrimary is ${darkPrimaryForeground?.toString(16)} in Theme.kt but " +
                 "${darkOnPrimary.toString(16)} here",
             darkPrimaryForeground == darkOnPrimary,
+        )
+    }
+
+    /**
+     * A quiet control needs a visible boundary in Dark, and its fill cannot supply one.
+     *
+     * `JtcValueButton` is a `surfaceContainerLow` fill with no border -- which works in Light,
+     * where that token on cream is a legible step. In Dark the page is `Night` and the fill is
+     * `#171A20`: a contrast ratio of about **1.07:1**, so the button has no edge at all and reads
+     * as bare text on the page. Measured on device before it was fixed.
+     *
+     * This test exists because the rest of this class could not catch it. Every other case here
+     * checks TEXT against its ground, and these labels pass comfortably; what was failing was the
+     * surface that makes a button look like a button, which nothing was asserting.
+     *
+     * The floor is WCAG 2.1's 3:1 for a non-text UI component boundary, not the 4.5:1 used for
+     * body text. `outline` clears it; no fill on this page can, which is why the fix is a line.
+     */
+    @Test
+    fun `a quiet control has a visible boundary in dark`() {
+        val uiComponent = 3.0
+
+        // The premise: state the defect as a measurement, so this test fails if someone "fixes"
+        // the boundary by raising the fill instead.
+        val fillOnly = ratio(darkSurfaceContainerLow, night)
+        assertTrue(
+            "the dark value-button fill is ${"%.2f".format(fillOnly)}:1 against the page -- if this " +
+                "ever clears $uiComponent:1 on its own, the border below is no longer needed",
+            fillOnly < uiComponent,
+        )
+
+        assertContrast(
+            "dark value-button border (outline) against the page",
+            darkOutline,
+            night,
+            uiComponent,
+        )
+        // It must also read against the button's own fill, not only against the page around it.
+        assertContrast(
+            "dark value-button border against its own fill",
+            darkOutline,
+            darkSurfaceContainerLow,
+            uiComponent,
         )
     }
 }

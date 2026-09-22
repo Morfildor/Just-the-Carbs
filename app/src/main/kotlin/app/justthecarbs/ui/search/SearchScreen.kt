@@ -267,7 +267,7 @@ fun SearchScreen(
                         // A search that matched nothing is not a dead end: the two ways of getting a number
                         // without the database are offered right here (§26).
                         RecoveryPanel(
-                            title = stringResource(R.string.notfound_title),
+                            title = stringResource(R.string.search_no_matches_title),
                             body = stringResource(R.string.search_no_matches, state.query),
                         ) {
                             PrimaryAction(

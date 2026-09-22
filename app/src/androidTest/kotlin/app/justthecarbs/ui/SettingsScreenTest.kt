@@ -157,27 +157,30 @@ class SettingsScreenTest {
     fun rateRowIsPresentInAbout() {
         show()
 
-        compose.onNodeWithText("Rate JustTheCarbs").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Rate on Google Play").performScrollTo().assertIsDisplayed()
     }
 
     /**
-     * The rate-us card is now a deliberate marketing surface, not a plain text row — this pins that
-     * its headline and supporting copy are both present alongside the action itself.
+     * The rating ask is one row, not a card.
+     *
+     * This replaces `rateCardShowsItsHeadlineAndSupportingCopy`, which pinned a bordered card with
+     * a headline ("Enjoying Just the Carbs?"), a body paragraph and a saturated gold button. That
+     * surface was removed deliberately (P1-11): it was the loudest object on a screen of quiet
+     * rows and the only place in the app spending a saturated fill on something that is not the
+     * task the user came to do.
+     *
+     * The assertion's real purpose -- the ask is reachable and says what it does -- is kept, and
+     * the inverse is added, so the card cannot come back unnoticed.
      */
     @Test
-    fun rateCardShowsItsHeadlineAndSupportingCopy() {
+    fun theRatingAskIsOneRowRatherThanAMarketingCard() {
         show()
 
-        compose.onNodeWithText("Enjoying Just the Carbs?").performScrollTo().assertIsDisplayed()
-        // Scrolled to in its own right, not merely after its headline. Scrolling the headline into
-        // view does not guarantee the line beneath it is also on screen, so this assertion's result
-        // depended on how much content happened to sit above the card — it began failing when the
-        // Settings list grew by one row. The same below-the-fold trap this codebase has recorded
-        // several times: `assertIsDisplayed` is about the window, and it was telling the truth.
+        compose.onNodeWithText("Rate on Google Play").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Enjoying Just the Carbs?").assertDoesNotExist()
         compose.onNodeWithText(
             "A quick rating on the Play Store helps other people find the app.",
-        ).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Rate JustTheCarbs").performScrollTo().assertIsDisplayed()
+        ).assertDoesNotExist()
     }
 
     @Test
@@ -185,7 +188,7 @@ class SettingsScreenTest {
         val uriHandler = RecordingUriHandler()
         show(uriHandler)
 
-        compose.onNodeWithText("Rate JustTheCarbs").performScrollTo().performClick()
+        compose.onNodeWithText("Rate on Google Play").performScrollTo().performClick()
 
         assert(uriHandler.opened == listOf("market://details?id=${BuildConfig.APPLICATION_ID}")) {
             "expected the market:// listing for ${BuildConfig.APPLICATION_ID}, got ${uriHandler.opened}"
@@ -212,7 +215,7 @@ class SettingsScreenTest {
         val uriHandler = FallbackOnHttpsUriHandler()
         show(uriHandler)
 
-        compose.onNodeWithText("Rate JustTheCarbs").performScrollTo().performClick()
+        compose.onNodeWithText("Rate on Google Play").performScrollTo().performClick()
 
         assert(
             uriHandler.opened == listOf(
@@ -226,7 +229,7 @@ class SettingsScreenTest {
     fun whenNeitherPlayStoreRouteIsAvailableTheFailureIsShownAsText() {
         show(RecordingUriHandler(failWith = IllegalStateException("no activity found to handle the uri")))
 
-        compose.onNodeWithText("Rate JustTheCarbs").performScrollTo().performClick()
+        compose.onNodeWithText("Rate on Google Play").performScrollTo().performClick()
 
         compose.onNodeWithText("Could not open the Play Store.").performScrollTo().assertIsDisplayed()
     }

@@ -172,7 +172,12 @@ fun WelcomeCarouselScreen(
                     ) {
                         Text(
                             text = stringResource(R.string.onboarding_skip),
-                            color = foreground.copy(alpha = WELCOME_SUPPORTING_ALPHA),
+                            style = MaterialTheme.typography.labelLarge,
+                            // Skip's own alpha, not the body copy's 0.96. It is the one control on
+                            // a coloured slide that the user is NOT being invited to press, and at
+                            // near-full opacity in body-sized type it read as loud as the headline
+                            // it sits beside.
+                            color = foreground.copy(alpha = WELCOME_SKIP_ALPHA),
                         )
                     }
                 }
@@ -326,6 +331,9 @@ fun WelcomeCarouselScreen(
 
 /** Lowest alpha used for readable carousel copy; every slide pair stays at or above 4.5:1. */
 private const val WELCOME_SUPPORTING_ALPHA = 0.96f
+
+/** Skip, which is an escape hatch rather than an invitation. See its call site. */
+private const val WELCOME_SKIP_ALPHA = 0.72f
 
 /**
  * The corner motif, in the welcome carousel's own colours.
