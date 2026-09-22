@@ -154,6 +154,13 @@ four of the five reproduce with CI's exact reason text (the search rects differ 
 `theDetectedValueAndBasisAreShown` **passes** alone there, so its CI failure depends on what ran
 before it — the soft-keyboard-leakage shape this file already records for `MealScreenTest`.
 
+**Real `release-gate.yml` at `6143db3` (workflow_dispatch, run 35782092414):** JVM + lint blocking
+job green; blocking instrumented job **476 run, 0 skipped, 472 passed, 4 failed** in 19m19s;
+release build skipped as designed. Both Home tests passed on CI's own emulator. The four failures
+are the four geometry cases above. `theFirstBackDismissesTheKeyboardAndKeepsTheSearch` **passed**
+on this run after failing on the `1a77c92` CI run of the same emulator — so on CI it is
+intermittent, not deterministic. The four geometry cases are the release blockers.
+
 **One local Home failure, pre-existing:** `theFirstBackDismissesTheKeyboardAndKeepsTheSearch` (added
 in `f59d668`) fails 3/3 here and identically at clean `f59d668` (stash control). A timeline probe
 showed `dumpsys input_method` `mInputShown=true` for the whole wait while the test's
