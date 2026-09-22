@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -85,30 +86,30 @@ class SearchPresentationRegressionTest {
         imageUrl = null,
     )
 
-    private fun showSearch(state: SearchUiState, fontScale: Float? = null) {
+    private fun showSearch(
+        state: SearchUiState,
+        fontScale: Float = 1f,
+        width: Dp = 411.dp,
+    ) {
         compose.setContent {
             ImeProbe()
-            val content = @androidx.compose.runtime.Composable {
+            CompositionLocalProvider(
+                LocalDensity provides Density(LocalDensity.current.density, fontScale),
+            ) {
                 JustTheCarbsTheme {
-                    SearchScreen(
-                        state = state,
-                        onQueryChanged = {},
-                        onSearchSubmit = {},
-                        onSelect = {},
-                        onScanLabel = {},
-                        onEnterManually = {},
-                        onRetry = {},
-                        onBack = {},
-                    )
+                    Box(Modifier.width(width)) {
+                        SearchScreen(
+                            state = state,
+                            onQueryChanged = {},
+                            onSearchSubmit = {},
+                            onSelect = {},
+                            onScanLabel = {},
+                            onEnterManually = {},
+                            onRetry = {},
+                            onBack = {},
+                        )
+                    }
                 }
-            }
-            if (fontScale != null) {
-                CompositionLocalProvider(
-                    LocalDensity provides Density(LocalDensity.current.density, fontScale),
-                    content = content,
-                )
-            } else {
-                content()
             }
         }
     }
@@ -598,7 +599,11 @@ class SearchPresentationRegressionTest {
     /** Control: at the default scale the figure keeps its scannable column beside the name. */
     @Test
     fun atTheDefaultScaleTheFigureSitsBesideTheName() {
-        showSearch(SearchUiState(query = "choc", hits = listOf(chocomel)))
+        showSearch(
+            SearchUiState(query = "choc", hits = listOf(chocomel)),
+            fontScale = 1f,
+            width = 411.dp,
+        )
 
         val name = boundsOfText("Chocomel")
         val value = boundsOfText("10.5 g carbs")
@@ -607,7 +612,24 @@ class SearchPresentationRegressionTest {
 
     @Test
     fun atTheLargestScaleTheFigureMovesBelowTheText() {
-        showSearch(SearchUiState(query = "choc", hits = listOf(chocomel)), fontScale = 2.0f)
+        showSearch(
+            SearchUiState(query = "choc", hits = listOf(chocomel)),
+            fontScale = 2.0f,
+            width = 411.dp,
+        )
+
+        val name = boundsOfText("Chocomel")
+        val value = boundsOfText("10.5 g carbs")
+        assertTrue("name=$name value=$value", value.top >= name.bottom)
+    }
+
+    @Test
+    fun atANarrowWidthTheFigureMayMoveBelowAtOnePointFiveScale() {
+        showSearch(
+            SearchUiState(query = "choc", hits = listOf(chocomel)),
+            fontScale = 1.5f,
+            width = 360.dp,
+        )
 
         val name = boundsOfText("Chocomel")
         val value = boundsOfText("10.5 g carbs")

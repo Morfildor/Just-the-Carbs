@@ -544,11 +544,9 @@ fun JustTheCarbsNavHost(
                     // The portion is remembered on the way out, not on every keystroke, so a
                     // half-typed number never becomes the pre-fill for next time (§20).
                     //
-                    // Awaited before popping (P0 §3): `rememberUsage()` alone launches into
-                    // `viewModelScope` and returns immediately, so popping right after it could
-                    // destroy `viewModel` and cancel that write before Room ever runs. This
-                    // composable's own `coroutineScope` — not the ViewModel's — outlives the pop,
-                    // so the write finishes before `popBackStack()` runs.
+                    // Awaited before popping: the final semantic snapshot must finish writing (or
+                    // be recognized as already recorded by a successful Add) before this
+                    // back-stack entry and its ViewModel are destroyed.
                     coroutineScope.launch {
                         viewModel.rememberUsageAndAwait()
                         navController.popBackStack()

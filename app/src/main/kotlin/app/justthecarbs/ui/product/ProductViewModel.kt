@@ -30,19 +30,17 @@ import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.UnusableReason
 import app.justthecarbs.domain.VerificationStatus
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.math.BigDecimal
 import java.util.UUID
 
@@ -227,7 +225,6 @@ sealed interface Failure {
  * save before a number appears (§16). Portion text is held in [SavedStateHandle] so a mid-edit
  * portion survives process death (§63).
  */
-@OptIn(FlowPreview::class)
 class ProductViewModel(
     private val repository: ProductRepository,
     private val savedState: SavedStateHandle,
@@ -248,22 +245,6 @@ class ProductViewModel(
     val navigationEvents: Flow<ProductNavigationEvent> = _navigationEvents.receiveAsFlow()
 
     init {
-        // Record the portion from the state itself rather than from a "back was pressed" callback.
-        //
-        // The user leaves this screen in more ways than the back button: the system back gesture,
-        // Home, the recents switcher, or the process being killed outright. A callback on one
-        // button catches exactly one of those, so §20's "remember the last portion" quietly failed
-        // for the most common gesture on the device.
-        //
-        // Debounced so that typing "250" records once, not once per digit.
-        viewModelScope.launch {
-            _state
-                .map { it.portionText }
-                .distinctUntilChanged()
-                .debounce(PORTION_SETTLE_MS)
-                .collect { rememberUsage() }
-        }
-
         // The meal is shared state, not session state: another screen can clear it while this one
         // is open, and the bar must reflect that. Unlike the product's carbs, nothing here feeds a
         // calculation, so observing it live cannot violate session immutability (§9).
@@ -290,6 +271,22 @@ class ProductViewModel(
      */
     private var lookupJob: Job? = null
 
+    /** Cancellation saves work; this token makes late, uncancellable completions harmless. */
+    private var loadGeneration = 0L
+
+    private fun isCurrentLoad(generation: Long, barcode: String): Boolean =
+        generation == loadGeneration && _state.value.barcode == barcode
+
+    private inline fun updateForLoad(
+        generation: Long,
+        barcode: String,
+        transform: (ProductUiState) -> ProductUiState,
+    ) {
+        _state.update { current ->
+            if (generation == loadGeneration && current.barcode == barcode) transform(current) else current
+        }
+    }
+
     /** Load a stored or remote product by barcode. */
     fun load(barcode: String) {
         if (_state.value.barcode == barcode && _state.value.product != null) return
@@ -297,27 +294,33 @@ class ProductViewModel(
         // costs nothing and starting a second one costs a request.
         if (lookupJob?.isActive == true && _state.value.barcode == barcode) return
 
-        // A lookup for a *different* barcode is stale the moment this one is asked for. Cancelling
-        // rather than letting it finish is what stops a slow previous scan delivering its product
-        // over the new one — the state writes below are unconditional, so whichever job completed
-        // last would otherwise win regardless of which the user actually asked for.
+        // A lookup for a different barcode is stale as soon as this request is accepted. Cancel to
+        // save work, while the generation and barcode checks below remain the correctness boundary
+        // for a source or bridge that completes after cancellation.
+        val generation = ++loadGeneration
         lookupJob?.cancel()
         _state.update { it.copy(loading = true, barcode = barcode, failure = null) }
 
         lookupJob = viewModelScope.launch {
-            when (val result = repository.lookup(barcode)) {
-                is ProductFetchResult.Found -> onProductLoaded(result.product)
+            val result = repository.lookup(barcode)
+            if (!isCurrentLoad(generation, barcode)) return@launch
+            when (result) {
+                is ProductFetchResult.Found -> onProductLoaded(result.product, barcode, generation)
                 is ProductFetchResult.NotFound ->
-                    _state.update { it.copy(loading = false, failure = Failure.NotFound) }
+                    updateForLoad(generation, barcode) {
+                        it.copy(loading = false, failure = Failure.NotFound)
+                    }
                 is ProductFetchResult.Unusable -> {
                     val failure = when (result.reason) {
                         UnusableReason.NO_CARB_VALUE -> Failure.NoUsableValue
                         UnusableReason.UNKNOWN_BASIS -> Failure.UnknownBasis
                     }
-                    _state.update { it.copy(loading = false, failure = failure) }
+                    updateForLoad(generation, barcode) { it.copy(loading = false, failure = failure) }
                 }
                 is ProductFetchResult.Failed ->
-                    _state.update { it.copy(loading = false, failure = Failure.Lookup(result.error)) }
+                    updateForLoad(generation, barcode) {
+                        it.copy(loading = false, failure = Failure.Lookup(result.error))
+                    }
             }
         }
     }
@@ -333,7 +336,7 @@ class ProductViewModel(
      * exactly once, in [saveQuickCalculation], at the only moment it is genuinely required.
      *
      * The scratch [Product] is held in state and never handed to the repository, so no row exists
-     * for the portion to be remembered against — which is why [rememberUsage] and [toggleFavorite]
+     * for the portion to be remembered against, so explicit usage persistence and [toggleFavorite]
      * return early on an empty barcode rather than needing a flag to consult.
      *
      * [origin] carries where the figure came from. It is not [VerificationStatus.USER_VERIFIED]:
@@ -453,7 +456,7 @@ class ProductViewModel(
                         quickSaveFailed = false,
                     )
                 }
-                rememberUsage()
+                recordUsageSnapshot(buildUsageSnapshot(), deduplicate = false)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -485,12 +488,18 @@ class ProductViewModel(
      * `load` tracks, which left a window where `lookupJob.isActive` was already false and
      * `state.product` was still null. Both of `load`'s guards read exactly those two things, so a
      * second `load` in that window went back to Open Food Facts for a barcode already fetched, and
-     * a superseded lookup's delivery could no longer be cancelled by the newer one.
+     * a superseded lookup's delivery was detached from the tracked request.
      *
-     * Running inline keeps that work inside the job's lifetime, so both guarantees hold for the
-     * whole operation instead of only its network half.
+     * Running inline keeps that work inside the job's lifetime. The captured generation and barcode
+     * are rechecked after every suspension because cancellation alone is only an optimization: a
+     * callback bridge or store may still complete late.
      */
-    private suspend fun onProductLoaded(product: Product) {
+    private suspend fun onProductLoaded(
+        product: Product,
+        requestedBarcode: String,
+        generation: Long,
+    ) {
+        if (!isCurrentLoad(generation, requestedBarcode)) return
         prepareForProductUpdate(product)
         // Pre-fill the portion the user chose last time, so a repeat product needs no typing at
         // all (§20) — but only if they have not already started typing in this session.
@@ -504,6 +513,7 @@ class ProductViewModel(
             // same immutability discipline as the product's own carbs (§9). A background refresh
             // below can only produce a notice, never replace this list.
             val units = repository.findPortionUnits(product.barcode)
+            if (!isCurrentLoad(generation, requestedBarcode)) return
 
             val mode = restoredMode ?: product.lastInputMode ?: InputMode.GRAMS
             val candidateSelectedId = restoredSelectedId ?: product.lastSelectedPortionUnitId
@@ -534,7 +544,9 @@ class ProductViewModel(
                     ?: ""
             }
 
-            _state.update {
+            val usualPortions = repository.usualPortions(product.barcode)
+            if (!isCurrentLoad(generation, requestedBarcode)) return
+            updateForLoad(generation, requestedBarcode) {
                 it.copy(
                     loading = false,
                     product = product,
@@ -544,9 +556,10 @@ class ProductViewModel(
                     inputMode = resolvedMode,
                     selectedPortionUnitId = resolvedSelectedId,
                     countText = countText,
-                    usualPortions = repository.usualPortions(product.barcode),
+                    usualPortions = usualPortions,
                 )
             }
+            if (!isCurrentLoad(generation, requestedBarcode)) return
             recalculate()
 
             // Background refresh only, never on the path to a result: the value is already on screen
@@ -557,9 +570,13 @@ class ProductViewModel(
             // types 65, a refresh returns 51.0, and the answer changes under their hand while they are
             // reading it. The newer figure is offered as a notice the user can accept. Portion units
             // follow the exact same rule (§9).
-            when (val outcome = repository.refreshFromRemote(product.barcode)) {
+            val refreshOutcome = repository.refreshFromRemote(product.barcode)
+            if (!isCurrentLoad(generation, requestedBarcode)) return
+            when (val outcome = refreshOutcome) {
                 is RefreshOutcome.RemoteDiffers ->
-                    _state.update { it.copy(newerRemoteCarbs = outcome.latestRemoteCarbs, newerRemoteBasis = outcome.basis) }
+                    updateForLoad(generation, requestedBarcode) {
+                        it.copy(newerRemoteCarbs = outcome.latestRemoteCarbs, newerRemoteBasis = outcome.basis)
+                    }
                 RefreshOutcome.Unchanged -> Unit
             }
 
@@ -567,11 +584,14 @@ class ProductViewModel(
             if (frozenSelected != null) {
                 val refreshed = repository.findPortionUnits(product.barcode)
                     .firstOrNull { it.id == frozenSelected.id }
+                if (!isCurrentLoad(generation, requestedBarcode)) return
                 // Asks the unit itself rather than comparing here, so this notice uses the same
                 // numeric comparison as everywhere else and a trailing zero cannot trigger it.
                 val changed = refreshed?.takeIf { it.remoteConversionDiffers }?.latestRemoteConversion
                 if (changed != null) {
-                    _state.update { it.copy(newerRemotePortionUnit = changed) }
+                    updateForLoad(generation, requestedBarcode) {
+                        it.copy(newerRemotePortionUnit = changed)
+                    }
                 }
             }
         }
@@ -837,10 +857,9 @@ class ProductViewModel(
                         exactCarbs = pending.exactCarbs,
                     )
                 }
-                // Adding to a meal is the strongest possible signal that this portion is real —
-                // stronger than the debounced typing signal — so it counts towards *Usual* too
-                // (§13). Await completion, but report history failure separately from the committed meal.
-                writeUsageSnapshot(usage)
+                // A completed Add is a deliberate usage event (§13). Await it after the meal write,
+                // but report history failure separately from the already committed meal.
+                recordUsageSnapshot(usage, deduplicate = false)
                 _state.update {
                     it.copy(addingToMeal = false, lastMealAddSucceeded = System.currentTimeMillis())
                 }
@@ -911,7 +930,7 @@ class ProductViewModel(
         savedState[KEY_BASIS] = product.basis.name
     }
 
-    /** What [rememberUsage] and [rememberUsageAndAwait] write, fixed before any coroutine suspends. */
+    /** What explicit Add/save and [rememberUsageAndAwait] write, fixed before suspension. */
     private data class UsageSnapshot(
         val barcode: String,
         val basis: NutritionBasis,
@@ -920,6 +939,10 @@ class ProductViewModel(
         val portionUnitId: Long?,
         val count: BigDecimal?,
     )
+
+    private val usageWriteMutex = Mutex()
+    private var lastSuccessfullyRecordedUsage: UsageSnapshot? = null
+    private var usageSnapshotNeedingRetry: UsageSnapshot? = null
 
     /**
      * Captures what "the portion the user is currently looking at" means right now, or null if
@@ -958,51 +981,60 @@ class ProductViewModel(
         return UsageSnapshot(
             barcode = product.barcode,
             basis = product.basis,
-            resolvedPortion = resolvedPortion,
+            resolvedPortion = resolvedPortion?.stripTrailingZeros(),
             mode = mode,
             portionUnitId = _state.value.selectedPortionUnitId,
-            count = count,
+            count = count?.stripTrailingZeros(),
         )
     }
 
-    private suspend fun writeUsageSnapshot(snapshot: UsageSnapshot?) {
-        if (snapshot == null) return
+    private suspend fun writeUsageSnapshot(snapshot: UsageSnapshot): Boolean {
         try {
             repository.recordUse(snapshot.barcode, snapshot.resolvedPortion,
                 mode = snapshot.mode, portionUnitId = snapshot.portionUnitId,
                 count = snapshot.count, expectedBasis = snapshot.basis)
             _state.update { it.copy(usageSaveFailed = false) }
+            return true
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
             // A history failure must neither crash Back nor turn a committed meal into a retry.
             _state.update { it.copy(usageSaveFailed = true) }
+            return false
+        }
+    }
+
+    private suspend fun recordUsageSnapshot(
+        snapshot: UsageSnapshot?,
+        deduplicate: Boolean,
+    ): Boolean {
+        if (snapshot == null) return false
+        return usageWriteMutex.withLock {
+            if (
+                deduplicate &&
+                snapshot == lastSuccessfullyRecordedUsage &&
+                snapshot != usageSnapshotNeedingRetry
+            ) {
+                return@withLock true
+            }
+
+            val saved = writeUsageSnapshot(snapshot)
+            if (saved) {
+                lastSuccessfullyRecordedUsage = snapshot
+                if (usageSnapshotNeedingRetry == snapshot) usageSnapshotNeedingRetry = null
+            } else {
+                usageSnapshotNeedingRetry = snapshot
+            }
+            saved
         }
     }
 
     /**
-     * Remember the portion once the user has actually acted on the result — the debounced
-     * typing-settle signal (§20, §21, §11-§12). Fire-and-forget by design: the collector in [init]
-     * owns this coroutine's lifetime and keeps running for as long as the ViewModel does, so there
-     * is no navigation racing to cancel it the way there is on exit (see [rememberUsageAndAwait]).
-     */
-    fun rememberUsage() {
-        val snapshot = buildUsageSnapshot() ?: return
-        viewModelScope.launch { writeUsageSnapshot(snapshot) }
-    }
-
-    /**
-     * The exit-time counterpart to [rememberUsage], for a caller that must not proceed (pop the
-     * back stack, navigate away) until the write has actually landed.
-     *
-     * `rememberUsage()` alone is unsafe on the way out: it launches into [viewModelScope] and
-     * returns immediately, so a caller that pops the back stack right after it — the previous
-     * behaviour of both toolbar Back and the system back gesture — can destroy this ViewModel and
-     * cancel that coroutine before Room ever runs. This suspends until the write completes (or is
-     * confirmed to be a no-op), so the caller can safely navigate only after it returns.
+     * Persists the final valid snapshot before navigation. An unchanged snapshot already recorded
+     * by a successful Add/save is a no-op; a failed write remains retryable.
      */
     suspend fun rememberUsageAndAwait() {
-        writeUsageSnapshot(buildUsageSnapshot())
+        recordUsageSnapshot(buildUsageSnapshot(), deduplicate = true)
     }
 
     fun toggleFavorite() {
@@ -1182,8 +1214,5 @@ class ProductViewModel(
         const val KEY_COUNT = "count_text"
         const val KEY_MODE = "input_mode"
         const val KEY_SELECTED_UNIT = "selected_portion_unit_id"
-
-        /** Long enough to cover typing a three-digit portion, short enough to beat a fast exit. */
-        const val PORTION_SETTLE_MS = 600L
     }
 }

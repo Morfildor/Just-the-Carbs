@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import app.justthecarbs.data.ProductRepository
 import app.justthecarbs.domain.InputMode
 import app.justthecarbs.domain.LocalProductDataSource
+import app.justthecarbs.domain.LookupError
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.MealStore
 import app.justthecarbs.domain.NutritionBasis
@@ -18,9 +19,12 @@ import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
 import app.justthecarbs.domain.RecentUseSnapshot
+import app.justthecarbs.domain.UnusableReason
 import app.justthecarbs.domain.VerificationStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -28,8 +32,10 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -94,6 +100,24 @@ class ProductLookupSingleFlightTest {
             fetched += barcode
             delay(delaysMs[barcode] ?: 100L)
             return products[barcode]?.let { ProductFetchResult.Found(it) } ?: ProductFetchResult.NotFound
+        }
+    }
+
+    /** A bridge that returns completed work even after its caller has been cancelled. */
+    private class UncancellableRemote : ProductDataSource {
+        val fetched = mutableListOf<String>()
+        private val pending = mutableMapOf<String, CompletableDeferred<ProductFetchResult>>()
+
+        override suspend fun fetch(barcode: String): ProductFetchResult {
+            fetched += barcode
+            val deferred = CompletableDeferred<ProductFetchResult>()
+            pending[barcode] = deferred
+            return withContext(NonCancellable) { deferred.await() }
+        }
+
+        fun resolve(barcode: String, result: ProductFetchResult) {
+            pending.remove(barcode)?.complete(result)
+                ?: error("no fetch is pending for $barcode")
         }
     }
 
@@ -186,6 +210,7 @@ class ProductLookupSingleFlightTest {
         remote: ProductDataSource,
         portionUnits: PortionUnitStore = NoUnits(),
         local: LocalProductDataSource = RecordingLocal(),
+        savedState: SavedStateHandle = SavedStateHandle(),
     ) = ProductViewModel(
         repository = ProductRepository(
             local = local,
@@ -196,7 +221,7 @@ class ProductLookupSingleFlightTest {
             searchSource = NoSearch(),
             clock = clock,
         ),
-        savedState = SavedStateHandle(),
+        savedState = savedState,
     )
 
     @Test
@@ -246,6 +271,126 @@ class ProductLookupSingleFlightTest {
         )
         assertEquals(second, viewModel.state.value.barcode)
     }
+
+    @Test
+    fun `an uncancellable stale success cannot replace the newer product`() = runTest(dispatcher) {
+        val first = "A"
+        val second = "B"
+        val remote = UncancellableRemote()
+        val viewModel = viewModelWith(remote)
+
+        viewModel.load(first)
+        runCurrent()
+        viewModel.load(second)
+        runCurrent()
+
+        remote.resolve(second, ProductFetchResult.Found(product(second, "Current")))
+        runCurrent()
+        assertEquals("Current", viewModel.state.value.product?.name)
+
+        remote.resolve(first, ProductFetchResult.Found(product(first, "Stale")))
+        advanceUntilIdle()
+
+        assertEquals(second, viewModel.state.value.barcode)
+        assertEquals(second, viewModel.state.value.product?.barcode)
+        assertEquals("Current", viewModel.state.value.product?.name)
+    }
+
+    @Test
+    fun `uncancellable stale misses unusable results and failures cannot replace the newer product`() =
+        runTest(dispatcher) {
+            val staleResults = listOf(
+                ProductFetchResult.NotFound,
+                ProductFetchResult.Unusable("stale", UnusableReason.NO_CARB_VALUE),
+                ProductFetchResult.Failed(LookupError.OFFLINE),
+            )
+
+            staleResults.forEachIndexed { index, staleResult ->
+                val first = "A$index"
+                val second = "B$index"
+                val remote = UncancellableRemote()
+                val viewModel = viewModelWith(remote)
+
+                viewModel.load(first)
+                runCurrent()
+                viewModel.load(second)
+                runCurrent()
+                remote.resolve(second, ProductFetchResult.Found(product(second, "Current")))
+                runCurrent()
+                remote.resolve(first, staleResult)
+                advanceUntilIdle()
+
+                assertEquals(second, viewModel.state.value.barcode)
+                assertEquals("Current", viewModel.state.value.product?.name)
+                assertNull("stale result $staleResult must not surface", viewModel.state.value.failure)
+            }
+        }
+
+    @Test
+    fun `a stale different-basis result cannot clear the current saved editor state`() = runTest(dispatcher) {
+        val first = "A"
+        val second = "B"
+        val savedState = SavedStateHandle(
+            mapOf(
+                "portion_basis" to NutritionBasis.PER_100_G.name,
+                "portion_text" to "65",
+                "count_text" to "2",
+                "input_mode" to InputMode.GRAMS.name,
+            ),
+        )
+        val remote = UncancellableRemote()
+        val viewModel = viewModelWith(remote, savedState = savedState)
+
+        viewModel.load(first)
+        runCurrent()
+        viewModel.load(second)
+        runCurrent()
+        remote.resolve(second, ProductFetchResult.Found(product(second, "Current")))
+        runCurrent()
+        remote.resolve(
+            first,
+            ProductFetchResult.Found(
+                product(first, "Stale").copy(basis = NutritionBasis.PER_100_ML),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(second, viewModel.state.value.product?.barcode)
+        assertEquals("65", savedState.get<String>("portion_text"))
+        assertEquals("2", savedState.get<String>("count_text"))
+        assertEquals(NutritionBasis.PER_100_G.name, savedState.get<String>("portion_basis"))
+    }
+
+    @Test
+    fun `a stale uncancellable refresh cannot publish its notice over the current product`() =
+        runTest(dispatcher) {
+            val first = "A"
+            val second = "B"
+            val cachedFirst = product(first, "First")
+            val cachedSecond = product(second, "Current")
+            val local = RecordingLocal(listOf(cachedFirst, cachedSecond))
+            val remote = UncancellableRemote()
+            val viewModel = viewModelWith(remote, local = local)
+
+            viewModel.load(first)
+            runCurrent()
+            viewModel.load(second)
+            runCurrent()
+
+            remote.resolve(second, ProductFetchResult.Found(cachedSecond))
+            runCurrent()
+            assertEquals(second, viewModel.state.value.product?.barcode)
+            assertNull(viewModel.state.value.newerRemoteCarbs)
+
+            remote.resolve(
+                first,
+                ProductFetchResult.Found(cachedFirst.copy(carbsPer100 = BigDecimal("99"))),
+            )
+            advanceUntilIdle()
+
+            assertEquals(second, viewModel.state.value.product?.barcode)
+            assertNull("a stale refresh notice must not surface", viewModel.state.value.newerRemoteCarbs)
+        }
 
     /**
      * The gap the first test could not see: the fetch has **completed** but the product is not on

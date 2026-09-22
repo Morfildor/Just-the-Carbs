@@ -416,6 +416,7 @@
     <string name="manual_error_name">Enter a product name</string>
     <string name="manual_error_carbs">Enter carbohydrates per 100 as a number</string>
     <string name="manual_error_carbs_range">That value is outside the possible range</string>
+    <string name="manual_error_package">Enter a package size greater than zero, or leave it blank.</string>
     <!-- The product could not be written at all. Says the save did not happen, so the user retries
          deliberately rather than assuming the tap was missed. -->
     <string name="manual_error_save">Could not save the product. Try again.</string>

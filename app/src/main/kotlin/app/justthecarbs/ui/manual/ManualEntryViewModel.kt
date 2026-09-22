@@ -50,6 +50,7 @@ data class ManualEntryUiState(
     val packageAmount: String = "",
     val nameError: Boolean = false,
     val carbsError: CarbsError? = null,
+    val packageError: Boolean = false,
     val savedBarcode: String? = null,
     /** Non-null when this entry will also create a countable portion (correction pass §2). */
     val pendingPortionUnit: PendingPortionUnit? = null,
@@ -161,7 +162,7 @@ class ManualEntryViewModel(
         _state.update { it.copy(basis = basis, saveFailed = false) }
 
     fun onPackageChanged(value: String) =
-        _state.update { it.copy(packageAmount = value, saveFailed = false) }
+        _state.update { it.copy(packageAmount = value, packageError = false, saveFailed = false) }
 
     fun save() {
         val current = _state.value
@@ -192,6 +193,16 @@ class ManualEntryViewModel(
             return
         }
 
+        val packageAmount = if (current.packageAmount.isBlank()) {
+            null
+        } else {
+            PortionParser.parse(current.packageAmount)
+        }
+        if (current.packageAmount.isNotBlank() && (packageAmount == null || packageAmount.signum() <= 0)) {
+            _state.update { it.copy(packageError = true) }
+            return
+        }
+
         // A product without a barcode still needs a stable key so it can live in Recents. The
         // synthetic id is namespaced so it can never collide with a real GTIN (§28).
         val key = current.barcode.ifBlank { "local:${UUID.randomUUID()}" }
@@ -202,7 +213,7 @@ class ManualEntryViewModel(
             carbsPer100 = carbs,
             basis = basis,
             dataSource = ProductDataOrigin.MANUAL,
-            packageAmount = PortionParser.parse(current.packageAmount),
+            packageAmount = packageAmount,
         )
         val pending = current.pendingPortionUnit
         _state.update { it.copy(saving = true) }

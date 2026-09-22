@@ -220,14 +220,7 @@ class QuickCalculationTest {
 
     // ---- 2 & 3. no persistence as a side effect ------------------------------------------------
 
-    /**
-     * The debounced usage recorder is the specific hazard here.
-     *
-     * `ProductViewModel.init` collects `portionText` and calls `rememberUsage()` after it settles, so
-     * a quick calculation would write Recents purely by the user typing a portion — no deliberate
-     * action at all. `advanceUntilIdle` runs past that debounce, so this test genuinely exercises it
-     * rather than finishing before it fires.
-     */
+    /** Typing alone is passive and must never create a product or usage record. */
     @Test
     fun `typing a portion into a quick calculation persists nothing`() = runTest(dispatcher) {
         val fixture = Fixture()
@@ -240,14 +233,14 @@ class QuickCalculationTest {
         assertEquals("a quick calculation created a usage record", emptyList<PortionUsage>(), fixture.usage.saved)
     }
 
-    /** The explicit exit path — leaving the screen must not be what triggers a write either. */
+    /** The explicit exit path records nothing while the calculation has no saved identity. */
     @Test
     fun `leaving a quick calculation persists nothing`() = runTest(dispatcher) {
         val fixture = Fixture()
 
         fixture.viewModel.startQuickCalculation(BigDecimal("48"), NutritionBasis.PER_100_G)
         fixture.viewModel.onPortionChanged("35")
-        fixture.viewModel.rememberUsage()
+        fixture.viewModel.rememberUsageAndAwait()
         advanceUntilIdle()
 
         assertEquals(emptyList<Product>(), fixture.local.saved)
@@ -749,7 +742,7 @@ class QuickCalculationTest {
         viewModel.load(barcode)
         advanceUntilIdle()
         viewModel.onPortionChanged("35")
-        advanceUntilIdle()
+        viewModel.rememberUsageAndAwait()
 
         assertFalse("a looked-up product is not a quick calculation", viewModel.state.value.unsaved)
         assertNotNull(viewModel.state.value.product)

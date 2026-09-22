@@ -211,6 +211,12 @@ fun ManualEntryScreen(
                     onValueChange = onPackageChanged,
                     label = { Text(stringResource(R.string.manual_package)) },
                     singleLine = true,
+                    isError = state.packageError,
+                    supportingText = if (state.packageError) {
+                        { Text(stringResource(R.string.manual_error_package)) }
+                    } else {
+                        null
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     shape = RoundedCornerShape(Space.buttonRadius),
                     modifier = Modifier.fillMaxWidth(),

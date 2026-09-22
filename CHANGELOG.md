@@ -108,12 +108,29 @@ live on Production and says the first update is ready. Work accumulates here unt
 - The meal bar on Home now slides in when a meal starts instead of pushing the list down in one
   frame.
 
+### Fixed
+
+- Portion history now records deliberate completed actions only: typing and remembered pre-fills
+  no longer inflate *Usual*, and leaving after an unchanged successful meal add does not count it
+  twice.
+- Manual entry now refuses malformed, zero, and negative optional package sizes with a field-level
+  explanation instead of silently saving them as empty or zero.
+- A late product lookup or refresh can no longer replace a newer barcode's screen state, editor
+  values, or update notices when an underlying source completes after cancellation.
+
+### Internal
+
+- Search-row geometry checks now use explicit viewport widths and font scales, and release-candidate
+  pushes to `release/**` automatically start the blocking pre-upload release gate.
+
 ### Verified so far
 
-JVM 2131/2131 (0 skipped, `--rerun-tasks`); lint 0 errors, 28 warnings (unchanged); instrumented
-`ui` package 373/373 and `data.local` 47/47 on the `carbscan` emulator. **Not yet seen on a physical
-device**: the Quick Add haptic, a live TalkBack pass, and whether taps meant to open a product land on
-the **+** by accident. Re-check all of this before the release build.
+JVM 2151/2151 (0 skipped, `--rerun-tasks`); lint 0 errors, 28 warnings; API 36 non-exploratory
+instrumentation 462/463 (0 skipped) on the `carbscan` emulator. The remaining failure is
+`HomeQuickAddScreenTest.largeFontOnANarrowScreenKeepsThePortionAndTheButton`, which also fails alone
+because the tagged quick-add node is absent. **Not yet seen on a physical device**: the Quick Add
+haptic, a live TalkBack pass, and whether taps meant to open a product land on the **+** by accident.
+Re-check all of this, and resolve the instrumented failure, before the release build.
 
 ### Play Store release notes
 

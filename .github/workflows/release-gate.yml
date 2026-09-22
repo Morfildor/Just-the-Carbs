@@ -12,12 +12,15 @@ name: Release gate
 # added — a gate with an exception in it is not a gate. If the emulator is genuinely flaky, re-run
 # the workflow; do not make the job tolerant.
 #
-# Runs on demand and on a release tag, not on every push, so branch work is not slowed by a job that
-# takes far longer than the rest of CI.
+# Runs automatically when a release candidate is pushed to `release/**`, before any upload. Manual
+# dispatch remains available, and `v*` tags retain compatibility. Ordinary branch pushes keep using
+# the faster, non-blocking API 36 job in `ci.yml`.
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - 'release/**'
     tags:
       - 'v*'
 

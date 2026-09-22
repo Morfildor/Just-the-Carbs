@@ -203,9 +203,8 @@ fun ProductScreen(
 
     // The system back gesture and the toolbar back button must persist the same way (P0 §3). Without
     // this, only the toolbar's `IconButton` called `onBack` — the system gesture went straight to
-    // Compose Navigation's default handling, so `rememberUsageAndAwait()` (or the old fire-and-forget
-    // `rememberUsage()`) never ran at all on a gesture exit, which is the far more common way to
-    // leave a screen on a modern device.
+    // Compose Navigation's default handling, so `rememberUsageAndAwait()` never ran on a gesture
+    // exit, which is the far more common way to leave a screen on a modern device.
     //
     // Deliberately not migrated to PredictiveBackHandler in the 2026-09-14 interaction pass — on the
     // barcode-product route, `onBack` awaits `viewModel.rememberUsageAndAwait()` (a suspend Room

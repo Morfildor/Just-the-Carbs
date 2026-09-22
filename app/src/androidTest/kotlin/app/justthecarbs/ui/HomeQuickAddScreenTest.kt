@@ -25,7 +25,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -51,6 +51,7 @@ import app.justthecarbs.domain.ProductDataSource
 import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
+import app.justthecarbs.ui.home.HOME_BODY_TAG
 import app.justthecarbs.ui.home.HOME_QUICK_ADD_TAG
 import app.justthecarbs.ui.home.HOME_RECENT_FORGET_TAG
 import app.justthecarbs.ui.home.HomeScreen
@@ -346,16 +347,18 @@ class HomeQuickAddScreenTest {
 
         // At 1.8x the recents start below the fold (the entry points come first by design), so
         // scroll the card in before judging its layout.
+        val body = compose.onNodeWithTag(HOME_BODY_TAG)
+        body.performScrollToNode(hasTestTag(HOME_QUICK_ADD_TAG))
         val button = compose.onNodeWithTag(HOME_QUICK_ADD_TAG, useUnmergedTree = true)
-        button.performScrollTo()
         compose.onNodeWithText("65 g").assertIsDisplayed()
         button.assertIsDisplayed()
+        val bodyBounds = body.fetchSemanticsNode().boundsInRoot
         val buttonBounds = button.fetchSemanticsNode().boundsInRoot
         val portionBounds = compose.onNodeWithText("65 g").fetchSemanticsNode().boundsInRoot
         assertTrue("portion is not squeezed: ${portionBounds.width}", portionBounds.width > 0f)
         assertTrue(
-            "button fits inside the 320dp column: $buttonBounds",
-            buttonBounds.right <= with(compose.density) { 320.dp.toPx() },
+            "button fits inside the constrained body: button=$buttonBounds, body=$bodyBounds",
+            buttonBounds.left >= bodyBounds.left && buttonBounds.right <= bodyBounds.right,
         )
     }
 

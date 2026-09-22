@@ -17,6 +17,11 @@ The 2026-09-16 "blocked pending explained API 36 failures" note is **cleared**: 
 instrumented suite ran on API 36 with only two failures, both `@ExploratoryExperiment` harnesses the
 strict [release gate](../.github/workflows/release-gate.yml) excludes (§7).
 
+**Current pre-upload gate (updated 2026-09-22):** pushing a release candidate to a `release/**`
+branch automatically runs the blocking release gate. It must finish green before upload. Manual
+dispatch and `v*` tags remain supported. This trigger was added after the `1.0.7` submission; it does
+not imply that `1.0.7` had a GitHub release-gate run.
+
 **Completed at upload:** `main` and the `play-1.0.7-submitted` tag/`release/1.0.7` branch are pushed;
 the corrected privacy policy (`docs/privacy-policy.html`) shipped in the same push, so GitHub Pages
 now serves the corrected page; `docs/version-history.md` carries the `1.0.7` entry with artifact

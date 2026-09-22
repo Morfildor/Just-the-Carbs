@@ -486,6 +486,72 @@ class ManualEntryViewModelTest {
     }
 
     @Test
+    fun `blank optional package size saves null`() = runTest(dispatcher) {
+        val journal = Journal()
+        val local = FakeLocal(journal)
+        val viewModel = ManualEntryViewModel(repositoryOf(local, FakeUnits(journal)))
+        viewModel.start(barcode)
+        viewModel.fillIn()
+        viewModel.onPackageChanged("   ")
+
+        viewModel.save()
+        advanceUntilIdle()
+
+        assertNull(local.stored.getValue(barcode).packageAmount)
+    }
+
+    @Test
+    fun `positive integer and decimal package sizes persist exactly`() = runTest(dispatcher) {
+        listOf("500", "375.25").forEach { entered ->
+            val journal = Journal()
+            val local = FakeLocal(journal)
+            val viewModel = ManualEntryViewModel(repositoryOf(local, FakeUnits(journal)))
+            viewModel.start(barcode)
+            viewModel.fillIn()
+            viewModel.onPackageChanged(entered)
+
+            viewModel.save()
+            advanceUntilIdle()
+
+            assertEquals(BigDecimal(entered), local.stored.getValue(barcode).packageAmount)
+        }
+    }
+
+    @Test
+    fun `malformed zero and negative package sizes do not persist`() = runTest(dispatcher) {
+        listOf("not a number", "0", "-1.5").forEach { entered ->
+            val journal = Journal()
+            val local = FakeLocal(journal)
+            val viewModel = ManualEntryViewModel(repositoryOf(local, FakeUnits(journal)))
+            viewModel.start(barcode)
+            viewModel.fillIn()
+            viewModel.onPackageChanged(entered)
+
+            viewModel.save()
+            advanceUntilIdle()
+
+            assertTrue("'$entered' must not call the repository", local.stored.isEmpty())
+            assertNull(viewModel.state.value.savedBarcode)
+            assertTrue("'$entered' must expose the package field error", viewModel.state.value.packageError)
+        }
+    }
+
+    @Test
+    fun `editing package size clears its validation error`() = runTest(dispatcher) {
+        val journal = Journal()
+        val viewModel = ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal)))
+        viewModel.start(barcode)
+        viewModel.fillIn()
+        viewModel.onPackageChanged("0")
+        viewModel.save()
+        assertTrue(viewModel.state.value.packageError)
+
+        viewModel.onPackageChanged("250")
+
+        assertFalse(viewModel.state.value.packageError)
+    }
+
+    @Test
     fun `an invalid entry saves neither the product nor the portion`() = runTest(dispatcher) {
         // Validation still gates everything. A blank name must not become a product row that a
         // portion then attaches itself to.
