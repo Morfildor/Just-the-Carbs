@@ -10,11 +10,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,8 +18,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -31,9 +25,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,11 +46,8 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -274,73 +263,19 @@ private fun CameraPreview(
 
         ScanFrame(acquired = acquired, modifier = Modifier.align(Alignment.Center))
 
-        // Top row: close only. Nothing essential lives up here (§40).
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .background(Color.Black.copy(alpha = 0.58f))
-                .padding(horizontal = Space.s, vertical = Space.s),
-            horizontalArrangement = Arrangement.Start,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ScrimIconButton(
-                onClick = { leave(onClose) },
-                icon = Icons.Filled.Close,
-                description = stringResource(R.string.scanner_close),
-            )
-            Spacer(Modifier.width(Space.s))
-            Text(
-                text = stringResource(R.string.home_scan_button),
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = Space.m, vertical = Space.s)
-                .background(Color.Black.copy(alpha = 0.66f), RoundedCornerShape(Space.cardRadius))
-                .padding(Space.m),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Space.s),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (acquired) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White,
-                    )
-                }
-                Text(
-                    text = stringResource(
-                        when {
-                            // Names the work actually in progress rather than a bare spinner, so
-                            // the wait is attributable to something (§2).
-                            acquired -> R.string.scanner_finding_product
-                            holdSteady -> R.string.scanner_hint_steady
-                            else -> R.string.scanner_hint_aim
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    // Announced on change so a TalkBack user hears the scan land, rather than the
-                    // screen going silent until the next destination arrives.
-                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                )
-            }
-            Spacer(Modifier.height(Space.m))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (torchAvailable && !acquired) {
-                    ScrimIconButton(
+        // Close at the start, torch at the end -- the same two controls in the same two places as
+        // the label scanner, over the preview rather than in an opaque band across the top of it.
+        //
+        // The band carried the title "Scan barcode", which the dock below now states where it does
+        // not cover the frame the user is aiming. The torch moved up here from the dock's action
+        // row for the same reason it is up there on the label scanner: it adjusts the camera, so it
+        // belongs with the camera's own controls rather than beside the manual-entry escape hatch.
+        ScannerTopBar(
+            onClose = { leave(onClose) },
+            closeDescription = stringResource(R.string.scanner_close),
+            trailing = if (torchAvailable) {
+                {
+                    ScannerScrimButton(
                         onClick = {
                             torchOn = !torchOn
                             camera?.cameraControl?.enableTorch(torchOn)
@@ -349,37 +284,46 @@ private fun CameraPreview(
                         description = stringResource(
                             if (torchOn) R.string.scanner_torch_off else R.string.scanner_torch_on,
                         ),
+                        // A lookup is already under way; changing the torch now would act on a
+                        // camera the screen is about to release.
+                        enabled = !acquired,
                     )
-                    Spacer(Modifier.width(Space.m))
                 }
+            } else {
+                null
+            },
+        )
 
-                // §8's "optional manual barcode entry" — genuinely a barcode field now. It
-                // previously jumped straight to manual product entry, so the control did not do
-                // what its label said.
-                TextButton(
-                    onClick = { analyzer.setPaused(true); holdSteady = false; showBarcodeDialog = true },
-                    // A lookup is already under way and this screen is about to be replaced;
-                    // opening the manual dialog on top of it would start a second, competing one.
-                    enabled = !acquired,
-                    shape = RoundedCornerShape(Space.buttonRadius),
-                    modifier = Modifier
-                        .heightIn(min = Space.minTouchTarget)
-                        .border(
-                            1.dp,
-                            Color.White.copy(alpha = 0.32f),
-                            RoundedCornerShape(Space.buttonRadius),
-                        )
-                        .background(
-                            Color.White.copy(alpha = 0.08f),
-                            RoundedCornerShape(Space.buttonRadius),
-                        ),
-                ) {
-                    Text(
-                        text = stringResource(R.string.scanner_enter_manually),
-                        color = Color.White.copy(alpha = if (acquired) 0.38f else 1f),
-                    )
-                }
-            }
+        ScannerDock(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(Space.m),
+        ) {
+            ScannerDockCopy(
+                title = stringResource(R.string.home_scan_button),
+                guidance = stringResource(
+                    when {
+                        // Names the work actually in progress rather than a bare spinner, so the
+                        // wait is attributable to something (§2).
+                        acquired -> R.string.scanner_finding_product
+                        holdSteady -> R.string.scanner_hint_steady
+                        else -> R.string.scanner_hint_aim
+                    },
+                ),
+            )
+
+            // §8's "optional manual barcode entry" -- genuinely a barcode field now. It
+            // previously jumped straight to manual product entry, so the control did not do what
+            // its label said.
+            ScannerGhostButton(
+                onClick = { analyzer.setPaused(true); holdSteady = false; showBarcodeDialog = true },
+                label = stringResource(R.string.scanner_enter_manually),
+                modifier = Modifier.fillMaxWidth(),
+                // A lookup is already under way and this screen is about to be replaced; opening
+                // the manual dialog on top of it would start a second, competing one.
+                enabled = !acquired,
+            )
         }
     }
 }
@@ -432,22 +376,5 @@ private fun ScanFrame(acquired: Boolean, modifier: Modifier = Modifier) {
                 modifier = Modifier.size(56.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun ScrimIconButton(
-    onClick: () -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(Space.minTouchTarget)
-            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
-            .semantics { contentDescription = description },
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = Color.White)
     }
 }

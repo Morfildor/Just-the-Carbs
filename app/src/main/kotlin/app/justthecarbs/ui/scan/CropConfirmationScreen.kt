@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +50,7 @@ import app.justthecarbs.R
 import app.justthecarbs.ocr.CropSelectionGeometry
 import app.justthecarbs.ocr.NormalizedRegion
 import app.justthecarbs.ocr.ViewRect
+import app.justthecarbs.ui.components.JtcOutlinedButton
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 
@@ -119,10 +121,16 @@ fun CropConfirmationScreen(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
+        // The header sits on the page's own surface, marked off by a hairline below it rather than
+        // by a fill of its own.
+        //
+        // It used to be `surfaceContainerHigh`, as was the control area at the other end, so the
+        // photograph -- the only thing on this screen the user is actually looking at -- was
+        // sandwiched between two grey slabs that were each heavier than it. Two fills and a photo
+        // is three competing surfaces; a line costs nothing and says the same thing.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(start = Space.m, end = Space.s, top = Space.s, bottom = Space.s),
             verticalAlignment = Alignment.Top,
         ) {
@@ -175,6 +183,8 @@ fun CropConfirmationScreen(
             }
         }
 
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -205,26 +215,19 @@ fun CropConfirmationScreen(
             }
         }
 
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
-            if (reading) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Space.s),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text(
-                        text = stringResource(R.string.crop_reading),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            // No separate spinner row. The header already says `Reading the table...` while a pass
+            // runs (see the title ordering above) and the button below carries the same state by
+            // being disabled -- three simultaneous indications of one operation, which is the
+            // duplication P0-5 names on the live screens and is the same mistake here.
             Button(
                 onClick = { onReadTable(selection) },
                 enabled = !reading,
@@ -234,11 +237,11 @@ fun CropConfirmationScreen(
                     .heightIn(min = Space.primaryButtonHeight)
                     .testTag(CROP_READ_TAG),
             ) { Text(stringResource(R.string.crop_read)) }
-            OutlinedButton(
+            JtcOutlinedButton(
+                text = stringResource(R.string.crop_retake),
                 onClick = onRetake,
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
-            ) { Text(stringResource(R.string.crop_retake)) }
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

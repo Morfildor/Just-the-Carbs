@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -46,6 +47,7 @@ import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.ocr.CropSelectionGeometry
 import app.justthecarbs.ocr.EvidenceResolver
 import app.justthecarbs.ocr.OcrBox
+import app.justthecarbs.ui.components.JtcOutlinedButton
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
@@ -202,7 +204,6 @@ fun VerificationScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(horizontal = Space.m, vertical = Space.s),
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
@@ -227,6 +228,8 @@ fun VerificationScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
 
         // The row the figure was read from, enlarged. This is the part a user can actually check a
         // decimal point in; the full photograph below it is for locating that row on the package.
@@ -290,7 +293,7 @@ fun VerificationScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
@@ -348,11 +351,11 @@ fun VerificationScreen(
                     ),
                 )
             }
-            OutlinedButton(
+            JtcOutlinedButton(
+                text = stringResource(R.string.verify_found_reject),
                 onClick = onReject,
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget).testTag(VERIFY_REJECT_TAG),
-            ) { Text(stringResource(R.string.verify_found_reject)) }
+                modifier = Modifier.fillMaxWidth().testTag(VERIFY_REJECT_TAG),
+            )
             TextButton(
                 onClick = onRetake,
                 modifier = Modifier.fillMaxWidth().testTag(VERIFY_RETAKE_TAG),
@@ -433,7 +436,6 @@ fun ConflictScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(horizontal = Space.m, vertical = Space.s),
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
@@ -451,6 +453,8 @@ fun ConflictScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color.Black)) {
             androidx.compose.foundation.Image(
@@ -464,7 +468,7 @@ fun ConflictScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(Space.m),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {

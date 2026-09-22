@@ -20,6 +20,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -35,7 +36,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,9 +43,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -73,7 +73,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -118,7 +117,9 @@ import app.justthecarbs.ocr.StatedBasis
 import app.justthecarbs.ocr.ServingCarbCandidate
 import app.justthecarbs.ocr.TextResolutionGuidance
 import app.justthecarbs.ocr.OcrDiagnosticsLogger
+import app.justthecarbs.ui.components.JtcOutlinedButton
 import app.justthecarbs.ui.components.RecoveryPanel
+import app.justthecarbs.ui.components.jtcOutlinedButtonBorder
 import app.justthecarbs.ui.product.kindLabel
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
@@ -1877,28 +1878,26 @@ private fun LabelCamera(
                 },
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(Space.s),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            LabelScrimIconButton(
-                onClick = onClose,
-                icon = Icons.Filled.Close,
-                description = stringResource(R.string.scanner_close),
-            )
-            if (torchAvailable) {
-                LabelScrimIconButton(
-                    onClick = {
-                        torchOn = !torchOn
-                        camera?.cameraControl?.enableTorch(torchOn)
-                    },
-                    icon = if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff,
-                    description = stringResource(
-                        if (torchOn) R.string.scanner_torch_off else R.string.scanner_torch_on,
-                    ),
-                )
-            }
-        }
+        ScannerTopBar(
+            onClose = onClose,
+            closeDescription = stringResource(R.string.scanner_close),
+            trailing = if (torchAvailable) {
+                {
+                    ScannerScrimButton(
+                        onClick = {
+                            torchOn = !torchOn
+                            camera?.cameraControl?.enableTorch(torchOn)
+                        },
+                        icon = if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff,
+                        description = stringResource(
+                            if (torchOn) R.string.scanner_torch_off else R.string.scanner_torch_on,
+                        ),
+                    )
+                }
+            } else {
+                null
+            },
+        )
 
         Box(
             modifier = Modifier
@@ -2059,16 +2058,16 @@ private fun SearchingCard(
     onCapture: () -> Unit,
     onEdit: () -> Unit,
 ) {
-    ScannerCard(review = false) {
-        Text(stringResource(R.string.ocr_align_title), style = MaterialTheme.typography.titleMedium)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Space.s),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (captureState != CaptureState.IDLE) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            }
-            val guidanceRes = when (captureState) {
+    // The dark dock, not a light themed card.
+    //
+    // This is the one state of this screen where the user is still aiming a camera, so it takes the
+    // same chrome the barcode scanner takes in the same situation: a black panel over the preview.
+    // A `surfaceContainerLow` card here put a cream slab across the bottom third of a live frame and
+    // made the two scanners look unrelated. Every state AFTER a capture keeps its light chrome --
+    // there the photograph is frozen and the screen is a review surface, not a viewfinder.
+    ScannerDock {
+        val guidanceRes = run {
+            when (captureState) {
                 CaptureState.CAPTURING -> R.string.ocr_capturing
                 CaptureState.PROCESSING -> R.string.ocr_processing
                 CaptureState.IDLE -> when {
@@ -2092,24 +2091,19 @@ private fun SearchingCard(
                     else -> R.string.ocr_looking
                 }
             }
-            AnimatedContent(
-                targetState = guidanceRes,
-                transitionSpec = {
-                    (fadeIn(tween(Motion.QUICK_MS)) togetherWith fadeOut(tween(Motion.QUICK_MS)))
-                },
-                label = "scanGuidance",
-            ) { res ->
-                Text(
-                    text = stringResource(res),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
+        ScannerDockCopy(
+            title = stringResource(R.string.ocr_align_title),
+            guidance = stringResource(guidanceRes),
+        )
+        // One spinner per capture, and it lives in this button. The card used to draw a second one
+        // beside the guidance line saying the same thing at the same time.
         CaptureButton(onCapture, captureState = captureState)
-        TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
-            Text(stringResource(R.string.ocr_enter_manually))
-        }
+        ScannerGhostButton(
+            onClick = onEdit,
+            label = stringResource(R.string.ocr_enter_manually),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -2127,7 +2121,7 @@ private fun ProposalCard(
     onSavePortionUnit: (PortionUnitKind, PortionConversion) -> Unit = { _, _ -> },
     saveState: PortionSaveState = PortionSaveState.Idle,
 ) {
-    ScannerCard(review = true) {
+    ScannerCard {
         CandidateChoice(candidate, onUse, onCorrect = onCorrect)
         savablePortion?.let { (descriptor, carbsPerServing) ->
             SavePortionUnitAction(
@@ -2163,7 +2157,7 @@ private fun SavePortionUnitAction(
             Text(
                 text = stringResource(R.string.label_portion_unit_saved),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = scannerDockSecondary,
             )
             return
         }
@@ -2173,7 +2167,7 @@ private fun SavePortionUnitAction(
             Text(
                 text = stringResource(R.string.label_portion_unit_pending),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = scannerDockSecondary,
             )
             return
         }
@@ -2186,7 +2180,7 @@ private fun SavePortionUnitAction(
                 Text(
                     text = stringResource(R.string.label_portion_unit_saving),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = scannerDockSecondary,
                 )
             }
             return
@@ -2195,7 +2189,7 @@ private fun SavePortionUnitAction(
             Text(
                 text = stringResource(R.string.label_portion_unit_failed),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = MaterialTheme.extendedColors.accents.amber,
             )
         PortionSaveState.Idle -> Unit
     }
@@ -2232,12 +2226,12 @@ private fun AmbiguousCard(
     onEdit: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    ScannerCard(review = true) {
+    ScannerCard {
         Text(stringResource(R.string.ocr_ambiguous_title), style = MaterialTheme.typography.titleMedium)
         Text(
             stringResource(R.string.ocr_ambiguous_body),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = scannerDockSecondary,
         )
         candidates.forEach { candidate ->
             CandidateChoice(candidate, onUse, onCorrect, showCorrectPair = false)
@@ -2266,7 +2260,7 @@ private fun DetectedValue(display: String, basisLabel: String?, nutrientLabel: S
         Text(
             text = nutrientLabel,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = scannerDockSecondary,
         )
         Text(
             // "40.3 g / 100 g" — the brief's requested shape. The basis is part of the same string
@@ -2277,7 +2271,7 @@ private fun DetectedValue(display: String, basisLabel: String?, nutrientLabel: S
                 stringResource(R.string.ocr_detected_value_no_basis, display)
             },
             style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = Color.White,
         )
     }
 }
@@ -2319,6 +2313,12 @@ private fun CandidateChoice(
                     onClick = { onCorrect(candidate.value, basis) },
                     modifier = Modifier.weight(1f).heightIn(min = Space.primaryButtonHeight),
                     shape = RoundedCornerShape(Space.buttonRadius),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    // White, not `primary`: this sits inside the dark dock, where a cobalt label
+                    // and border would compete with the cobalt Confirm standing right beside it.
+                    // Not `ScannerGhostButton` either -- half of a co-equal pair sized to
+                    // `primaryButtonHeight`, which that component's 48dp floor would break.
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f)),
                 ) { Text(stringResource(R.string.ocr_correct)) }
                 Button(
                     onClick = { onUse(candidate.value, basis) },
@@ -2352,7 +2352,7 @@ private fun CandidateChoice(
         Text(
             text = stringResource(R.string.ocr_basis_unknown_prompt),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = scannerDockSecondary,
         )
         Button(
             // Null, genuinely — not a pre-selected PER_100_G standing in for "unknown". Manual entry
@@ -2378,25 +2378,28 @@ private fun CandidateChoice(
  */
 @Composable
 private fun NotFoundCard(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () -> Unit) {
-    ScannerCard(review = true) {
+    ScannerCard {
         Text(stringResource(R.string.ocr_not_found_title), style = MaterialTheme.typography.titleMedium)
         Text(
             stringResource(R.string.ocr_not_found_body),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = scannerDockSecondary,
         )
         Button(
             onClick = onRetry,
             shape = RoundedCornerShape(Space.buttonRadius),
             modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
         ) { Text(stringResource(R.string.ocr_try_again)) }
-        OutlinedButton(
+        ScannerGhostButton(
             onClick = onEdit,
-            shape = RoundedCornerShape(Space.buttonRadius),
+            label = stringResource(R.string.ocr_enter_manually),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TextButton(
+            onClick = onCapture,
             modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
-        ) { Text(stringResource(R.string.ocr_enter_manually)) }
-        TextButton(onClick = onCapture, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
-            Text(stringResource(R.string.ocr_capture_label))
+        ) {
+            Text(stringResource(R.string.ocr_capture_label), color = Color.White)
         }
     }
 }
@@ -2404,19 +2407,22 @@ private fun NotFoundCard(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () 
 @Composable
 private fun SecondaryScannerActions(onCapture: () -> Unit, onEdit: () -> Unit, onRetry: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-        OutlinedButton(
+        ScannerGhostButton(
             onClick = onCapture,
-            shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
-        ) { Text(stringResource(R.string.ocr_capture_label)) }
-        OutlinedButton(
+            label = stringResource(R.string.ocr_capture_label),
+            modifier = Modifier.weight(1f),
+        )
+        ScannerGhostButton(
             onClick = onEdit,
-            shape = RoundedCornerShape(Space.buttonRadius),
-            modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
-        ) { Text(stringResource(R.string.ocr_edit)) }
+            label = stringResource(R.string.ocr_edit),
+            modifier = Modifier.weight(1f),
+        )
     }
-    TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget)) {
-        Text(stringResource(R.string.ocr_scan_again))
+    TextButton(
+        onClick = onRetry,
+        modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
+    ) {
+        Text(stringResource(R.string.ocr_scan_again), color = Color.White)
     }
 }
 
@@ -2462,46 +2468,28 @@ private fun CaptureButton(onClick: () -> Unit, captureState: CaptureState) {
     }
 }
 
+/**
+ * The result cards, in the same dark dock the pre-capture state uses.
+ *
+ * These four cards -- searching, proposal, ambiguous, not-found -- ALL render over the live camera
+ * preview. A frozen capture returns early into its own full-screen branch further up this file
+ * (see the comment at `val frozen = pendingCrop`), so nothing that reaches here is sitting on a
+ * still photograph.
+ *
+ * They used to take a light themed card, which had two consequences. Cosmetically, tapping capture
+ * and getting `Couldn't confidently find carbohydrates` swapped a black dock for a cream slab in
+ * the same position, so the chrome changed underneath a user who had not left the viewfinder.
+ * Substantively, a `surfaceContainerHigh` card over a camera feed is a page surface used as an
+ * overlay: it reads as an opaque sheet that has covered the preview rather than a panel resting on
+ * it, which is what the black scrim is for.
+ *
+ * The `review` parameter is therefore gone rather than defaulted -- it distinguished nothing, and a
+ * boolean whose two branches are both "over the live camera" is a decision waiting to be made
+ * wrongly.
+ */
 @Composable
-private fun ScannerCard(review: Boolean, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(Space.cardRadius)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                if (review) {
-                    MaterialTheme.colorScheme.surfaceContainerHigh
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerLow
-                },
-                shape,
-            )
-            .then(
-                if (review) {
-                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-                } else {
-                    Modifier
-                },
-            )
-            .padding(Space.m),
-        verticalArrangement = Arrangement.spacedBy(Space.s),
-        content = content,
-    )
-}
-
-@Composable
-private fun LabelScrimIconButton(
-    onClick: () -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(Space.minTouchTarget)
-            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
-            .semantics { contentDescription = description },
-    ) { Icon(icon, contentDescription = null, tint = Color.White) }
+private fun ScannerCard(content: @Composable ColumnScope.() -> Unit) {
+    ScannerDock(content = content)
 }
 
 private enum class CaptureState { IDLE, CAPTURING, PROCESSING }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -66,6 +67,7 @@ import app.justthecarbs.ocr.OcrBox
 import app.justthecarbs.ocr.OcrDocument
 import app.justthecarbs.ocr.RecoveryCandidates
 import app.justthecarbs.ocr.StatedBasis
+import app.justthecarbs.ui.components.JtcOutlinedButton
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
@@ -540,7 +542,6 @@ fun AssistedReadingScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(horizontal = Space.m, vertical = Space.s),
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
@@ -579,6 +580,8 @@ fun AssistedReadingScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
 
         Box(
             modifier = Modifier
@@ -733,7 +736,7 @@ fun AssistedReadingScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(Space.m)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Space.s),
@@ -789,11 +792,11 @@ fun AssistedReadingScreen(
                     // down a longer path for no reason.
                     if (labelled.isNotEmpty()) {
                         LabelledChoices(labelled, ::accept)
-                        OutlinedButton(
+                        JtcOutlinedButton(
+                            text = stringResource(R.string.assist_pick_labelled),
                             onClick = { step = AssistStep.PickingLabelled },
-                            shape = RoundedCornerShape(Space.buttonRadius),
-                            modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
-                        ) { Text(stringResource(R.string.assist_pick_labelled)) }
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                     // Tapping a row stays available and stays *primary* in the ordinary case. It is
                     // demoted only when focused entry is offered above, so the screen has one
@@ -801,11 +804,11 @@ fun AssistedReadingScreen(
                     // weaker route there, since the row it would identify is already known.
                     val focusedEntryLeads = state.scaleAmbiguous && focusedTarget != null
                     if (focusedEntryLeads) {
-                        OutlinedButton(
+                        JtcOutlinedButton(
+                            text = stringResource(R.string.assist_pick_row),
                             onClick = { step = AssistStep.PickingRow },
-                            shape = RoundedCornerShape(Space.buttonRadius),
-                            modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
-                        ) { Text(stringResource(R.string.assist_pick_row)) }
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     } else {
                         Button(
                             onClick = { step = AssistStep.PickingRow },
@@ -813,11 +816,11 @@ fun AssistedReadingScreen(
                             modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
                         ) { Text(stringResource(R.string.assist_pick_row)) }
                     }
-                    OutlinedButton(
+                    JtcOutlinedButton(
+                        text = stringResource(R.string.assist_type_it),
                         onClick = { step = AssistStep.TypingValue },
-                        shape = RoundedCornerShape(Space.buttonRadius),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
-                    ) { Text(stringResource(R.string.assist_type_it)) }
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     TextButton(onClick = onRetake, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.crop_retake))
                     }

@@ -503,7 +503,7 @@
       plainly see.
     -->
     <string name="crop_title">Tighten the box around the table</string>
-    <string name="crop_body">Drag the corners so only the nutrition table is inside — leave out ingredients and other text. Keep the “per 100 g” heading and the carbohydrate row.</string>
+    <string name="crop_body">Drag the corners so only the table is inside — keep the “per 100 g” heading and the carbohydrate row.</string>
     <!-- The same screen, reached after the app already tried this rectangle by itself and could
          not read it safely (1.0.3 P4). The title says an attempt was made, so the fallback reads as
          a hand-off rather than as a restart or a failure. Deliberately not an error: nothing has
@@ -514,9 +514,14 @@
          generic wording cannot: the box the app already tried is the one on screen, so moving it is
          what changes the answer. Repeating "drag the corners so only the table is inside" here
          would describe a box the user is looking at and has not been told is already the failed
-         attempt. -->
+         attempt.
+
+         Shortened 2026-09-22 to the two lines the header has room for. The distinguishing first
+         sentence is untouched; what went is the generic instruction this comment already says the
+         variant does not need to repeat. Four lines of prose above a photograph made the words the
+         largest object on a screen whose subject is the picture. -->
     <string name="crop_title_after_attempt">Couldn\'t read it automatically</string>
-    <string name="crop_body_after_attempt">This is the box it tried. Drag the corners in so only the nutrition table is inside — keep the “per 100 g” heading and the carbohydrate row, and leave out ingredients and other text.</string>
+    <string name="crop_body_after_attempt">This is the box it tried. Drag the corners in around the table, heading included.</string>
     <string name="crop_read">Read table</string>
     <string name="crop_retake">Retake</string>
     <string name="crop_reading">Reading table…</string>
