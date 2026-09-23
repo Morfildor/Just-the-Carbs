@@ -102,6 +102,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.geometry.Offset
@@ -705,82 +706,40 @@ private fun CalculatorBody(
         // the right product?", which is a question about the top of the screen; the portion group
         // is what may float. It is short and fixed-height, so keeping it out of the scroll costs
         // nothing even at a large font scale.
-        if (!imeVisible) {
-            ProductIdentityRow(
-                product = product,
-                modifier = Modifier.padding(
-                    start = Space.screenEdge,
-                    end = Space.screenEdge,
-                    top = Space.s,
-                ),
-                onOpenGallery = onOpenGallery,
-            ) {
-                ProductSummary(
-                    product = product,
-                    onVerify = onVerify,
-                    onVerifyByTyping = onVerifyByTyping,
-                )
-            }
-        }
-
+        CalculatorFrame(
+            reserveIdentity = !imeVisible,
+            modifier = Modifier.weight(1f),
+            identity = {
+                if (!imeVisible) {
+                    ProductIdentityRow(
+                        product = product,
+                        modifier = Modifier.padding(
+                            start = Space.screenEdge,
+                            end = Space.screenEdge,
+                            top = Space.s,
+                        ),
+                        onOpenGallery = onOpenGallery,
+                        // The spare height of a tall screen goes to the product photo, in fixed
+                        // steps, once the portion controls below have taken what they need. See
+                        // ProductIdentityRow and CalculatorFrame.
+                        allowHero = true,
+                    ) {
+                        ProductSummary(
+                            product = product,
+                            onVerify = onVerify,
+                            onVerifyByTyping = onVerifyByTyping,
+                        )
+                    }
+                }
+            },
+        ) {
         Column(
             modifier = Modifier
-                .weight(1f)
                 .fadeOutWhenMoreBelow(portionScroll)
                 .verticalScroll(portionScroll),
-            // The portion group floats in the middle of whatever room the dock leaves it.
-            //
-            // With the hero photo gone the controls no longer fill this zone at the default font
-            // scale, and anchored to the top that left ~145dp of empty page between the last
-            // control and the dock -- measured on the emulator, content ending at y=1297 against a
-            // zone ending at y=1906 -- which reads as an unfinished screen. The same defect the
-            // 2026-08-15 Home pass and the 2026-08-29 quick-calculation pass each hit once.
-            //
-            // Two other fixes were built and measured on the device first, and both are worse:
-            //
-            //  - `weight(1f, fill = false)` on this zone, or a weighted spacer as a SIBLING of it,
-            //    unpins the dock from the bottom edge. Seen on the emulator: the dock floated at
-            //    y=1133 with cream page below it, covering the pack row. This is exactly what the
-            //    2026-08-16 pass measured and rejected for this screen, and re-measuring it was
-            //    worth the round trip -- the argument that "the dock is still the last child of a
-            //    fillMaxSize Column so it must stay on the bottom" is wrong, and only running the
-            //    app showed that.
-            //  - Padding the zone by a fixed amount: a guess that is wrong at every font scale but
-            //    the one it was measured at.
-            //
-            // Centring is only safe because the identity row is pinned ABOVE this zone. While it
-            // was inside, centring floated identity 200px down the page away from the title it
-            // belongs to -- also measured, also on the device.
-            //
-            // It degrades correctly: the moment the content is taller than the zone there is no
-            // free space to distribute, and the layout is identical to `Top` with the scroll doing
-            // the work. That is the large-font-scale and short-screen case.
-            //
-            // **Corrected 2026-09-22: centred, but biased toward the top.** Centring was measured
-            // when this zone held one more control row than it does now. With the +/- row removed
-            // the remaining content is short enough that true centring split the slack in two and
-            // put a band above the group as well as below it -- measured on the emulator at 271px
-            // (~103dp) between the identity row and the "Portion" label, with the group floating
-            // clear of both ends. Seen only by looking at a screenshot; every assertion passed.
-            //
-            // **Corrected again 2026-09-23: anchored to the BOTTOM, directly above the dock.**
-            // `Top` put the input in the upper third and the answer at the bottom with the slack
-            // between them -- measured at 216dp in the result state and 335dp in the empty state on
-            // a 411x914 phone -- so the one relationship this screen exists to show, portion in and
-            // carbs out, was split by a void that read as an unfinished page. Bottom anchoring
-            // stacks the portion group on the dock: the input sits over its answer as one calculator
-            // column, in thumb reach (the §40 constraint this file's own KDoc names), and the slack
-            // collects under the identity header where it reads as breathing room after a header.
-            //
-            // The dock keeps a constant silhouette while the keyboard is open (see `ResultPanel`'s
-            // reserved actions row), because with the group resting on the dock any growth of the
-            // dock on the first keystroke would move the field under the user's finger.
-            //
-            // It is still NOT `weight(1f, fill = false)` on the zone and NOT a weighted spacer as a
-            // SIBLING of it: both of those unpin the dock from the bottom edge, which is the
-            // arrangement this file has measured and rejected twice. When the content is taller
-            // than the zone there is no slack to place and the layout is identical to `Top` with
-            // the scroll doing the work -- the large-font-scale and short-screen case.
+            // The zone is only as tall as its contents when they fit, and CalculatorFrame rests it
+            // on the dock, so there is no slack inside it to arrange. When the contents are taller
+            // than the room, it is the room's height and scrolls from the top.
             verticalArrangement = Arrangement.Bottom,
         ) {
 
@@ -996,6 +955,7 @@ private fun CalculatorBody(
             Spacer(Modifier.height(Space.m))
         }
         }
+        }
 
         // ZONE 3 — the equation and the result, in one pinned surface (brief §3.2).
         //
@@ -1023,6 +983,54 @@ private fun CalculatorBody(
             onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription, mealFallbackName) },
             onOpenMeal = onOpenMeal,
         )
+    }
+}
+
+/**
+ * The room between the meal bar and the dock: the product identity at the top, the portion zone
+ * resting on the dock, and the portion zone measured first.
+ *
+ * The portion zone is the calculator, so it takes its height before anything else: its whole
+ * contents when they fit, the room less [reserveIdentity]'s floor (the identity row) when they do
+ * not, in which case it scrolls. The identity then gets everything left, which is how a tall
+ * screen's spare height becomes a larger product photo instead of empty page (2026-09-23 hero
+ * redesign; the identity picks one of its fixed photo sizes from that height). A photo can
+ * therefore never push the portion field under the dock: it is sized from what the field left.
+ *
+ * Replaces a weighted scrolling `Column` with `Arrangement.Bottom` and the identity pinned above
+ * it, which put the same slack under the identity row as empty page -- about 250dp on a 412dp
+ * phone before a portion was typed. What that arrangement got right is kept: the portion group
+ * rests on the dock, so the input sits over its answer as one column in thumb reach, and a
+ * shorter group leaves slack above it, never between the field and the answer. Two alternatives
+ * measured on the device before it, and still wrong: `weight(1f, fill = false)` on the zone or a
+ * weighted sibling spacer both unpin the dock from the bottom edge.
+ */
+@Composable
+private fun CalculatorFrame(
+    reserveIdentity: Boolean,
+    identity: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    zone: @Composable () -> Unit,
+) {
+    Layout(contents = listOf(identity, zone), modifier = modifier) { (identityMeasurables, zoneMeasurables), constraints ->
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val identityMeasurable = identityMeasurables.firstOrNull()
+        val reserved = if (reserveIdentity && identityMeasurable != null) {
+            identityMeasurable.minIntrinsicHeight(width).coerceAtMost(height)
+        } else {
+            0
+        }
+        val zonePlaceable = zoneMeasurables.single().measure(
+            Constraints(minWidth = width, maxWidth = width, maxHeight = (height - reserved).coerceAtLeast(0)),
+        )
+        val identityPlaceable = identityMeasurable?.measure(
+            Constraints(minWidth = width, maxWidth = width, maxHeight = (height - zonePlaceable.height).coerceAtLeast(0)),
+        )
+        layout(width, height) {
+            identityPlaceable?.place(0, 0)
+            zonePlaceable.place(0, height - zonePlaceable.height)
+        }
     }
 }
 
@@ -1064,11 +1072,23 @@ private fun ProductSummary(
     onVerifyByTyping: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    // Stacked rather than side by side. The badge is itself a two-part block (a pill plus, for
-    // unverified online data, a "Check package if needed" line), so putting it beside the per-100
-    // figure produced a ragged two-line arrangement where neither element had a clean baseline --
-    // visible only once a real product was on screen.
-    Column(modifier = modifier.fillMaxWidth()) {
+    // One line that wraps: the figure, the badge and Verify (2026-09-23 hero redesign). Under a
+    // hero photo the full width holds all three, so the caption costs one line; beside the row's
+    // thumbnail the column is narrower and the badge wraps under the figure as it always sat. It
+    // was a stacked `Column` while the badge was a two-part block (a pill plus a "Check package if
+    // needed" line) that sat raggedly beside the figure; that second line is gone (see below).
+    //
+    // A `FlowRow` measures each item against the whole line and moves one that does not fit to
+    // the next line, so no item is squeezed. On CI's 320dp emulator at 1.8x text a `Row` measured
+    // Verify at 13dp wide, its label broken one letter per line into a 218dp-tall sliver
+    // (`TouchTargetSizeTest`: "Verify = 13x218dp"), because a `Row` hands its second child
+    // whatever width the first left over and never wraps.
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+        verticalArrangement = Arrangement.spacedBy(Space.xs),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
         // The same weight as the product name in the top bar, one step below the size it had.
         //
         // This is the figure every result on the screen derives from, and it is the one an
@@ -1092,54 +1112,37 @@ private fun ProductSummary(
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,
         )
-        Spacer(Modifier.height(Space.xs))
-        // The badge and the Verify link share one line when the line can hold both, and Verify
-        // wraps to its own line when it cannot.
-        //
-        // A `FlowRow`, not a `Row`. A `Row` measures its children in order and hands the second
-        // whatever width the first left over, and it never wraps -- so on CI's 320dp emulator at
-        // 1.8x text the badge took the details column and Verify was measured at 13dp wide, its
-        // label broken one letter per line into a 218dp-tall sliver
-        // (`TouchTargetSizeTest`: "Verify = 13x218dp"). Every content-based guard on this row
-        // passed, because a 48dp *minimum height* was set and the width was never constrained.
-        // `FlowRow` measures each item against the full line width and moves an item that does
-        // not fit to the next line, so the button keeps its own intrinsic width whatever the
-        // badge takes. On a 411dp phone, or at the default scale on 320dp, both still fit on one
-        // line and nothing moves.
-        //
         // `showHint = false`, always. The badge's second line ("Check package if needed") is
         // deleted from this screen rather than merely hidden while the keyboard is open: the
         // result dock now carries one provenance sentence at the number itself, which is where the
         // user is actually deciding whether to act on the figure. Two statements of the same fact,
         // one of them 250dp above the other, is what made this block three lines tall.
-        FlowRow(itemVerticalAlignment = Alignment.CenterVertically) {
-            SourceBadge(product, showHint = false)
-            // Discoverable verification, not just buried in the overflow menu. Only when it is
-            // actually relevant: a value the app itself never checked against the package, and not
-            // user-authored (isRemoteRefreshable is exactly "not user-authored AND unverified" --
-            // the same condition the app already uses to decide whether a background refresh may
-            // touch this product, so this reuses an existing fact rather than inventing a new one).
-            //
-            // Deliberately worded and styled as a neutral action, not a warning: SourceBadge's own
-            // orange-soft badge already carries the "not verified" signal, so this must not repeat
-            // or escalate it.
-            //
-            // Still dropped while the keyboard is open. It is not height this time -- the row is
-            // the badge's own height either way -- but a tap target that navigates away, sitting
-            // beside a field the user is mid-keystroke in.
-            if (!compact && product.isRemoteRefreshable) {
-                TextButton(
-                    onClick = onVerify,
-                    contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.xs),
-                    modifier = Modifier
-                        .heightIn(min = Space.minTouchTarget)
-                        .testTag(PRODUCT_VERIFY_INLINE_TAG),
-                ) {
-                    Text(
-                        text = stringResource(R.string.product_verify_inline),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
+        SourceBadge(product, showHint = false)
+        // Discoverable verification, not just buried in the overflow menu. Only when it is
+        // actually relevant: a value the app itself never checked against the package, and not
+        // user-authored (isRemoteRefreshable is exactly "not user-authored AND unverified" --
+        // the same condition the app already uses to decide whether a background refresh may
+        // touch this product, so this reuses an existing fact rather than inventing a new one).
+        //
+        // Deliberately worded and styled as a neutral action, not a warning: SourceBadge's own
+        // orange-soft badge already carries the "not verified" signal, so this must not repeat
+        // or escalate it.
+        //
+        // Still dropped while the keyboard is open. It is not height this time -- the row is
+        // the badge's own height either way -- but a tap target that navigates away, sitting
+        // beside a field the user is mid-keystroke in.
+        if (!compact && product.isRemoteRefreshable) {
+            TextButton(
+                onClick = onVerify,
+                contentPadding = PaddingValues(horizontal = Space.s, vertical = Space.xs),
+                modifier = Modifier
+                    .heightIn(min = Space.minTouchTarget)
+                    .testTag(PRODUCT_VERIFY_INLINE_TAG),
+            ) {
+                Text(
+                    text = stringResource(R.string.product_verify_inline),
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
         }
     }

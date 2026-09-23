@@ -2,15 +2,18 @@ package app.justthecarbs.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,7 +22,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -29,6 +40,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,96 +55,90 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 
 /**
- * Stable handle for the calculator's product thumbnail.
+ * Stable handle for the calculator's product image container.
  *
  * Keeps the old `PRODUCT_HERO_TAG` spelling deliberately: the tag identifies *the tappable thing
  * that opens the gallery*, which is the same affordance in the same place in the reading order,
  * and every instrumented assertion about the gallery tap is about that affordance rather than
- * about how tall it is.
+ * about how tall it is. It is on the fixed container, never on the picture inside it, so what it
+ * measures is the space the layout reserved.
  */
 const val PRODUCT_HERO_TAG = "product_hero_image"
 
 /**
- * The thumbnail's edge. Big enough to recognise the packet you are holding, small enough to stay
- * subordinate to the portion field and the result.
- *
- * **96dp, corrected upward from 56dp (2026-09-22 refinement).** The visual pass replaced a 245dp
- * hero with a 56dp tile and overshot: at 56dp a packet photographed on a white studio background —
- * which is most of Open Food Facts — is a pale smudge with a coloured band, and `ContentScale.Fit`
- * means a tall bottle occupies barely half of even that. It corroborated nothing, which is the one
- * job the thumbnail has. 96dp is roughly three times the area and enough to read artwork and
- * brand colour at arm's length, while still costing under a fifth of the height the hero did.
- *
- * The bound is not aesthetic. Height here is taken from the portion zone below, and a calculator
- * whose input is pushed under the result dock has stopped being a calculator — the defect that
- * motivated shrinking the hero in the first place. The identity row is already hidden outright
- * while the IME is up, so the keyboard case costs nothing; [COMPACT_THUMBNAIL_SIZE] covers the
- * remaining squeeze, a short screen at a large font scale with the keyboard closed.
- *
- * **112dp since the 2026-09-23 hierarchy pass.** The portion group now rests on the result dock
- * and the slack in the zone collects under this row, so the 16dp cost no longer comes out of the
- * calculator at the default scale; it comes out of empty page. At 112dp a jar's label and a can's
- * wordmark read at arm's length where 96dp was at the small end of useful, and the row is still a
- * header, not a hero: under a fifth of the height the 245dp photo took. Compared at 104, 112, 120
- * and 128 on the emulator; 120 and 128 began to crowd the two-line name in the bar above at 1.3x.
+ * The thumbnail's edge in the row arrangement: big enough to recognise the packet in your hand at
+ * arm's length, small enough to stay subordinate to the portion field and the result. 56dp (the
+ * 2026-09-22 visual pass) corroborated nothing; 96dp and then 112dp since, which is now the row's
+ * floor: what the calculator reserves before the portion controls take their height.
  */
-private val THUMBNAIL_SIZE = 112.dp
+internal val THUMBNAIL_SIZE = 112.dp
 
 /**
- * The thumbnail on a genuinely height-constrained screen — a 360x720dp phone at 1.3x text, where
- * the full size would spend height the portion controls need.
- *
- * Still large enough to identify a package, unlike the 56dp it replaces: the compact case is a
- * smaller version of a useful thumbnail, not a fallback to the one that was too small everywhere.
+ * The row's thumbnail sizes, the largest that fits used (2026-09-23 hero redesign). A remembered
+ * product with Usual portions and a meal in progress leaves about 80dp on a 412dp phone, too little
+ * for a hero with its caption but enough for a noticeably larger thumbnail, so the row steps up
+ * rather than leaving that height empty.
  */
-private val COMPACT_THUMBNAIL_SIZE = 72.dp
+internal val ROW_THUMBNAIL_SIZES = listOf(144.dp, 128.dp, THUMBNAIL_SIZE)
+
+/**
+ * The thumbnail on a genuinely height-constrained screen (a 360x720dp phone at 1.3x text), where
+ * the full size would spend height the portion controls need. The only row size there.
+ */
+internal val COMPACT_THUMBNAIL_SIZE = 72.dp
 
 /**
  * At or below this window height the row uses [COMPACT_THUMBNAIL_SIZE]; 720dp-tall phones keep the
- * full size.
- *
- * *At or below*, not *below*: CI's release-gate emulator is exactly 320x640dp, and a strict `<`
- * gave it the full-size thumbnail. At 112dp that took the last of the height the result-state
- * dock leaves the portion zone there at 1.3x text, and
- * `ProductScreenTest.theLargerProductImageLeavesThePortionFieldAndResultOnScreen` found the field
- * wholly under the dock after typing (2026-09-23). The 411dp phone is unaffected either way.
+ * full size. *At or below*, because CI's release-gate emulator is exactly 320x640dp.
  */
 private val COMPACT_HEIGHT_THRESHOLD = 640.dp
 
 /**
- * The calculator's identity row: a compact package thumbnail beside the per-100 figure and its
- * provenance.
+ * The hero photo container's possible heights (2026-09-23 hero redesign). Owner feedback on a
+ * 412dp phone: a 112dp thumbnail over roughly 250dp of empty page. The spare height now goes to the
+ * picture, but only in these fixed steps: the largest that fits after the portion controls and the
+ * answer have taken theirs. 240dp is the cap, a little over twice the thumbnail's edge: large
+ * enough to read a label and a brand, not so large that a packet outweighs the answer it is there
+ * to corroborate. The smallest is still above the row's largest step, since a hero is stacked
+ * over its caption and costs more height than a row for any given photo size.
+ */
+internal val HERO_PHOTO_HEIGHTS = listOf(240.dp, 200.dp, 160.dp)
+
+/** Between the hero photo and the facts line under it: the caption belongs to the photo. */
+private val HERO_CAPTION_GAP = Space.xs
+
+/**
+ * The initials never outgrow the answer's type. Scaled to the plate (a third of its edge) as
+ * before, which leaves the row's 112dp and 72dp plates exactly as they were, and capped for the
+ * hero, where a third of 240dp would be larger than the 72sp carbohydrate result.
+ */
+private const val MONOGRAM_MAX_SP = 40f
+
+/**
+ * The calculator's identity header: the product image and, beside or under it, the per-100 figure
+ * and its provenance.
  *
- * **Replaces a 245dp hero photo, and that is the point of the 2026-09-22 visual pass.** The hero
- * was sized as a share of the screen (28%, clamped 150–280dp) on the argument that the first
- * question a user has is "is this the package in my hand?" — which is true, and was answered at a
- * cost the screen could not pay. Measured on a 411×914dp phone: the photo, a three-line provenance
- * block and a result dock that had grown to carry a meal bar and a provenance sentence together
- * pushed the portion field — the one control this screen exists for — *underneath* the dock. At
- * 360×720dp or 1.3× text it left the screen entirely. A calculator whose input is off-screen has
- * stopped being a calculator, whatever its photo looks like.
+ * Two arrangements, chosen at layout time by [identityLayoutFor]:
  *
- * The identification argument survives at thumbnail scale for a reason the hero's own KDoc missed:
- * the user is not identifying the product from nothing. They arrived here by scanning *this*
- * barcode or tapping *this* search result, the name is in the top bar, and the thumbnail is
- * corroboration — "yes, the red one" — not a lineup. When they genuinely need to compare artwork,
- * it still opens the full gallery, which is a better answer than a large-ish inline picture was.
+ * - **Hero**, when [allowHero] and the header has room: a photo container across the full width,
+ *   one of the fixed [HERO_PHOTO_HEIGHTS], with the facts on a line under it.
+ * - **Row** otherwise: a square thumbnail beside the facts, the arrangement this screen had before
+ *   the hero redesign, at the largest of [ROW_THUMBNAIL_SIZES] that fits ([COMPACT_THUMBNAIL_SIZE]
+ *   on a short window). With [keyboardOpen] the smallest row, or nothing when even that does not
+ *   fit.
  *
- * **The first correction of that pass went too far the other way, and [THUMBNAIL_SIZE] records it:
- * 56dp was too small to corroborate anything.** Shrinking the hero was right; landing on a tile
- * that cannot be read at arm's length was not, and only looking at the screen showed the
- * difference. The size now is 96dp, or 72dp on a short device.
+ * **The container is the space, and nothing about the image changes it.** Which arrangement and
+ * which size are decided from the room the calculator leaves, never from whether a photo exists,
+ * has loaded or failed, so a photo, a loading placeholder, a broken image and the initials fallback
+ * all occupy one box from the first layout, and a photo that arrives late moves nothing. Inside the
+ * hero container the picture is drawn at its own shape ([ContentScale.Fit], unchanged), centred,
+ * on the same near-white plate with the same 12dp corners: at 240dp a letterboxed plate across the
+ * whole width was a pale slab around a narrow bottle, which in Dark was the brightest thing on the
+ * screen. Until the shape is known the plate is square.
  *
- * Preserved from the hero verbatim: [ContentScale.Fit] so a tall bottle keeps its silhouette
- * rather than being cropped past its flavour word, the monogram fallback (a grey box reads as
- * broken), the `mediaSurface` plate that matches Open Food Facts' baked-in white photo
- * backgrounds, the gallery tap with its `Role.Button` semantics, and the cleared semantics so
- * TalkBack does not read the product name twice.
- *
- * Dropped from the hero: the per-frame `animateDpAsState` shrink and the 1dp border. The calculator
- * hides this whole row while the IME is up rather than animating it smaller, so there is no moving
- * element on the screen at the moment the user starts typing, and the keyboard case can never
- * squeeze the portion field however large the thumbnail is.
+ * Preserved from the thumbnail: the monogram fallback (a grey box reads as broken), the gallery tap
+ * with its `Role.Button` semantics, and the cleared semantics so TalkBack does not read the product
+ * name twice. A nameless quick calculation has no image at all: its title says what it is.
  */
 @Composable
 fun ProductIdentityRow(
@@ -140,62 +146,153 @@ fun ProductIdentityRow(
     modifier: Modifier = Modifier,
     /** Null when the product has no safe gallery image, which is what removes the tap. */
     onOpenGallery: (() -> Unit)? = null,
+    /** True where the screen can give the header a large photo when there is room for one. */
+    allowHero: Boolean = false,
+    /** True while the soft keyboard is open: no hero, and the header may hide rather than overflow. */
+    keyboardOpen: Boolean = false,
     /**
      * The per-100 figure, its provenance badge and any verify affordance.
      *
-     * A slot rather than parameters, so the identity row owns the thumbnail and the alignment
+     * A slot rather than parameters, so the identity header owns the image and the arrangement
      * while the calculator keeps owning what it says about a product -- which is where the
-     * `Product` -> string formatting and the `isRemoteRefreshable` decision already live.
+     * `Product` -> string formatting and the `isRemoteRefreshable` decision already live. It must
+     * support intrinsic measurement: the header asks how tall it is at a given width.
      */
     details: @Composable () -> Unit,
 ) {
-    Row(
-        modifier = modifier,
-        // Top, not CenterVertically: the details column can run to three lines (figure, badge,
-        // verify link) and centring the square against it floated the thumbnail in the middle of
-        // the text block instead of aligning with the figure it belongs to. It matters more at
-        // 96dp than it did at 56, since the square is now usually the taller of the two.
-        verticalAlignment = Alignment.Top,
-    ) {
-        if (product.name.isNotEmpty()) {
-            // Sized against the window rather than a flag threaded from the screen: the constraint
-            // is "is there room", which is a property of the device and the font scale, not of any
-            // decision the calculator makes. `LocalConfiguration` reports the window in dp, which
-            // already accounts for a split-screen or folded window.
-            val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-            val size = if (screenHeight <= COMPACT_HEIGHT_THRESHOLD) COMPACT_THUMBNAIL_SIZE else THUMBNAIL_SIZE
-            ProductIdentityThumbnail(product = product, onClick = onOpenGallery, size = size)
-            Spacer(Modifier.width(Space.m))
-        }
-        Box(Modifier.weight(1f)) { details() }
+    val hasImage = product.name.isNotEmpty()
+    // Sized against the window rather than a flag threaded from the screen: the constraint is "is
+    // there room", which is a property of the device, not of any decision the calculator makes.
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val compact = screenHeight <= COMPACT_HEIGHT_THRESHOLD
+    val measurePolicy = remember(hasImage, allowHero, keyboardOpen, compact) {
+        IdentityMeasurePolicy(
+            hasImage = hasImage,
+            heroCapable = allowHero && hasImage,
+            keyboardOpen = keyboardOpen,
+            // Only the calculator steps the row up; anywhere else the row is the fixed thumbnail.
+            rowThumbnails = when {
+                compact -> listOf(COMPACT_THUMBNAIL_SIZE)
+                allowHero -> ROW_THUMBNAIL_SIZES
+                else -> listOf(THUMBNAIL_SIZE)
+            },
+        )
     }
+    Layout(
+        modifier = modifier,
+        content = {
+            if (hasImage) ProductImagePlate(product = product, onClick = onOpenGallery)
+            Box { details() }
+        },
+        measurePolicy = measurePolicy,
+    )
 }
 
+private class IdentityMeasurePolicy(
+    private val hasImage: Boolean,
+    private val heroCapable: Boolean,
+    private val keyboardOpen: Boolean,
+    private val rowThumbnails: List<Dp>,
+) : MeasurePolicy {
+
+    override fun MeasureScope.measure(measurables: List<Measurable>, constraints: Constraints): MeasureResult {
+        val width = constraints.maxWidth
+        val image = if (hasImage) measurables.first() else null
+        val details = measurables.last()
+        val layout = identityLayoutFor(
+            heroCapable = heroCapable,
+            keyboardOpen = keyboardOpen,
+            available = if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE,
+            heroCaption = if (heroCapable) details.minIntrinsicHeight(width) else 0,
+            captionGap = HERO_CAPTION_GAP.roundToPx(),
+            heroHeights = HERO_PHOTO_HEIGHTS.map { it.roundToPx() },
+            rowOptions = rowThumbnails.map { RowOption(it.roundToPx(), rowHeight(details, width, it.roundToPx())) },
+        )
+        return when (layout) {
+            is IdentityLayout.Hero -> {
+                val photo = image!!.measure(Constraints.fixed(width, layout.photoHeight))
+                val facts = details.measure(Constraints(maxWidth = width))
+                val factsTop = photo.height + HERO_CAPTION_GAP.roundToPx()
+                layout(width, factsTop + facts.height) {
+                    photo.place(0, 0)
+                    facts.place(0, factsTop)
+                }
+            }
+            is IdentityLayout.Row -> {
+                val side = layout.thumbnail
+                val photo = image?.measure(Constraints.fixed(side, side))
+                val facts = details.measure(Constraints(maxWidth = rowFactsWidth(width, side)))
+                layout(width, maxOf(photo?.height ?: 0, facts.height)) {
+                    photo?.place(0, 0)
+                    facts.place(if (photo != null) side + Space.m.roundToPx() else 0, 0)
+                }
+            }
+            IdentityLayout.Hidden -> layout(width, 0) {}
+        }
+    }
+
+    /**
+     * The header's floor: the smallest row. The calculator reserves this much before the portion
+     * controls take theirs, so the image and the facts are never squeezed out while the keyboard is
+     * closed.
+     */
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(measurables: List<IntrinsicMeasurable>, width: Int): Int =
+        if (keyboardOpen) 0 else rowHeight(measurables.last(), width, smallestThumbnail())
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurables: List<IntrinsicMeasurable>, width: Int): Int =
+        if (keyboardOpen) 0 else rowHeight(measurables.last(), width, smallestThumbnail())
+
+    // Width intrinsics are answered from the facts alone. The image container is a
+    // BoxWithConstraints, which cannot be asked for intrinsics at all, and its width is the
+    // header's to decide rather than the other way round.
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int): Int =
+        measurables.last().minIntrinsicWidth(height) + rowImageWidth(smallestThumbnail())
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int): Int =
+        measurables.last().maxIntrinsicWidth(height) + rowImageWidth(smallestThumbnail())
+
+    private fun IntrinsicMeasureScope.smallestThumbnail(): Int = rowThumbnails.minOf { it.roundToPx() }
+
+    private fun IntrinsicMeasureScope.rowImageWidth(thumbnail: Int): Int =
+        if (hasImage) thumbnail + Space.m.roundToPx() else 0
+
+    private fun IntrinsicMeasureScope.rowFactsWidth(width: Int, thumbnail: Int): Int =
+        (width - rowImageWidth(thumbnail)).coerceAtLeast(0)
+
+    /** The row's height with a [thumbnail]-sized image: the taller of the image and the facts. */
+    private fun IntrinsicMeasureScope.rowHeight(details: IntrinsicMeasurable, width: Int, thumbnail: Int): Int =
+        maxOf(if (hasImage) thumbnail else 0, details.minIntrinsicHeight(rowFactsWidth(width, thumbnail)))
+}
+
+/**
+ * The fixed image container. Its size comes from the header and is the same whatever the image is
+ * doing; only the plate drawn inside it knows about the photo.
+ */
 @Composable
-private fun ProductIdentityThumbnail(product: Product, onClick: (() -> Unit)?, size: Dp) {
-    val shape = RoundedCornerShape(Space.mediaRadius)
-    // Same validator as everywhere else — a smaller image is still an untrusted URL (§5, §24).
+private fun ProductImagePlate(product: Product, onClick: (() -> Unit)?) {
+    // Same validator as everywhere else -- a smaller image is still an untrusted URL (§5, §24).
     val imageUrl = remember(product.imageUrl, product.largeImageUrl, product.images) {
         ProductImageSelector.heroImageUrl(product)
     }
-    var loaded by remember(imageUrl) { mutableStateOf(false) }
+    // The photo's width over its height, known once it has loaded. Null means nothing to show yet
+    // (loading, failed or no photo at all), which is when the initials are drawn.
+    var photoAspect by remember(imageUrl) { mutableStateOf<Float?>(null) }
+    val loaded = photoAspect != null
     val viewImagesDescription = stringResource(R.string.gallery_open)
+    // The whole container takes the tap, so a narrow bottle is as easy to hit as a wide box; the
+    // press is drawn on the plate, where the picture is, rather than across empty page.
+    val interactions = remember { MutableInteractionSource() }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
-            .size(size)
-            .clip(shape)
-            // Neutral while there is no photo (2026-09-23 calculator refinement). The plate was the
-            // lavender `primaryContainer`, which on a product without a photo made two initials the
-            // most coloured object in the header -- a tinted square restating the name printed
-            // beside it, in the interaction colour's family. A quiet raised surface keeps the plate
-            // (so a late photo still lands in the same box and nothing reflows) without asking for
-            // attention the answer should have.
-            .background(
-                if (loaded) MaterialTheme.extendedColors.mediaSurface
-                else MaterialTheme.colorScheme.surfaceContainerHigh,
+            .fillMaxSize()
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(interactionSource = interactions, indication = null, onClick = onClick)
+                } else {
+                    Modifier
+                },
             )
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .testTag(PRODUCT_HERO_TAG)
             .clearAndSetSemantics {
                 if (onClick != null) {
@@ -205,37 +302,73 @@ private fun ProductIdentityThumbnail(product: Product, onClick: (() -> Unit)?, s
             },
         contentAlignment = Alignment.Center,
     ) {
-        if (!loaded) {
-            Text(
-                text = product.monogram(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                // Scaled to the plate, matching ProductThumbnail's own rule. At a fixed
-                // titleMedium the initials sat as a small mark adrift in a 96dp square.
-                fontSize = (size.value * 0.34f).sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        // A hero container is at least the smallest hero height; every row size is below it.
+        val hero = maxHeight >= HERO_PHOTO_HEIGHTS.min()
+        val edge = minOf(maxWidth, maxHeight)
+        val shape = RoundedCornerShape(Space.mediaRadius)
+        Box(
+            modifier = Modifier
+                .then(
+                    if (hero) {
+                        // The photo's own shape, as large as the container allows; square until
+                        // the shape is known.
+                        Modifier.aspectRatio(photoAspect ?: 1f, matchHeightConstraintsFirst = true)
+                    } else {
+                        Modifier.size(edge)
+                    },
+                )
+                .clip(shape)
+                .indication(interactions, ripple())
+                // Neutral while there is no photo (2026-09-23 calculator refinement): the lavender
+                // `primaryContainer` it replaced made two initials the most coloured object in the
+                // header. The near-white media surface matches Open Food Facts' baked-in white
+                // photo backgrounds once there is a photo on it.
+                .background(
+                    if (loaded) {
+                        MaterialTheme.extendedColors.mediaSurface
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHigh
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (!loaded) {
+                Text(
+                    text = product.monogram(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = minOf(edge.value * 0.34f, MONOGRAM_MAX_SP).sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
-        if (imageUrl != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(imageUrl)
-                    .crossfade(Motion.STANDARD_MS)
-                    .build(),
-                contentDescription = null,
-                // Fit, not Crop — a tall bottle keeps its silhouette. The 4dp inset keeps an
-                // unusually narrow package off the plate's rounded edge.
-                contentScale = ContentScale.Fit,
-                onSuccess = { loaded = true },
-                modifier = Modifier.size(size).clip(shape).padding(Space.xs),
-            )
+            if (imageUrl != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(imageUrl)
+                        .crossfade(Motion.STANDARD_MS)
+                        .build(),
+                    contentDescription = null,
+                    // Fit, not Crop -- a tall bottle keeps its silhouette. The 4dp inset keeps an
+                    // unusually narrow package off the plate's rounded edge.
+                    contentScale = ContentScale.Fit,
+                    onSuccess = { state ->
+                        val size = state.painter.intrinsicSize
+                        photoAspect = if (size.isSpecified && size.width > 0f && size.height > 0f) {
+                            size.width / size.height
+                        } else {
+                            1f
+                        }
+                    },
+                    modifier = Modifier.matchParentSize().padding(Space.xs),
+                )
+            }
         }
     }
 }
 
 /**
- * Up to two initials — "Hagelslag puur" becomes "HP". Digits and punctuation are skipped so "7Up"
+ * Up to two initials -- "Hagelslag puur" becomes "HP". Digits and punctuation are skipped so "7Up"
  * does not render as "7".
  */
 private fun Product.monogram(): String =
