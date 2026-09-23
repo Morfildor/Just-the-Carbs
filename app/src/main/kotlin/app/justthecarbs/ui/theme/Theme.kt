@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.sp
 /**
  * The internal design system — a warm, editorial utility built around the carbohydrate answer.
  *
- * Blue owns interaction, destination accents identify app areas, and result red is reserved for
- * carbohydrate figures. The result stays dominant through scale, placement, reserved colour and
+ * Blue owns interaction, destination accents identify app areas, and the result coral is reserved
+ * for carbohydrate figures. The result stays dominant through scale, placement, reserved colour and
  * an intentionally quieter set of supporting surfaces. See DESIGN.md.
  *
  * Dynamic colour is deliberately not used. It would hand the accent (and so the visual weight of
@@ -43,14 +43,21 @@ val SpaceGrotesk = FontFamily(
     Font(R.font.space_grotesk, weight = FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
 
-// Light palette (DESIGN.md). Cobalt owns interaction; tomato red is reserved for carb results.
+// Light palette (DESIGN.md). Cobalt owns interaction; the result coral is reserved for carb results.
 // Each text/background pair is pinned by ContrastTest rather than accepted by eye.
 private val Blue = Color(0xFF2856C5)
 // Snackbar action blue for DarkColors.inversePrimary only. The one-channel shift preserves the
 // product blue while clearing normal-text contrast against the light inverseSurface.
 private val InverseBlue = Color(0xFF2855C2)
 private val BlueSoft = Color(0xFFE6ECFF)
-private val Red = Color(0xFFC13C2D)
+// The answer's colour: the launcher mark's coral (#FF5C4D), taken down to the darkest step that
+// still reads as coral rather than alarm red. It was tomato #C13C2D until the 2026-09-23
+// calculator refinement, which read as "red" -- the colour of an error, on the one number that is
+// never an error. Same family as the logo (OKLCH hue 34 against the mark's 29), and chosen as the
+// warmest candidate that holds the normal-text floor on every surface the answer is drawn on:
+// 5.01:1 on the dock, 4.53:1 on cream, 4.5:1 on surfaceContainerLow (ContrastTest). Its luminance
+// (0.158) stays above the large cobalt fill's (0.111), which AccentRecessionTest requires.
+private val Coral = Color(0xFFBD492F)
 private val Orange = Color(0xFFF4A261)
 private val OrangeSoft = Color(0xFFFFE8CC)
 private val Cream = Color(0xFFF7F2E8)
@@ -84,7 +91,9 @@ private val BlueDark = Color(0xFF82A2FF)
 // the dark result red's 0.4072 so it recedes behind the answer, and 6.48:1 with Chalk text.
 private val PrimaryTileDark = Color(0xFF2E4DB5)
 private val BlueSoftDark = Color(0xFF263454)
-private val RedDark = Color(0xFFFF8A75)
+// Already a light coral rather than a red on the dark ground, so it is unchanged by the
+// 2026-09-23 refinement; only its name moved with the light token's.
+private val CoralDark = Color(0xFFFF8A75)
 private val OrangeDark = Color(0xFFFFC078)
 private val OrangeSoftDark = Color(0xFF49321E)
 private val DisabledBlueDark = Color(0xFF2B3240)
@@ -167,7 +176,7 @@ private val ImageScannerColors = ScannerColors(
 )
 
 private val LightExtendedColors = ExtendedColors(
-    result = Red,
+    result = Coral,
     onResult = WarmWhite,
     onAccent = WarmWhite,
     orangeSoft = OrangeSoft,
@@ -187,7 +196,7 @@ private val LightExtendedColors = ExtendedColors(
 )
 
 private val DarkExtendedColors = ExtendedColors(
-    result = RedDark,
+    result = CoralDark,
     onResult = Night,
     onAccent = Night,
     orangeSoft = OrangeSoftDark,

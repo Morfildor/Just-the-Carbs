@@ -79,7 +79,7 @@ class AccentRecessionTest {
                 ?: error("Could not read token `$name` from Theme.kt")
 
         val darkTile = luminance(token("PrimaryTileDark"))
-        val darkResult = luminance(token("RedDark"))
+        val darkResult = luminance(token("CoralDark"))
         assertTrue(
             "dark primaryTile luminance ${"%.4f".format(darkTile)} must stay below the dark result " +
                 "red's ${"%.4f".format(darkResult)}",
@@ -87,7 +87,7 @@ class AccentRecessionTest {
         )
 
         val lightTile = luminance(token("Blue"))
-        val lightResult = luminance(token("Red"))
+        val lightResult = luminance(token("Coral"))
         assertTrue(
             "light primaryTile luminance ${"%.4f".format(lightTile)} must stay below the light result " +
                 "red's ${"%.4f".format(lightResult)}",

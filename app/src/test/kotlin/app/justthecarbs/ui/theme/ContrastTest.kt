@@ -27,7 +27,7 @@ class ContrastTest {
     private val inverseBlue = 0x2855C2
     private val blueDark = 0x82A2FF
     private val primaryTileDark = 0x2E4DB5
-    private val red = 0xC13C2D
+    private val red = 0xBD492F
     private val redDark = 0xFF8A75
     private val onOrangeSoft = 0x90530A
     private val inkMuted = 0x61616C
@@ -338,8 +338,8 @@ class ContrastTest {
             "Blue" to blue,
             "InverseBlue" to inverseBlue,
             "BlueDark" to blueDark,
-            "Red" to red,
-            "RedDark" to redDark,
+            "Coral" to red,
+            "CoralDark" to redDark,
             "Night" to night,
             "Ink" to ink,
             "Chalk" to chalk,

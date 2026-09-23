@@ -30,7 +30,7 @@ Dynamic colour is not used; wallpaper colour must not change the hierarchy.
 |---|---:|---:|---|
 | Primary cobalt | `#2856C5` | `#82A2FF` | Primary action, links, selected state |
 | Primary container | `#E6ECFF` | `#263454` | Selected and supporting interaction surfaces |
-| Result tomato | `#C13C2D` | `#FF8A75` | Confirmed carbohydrate figures only |
+| Result coral | `#BD492F` | `#FF8A75` | Confirmed carbohydrate figures only (the logo's coral family, never red) |
 | Tertiary orange | `#F4A261` | `#FFC078` | Warm information and scanner context |
 | Page | `#F7F2E8` | `#111318` | Root ground |
 | Primary ink | `#191B23` | `#F3F0E8` | Main text |
@@ -41,7 +41,7 @@ Destination accents identify areas but never carry meaning alone: teal for label
 indigo for search, amber for meal, violet for favourites, and neutral ink for settings. The light
 green is `#147C3B`; the other exact accent values live in `AccentPalette.kt`.
 
-Result red is not the error colour. Unverified data uses a worded warm badge. Scanner guidance uses
+The result coral is not the error colour, and it is deliberately not red: an answer is never an error. Unverified data uses a worded warm badge. Scanner guidance uses
 paired light and dark edges because no single colour survives every package image. Loaded product
 photos use a near-white media plate in both schemes so white-background photography never appears
 inside a black frame.
