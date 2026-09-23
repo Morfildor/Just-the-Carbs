@@ -182,7 +182,13 @@ geometry tests) pass 8/8 on three consecutive rounds and 8/8 at 1080x2400; the f
 together are 79/81 at both geometries, the 2 being the local-only no-match IME-inset cases. Local
 non-exploratory API 36 suite on the final tree: **478/478 ran, 475 passed, 3 failed (the same
 IME-inset class), 0 ignored** (two new tests). JVM **2151/2151** (0 skipped, `--rerun-tasks`), lint **0 errors, 28 warnings**. The real
-`release-gate.yml` was dispatched on this commit; its result is recorded in the follow-up entry.
+`release-gate.yml` on `57ecc16` (run 35824396940) ran 478 tests and failed exactly one, the Quick
+Calculation sibling `theReadingIsLabelledAsComingFromTheLabel` (same keyboard race); with the
+shared settling helper (`ae3e94a`) the gate is **GREEN** (run 35827071849, 2026-09-23): JVM 2151
+tests, 0 failures/errors/skipped, lint clean; instrumented **478/478, 0 skipped, 0 failed** on the
+320x640 @160dpi emulator; minified release APK + AAB built with the R8 privacy barriers and the
+no-`FileProvider` manifest check passing. Release-candidate ready as far as the gate can say; not
+built for upload, not uploaded, the owner's hold unchanged.
 **Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps
 meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
 text. Re-check all of this, and resolve the CI failures, before the release build.

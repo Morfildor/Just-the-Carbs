@@ -231,8 +231,19 @@ reason text, the fourth (Quick Calculation) passes here in any order and is expl
 Final tree: targeted 8/8 on three rounds at 320x640/160 and 8/8 at 1080x2400; the four classes
 79/81 at both geometries (the 2 are the local-only no-match IME-inset cases); full non-exploratory
 suite **478/478 ran, 475 passed, 3 failed (the IME-inset class), 0 ignored**; JVM **2151/2151**
-(0 skipped, `--rerun-tasks`); lint **0 errors, 28 warnings**. The real `release-gate.yml` was
-dispatched on this commit; the result is recorded below once it finishes.
+(0 skipped, `--rerun-tasks`); lint **0 errors, 28 warnings**.
+
+**Real `release-gate.yml` — GREEN at `ae3e94a` (workflow_dispatch, run 35827071849, 2026-09-23
+06:30–07:01 UTC).** All three blocking stages passed: JVM `2151 tests, 0 failures, 0 errors,
+0 skipped` plus lint (4m11s); instrumented **478/478 completed, 0 skipped, 0 failed** on the
+320x640 emulator (18m23s Gradle, 20m55s job); minified release APK + AAB built (4m07s) with the R8
+barriers (`ScanEvidenceExport` and `OcrDiagnosticsReport` absent from `mapping.txt`, the recorder
+removed) and no `FileProvider` in the release manifest. The run before it on `57ecc16`
+(35824396940) had failed exactly one test, the Quick Calculation sibling described above; the
+helper commit closed it. **`1.0.8` / `versionCode 9` is release-candidate ready as far as this gate
+can say. Nothing was built for upload or uploaded; the owner's hold stands.** The three local-only
+IME-inset cases (`theFirstBackDismissesTheKeyboardAndKeepsTheSearch`, the two no-match cases) all
+passed on the gate, twice in a row now.
 
 **One local Home failure, pre-existing:** `theFirstBackDismissesTheKeyboardAndKeepsTheSearch` (added
 in `f59d668`) fails 3/3 here and identically at clean `f59d668` (stash control). A timeline probe
