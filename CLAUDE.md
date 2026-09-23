@@ -51,6 +51,79 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Calculator refinement pass (2026-09-23, later) — still 1.0.8 / versionCode 9, READ FIRST
+
+A conservative, presentation-only follow-up to the hierarchy pass below, on branch
+`calculator-refinement-2026-09-23` off `077efde`, eight commits, **not pushed and not merged**.
+Commit → change → constant to tune → revert effect: `docs/plans/2026-09-23-calculator-
+refinement.md`. Calculations, parsing, persistence, usage history, search, scanners, navigation and
+every ViewModel are untouched; the one UI-state adaptation is `ResultPanel(actionsStepAside)`.
+
+- **Answer colour is coral** (`Theme.kt` `Coral` `#BD492F`, `CoralDark` `#FF8A75` unchanged),
+  replacing `#C13C2D`, which read as red. 5.01:1 on the dock, 4.53:1 on cream, 4.5:1 on
+  `surfaceContainerLow`; luminance 0.158 stays above the cobalt tile's 0.111, so
+  `AccentRecessionTest` holds. `ContrastTest`/`AccentRecessionTest` mirror the tokens **by name**
+  (`Coral`, `CoralDark`), so a rename must move them too. The token is shared: meal total, Home's
+  recent figures, welcome slide and tutorial preview follow it, deliberately.
+- **`JtcValueButton`'s Dark edge keys on `colorScheme.background.luminance() < 0.5f`**, not
+  `isSystemInDarkTheme()`, which drew no edge when Dark was chosen in Settings on a light phone.
+  `ValueButtonThemeEdgeTest` pins it by pixel (negative control: the old check gives edge = fill =
+  0.0103). **Centre any pixel-test content**: `SystemBarScrim` paints black over the top of every
+  `createComposeRule` window, and a top-left node reads as all zeros.
+- **Header**: `DestinationMarker` removed from `ProductTopBar`; `FavoriteButton` filled star is
+  `onSurface`; the no-photo plate is `surfaceContainerHigh` with `onSurfaceVariant` initials.
+  **Plate size unchanged on purpose** — `aPhotoAndAMonogramOccupyTheSamePlate` and the `>= 72dp`
+  hero test pin it, and a size that changes when a late photo lands moves the layout.
+- **Portion group**: label and chips share a `FlowRow(SpaceBetween)` so chips drop under
+  `PORTION` instead of breaking words at 1.8x; `NumberBesideUnit` (custom `Layout`) gives the typed
+  number up to `NUMBER_WIDTH_SHARE` (0.6) of the row and the unit the rest, baseline-aligned, two
+  lines then ellipsis — a long custom unit squeezed the count to **zero width** at 1.8x before;
+  the count unit is singular when the typed count is exactly 1; `product_usual_label` is `USUAL`
+  (`UsualPortionScreenTest` now reads it from `R.string`); Usual buttons pad to `USUAL_SLOTS` (3).
+- **Dock**: `MealActions` both `heightIn(56dp)` + `fillMaxHeight()` in a `height(IntrinsicSize.Min)`
+  row; the filled one is `extendedColors.primaryTile` (in Dark the pale `primary` outshone the
+  answer); `product_result_unverified` is one line.
+- **Short windows** (`screenHeightDp / fontScale <= SHORT_WINDOW_HEIGHT_DP`, 700, i.e. height in
+  lines of text) **with the IME open**: the meal bar and the dock's meal actions step aside (no
+  reserved row), so the dock is constant while typing. Measured before: on 360x600dp with the
+  keyboard up **the portion field had zero height**. The font-scale division (`bc833e0`) came from
+  the regression matrix: at 1.8x on 411x914 the two-line meal bar and buttons left the count field
+  a sliver under the dock while typing, and a dp-only rule never engaged there. Side effect,
+  accepted: at 1.3x on a tall phone the actions also step aside while typing, though the field fits.
+  **`createComposeRule` never sees an IME inset, so no instrumented test reaches this branch** —
+  it is verified on the emulator only (screens in the pass report).
+  A `BringIntoViewRequester` on the field runs on arrival and whenever the IME closes, one frame
+  later, and only when `portionScroll.maxValue > 0`, so a screen that fits never scrolls.
+  Uses `Configuration.screenHeightDp` like `ProductIdentityRow`'s compact rule, so both read the
+  window the same way. That adds one `ConfigurationScreenWidthHeight` advisory (lint 28 → 29
+  warnings), the same rule already reported on `ProductIdentityRow`.
+
+**Deliberately not done** (reasons in the plan doc): cobalt → coral as the app-wide primary,
+system bars, a non-breaking space in "100 g" (about fifteen test literals match the ordinary
+space), shrinking the monogram, a larger photo tier, moving the name out of the top bar (the
+identity row hides with the IME), and the empty band under the identity row on sparse products
+(the bottom-anchored group's slack, by design).
+
+**Verified on the final tree (`bc833e0`):** JVM **2151/2151** (0 skipped, `--rerun-tasks`, 220 XML
+files); lint **0 errors, 29 warnings** (the one above); debug and test APKs build. Instrumented, 14
+classes (`ProductScreenTest`, `QuickCalculationScreenTest`, `CountablePortionScreenTest`,
+`TouchTargetSizeTest`, `MealScreenTest`, `UsualPortionScreenTest`, `DirectCarbResultScreenTest`,
+`CorrectingKnownAmountScreenTest`, `LabelVerificationScreenTest`, `PackShortcutsResponsiveTest`,
+`ThemeRefinementVisualTest`, `ThemeDefaultTest`, `ResultValueTest`, `ValueButtonThemeEdgeTest`):
+**146/146 at 1080x2400/420 and 146/146 at `wm size 320x640` / `wm density 160`**, 0 ignored,
+counted from instrumentation status codes (also 146/146 at both before `bc833e0`). Manual matrix on
+the `carbscan` emulator: 411x914 at 1.0x, 1.3x and 1.8x in Light and Dark; keyboard open at 1.0x
+and 1.8x; pending, calculated, 125.3 g and editing-after-result; photo and monogram, known and
+unknown pack size, Usual and pack shortcuts, a countable custom unit, a manual product, favourite
+and not; 360x600 Dark at arrival, typing and after Done. **Not seen on physical hardware.**
+
+**Remaining visual debt, measured, not changed:** at 1.8x the zone overflows, so whatever sits at
+its top edge (the `PORTION` caption or a Usual button) and the field's lower edge fall under the
+zone's 20dp fades; with the keyboard open at 1.8x the result autosizes smaller than the typed
+number (pre-existing); "100 g" can wrap between number and unit at 1.8x; a long custom unit name
+puts the mode chips on their own line under `PORTION` even at 1.0x (misses by about 5px on 411dp);
+the empty band under the identity row on sparse products.
+
 ## Calculator hierarchy pass (2026-09-23) — still 1.0.8 / versionCode 9, READ FIRST
 
 A visual/UX pass on the Product / Calculator screen on `main` above `71d9f57`, driven by the

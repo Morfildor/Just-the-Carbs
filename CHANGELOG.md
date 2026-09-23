@@ -115,6 +115,20 @@ live on Production and says the first update is ready. Work accumulates here unt
 - The mode chip on a millilitre product says *Millilitres* instead of *Grams*; the countable
   equation in the dock is left-aligned like the lines around it; *Add portion unit* aligns with the
   column edge; the result fades in when it first appears rather than cutting.
+- **The carbohydrate answer is coral, not red** (Light `#BD492F`, was `#C13C2D`; Dark unchanged).
+  An answer is never an error, and red read as one. The same colour carries the meal total and
+  Home's remembered figures, which show the same answer.
+- **The calculator's header is quieter.** The small bar-chart mark beside the product name is
+  gone, a favourited product's star is dark ink instead of blue, and a product without a photo shows
+  its initials on a neutral grey plate instead of lavender, so nothing in the header competes with
+  the answer.
+- **The portion controls hold up at large text sizes.** The mode chips move under the `PORTION`
+  caption when they no longer fit beside it instead of breaking words in half; the Usual caption is
+  `USUAL`, matching `PORTION` and `CARBS`; each Usual button is a third of the row however many
+  there are.
+- **The two meal buttons under the answer are the same height (56dp)**, and in Dark the filled one
+  is a deep blue instead of a pale one that was brighter than the answer. The note under an Open
+  Food Facts answer now fits on one line: *Online value, not checked against your package*.
 - **Home cards are laid out in two aligned rows:** the product name with its carb figure, then the
   remembered portion with the **+** and the Favourite star together at the right edge, where they
   sit in the same place on every card. At large text sizes the CARBS caption moves under the figure
@@ -140,6 +154,19 @@ live on Production and says the first update is ready. Work accumulates here unt
   large text.** At 1.8x on a 320dp-wide screen it was squeezed to 13dp wide with its letters stacked
   vertically and no usable tap area; it now moves to its own line when the badge needs the width.
   On ordinary phones and at ordinary text sizes the two sit exactly where they did.
+- **On a small phone the portion field no longer disappears while you type.** On a 360x600dp
+  screen with the keyboard open the field was squeezed to zero height, so digits went into a field
+  you could not see, and *Add & scan next* was cut off. On short screens the meal bar and the meal
+  buttons now step aside while the keyboard is open and come back when it closes, and the field is
+  scrolled back into view whenever it would otherwise sit under the result. The same applies at
+  large text sizes on any phone, where the field was likewise covered while typing; taller phones
+  at ordinary text sizes are unchanged.
+- **A long portion-unit name no longer hides the count.** At large text sizes a custom unit such as
+  "generous tablespoon heaped" squeezed the typed count to zero width; the number now keeps its
+  width and the unit name wraps or shortens instead. The unit also follows the count you type
+  ("1 slice", "2 slices") instead of always reading plural.
+- **Usual and pack buttons keep their edge in Dark** when Dark is chosen in Settings on a phone
+  set to Light. The edge was drawn only when the phone itself was dark.
 
 ### Internal
 
