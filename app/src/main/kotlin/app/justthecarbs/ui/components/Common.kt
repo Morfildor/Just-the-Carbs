@@ -116,6 +116,15 @@ fun SourceBadge(
     }
 }
 
+/**
+ * The calculator's favourite star, top-right beside the product's name.
+ *
+ * Ink when set, muted when not (2026-09-23 calculator refinement). It was the interaction blue when
+ * set, which made a filled star the most saturated object in the product's header -- above the
+ * name it belongs to and on the same level as the answer the screen exists for. The filled shape
+ * already says "favourite", and the spoken label says it in words, so the colour was carrying
+ * nothing the star needed.
+ */
 @Composable
 fun FavoriteButton(favorite: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     val description = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add)
@@ -129,7 +138,7 @@ fun FavoriteButton(favorite: Boolean, onToggle: () -> Unit, modifier: Modifier =
             imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
             contentDescription = null,
             tint = if (favorite) {
-                MaterialTheme.colorScheme.primary
+                MaterialTheme.colorScheme.onSurface
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },

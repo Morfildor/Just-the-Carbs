@@ -185,9 +185,15 @@ private fun ProductIdentityThumbnail(product: Product, onClick: (() -> Unit)?, s
         modifier = Modifier
             .size(size)
             .clip(shape)
+            // Neutral while there is no photo (2026-09-23 calculator refinement). The plate was the
+            // lavender `primaryContainer`, which on a product without a photo made two initials the
+            // most coloured object in the header -- a tinted square restating the name printed
+            // beside it, in the interaction colour's family. A quiet raised surface keeps the plate
+            // (so a late photo still lands in the same box and nothing reflows) without asking for
+            // attention the answer should have.
             .background(
                 if (loaded) MaterialTheme.extendedColors.mediaSurface
-                else MaterialTheme.colorScheme.primaryContainer,
+                else MaterialTheme.colorScheme.surfaceContainerHigh,
             )
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .testTag(PRODUCT_HERO_TAG)
@@ -207,7 +213,7 @@ private fun ProductIdentityThumbnail(product: Product, onClick: (() -> Unit)?, s
                 // Scaled to the plate, matching ProductThumbnail's own rule. At a fixed
                 // titleMedium the initials sat as a small mark adrift in a 96dp square.
                 fontSize = (size.value * 0.34f).sp,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 

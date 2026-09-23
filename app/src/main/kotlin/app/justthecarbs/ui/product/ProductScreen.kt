@@ -19,10 +19,8 @@ import app.justthecarbs.ui.components.JtcFilterChip
 import app.justthecarbs.ui.components.JtcValueButton
 import app.justthecarbs.ui.components.ProductIdentityRow
 import app.justthecarbs.ui.components.ProductGalleryDialog
-import app.justthecarbs.ui.components.DestinationMarker
 import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
-import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -135,7 +133,6 @@ import app.justthecarbs.ui.meal.MealActions
 import app.justthecarbs.ui.meal.MealBarIfPresent
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.Space
-import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -295,7 +292,7 @@ fun ProductScreen(
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
         // it sat behind the top bar's trailing controls, and decoration may not share a level with
-        // a control. The destination is identified by JtcTopBar's DestinationMarker instead.
+        // a control. The product's name in the top bar is what identifies the screen.
 
         Column(
             modifier = Modifier
@@ -366,9 +363,13 @@ fun ProductScreen(
  * scale on a 320dp width showed the shared 64dp bar clipping a two-line title mid-glyph; the
  * intrinsic-height bar simply grew.
  *
- * What *is* shared, so the screen still reads as one system: the compact nutrition-bar destination
- * marker in [Destination.PRODUCT]'s blue, the back icon's ordinary-ink tint (never the accent —
- * same reasoning as `JtcTopBar`), and the horizontal spacing around the marker and title.
+ * What *is* shared, so the screen still reads as one system: the back icon's ordinary-ink tint and
+ * the horizontal spacing around the title.
+ *
+ * **No destination marker (2026-09-23 calculator refinement).** The three coloured bars that sat
+ * between the back arrow and the name read as a small bar chart -- a "stats" signal on a screen
+ * whose only job is one answer -- and they were a second accent colour on the calculator for no
+ * information the name does not already give. The name says where you are.
  */
 @Composable
 private fun ProductTopBar(
@@ -380,7 +381,6 @@ private fun ProductTopBar(
     onResetOnline: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val accent = Destination.PRODUCT.accent()
 
     Row(
         modifier = Modifier
@@ -393,13 +393,10 @@ private fun ProductTopBar(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(R.string.product_back),
-                // Ordinary foreground ink, not the accent — the marker already carries the
-                // destination's colour, matching JtcTopBar's back-arrow rule exactly.
+                // Ordinary foreground ink, matching JtcTopBar's back-arrow rule exactly.
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
-
-        DestinationMarker(accent = accent, modifier = Modifier.padding(end = Space.s))
 
         Text(
             // A scanned label states a carbohydrate figure, not a product name — so an unnamed
