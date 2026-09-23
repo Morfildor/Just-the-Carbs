@@ -76,9 +76,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -616,6 +618,37 @@ private fun CalculatorBody(
         val countableActive = state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null
         val portionScroll = rememberScrollState()
 
+        // A short window with the keyboard up (2026-09-23 calculator refinement).
+        //
+        // Measured at 360x600dp: the keyboard, the top bar, the meal bar and the dock with its meal
+        // actions left the portion zone ZERO pixels tall, so the user typed into a field they could
+        // not see, and "Add & scan next" was clipped mid-word. On such a window the meal bar and the
+        // dock's actions step aside while the keyboard is open -- both are for after the typing, and
+        // both return the moment it closes, exactly as the identity row already does. The dock
+        // keeps one height the whole time the keyboard is up (no actions and no reserved row), so
+        // the first keystroke still cannot move the field under the finger. A 411x914 phone is not
+        // affected: there the actions stay available while typing, as before.
+        val shortWindow = LocalConfiguration.current.screenHeightDp <= SHORT_WINDOW_HEIGHT_DP
+        val keyboardSqueeze = imeVisible && shortWindow
+
+        // Keeps the input itself in view whenever the zone is too short for the whole group.
+        //
+        // The zone is bottom-anchored, but once its content is taller than the zone there is no
+        // slack to anchor and it scrolls from the top -- which put the label and chips on screen and
+        // the field under the dock: on arrival at 1.8x text, and on a short window with a
+        // remembered portion. After the keyboard closes the dock grows back by its actions row and
+        // the same thing happened to a field the user had just typed into. So on arrival and each
+        // time the keyboard goes away, the field is scrolled into view if (and only if) it is not
+        // already. Where everything fits there is nothing to scroll and this does nothing.
+        val inputInView = remember { BringIntoViewRequester() }
+        LaunchedEffect(imeVisible, countableActive) {
+            if (imeVisible) return@LaunchedEffect
+            // One frame, so the layout this change caused (identity row back, dock actions back)
+            // has been measured before deciding whether the field needs moving.
+            withFrameNanos { }
+            if (portionScroll.maxValue > 0) inputInView.bringIntoView()
+        }
+
         // The reading order is identity -> portion -> result, and it is now a fixed frame rather
         // than a stack whose first element could grow without limit.
         //
@@ -631,12 +664,14 @@ private fun CalculatorBody(
         // it competed with the result for the one elevated surface on the screen while taking
         // height from the controls above it. It sits below the bar rather than in it, so a
         // two-line product title cannot collide with it.
-        MealBarIfPresent(
-            itemCount = state.mealItems.size,
-            total = state.mealTotal,
-            onClick = onOpenMeal,
-            modifier = Modifier.padding(horizontal = Space.screenEdge),
-        )
+        if (!keyboardSqueeze) {
+            MealBarIfPresent(
+                itemCount = state.mealItems.size,
+                total = state.mealTotal,
+                onClick = onOpenMeal,
+                modifier = Modifier.padding(horizontal = Space.screenEdge),
+            )
+        }
 
         // Identity: a compact thumbnail beside the per-100 figure, its provenance badge and the
         // Verify link. One row, whatever the product is. A quick calculation has no name, so
@@ -823,7 +858,9 @@ private fun CalculatorBody(
                     )
                     Spacer(Modifier.height(Space.s))
                 }
-                CountField(value = state.countText, unit = selectedUnit, onValueChange = onCountChanged)
+                Box(Modifier.bringIntoViewRequester(inputInView)) {
+                    CountField(value = state.countText, unit = selectedUnit, onValueChange = onCountChanged)
+                }
                 Spacer(Modifier.height(Space.s))
                 PortionUnitStatusRow(
                     unit = selectedUnit,
@@ -842,6 +879,7 @@ private fun CalculatorBody(
                     )
                 }
             } else {
+                Box(Modifier.bringIntoViewRequester(inputInView)) {
                 PortionField(
                     value = state.portionText,
                     unit = product.portionUnit,
@@ -864,6 +902,7 @@ private fun CalculatorBody(
                     autoFocus = state.unsaved && state.portionText.isEmpty(),
                     compact = imeVisible,
                 )
+                }
 
                 // Usual portions, immediately under the field they fill.
                 //
@@ -973,6 +1012,7 @@ private fun CalculatorBody(
             settings = settings,
             equationUnit = selectedUnit.takeIf { countableActive },
             imeVisible = imeVisible,
+            actionsStepAside = keyboardSqueeze,
             onAddToMeal = { onAddToMeal(portionDescription, mealFallbackName) },
             onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription, mealFallbackName) },
             onOpenMeal = onOpenMeal,
@@ -2103,6 +2143,11 @@ private fun ResultPanel(
      * budget is exceeded.
      */
     imeVisible: Boolean = false,
+    /**
+     * True on a short window while the keyboard is open: the meal actions (and the row reserved
+     * for them) are left out entirely, so the field above keeps some height. See `CalculatorBody`.
+     */
+    actionsStepAside: Boolean = false,
     onAddToMeal: () -> Unit = {},
     onAddToMealAndScanNext: () -> Unit = {},
     onOpenMeal: () -> Unit = {},
@@ -2353,6 +2398,7 @@ private fun ResultPanel(
         }
 
         when {
+            actionsStepAside -> Unit
             exact != null -> {
                 // Only once there is a number worth adding. Offered under the result, never in
                 // place of it: the app answers a carbohydrate question first and builds a meal
@@ -2408,6 +2454,13 @@ private fun ResultPanel(
         }
     }
 }
+
+/**
+ * At or below this window height the calculator counts as short: the keyboard plus the pinned dock
+ * would otherwise leave the portion zone no height at all (measured at 600dp; 640dp is CI's
+ * emulator). A 720dp phone keeps the ordinary behaviour.
+ */
+private const val SHORT_WINDOW_HEIGHT_DP = 700
 
 /**
  * The height reserved for the result numeral, whether or not a result exists yet.
