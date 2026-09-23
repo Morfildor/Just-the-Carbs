@@ -3,8 +3,11 @@ package app.justthecarbs.ui.meal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -30,6 +33,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.CarbResult
@@ -37,6 +41,7 @@ import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.ui.components.jtcOutlinedButtonBorder
 import app.justthecarbs.ui.components.rememberSuccessPulse
 import app.justthecarbs.ui.theme.Space
+import app.justthecarbs.ui.theme.extendedColors
 
 /** Stable handles for instrumented tests. */
 const val MEAL_ADD_TAG = "meal_add"
@@ -75,8 +80,14 @@ fun MealActions(
     justAdded: Any? = null,
 ) {
     val showAdded = rememberSuccessPulse(justAdded)
+    // One height for the pair (2026-09-23 calculator refinement). *Add to meal* was 48dp and *Add &
+    // scan next* 56dp, top-aligned, so the two labels sat on different baselines; at 1.3x text the
+    // filled one wrapped and grew while the outlined one did not. Both now have the primary floor,
+    // and `IntrinsicSize.Min` plus `fillMaxHeight` keep them the same height if either wraps -- the
+    // arrangement `PackShortcuts` already uses. The narrower content padding is what lets both
+    // labels stay on one line at 1.3x on a 411dp phone.
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
         // Outlined with a PRIMARY label and border, not Material's default.
@@ -94,9 +105,11 @@ fun MealActions(
                 contentColor = MaterialTheme.colorScheme.primary,
             ),
             border = jtcOutlinedButtonBorder(enabled),
+            contentPadding = MEAL_ACTION_PADDING,
             modifier = Modifier
                 .weight(1f)
-                .heightIn(min = Space.secondaryButtonHeight)
+                .heightIn(min = Space.primaryButtonHeight)
+                .fillMaxHeight()
                 .testTag(MEAL_ADD_TAG),
         ) {
             if (showAdded) {
@@ -109,24 +122,43 @@ fun MealActions(
             }
             Text(
                 if (showAdded) stringResource(R.string.meal_added) else stringResource(R.string.meal_add),
+                textAlign = TextAlign.Center,
             )
         }
         // Filled, because in a multi-item meal this is the button the user presses repeatedly: it
         // is the loop. One tap records the item and reopens the scanner, which is the difference
         // between adding six things and giving up after two (§11).
+        //
+        // Filled with `primaryTile`, not `primary` (2026-09-23). In Light the two are the same
+        // cobalt. In Dark `primary` is the pale #82A2FF, and spread over a 56dp button directly under
+        // the answer it was the brightest object on the screen -- brighter than the coral figure the
+        // dock exists to show. `primaryTile` is the deep cobalt Home's scan tile already uses for
+        // exactly this reason (see ExtendedColors.primaryTile).
         Button(
             onClick = onAddAndScanNext,
             enabled = enabled,
             shape = RoundedCornerShape(Space.buttonRadius),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.extendedColors.primaryTile,
+                contentColor = MaterialTheme.extendedColors.onPrimaryTile,
+            ),
+            contentPadding = MEAL_ACTION_PADDING,
             modifier = Modifier
                 .weight(1f)
                 .heightIn(min = Space.primaryButtonHeight)
+                .fillMaxHeight()
                 .testTag(MEAL_ADD_AND_SCAN_TAG),
         ) {
-            Text(stringResource(R.string.meal_add_and_scan))
+            Text(stringResource(R.string.meal_add_and_scan), textAlign = TextAlign.Center)
         }
     }
 }
+
+/**
+ * The meal actions' inner padding: Material's default less half its horizontal inset, which is what
+ * keeps "Add & scan next" on one line at 1.3x text on a 411dp phone.
+ */
+private val MEAL_ACTION_PADDING = PaddingValues(horizontal = Space.s + Space.xs, vertical = Space.s)
 
 /**
  * The compact running-total bar, e.g. `Meal · 2 items · 38.0 g` (§10).

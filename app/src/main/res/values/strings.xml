@@ -132,7 +132,14 @@
       No alarm colour and no warning icon: the online value is usually right, and dressing it as a
       fault every time trains the user to ignore it (§25).
     -->
-    <string name="product_result_unverified" tools:ignore="MissingTranslation">Not checked against the package — crowd-sourced data, may differ from yours</string>
+    <!--
+      One line under the answer (2026-09-23). It was two ("Not checked against the package —
+      crowd-sourced data, may differ from yours"), taking height from the portion field above a
+      dock that is pinned to the bottom edge. The fact is kept whole: where the figure came from and
+      that nobody has compared it with this package. Still a statement about the data, never about
+      a consequence.
+    -->
+    <string name="product_result_unverified" tools:ignore="MissingTranslation">Online value, not checked against your package</string>
     <string name="product_result_verified" tools:ignore="MissingTranslation">Checked against the package</string>
     <string name="product_source_verified">✓ Verified by you</string>
     <string name="product_source_manual">Entered by you</string>
