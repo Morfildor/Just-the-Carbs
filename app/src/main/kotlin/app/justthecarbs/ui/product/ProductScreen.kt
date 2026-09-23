@@ -10,7 +10,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -623,12 +622,10 @@ private fun CalculatorBody(
         //
         // Measured at 360x600dp: the keyboard, the top bar, the meal bar and the dock with its meal
         // actions left the portion zone ZERO pixels tall, so the user typed into a field they could
-        // not see, and "Add & scan next" was clipped mid-word. On such a window the meal bar and the
-        // dock's actions step aside while the keyboard is open -- both are for after the typing, and
-        // both return the moment it closes, exactly as the identity row already does. The dock
-        // keeps one height the whole time the keyboard is up (no actions and no reserved row), so
-        // the first keystroke still cannot move the field under the finger. A 411x914 phone at the
-        // default text size is not affected: there the actions stay available while typing.
+        // not see, and "Add & scan next" was clipped mid-word. On such a window the meal bar steps
+        // aside while the keyboard is open; it is for after the typing, and returns the moment the
+        // keyboard closes. (The dock's meal actions step aside while typing on every window since
+        // the hero redesign; see `ResultPanel`.)
         //
         // The height is divided by the font scale, i.e. measured in lines of text rather than dp,
         // because large text squeezes the zone exactly as a short window does: at 1.8x on the
@@ -680,19 +677,20 @@ private fun CalculatorBody(
             )
         }
 
-        // Identity: a compact thumbnail beside the per-100 figure, its provenance badge and the
-        // Verify link. One row, whatever the product is. A quick calculation has no name, so
-        // ProductIdentityRow omits the thumbnail rather than rendering a monogram plate derived
-        // from an empty string -- which read as a product record that had failed to load.
+        // Identity: the product image with the per-100 figure, its provenance badge and the
+        // Verify link, as a hero or a row (see ProductIdentityRow). A quick calculation has no
+        // name, so ProductIdentityRow omits the image rather than rendering a monogram plate
+        // derived from an empty string -- which read as a product record that had failed to load.
         //
-        // OUTSIDE the scrolling zone, pinned under the top bar -- except while the keyboard is
-        // open, when it is hidden entirely.
+        // OUTSIDE the scrolling zone, pinned under the top bar. While the keyboard is open it is
+        // the smallest row when that fits and nothing when it does not.
         //
-        // Hiding it is the last height available on the tightest configuration the report names:
+        // Giving way is the last height available on the tightest configuration the report names:
         // 360x720dp at 1.3x text with the IME up leaves about 390dp for the whole screen once the
         // keyboard has taken its third. With the identity row pinned, the portion field was still
         // cut through its lower edge by the dock -- measured, after the dock and the field had
-        // already given back everything they could.
+        // already given back everything they could. CalculatorFrame now measures that rather than
+        // assuming it: the portion zone takes its height first, and the identity only what is left.
         //
         // It is the right thing to drop, and this screen already applies the same rule to the
         // badge hint, the provenance line and the save action. Identity answers "is this the right
@@ -710,26 +708,30 @@ private fun CalculatorBody(
             reserveIdentity = !imeVisible,
             modifier = Modifier.weight(1f),
             identity = {
-                if (!imeVisible) {
-                    ProductIdentityRow(
+                ProductIdentityRow(
+                    product = product,
+                    modifier = Modifier.padding(
+                        start = Space.screenEdge,
+                        end = Space.screenEdge,
+                        top = Space.s,
+                    ),
+                    onOpenGallery = onOpenGallery,
+                    // The spare height of a tall screen goes to the product photo, in fixed steps,
+                    // once the portion controls below have taken what they need. See
+                    // ProductIdentityRow and CalculatorFrame.
+                    allowHero = true,
+                    // While typing: the smallest row when it fits, and nothing when it does not.
+                    // It used to be hidden outright, which on a tall phone left ~140dp of empty
+                    // page over the field; a short window or a large font scale still has no room
+                    // for it and hides it exactly as before.
+                    keyboardOpen = imeVisible,
+                ) {
+                    ProductSummary(
                         product = product,
-                        modifier = Modifier.padding(
-                            start = Space.screenEdge,
-                            end = Space.screenEdge,
-                            top = Space.s,
-                        ),
-                        onOpenGallery = onOpenGallery,
-                        // The spare height of a tall screen goes to the product photo, in fixed
-                        // steps, once the portion controls below have taken what they need. See
-                        // ProductIdentityRow and CalculatorFrame.
-                        allowHero = true,
-                    ) {
-                        ProductSummary(
-                            product = product,
-                            onVerify = onVerify,
-                            onVerifyByTyping = onVerifyByTyping,
-                        )
-                    }
+                        compact = imeVisible,
+                        onVerify = onVerify,
+                        onVerifyByTyping = onVerifyByTyping,
+                    )
                 }
             },
         ) {
@@ -978,7 +980,6 @@ private fun CalculatorBody(
             settings = settings,
             equationUnit = selectedUnit.takeIf { countableActive },
             imeVisible = imeVisible,
-            actionsStepAside = keyboardSqueeze,
             onAddToMeal = { onAddToMeal(portionDescription, mealFallbackName) },
             onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription, mealFallbackName) },
             onOpenMeal = onOpenMeal,
@@ -2152,11 +2153,6 @@ private fun ResultPanel(
      * budget is exceeded.
      */
     imeVisible: Boolean = false,
-    /**
-     * True on a short window while the keyboard is open: the meal actions (and the row reserved
-     * for them) are left out entirely, so the field above keeps some height. See `CalculatorBody`.
-     */
-    actionsStepAside: Boolean = false,
     onAddToMeal: () -> Unit = {},
     onAddToMealAndScanNext: () -> Unit = {},
     onOpenMeal: () -> Unit = {},
@@ -2407,7 +2403,15 @@ private fun ResultPanel(
         }
 
         when {
-            actionsStepAside -> Unit
+            // The meal actions step aside while the keyboard is open, on every window (2026-09-23
+            // hero redesign). They are for after the typing and return the moment it closes, so
+            // adding to the meal is Done and then a tap. Until then the dock reserved their ~80dp
+            // row, empty and invisible, whenever the keyboard was up without a result -- so the
+            // first keystroke could not grow the dock under the finger -- which read as a hole in
+            // the dock. Leaving them out while typing gives the dock one height for the whole time
+            // the keyboard is up, with or without a result, which is the same guarantee without the
+            // hole. A short window already worked this way.
+            imeVisible -> Unit
             exact != null -> {
                 // Only once there is a number worth adding. Offered under the result, never in
                 // place of it: the app answers a carbohydrate question first and builds a meal
@@ -2438,27 +2442,6 @@ private fun ResultPanel(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-            }
-            imeVisible -> {
-                // The actions row's height, reserved while the user is typing and no result exists
-                // yet (2026-09-23). The portion group now rests directly on this dock, so any
-                // growth of the dock on the first keystroke -- and the actions row is ~64dp of
-                // growth -- would move the field under the user's finger. The same reason the
-                // numeral slot has always been a fixed height, applied to the one other thing
-                // that appears with a result. The real row, disabled and invisible, so it is
-                // exactly as tall as what replaces it at every font scale; its semantics are
-                // cleared so nothing invisible is announced or findable. Not reserved at rest
-                // with the keyboard closed: nothing is being typed, so nothing can move under a
-                // finger, and an empty product deserves the shorter dock.
-                Spacer(Modifier.height(Space.m))
-                MealActions(
-                    onAdd = {},
-                    onAddAndScanNext = {},
-                    enabled = false,
-                    modifier = Modifier
-                        .alpha(0f)
-                        .clearAndSetSemantics {},
-                )
             }
         }
     }
