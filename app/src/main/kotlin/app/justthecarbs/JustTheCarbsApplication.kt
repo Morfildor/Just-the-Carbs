@@ -52,6 +52,9 @@ class AppContainer(context: Context) {
      */
     val okHttpClient by lazy { NetworkModule.okHttpClient() }
 
+    /** [okHttpClient] with the longer timeouts product photos need (see [NetworkModule.imageHttpClient]). */
+    val imageHttpClient by lazy { NetworkModule.imageHttpClient(okHttpClient) }
+
     /**
      * The device's language, as a tag. The app is always shown in English; this decides only which
      * product names and search languages Open Food Facts data arrives in. Read on every call, so a
@@ -188,10 +191,11 @@ class JustTheCarbsApplication : Application(), SingletonImageLoader.Factory {
     /**
      * Image loading for product thumbnails (§31).
      *
-     * Shares the app's single OkHttp client instance (`container.okHttpClient`), not a second
-     * client built from matching config — the two are not the same thing: only a genuinely shared
-     * instance also shares the connection pool, so images inherit the same timeouts and the same
-     * identifying User-Agent as every other request rather than opening a second, look-alike stack.
+     * Derived from the app's single OkHttp client (`container.imageHttpClient`), not a second
+     * client built from matching config — the two are not the same thing: only a derived client
+     * also shares the connection pool, so images inherit the same identifying User-Agent as every
+     * other request rather than opening a second, look-alike stack. Only its timeouts differ: the
+     * image host can take half a minute to accept a connection (measured 2026-09-23).
      *
      * Images are a nicety and nothing waits for them: the calculator renders and computes with no
      * regard for whether a thumbnail has arrived, and the app is fully usable with none at all.
@@ -199,7 +203,7 @@ class JustTheCarbsApplication : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .components {
-                add(OkHttpNetworkFetcherFactory(callFactory = { container.okHttpClient }))
+                add(OkHttpNetworkFetcherFactory(callFactory = { container.imageHttpClient }))
             }
             .build()
 }

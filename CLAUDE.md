@@ -51,7 +51,33 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
-## Calculator hero redesign (2026-09-23, latest) — still 1.0.8 / versionCode 9, READ FIRST
+## Product photos: their own timeouts (2026-09-23, latest) — still 1.0.8 / versionCode 9
+
+Owner report: "photos of the products are not loading". **Not the redesign below**: the request,
+the URL and Coil's disk cache are unchanged, and Home's thumbnails, which that redesign never
+touched, failed the same way. **The cause is Open Food Facts' image host**, measured from the
+workstation and the emulator: `images.openfoodfacts.org` (one IPv4 server, `ks1`, HTTP/1.1 only,
+no cache headers) took **8 to 34 s to complete a TLS handshake**, sometimes left a TCP connect
+unanswered until a SYN retransmission, and closed idle connections within about 60 s. Requests on
+an open connection took 0.2 to 5.7 s. The product API answered in 0.2 s throughout. Photos went
+through `NetworkModule.okHttpClient()`, whose 15 s **read timeout also bounds the TLS handshake**
+and whose call timeout is 20 s, so 10 of 17 measured connections would have been abandoned. Coil
+never retries, so the calculator kept the initials.
+
+`NetworkModule.imageHttpClient(shared)` is `shared.newBuilder()` with connect 30 s, read 60 s and
+call 60 s. It keeps the User-Agent, connection pool and dispatcher, and Coil's loader uses it via
+`AppContainer.imageHttpClient`. Product lookups keep 10/15/20 s. `ImageHttpClientTest` (4 JVM
+cases) pins it; negative control: returning `shared` unchanged fails 1.
+
+**What this does not do:** make a *first* photo fast. Nothing on the client can shorten that
+server's handshake; only an earlier connection could overlap it. That would contradict the live
+privacy policy ("Photos: only when that lookup returns a product that has a photo"), so it is the
+owner's decision and was not built. Repeat views come from Coil's disk cache
+(`cache/coil3_disk_cache`, verified present). Limiting connections per host was considered and
+not done: 20 search thumbnails one after another at a median 0.8 s is not clearly faster than
+five handshakes in parallel.
+
+## Calculator hero redesign (2026-09-23) — still 1.0.8 / versionCode 9, READ FIRST
 
 Owner feedback on two Dark screenshots (~412dp phone): too much empty page, the picture too small.
 Directions chosen with the owner: hero photo, meal buttons after Done, compact empty dock. Four

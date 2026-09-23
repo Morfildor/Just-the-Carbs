@@ -176,6 +176,13 @@ live on Production and says the first update is ready. Work accumulates here unt
   ("1 slice", "2 slices") instead of always reading plural.
 - **Usual and pack buttons keep their edge in Dark** when Dark is chosen in Settings on a phone
   set to Light. The edge was drawn only when the phone itself was dark.
+- **Product photos no longer give up while Open Food Facts' photo server is slow.** On 2026-09-23
+  `images.openfoodfacts.org` took 8 to 34 s to accept a connection, while product data answered in
+  0.2 s. Photos shared the product lookup's limits (15 s to answer, 20 s in all), so 10 of 17
+  measured connections would have been abandoned and the calculator kept showing the product's
+  initials. Photos now allow 30 s to connect and 60 s in all. Product lookups keep their short
+  limits. A photo you have seen before still comes from the phone's cache at once. The first photo
+  of a new product still waits for that server: 8 to 34 s while it is this slow.
 
 ### Internal
 
@@ -277,6 +284,13 @@ JVM **2161/2161** (0 skipped, `--rerun-tasks`, 221 XML files); lint **0 errors, 
 17 calculator-affected instrumented classes **155/155 at 1080x2400/420 and 155/155 at
 `wm size 320x640` / `wm density 160`**, 0 ignored. The keyboard-open states have no instrumented
 coverage (`createComposeRule` never receives an IME inset) and were checked on the emulator only.
+**Photo timeouts (2026-09-23, same branch):** JVM **2165/2165** (0 skipped, `--rerun-tasks`, 222
+XML files; `ImageHttpClientTest` 4 new, negative control: photos on the lookup client fails 1);
+lint **0 errors, 29 warnings**. On the emulator with the photo cache cleared, counted from launch
+(about 7 s of which is the emulator's cold start): Home's two photos at 28, 21, 21 and 24 s over
+four runs, a fifth loading none in 87 s; the calculator's photo 18 s after tapping the product. The
+evidence that the old limits abandoned photos is the direct measurement against the server, not
+these runs.
 **Not yet seen on a physical device**: the calculator's new image sizes and compact dock, the Quick Add haptic, a live TalkBack pass, whether taps
 meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
 text. Re-check all of this, and resolve the CI failures, before the release build.

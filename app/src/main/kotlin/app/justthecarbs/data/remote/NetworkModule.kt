@@ -45,6 +45,24 @@ object NetworkModule {
         .retryOnConnectionFailure(true)
         .build()
 
+    /**
+     * Product photos: [shared] with timeouts a photo needs, keeping its User-Agent, connection pool
+     * and dispatcher.
+     *
+     * Measured 2026-09-23: `images.openfoodfacts.org` took 8 to 34 s to complete a TLS handshake,
+     * and sometimes a TCP connect was answered only on its retransmission at 15 s, while the
+     * product API answered in 0.2 s. Under [okHttpClient]'s limits (the handshake runs under the
+     * read timeout) 10 of 17 measured connections would have been abandoned, and the calculator
+     * kept showing the initials. Nothing waits for a photo, and leaving the screen cancels its
+     * request, so a photo may take as long as the host needs; a product lookup still gives up
+     * quickly.
+     */
+    fun imageHttpClient(shared: OkHttpClient): OkHttpClient = shared.newBuilder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
+        .build()
+
     fun openFoodFactsApi(client: OkHttpClient = okHttpClient()): OpenFoodFactsApi = Retrofit.Builder()
         .baseUrl(OpenFoodFactsApi.BASE_URL)
         .client(client)
