@@ -34,6 +34,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.justthecarbs.R
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.CarbCalculator
+import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionParser
 import app.justthecarbs.domain.Product
@@ -44,6 +45,8 @@ import app.justthecarbs.ui.components.HERO_PHOTO_HEIGHTS
 import app.justthecarbs.ui.components.PRODUCT_HERO_TAG
 import app.justthecarbs.ui.components.ProductIdentityRow
 import app.justthecarbs.ui.components.ROW_THUMBNAIL_SIZES
+import app.justthecarbs.ui.meal.MEAL_BAR_TAG
+import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
@@ -67,6 +70,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.io.IOException
 import java.math.BigDecimal
+import java.time.Instant
 import java.util.Collections
 
 /**
@@ -248,6 +252,37 @@ class ProductImageContainerTest {
         )
     }
 
+    /**
+     * The header is never drawn over what sits above it. The calculator reserves the header's
+     * height from its intrinsic measurement before the portion controls take theirs, and a header
+     * that then measures taller than the reserve is centred on it by Compose: it rises over the meal
+     * bar by half the difference. At 1.8x text beside the row's thumbnail the facts wrap onto three
+     * lines (figure, badge, Verify), which is where a `FlowRow`'s estimate (one line) and its
+     * measurement parted: measured on the emulator, the photo 12px over the meal bar.
+     *
+     * On CI's 320x640dp window the answer's dock at 1.8x leaves less height than even the smallest
+     * row, so no estimate can make it fit; there the header must stay at the top and be cut at
+     * its lower edge. Before that rule it rose 54dp over the meal bar.
+     */
+    @Test
+    fun atLargeTextTheHeaderNeverRisesIntoTheMealBar() {
+        showCalculator(
+            product = product(name = "Large text", imageUrl = photoUrl("photo")),
+            fontScale = 1.8f,
+            initialPortion = "65",
+            mealItems = listOf(mealItem()),
+        )
+
+        val bar = compose.onNodeWithTag(MEAL_BAR_TAG).fetchSemanticsNode().unclippedBounds()
+        val image = compose.onNodeWithTag(PRODUCT_HERO_TAG).fetchSemanticsNode().unclippedBounds()
+        val verify = compose.onNodeWithTag(PRODUCT_VERIFY_INLINE_TAG).fetchSemanticsNode().unclippedBounds()
+
+        // The case that matters: the facts are taller than the image beside them, so the header's
+        // height is the facts' height, and the reserve is only as good as their estimate.
+        assertTrue("precondition: the facts reach below the image: verify=$verify image=$image", verify.bottom > image.bottom)
+        assertTrue("the image rises into the meal bar: image=$image bar=$bar", image.top >= bar.bottom)
+    }
+
     @Test
     fun onTheDevicesOwnWindowAt1_3xThePortionFieldIsWhollyInViewOnArrival() {
         showCalculator(product = product(name = "Own window", imageUrl = photoUrl("photo")), fontScale = 1.3f)
@@ -325,9 +360,14 @@ class ProductImageContainerTest {
         compose.waitForIdle()
     }
 
-    private fun showCalculator(product: Product, fontScale: Float? = null) {
+    private fun showCalculator(
+        product: Product,
+        fontScale: Float? = null,
+        initialPortion: String = "",
+        mealItems: List<MealItem> = emptyList(),
+    ) {
         compose.setContent {
-            var portion by remember { mutableStateOf("") }
+            var portion by remember { mutableStateOf(initialPortion) }
             val parsed = PortionParser.parse(portion)
             val screen = @Composable {
                 JustTheCarbsTheme {
@@ -339,6 +379,7 @@ class ProductImageContainerTest {
                                 portionText = portion,
                                 result = parsed?.let { CarbCalculator.calculate(product.carbsPer100, it, product.basis) },
                                 barcode = product.barcode,
+                                mealItems = mealItems,
                             ),
                             settings = AppSettings(),
                             onPortionChanged = { portion = it },
@@ -377,6 +418,19 @@ class ProductImageContainerTest {
         dataSource = ProductDataOrigin.OPEN_FOOD_FACTS,
         verificationStatus = VerificationStatus.UNVERIFIED,
         imageUrl = imageUrl,
+    )
+
+    /** One item already on the plate, so the calculator shows the meal bar above the header. */
+    private fun mealItem() = MealItem.weightBased(
+        id = 1L,
+        productBarcode = "8712100849061",
+        displayName = "Bread",
+        portionDescription = "80 g",
+        resolvedAmount = BigDecimal("80"),
+        basis = NutritionBasis.PER_100_G,
+        carbsPer100 = BigDecimal("43.5"),
+        exactCarbs = BigDecimal("34.8"),
+        addedAt = Instant.parse("2026-09-23T10:00:00Z"),
     )
 
     /** A URL the image validator accepts (HTTPS, Open Food Facts' image host). */

@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.IntrinsicMeasurable
@@ -41,6 +42,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -156,7 +158,9 @@ fun ProductIdentityRow(
      * A slot rather than parameters, so the identity header owns the image and the arrangement
      * while the calculator keeps owning what it says about a product -- which is where the
      * `Product` -> string formatting and the `isRemoteRefreshable` decision already live. It must
-     * support intrinsic measurement: the header asks how tall it is at a given width.
+     * support intrinsic measurement, and truthfully: the header asks how tall it is at a given
+     * width, and a slot that measures taller than it answered is drawn over whatever sits above
+     * the header. `FlowRow` answers as if its items shared one line; use `WrappingRow`.
      */
     details: @Composable () -> Unit,
 ) {
@@ -179,7 +183,8 @@ fun ProductIdentityRow(
         )
     }
     Layout(
-        modifier = modifier,
+        // Clips only when the calculator has less height than the smallest row (see measure).
+        modifier = modifier.clipToBounds(),
         content = {
             if (hasImage) ProductImagePlate(product = product, onClick = onOpenGallery)
             Box { details() }
@@ -213,7 +218,7 @@ private class IdentityMeasurePolicy(
                 val photo = image!!.measure(Constraints.fixed(width, layout.photoHeight))
                 val facts = details.measure(Constraints(maxWidth = width))
                 val factsTop = photo.height + HERO_CAPTION_GAP.roundToPx()
-                layout(width, factsTop + facts.height) {
+                layout(width, constraints.constrainHeight(factsTop + facts.height)) {
                     photo.place(0, 0)
                     facts.place(0, factsTop)
                 }
@@ -222,7 +227,13 @@ private class IdentityMeasurePolicy(
                 val side = layout.thumbnail
                 val photo = image?.measure(Constraints.fixed(side, side))
                 val facts = details.measure(Constraints(maxWidth = rowFactsWidth(width, side)))
-                layout(width, maxOf(photo?.height ?: 0, facts.height)) {
+                // Within the height given, never beyond it. With the keyboard closed the row is the
+                // floor even when it does not fit, which happens only when the whole space between
+                // the meal bar and the dock is shorter than the smallest row: 1.8x text on a 320x640dp
+                // window with a meal and an answer. A layout taller than its constraints is centred
+                // on them by Compose, which drew the header over the meal bar; reported at the
+                // height given, it stays at the top and is cut at its lower edge instead.
+                layout(width, constraints.constrainHeight(maxOf(photo?.height ?: 0, facts.height))) {
                     photo?.place(0, 0)
                     facts.place(if (photo != null) side + Space.m.roundToPx() else 0, 0)
                 }

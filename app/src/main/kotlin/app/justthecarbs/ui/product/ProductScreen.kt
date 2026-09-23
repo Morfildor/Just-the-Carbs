@@ -136,6 +136,7 @@ import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.components.SourceBadge
 import app.justthecarbs.ui.components.jtcDialogOutline
+import app.justthecarbs.ui.components.WrappingRow
 import app.justthecarbs.domain.PortionUsage
 import app.justthecarbs.ui.meal.MealActions
 import app.justthecarbs.ui.meal.MealBarIfPresent
@@ -1081,16 +1082,19 @@ private fun ProductSummary(
     // was a stacked `Column` while the badge was a two-part block (a pill plus a "Check package if
     // needed" line) that sat raggedly beside the figure; that second line is gone (see below).
     //
-    // A `FlowRow` measures each item against the whole line and moves one that does not fit to
+    // A wrapping row measures each item against the whole line and moves one that does not fit to
     // the next line, so no item is squeezed. On CI's 320dp emulator at 1.8x text a `Row` measured
     // Verify at 13dp wide, its label broken one letter per line into a 218dp-tall sliver
     // (`TouchTargetSizeTest`: "Verify = 13x218dp"), because a `Row` hands its second child
     // whatever width the first left over and never wraps.
-    FlowRow(
+    //
+    // `WrappingRow`, not `FlowRow`: the calculator reserves the header's height from this block's
+    // intrinsic height, and a `FlowRow` estimates that as if the three items shared one line.
+    // See WrappingRow.
+    WrappingRow(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(Space.s),
-        verticalArrangement = Arrangement.spacedBy(Space.xs),
-        itemVerticalAlignment = Alignment.CenterVertically,
+        horizontalSpacing = Space.s,
+        verticalSpacing = Space.xs,
     ) {
         // The same weight as the product name in the top bar, one step below the size it had.
         //
