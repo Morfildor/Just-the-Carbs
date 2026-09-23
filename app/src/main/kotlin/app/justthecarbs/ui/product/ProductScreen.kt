@@ -880,28 +880,28 @@ private fun CalculatorBody(
                 }
             } else {
                 Box(Modifier.bringIntoViewRequester(inputInView)) {
-                PortionField(
-                    value = state.portionText,
-                    unit = product.portionUnit,
-                    onValueChange = onPortionChanged,
-                    // Opens the keyboard on arrival for a quick calculation, and only then.
-                    //
-                    // That screen exists to answer one question and has exactly one input: the user
-                    // has just photographed a label, confirmed the figure, and the single remaining
-                    // act is typing how much they are eating. Making them tap a field that is the
-                    // only thing on the screen to tap is a step with no decision in it.
-                    //
-                    // Deliberately **not** applied to a saved product. There the field usually
-                    // arrives pre-filled with the remembered portion, and the *Usual* shortcuts and
-                    // pack buttons are alternatives to typing at all — opening the keyboard would
-                    // cover the very shortcuts that make a repeat visit fast, to offer an edit the
-                    // user may not want. `state.portionText.isEmpty()` guards the case where a quick
-                    // calculation is revisited with a portion already typed (a rotation, or coming
-                    // back from the meal), so focus is claimed once on arrival and never stolen back
-                    // mid-session.
-                    autoFocus = state.unsaved && state.portionText.isEmpty(),
-                    compact = imeVisible,
-                )
+                    PortionField(
+                        value = state.portionText,
+                        unit = product.portionUnit,
+                        onValueChange = onPortionChanged,
+                        // Opens the keyboard on arrival for a quick calculation, and only then.
+                        //
+                        // That screen exists to answer one question and has exactly one input: the user
+                        // has just photographed a label, confirmed the figure, and the single remaining
+                        // act is typing how much they are eating. Making them tap a field that is the
+                        // only thing on the screen to tap is a step with no decision in it.
+                        //
+                        // Deliberately **not** applied to a saved product. There the field usually
+                        // arrives pre-filled with the remembered portion, and the *Usual* shortcuts and
+                        // pack buttons are alternatives to typing at all — opening the keyboard would
+                        // cover the very shortcuts that make a repeat visit fast, to offer an edit the
+                        // user may not want. `state.portionText.isEmpty()` guards the case where a quick
+                        // calculation is revisited with a portion already typed (a rotation, or coming
+                        // back from the meal), so focus is claimed once on arrival and never stolen back
+                        // mid-session.
+                        autoFocus = state.unsaved && state.portionText.isEmpty(),
+                        compact = imeVisible,
+                    )
                 }
 
                 // Usual portions, immediately under the field they fill.
