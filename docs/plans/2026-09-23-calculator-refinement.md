@@ -53,13 +53,15 @@ a trivial conflict resolution in `ProductScreen.kt`.
   an ordinary space, and changing them is a test rewrite, not a visual expectation update.
 - **Shrinking the monogram plate or a larger "roomy" photo tier.** `aPhotoAndAMonogramOccupyTheSamePlate`
   and the `>= 72dp` hero test pin the plate size, and a size that changes when a late photo arrives
-  would move the layout under the finger.
+  would move the layout under the finger. *Superseded by the hero redesign below, which sizes the
+  container from the room rather than the photo, so a late photo cannot move it.*
 - **Moving the product name out of the top bar into the content.** The identity row hides while the
   keyboard is open, so the top bar is the only place the name survives while typing.
 - **The empty band under the identity row on sparse products** (about 170dp on a product with no
   photo, no pack size and no Usual row at 1.0x). It is the slack the bottom-anchored portion group
   leaves by design; filling it means adding content or re-anchoring the group, which the hierarchy
-  pass measured and rejected.
+  pass measured and rejected. *Superseded by the hero redesign below: the slack now goes to the
+  image, in fixed sizes.*
 - **Segmented mode control, loading skeleton, Home/meal/search/settings items.** Out of scope.
 
 ## Verification (final tree `bc833e0`)
@@ -103,3 +105,61 @@ a trivial conflict resolution in `ProductScreen.kt`.
 - A long custom unit name puts the mode chips on their own line under `PORTION` even at 1.0x: the
   caption and the chips need about 979px of a 974px line on 411dp. Short unit names keep one line.
 - The empty band under the identity row on sparse products.
+
+## Hero redesign (later the same day): the image takes the room, the dock stays compact
+
+Owner feedback on two Dark screenshots of a ~412dp phone: too much empty page, the picture too
+small. Directions chosen with the owner: a hero photo, meal buttons after Done, a compact empty
+dock. Four commits on the same branch after `d1a8f4d`, same rules as above: presentation only, each
+revertible. Calculations, parsing, persistence, usage history, navigation and every ViewModel are
+untouched.
+
+| Commit | Change | Tune here | Revert effect |
+|---|---|---|---|
+| `d9668db` | The header's image takes the height the portion controls and the dock leave, in fixed sizes: hero 240/200/160dp full width with the facts under it, or a row thumbnail 144/128/112dp (72dp at a window height of 640dp or less, unchanged). `CalculatorFrame` measures the portion zone first and gives the header the rest, reserving the smallest row. Photo, loading, broken and initials share the container from the first layout | `ProductIdentityRow.kt`: `HERO_PHOTO_HEIGHTS`, `ROW_THUMBNAIL_SIZES`, `COMPACT_THUMBNAIL_SIZE`, `COMPACT_HEIGHT_THRESHOLD`, `HERO_CAPTION_GAP`, `MONOGRAM_MAX_SP` (40); the choice itself in `IdentityLayout.kt` `identityLayoutFor` | The fixed 112dp thumbnail over empty page returns. Revert the three commits below first: `5e8741d` and `dd01330` build on this one's parameters |
+| `5e8741d` | While the keyboard is open the dock shows no meal buttons and reserves no row for them, on every phone; they return after Done. The header stays as the smallest row while typing when it fits, else hides | `ProductScreen.kt` `ResultPanel` (the `imeVisible` branch of the actions `when`); `keyboardSqueeze` still steps the meal bar aside on short windows | The invisible reserved meal row returns while typing, and the header hides whenever the keyboard is up |
+| `aaa7075` | The dock reserves its numeral slot only with an answer or while typing; at rest with nothing typed it is `CARBS` and "Enter a portion". The dock's size change animates (220ms, ease-out-quart) | `ProductScreen.kt` `ResultPanel` `showsSlot`, and the `animateContentSize` on the dock column | The empty dock is about 60dp taller again, holding the per-100 figure in grey under the header that already states it |
+| `dd01330` | Found in this pass's matrix: at 1.8x the photo was drawn 12px over the meal bar. `FlowRow` estimates its intrinsic height from its items' minimum widths, so the reserve was a line short; the facts line is now `WrappingRow`, whose estimate repeats its measurement. The header also reports at most the height it is given and clips, so where even the smallest row cannot fit it is cut at its lower edge instead of rising | `WrappingRow.kt`; `ProductIdentityRow.kt` `IdentityMeasurePolicy` (`constrainHeight`, `clipToBounds`) | The overlap returns at 1.8x on a phone (12px) and on a 320x640dp window (54dp) |
+
+**Image size, before and after.** Before: a 112dp square thumbnail (72dp on a window 640dp tall
+or less). After: 240, 200 or 160dp tall full-width hero, or a 144, 128 or 112dp thumbnail, the
+largest that fits; 72dp is still the only size on a compact window. Measured on the 411x914dp
+emulator: Nutella with nothing typed 240dp hero; Nutella with an answer, three Usuals and a meal
+in progress a 144dp row (1.0x and 1.8x) and 128dp (1.3x); Coca-Cola with a pack row 112dp; the
+bread product with no photo a 160dp hero with initials.
+
+### Verification (tree `dd01330`)
+
+- JVM **2161/2161**, 0 skipped, `--rerun-tasks`, 221 XML files. Lint **0 errors, 29 warnings**
+  (unchanged).
+- Instrumented, the 14 classes above plus `ProductImageContainerTest` (8, new) and
+  `WrappingRowTest` (1, new): **155/155 at 1080x2400/420 and 155/155 at `wm size 320x640` /
+  `wm density 160`**, 0 ignored, counted from instrumentation status codes.
+- Test changes: `QuickCalculationScreenTest.theDetectedValueAndBasisAreShown` asserted the resting
+  dock repeats "48 g per 100 g", the behaviour `aaa7075` removes; it now asserts the identity line
+  shows the figure and the resting dock does not. No other existing test changed; the plate-size
+  tests (`aPhotoAndAMonogramOccupyTheSamePlate`, the `>= 72dp` hero test) pass unmodified.
+- Negative controls, each restored: a hero only for products with a photo fails the hero-size
+  case; a hero only once the photo loads fails the late-photo case; `FlowRow` restored fails the
+  overlap case with the emulator's own numbers (image top 490, meal bar bottom 502) and fails
+  `WrappingRowTest`.
+- Manual matrix on `carbscan`: 411x914dp at 1.0x (Light and Dark), 1.3x and 1.8x (Dark); 360x600dp
+  at 1.0x; keyboard open with an empty field and with an answer (1.0x and 1.8x); photo, initials,
+  a three-line favourite name with the filled star, empty and calculated. The keyboard-open states
+  have no instrumented coverage. **Not seen on physical hardware.**
+
+### Tradeoffs and remaining issues
+
+- The photo's size depends on the state: 240dp before a portion is typed, 144 or 112dp once an
+  answer and the meal actions take their height. The change animates with the dock, but the photo
+  does resize between states; within a state it never moves.
+- Between steps up to about 40dp of slack can remain under the header (the sizes are fixed on
+  purpose).
+- A product without a photo gets a large initials plate in the hero state.
+- Adding to the meal is Done, then a tap, where before the buttons stayed under the answer while
+  typing.
+- At 1.8x text on a 320x640dp window with a meal and an answer, the space between the meal bar and
+  the dock is about 40dp: the header is cut at its lower edge and the portion field has no room on
+  screen at all. The answer and the meal actions are complete. Before `dd01330` the header rose 54dp
+  over the meal bar there instead.
+- The 1.8x zone overflow and the "100 g" wrap above are unchanged.

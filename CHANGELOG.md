@@ -107,8 +107,18 @@ live on Production and says the first update is ready. Work accumulates here unt
   framed field with a hairline edge, the number left-aligned with its unit beside it, in a lighter
   weight and a smaller size than the answer, under a `PORTION` caption that matches the dock's
   `CARBS` caption. The portion controls sit directly above the result instead of leaving a band of
-  empty page between them, the product photo is a little larger (112dp), and the per-100 figure is
-  one step quieter so the row reads photo, then figure, then source. The answer itself is unchanged.
+  empty page between them, and the per-100 figure is one step quieter so the row reads photo, then
+  figure, then source. The answer itself is unchanged.
+- **The product picture is bigger, and the calculator no longer shows empty page.** The photo takes
+  the height the portion controls and the answer leave, in fixed sizes: before a portion is typed,
+  a full-width picture up to 240dp tall with the per-100 figure under it; on a busier calculator, a
+  thumbnail of 144, 128 or 112dp beside the figure (72dp on a small screen, as before). A photo, a
+  photo still loading, one that failed to load and the initials all take the same box from the
+  start, so a photo that arrives late moves nothing.
+- **The answer area is compact until there is an answer.** With nothing typed it shows only CARBS
+  and *Enter a portion*; it grows, animated, when an answer appears or while you type, where it
+  previews the per-100 figure the answer will come from. *Add to meal* and *Add & scan next* appear
+  once you press Done instead of an empty row being held for them while you type.
 - **Dark mode's answer surface is raised, not sunken.** The result dock and the meal total now use a
   lighter graphite than the page in Dark (they were darker than it, with a shadow dark ground cannot
   show), and the portion field keeps a visible hairline in both themes.
@@ -156,11 +166,10 @@ live on Production and says the first update is ready. Work accumulates here unt
   On ordinary phones and at ordinary text sizes the two sit exactly where they did.
 - **On a small phone the portion field no longer disappears while you type.** On a 360x600dp
   screen with the keyboard open the field was squeezed to zero height, so digits went into a field
-  you could not see, and *Add & scan next* was cut off. On short screens the meal bar and the meal
-  buttons now step aside while the keyboard is open and come back when it closes, and the field is
-  scrolled back into view whenever it would otherwise sit under the result. The same applies at
-  large text sizes on any phone, where the field was likewise covered while typing; taller phones
-  at ordinary text sizes are unchanged.
+  you could not see, and *Add & scan next* was cut off. The meal buttons now step aside while the
+  keyboard is open and come back when it closes, and on short screens the meal bar does too; the
+  field is scrolled back into view whenever it would otherwise sit under the result. The same
+  applies at large text sizes on any phone, where the field was likewise covered while typing.
 - **A long portion-unit name no longer hides the count.** At large text sizes a custom unit such as
   "generous tablespoon heaped" squeezed the typed count to zero width; the number now keeps its
   width and the unit name wraps or shortens instead. The unit also follows the count you type
@@ -186,6 +195,23 @@ live on Production and says the first update is ready. Work accumulates here unt
   there by that same accident. `ProductScreenTest` 39/39 at 320x640 and 39/39 at 1080x2400 after
   both fixes; `QuickCalculationScreenTest`, `CountablePortionScreenTest` and `MealScreenTest`
   passed in full at 320x640.
+- Calculator hero redesign (2026-09-23, branch `calculator-refinement-2026-09-23`, four commits
+  after `d1a8f4d`): new pure `IdentityLayout` (`identityLayoutFor`, 10 JVM cases in
+  `IdentityLayoutTest`) picks the header's fixed size; `CalculatorFrame` measures the portion zone
+  first and gives the header the rest, reserving the smallest row. New `ProductImageContainerTest`
+  (8 instrumented, a Coil interceptor the test controls by URL): identical containers for photo,
+  loading, broken and initials in hero and row, a late photo moves nothing (read from pixels),
+  top-bar and facts widths, and the 1.3x/1.8x layouts. The regression matrix found the photo drawn
+  12px over the meal bar at 1.8x: `FlowRow` estimates its intrinsic height from its items' minimum
+  widths (a word, for text), so the reserve was a line short; the facts line is now `WrappingRow`,
+  whose estimate repeats its measurement (`WrappingRowTest`, 5 widths x 4 font scales; fails with
+  `FlowRow`), and the header clips at its lower edge where even the smallest row cannot fit (1.8x on
+  a 320x640dp window with a meal and an answer). `QuickCalculationScreenTest
+  .theDetectedValueAndBasisAreShown` asserted the resting dock repeats "48 g per 100 g", the
+  behaviour removed; it now asserts the identity line shows the figure and the resting dock does
+  not. Negative controls: a hero only for products with a photo fails the hero-size case; a hero
+  only once the photo loads fails the late-photo case; the old `FlowRow` fails the overlap case with
+  the device's own numbers.
 - Search-row geometry checks now use explicit viewport widths and font scales, and release-candidate
   pushes to `release/**` automatically start the blocking pre-upload release gate.
 - Stabilization pass (2026-09-22): the two `CountablePortionScreenTest` failures were a stale
@@ -246,7 +272,12 @@ tests, 0 failures/errors/skipped, lint clean; instrumented **478/478, 0 skipped,
 320x640 @160dpi emulator; minified release APK + AAB built with the R8 privacy barriers and the
 no-`FileProvider` manifest check passing. Release-candidate ready as far as the gate can say; not
 built for upload, not uploaded, the owner's hold unchanged.
-**Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps
+**Calculator hero redesign (2026-09-23, branch `calculator-refinement-2026-09-23`, not merged):**
+JVM **2161/2161** (0 skipped, `--rerun-tasks`, 221 XML files); lint **0 errors, 29 warnings**; the
+17 calculator-affected instrumented classes **155/155 at 1080x2400/420 and 155/155 at
+`wm size 320x640` / `wm density 160`**, 0 ignored. The keyboard-open states have no instrumented
+coverage (`createComposeRule` never receives an IME inset) and were checked on the emulator only.
+**Not yet seen on a physical device**: the calculator's new image sizes and compact dock, the Quick Add haptic, a live TalkBack pass, whether taps
 meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
 text. Re-check all of this, and resolve the CI failures, before the release build.
 
@@ -255,7 +286,8 @@ text. Re-check all of this, and resolve the CI failures, before the release buil
 *Draft — rewrite before upload.*
 
 > Add a food you have had before in one tap: Home now shows a + beside your last portion. Long-press
-> a recent product to remove it from Recent, with Undo.
+> a recent product to remove it from Recent, with Undo. The calculator shows a bigger product
+> picture and keeps the carbs answer clearly apart from the portion you type.
 
 ## 1.0.7 (versionCode 8) — 2026-09-17 — uploaded to Google Play Production, replacing 1.0.6, under review
 

@@ -113,7 +113,17 @@ The calculator reads as one column: `PORTION` over the input, `CARBS` over the a
 SemiBold ink, left-aligned with its unit on its baseline, in the hairlined frame; the answer is 72sp
 Bold in the result colour on the elevated dock. They differ by kind, weight, scale and hue at once,
 so the pairing survives dark mode, monochrome and large font scales. The portion group rests
-directly on the dock, and the slack of a tall screen collects under the identity header.
+directly on the dock.
+
+The slack of a tall screen goes to the product image, in fixed sizes rather than as empty page: a
+full-width photo 240, 200 or 160dp tall with the per-100 line under it, or a square thumbnail of
+144, 128 or 112dp beside it (72dp on a window 640dp tall or less), the largest that fits once the
+portion controls and the dock have their height. The image container is decided by the room, never
+by the image: a photo, a photo still loading, a broken one and the initials occupy one box from
+the first layout, and a photo that arrives late moves nothing. Until there is an answer, or while
+one is being typed, the dock is only `CARBS` and the prompt; it does not reserve a numeral slot or
+a row of meal actions it cannot use yet. The meal actions appear with the answer at rest, not while
+the keyboard is up.
 
 The decorative motif — a compact 92×96dp set of unequal nutrition bars — is drawn on **Home only**,
 over an opaque page. It was previously painted on every root screen, where it collided with the
@@ -182,8 +192,9 @@ for dark surfaces; dividers remain visible, disabled controls remain recognisabl
 continues to work over unpredictable imagery.
 
 Motion uses 120ms quick and 220ms standard timings. It clarifies state change without delaying the
-answer: result digits cross-fade, page teaching transitions remain short, and no utility screen has
-decorative entrance choreography. Existing haptics stay reserved for meaningful capture,
+answer: result digits cross-fade, the calculator's dock grows into the answer and shrinks back to
+the prompt at the standard timing with an ease-out curve, page teaching transitions remain short,
+and no utility screen has decorative entrance choreography. Existing haptics stay reserved for meaningful capture,
 confirmation, or failure events.
 
 A successful action confirms itself by changing its own control's state — an icon, a label, a brief

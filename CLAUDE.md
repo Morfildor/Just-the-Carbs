@@ -51,13 +51,72 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Calculator hero redesign (2026-09-23, latest) — still 1.0.8 / versionCode 9, READ FIRST
+
+Owner feedback on two Dark screenshots (~412dp phone): too much empty page, the picture too small.
+Directions chosen with the owner: hero photo, meal buttons after Done, compact empty dock. Four
+commits on `calculator-refinement-2026-09-23` after `d1a8f4d` (`d9668db`, `5e8741d`, `aaa7075`,
+`dd01330`), **not pushed and not merged**; tune/revert table under "Hero redesign" in
+`docs/plans/2026-09-23-calculator-refinement.md`. Presentation only.
+
+- **The image container is sized by the room, never by the image.** `identityLayoutFor` (pure,
+  `IdentityLayout.kt`, 10 JVM cases): keyboard closed, the largest hero (`HERO_PHOTO_HEIGHTS`
+  240/200/160dp, full width, facts under it; never for a nameless quick calculation) that fits with
+  its caption, else the largest row (`ROW_THUMBNAIL_SIZES` 144/128/112dp; `COMPACT_THUMBNAIL_SIZE`
+  72dp is the only row at `screenHeightDp <= 640`) that fits, else the smallest row anyway (the
+  floor); keyboard open, the smallest row or `Hidden`, never stepping. Photo, loading, broken and
+  initials share one container from the first layout. `ProductImageContainerTest` swaps Coil's
+  singleton (`SingletonImageLoader.setUnsafe`) for an interceptor keyed by URL and reads photo
+  presence from **pixels**: the container's `clearAndSetSemantics` hides the initials' text, so a
+  wait on it passes at once.
+- **`CalculatorFrame`** (`ProductScreen.kt`): reserve the header's `minIntrinsicHeight` (the
+  smallest row; 0 with the keyboard open), measure the portion zone with the rest, give the header
+  what is left, place the zone at the bottom. **The reserve is only as good as the header's
+  intrinsics**; see the next point.
+- **The `FlowRow` intrinsic trap** (found by the manual matrix, fixed in `dd01330`).
+  `FlowRow.minIntrinsicHeight(w)` lays items out at their **minimum** intrinsic widths (a Text's
+  longest word), so it assumes items share lines they do not: at 1.8x beside the thumbnail the
+  per-100 figure, badge and Verify were estimated as one line and measured as three. Compose
+  **centres** a layout measured taller than its constraints, so the header rose over the meal bar
+  by half the difference (image top 490 vs meal bar bottom 502 on 1080x2400). `WrappingRow`
+  (`ui/components`) estimates the way it measures; `WrappingRowTest` pins estimate == measurement
+  over 5 widths x 4 font scales, and fails with `FlowRow`. **A slot whose intrinsic height feeds a
+  reserve must not be a `FlowRow`.** The portion group's `FlowRow` is fine: nothing reserves from it.
+- **Where even the floor cannot fit** (1.8x on 320x640dp with a meal and an answer: about 40dp
+  between meal bar and dock) `IdentityMeasurePolicy` reports `constrainHeight(...)` and the header
+  `clipToBounds()`: cut at its lower edge, never drawn upward (it rose 54dp there before). The
+  portion field has no room on screen in that state; the answer and the meal actions are complete.
+- **Dock**: no meal actions while the IME is open, on every window (`actionsStepAside` and the
+  invisible reserved row are gone; they return after Done); the numeral slot exists only with an
+  answer or while typing (`showsSlot`), so the resting empty dock is `CARBS` + "Enter a portion";
+  `animateContentSize(tween(Motion.STANDARD_MS, EaseOutQuart))` innermost on the dock column.
+- **Test contamination trap:** the manual matrix changes `settings put system font_scale`. **Reset
+  it to 1.0 before any instrumented run**: left at 1.8 it produced 8 spurious failures across the
+  calculator classes, since a test without its own `Density` override runs at the system scale.
+- Test changes: only `QuickCalculationScreenTest.theDetectedValueAndBasisAreShown` (it asserted the
+  resting dock repeats "48 g per 100 g"). The plate-size tests pass unmodified.
+
+**Verified (`dd01330`):** JVM **2161/2161** (221 XML, 0 skipped, `--rerun-tasks`); lint **0 errors,
+29 warnings**; the 14 classes listed below plus `ProductImageContainerTest` (8) and `WrappingRowTest`
+(1): **155/155 at 1080x2400/420 and 155/155 at `wm size 320x640` / `wm density 160`**. Negative
+controls: a hero only for products with a photo, a hero only once the photo loads, and `FlowRow`
+restored each fail their case. Manual matrix on `carbscan`: 411x914 at 1.0x (Light, Dark), 1.3x and
+1.8x (Dark); 360x600 at 1.0x; keyboard open, empty and with an answer, at 1.0x and 1.8x; photo,
+initials, three-line favourite name, empty and calculated. The IME-open states have no instrumented
+coverage. **Not seen on physical hardware.**
+
+**Tradeoffs:** the photo resizes between states (240dp with nothing typed, 144 or 112dp with an
+answer), animated with the dock; up to about 40dp of slack between size steps; a no-photo product
+gets a large initials plate as a hero; adding to the meal is Done then a tap.
+
 ## Calculator refinement pass (2026-09-23, later) — still 1.0.8 / versionCode 9, READ FIRST
 
 A conservative, presentation-only follow-up to the hierarchy pass below, on branch
 `calculator-refinement-2026-09-23` off `077efde`, eight commits, **not pushed and not merged**.
 Commit → change → constant to tune → revert effect: `docs/plans/2026-09-23-calculator-
 refinement.md`. Calculations, parsing, persistence, usage history, search, scanners, navigation and
-every ViewModel are untouched; the one UI-state adaptation is `ResultPanel(actionsStepAside)`.
+every ViewModel are untouched; the one UI-state adaptation is `ResultPanel(actionsStepAside)`
+(removed again by the hero redesign above, `5e8741d`).
 
 - **Answer colour is coral** (`Theme.kt` `Coral` `#BD492F`, `CoralDark` `#FF8A75` unchanged),
   replacing `#C13C2D`, which read as red. 5.01:1 on the dock, 4.53:1 on cream, 4.5:1 on
@@ -74,6 +133,8 @@ every ViewModel are untouched; the one UI-state adaptation is `ResultPanel(actio
   `onSurface`; the no-photo plate is `surfaceContainerHigh` with `onSurfaceVariant` initials.
   **Plate size unchanged on purpose** — `aPhotoAndAMonogramOccupyTheSamePlate` and the `>= 72dp`
   hero test pin it, and a size that changes when a late photo lands moves the layout.
+  **Superseded by the hero redesign above**, which sizes the container from the room, not the
+  photo, so a late photo cannot move it; both tests still pass unmodified.
 - **Portion group**: label and chips share a `FlowRow(SpaceBetween)` so chips drop under
   `PORTION` instead of breaking words at 1.8x; `NumberBesideUnit` (custom `Layout`) gives the typed
   number up to `NUMBER_WIDTH_SHARE` (0.6) of the row and the unit the rest, baseline-aligned, two
@@ -85,7 +146,8 @@ every ViewModel are untouched; the one UI-state adaptation is `ResultPanel(actio
   answer); `product_result_unverified` is one line.
 - **Short windows** (`screenHeightDp / fontScale <= SHORT_WINDOW_HEIGHT_DP`, 700, i.e. height in
   lines of text) **with the IME open**: the meal bar and the dock's meal actions step aside (no
-  reserved row), so the dock is constant while typing. Measured before: on 360x600dp with the
+  reserved row), so the dock is constant while typing. *(Hero redesign, `5e8741d`: the meal actions
+  now step aside while typing on every window; only the meal bar still keys on this rule.)* Measured before: on 360x600dp with the
   keyboard up **the portion field had zero height**. The font-scale division (`bc833e0`) came from
   the regression matrix: at 1.8x on 411x914 the two-line meal bar and buttons left the count field
   a sliver under the dock while typing, and a dp-only rule never engaged there. Side effect,
@@ -102,7 +164,8 @@ every ViewModel are untouched; the one UI-state adaptation is `ResultPanel(actio
 system bars, a non-breaking space in "100 g" (about fifteen test literals match the ordinary
 space), shrinking the monogram, a larger photo tier, moving the name out of the top bar (the
 identity row hides with the IME), and the empty band under the identity row on sparse products
-(the bottom-anchored group's slack, by design).
+(the bottom-anchored group's slack, by design). *The larger photo and the empty band are superseded
+by the hero redesign above.*
 
 **Verified on the final tree (`bc833e0`):** JVM **2151/2151** (0 skipped, `--rerun-tasks`, 220 XML
 files); lint **0 errors, 29 warnings** (the one above); debug and test APKs build. Instrumented, 14
