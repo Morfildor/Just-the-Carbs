@@ -172,27 +172,30 @@ class QuickCalculationScreenTest {
      *
      * Asserted on the full "48 g carbs / 100 g" line rather than on the bare number. The basis is
      * the half that cannot be recovered by looking at the package again in a hurry, and a figure
-     * shown without it is the one presentation this app must never produce. The bare number matches
-     * two nodes anyway — this line and the pending-result slot, which deliberately previews the
-     * per-100 figure the result will be scaled from.
+     * shown without it is the one presentation this app must never produce. While the keyboard is
+     * up the bare number also matches the dock's number slot, which previews the per-100 figure the
+     * result will be scaled from.
      */
     /**
-     * The keyboard's state is made explicit (see [arriveWithKeyboardDismissed]): while it is up the
-     * pinned dock still states the basis figure ("48 g per 100 g", the pending slot), and once it
-     * is put away the identity line is on screen. The contract chosen is that the identity line
-     * need not survive the keyboard -- the dock and the title carry the context while typing.
+     * The keyboard's state is made explicit (see [arriveWithKeyboardDismissed]): once it is put
+     * away the identity line is on screen. The contract chosen is that the identity line need not
+     * survive the keyboard -- while it is up the dock's number slot previews the per-100 figure
+     * ("48 g per 100 g") and the title carries the rest.
+     *
+     * **Re-aimed 2026-09-23 (hero redesign).** The slot holding that preview is now reserved only
+     * while the keyboard is open or an answer exists; at rest with nothing typed the dock is the
+     * compact prompt and does not repeat the identity line's figure. This rule never delivers an
+     * IME inset to the screen, so the keyboard-up half is verified on the emulator only; what is
+     * asserted here is the resting half of that contract: the figure once, where it belongs.
      */
     @Test
     fun theDetectedValueAndBasisAreShown() {
         showQuick()
-
-        // Context while typing: the dock's pending slot carries the per-100 figure regardless of
-        // what the keyboard does to the identity row above it.
-        compose.onNodeWithText("48 g per 100 g").assertExists()
-
         arriveWithKeyboardDismissed()
 
         compose.onNodeWithText("48 g carbs / 100 g").assertIsDisplayed()
+        // The resting dock does not restate it.
+        compose.onNodeWithText("48 g per 100 g").assertDoesNotExist()
     }
 
     /** A millilitre reading must say millilitres — the unit the portion will be measured in. */

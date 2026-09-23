@@ -2,9 +2,11 @@ package app.justthecarbs.ui.product
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.EaseOutQuart
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -2184,6 +2186,17 @@ private fun ResultPanel(
     // and the dock still does not change height when the first digit is typed.
     val resultSlotHeight = if (imeVisible) RESULT_SLOT_HEIGHT_COMPACT else RESULT_SLOT_HEIGHT
 
+    // The numeral slot is only reserved once it can be needed (2026-09-23 hero redesign): with an
+    // answer, or while the keyboard is open and one is being typed. At rest with nothing typed the
+    // dock is the label and "Enter a portion", about 60dp shorter: the slot there held the per-100
+    // figure in grey, which the identity header above already states, and the spare height goes
+    // to the product image instead. The fixed slot still does its job, because the dock only has to
+    // keep one height while the user types into the field resting on it, and it does: the slot is
+    // there for the whole time the keyboard is up, pending or not. It appears at a moment the page
+    // is moving anyway (the keyboard opening, or a shortcut tapped), and the dock's size change is
+    // animated, so nothing jumps.
+    val showsSlot = exact != null || imeVisible
+
     // Whether the provenance line renders, decided once.
     //
     // Both the padding above and the Text below read this single value: computing the condition
@@ -2225,7 +2238,11 @@ private fun ResultPanel(
                 // from the controls above it. Treat its height as a budget, never as a starting
                 // point.
                 bottom = if (showsProvenanceLine) Space.m else Space.l,
-            ),
+            )
+            // Innermost, so the surface, its shadow and its padding follow the content's height
+            // frame by frame: the dock grows into the answer and the meal actions, and shrinks back
+            // to the compact prompt, over the standard 220ms with no overshoot.
+            .animateContentSize(tween(Motion.STANDARD_MS, easing = EaseOutQuart)),
         horizontalAlignment = Alignment.Start,
     ) {
         // The meal bar is deliberately NOT here any more -- it moved to the top of the screen,
@@ -2286,55 +2303,57 @@ private fun ResultPanel(
         // change -- one 120ms transition for both, long enough to notice the number moved, short
         // enough that nobody waits. `sizeTransform = null`: both states are the slot's fixed
         // height, and a size animation would only ever be a bug made visible.
-        AnimatedContent(
-            targetState = dominantNumeral,
-            transitionSpec = {
-                ContentTransform(
-                    targetContentEnter = fadeIn(tween(Motion.QUICK_MS)),
-                    initialContentExit = fadeOut(tween(Motion.QUICK_MS)),
-                    sizeTransform = null,
-                )
-            },
-            label = "result",
-            modifier = Modifier.fillMaxWidth().height(resultSlotHeight),
-        ) { numeral ->
-            if (numeral == null) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                    state.product?.let { product ->
-                        Text(
-                            text = stringResource(
-                                R.string.product_result_basis_preview,
-                                // See the note on the same call in ProductSummary.
-                                ResultFormatter.quantity(product.carbsPer100),
-                                product.portionUnit,
-                            ),
-                            style = NumberType.supporting,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (showsSlot) {
+            AnimatedContent(
+                targetState = dominantNumeral,
+                transitionSpec = {
+                    ContentTransform(
+                        targetContentEnter = fadeIn(tween(Motion.QUICK_MS)),
+                        initialContentExit = fadeOut(tween(Motion.QUICK_MS)),
+                        sizeTransform = null,
+                    )
+                },
+                label = "result",
+                modifier = Modifier.fillMaxWidth().height(resultSlotHeight),
+            ) { numeral ->
+                if (numeral == null) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                        state.product?.let { product ->
+                            Text(
+                                text = stringResource(
+                                    R.string.product_result_basis_preview,
+                                    // See the note on the same call in ProductSummary.
+                                    ResultFormatter.quantity(product.carbsPer100),
+                                    product.portionUnit,
+                                ),
+                                style = NumberType.supporting,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ResultValue(
+                            dominant = numeral,
+                            unit = resultUnit,
+                            accessibleLabel = stringResource(R.string.result_accessible_grams, numeral),
+                            testTag = PRODUCT_RESULT_TAG,
+                            modifier = Modifier.weight(1f),
+                        )
+
+                        Spacer(Modifier.width(Space.s))
+
+                        // Shared with the meal total's own copy button (see `CopyResultButton`), so
+                        // the two most important numbers in the app are transferred and confirmed
+                        // identically rather than by two hand-written copies of the same logic.
+                        CopyResultButton(
+                            value = copiedValue.orEmpty(),
+                            hapticsEnabled = settings.hapticsEnabled,
                         )
                     }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ResultValue(
-                        dominant = numeral,
-                        unit = resultUnit,
-                        accessibleLabel = stringResource(R.string.result_accessible_grams, numeral),
-                        testTag = PRODUCT_RESULT_TAG,
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    Spacer(Modifier.width(Space.s))
-
-                    // Shared with the meal total's own copy button (see `CopyResultButton`), so
-                    // the two most important numbers in the app are transferred and confirmed
-                    // identically rather than by two hand-written copies of the same logic.
-                    CopyResultButton(
-                        value = copiedValue.orEmpty(),
-                        hapticsEnabled = settings.hapticsEnabled,
-                    )
                 }
             }
         }
