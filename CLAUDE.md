@@ -54,9 +54,10 @@ in the repo as publicly readable. Nothing signed and no keystore is committed, a
 ## Stabilization pass (2026-09-22) — 1.0.8 / versionCode 9, READ FIRST
 
 A targeted pass on `main` above `f59d668` while `1.0.7` is under Production review. Still `1.0.8` /
-`versionCode 9`, not built for release, not uploaded, the owner's hold unchanged. **Two production
+`versionCode 9`, not built for release, not uploaded, the owner's hold unchanged. **Three production
 lines changed** (`JtcValueButton` `maxLines` 1 → 2; `PackShortcuts` row `height(IntrinsicSize.Min)`
-+ `fillMaxHeight()`), plus `PackShortcuts` made `internal` for a component test. Everything else is
++ `fillMaxHeight()`; and, in the gate-closing pass below, `ProductSummary`'s badge/Verify `Row` →
+`FlowRow`), plus `PackShortcuts` made `internal` for a component test. Everything else is
 tests and docs. Nothing about search, OCR, scanners, navigation, persistence, meal semantics, the
 Home Back/IME state machine or the result hierarchy changed.
 
@@ -160,6 +161,71 @@ release build skipped as designed. Both Home tests passed on CI's own emulator. 
 are the four geometry cases above. `theFirstBackDismissesTheKeyboardAndKeepsTheSearch` **passed**
 on this run after failing on the `1a77c92` CI run of the same emulator — so on CI it is
 intermittent, not deterministic. The four geometry cases are the release blockers.
+
+**The four geometry cases, classified and closed (2026-09-22, gate-closing pass).** Every one was
+reproduced alone at `wm size 320x640` / `wm density 160` first; three reproduced with CI's exact
+reason text, the fourth (Quick Calculation) passes here in any order and is explained below.
+
+- **`TouchTargetSizeTest.portionModeChipsMeetTheMinimumAtLargeFontScale` -- REAL PRODUCTION DEFECT,
+  fixed.** The undersized node was never a chip: it was the inline *Verify* action in
+  `ProductSummary`. The badge and the button shared a `Row`, which hands its second child whatever
+  width the first leaves and never wraps; at 1.8x on 320dp the badge took the details column and
+  Verify was measured 13dp wide with its label broken one letter per line into a 218dp sliver
+  (`heightIn(min = 48dp)` was set; nothing constrained the width). Fix: `FlowRow(itemVerticalAlignment
+  = CenterVertically)` -- Verify wraps to its own line only when the line cannot hold both. Measured
+  at the default scale on 320dp and on 411dp before and after: badge and button at pixel-identical
+  positions (320dp: badge x=144, button 232/163 59x48; 411dp: badge x=379, button 607/388), so
+  ordinary devices are unchanged. New `theInlineVerifyActionKeepsItsTouchTargetOnANarrowScreenAt`
+  `LargeFontScale` pins the control by tag at `requiredWidth(320.dp)` and 1.8x (at least 48dp both
+  ways, label on one line) on any AVD. Negative control: the `Row` restored fails both tests with
+  `Verify = 13x218dp`. Cost: at 1.3x on 320dp the button now wraps under the badge (+48dp of
+  identity height); the 13dp alternative was not a control.
+- **`ProductScreenTest.theLargerProductImageLeavesThePortionFieldAndResultOnScreen` -- TEST
+  METHODOLOGY, corrected; production untouched.** It injected `Density(2.75f, 1.3f)`, the reference
+  phone's density, which on the 320px/160dpi emulator invents a 116x233dp window. `showCalculator`
+  now takes `fontScale` only and keeps the device density. Measured at the real 320x640dp/1.3x with
+  a probe: on arrival the field sits at y=307..405 with the dock from 447, wholly in view; after a
+  portion is typed the result-state dock (label, numeral, whole-grams line, three-line provenance
+  sentence, two-line meal buttons) is ~360dp tall and leaves the scrolling zone a 23dp band, so the
+  *group label* "Portion" -- which the old assertion matched, believing it was the field -- scrolls
+  out of view while the field's top, the result and the identity row stay on screen. The test now
+  asserts the field wholly in view on arrival (clipped bounds equal to its size; `assertIsDisplayed`
+  is satisfied by a sliver) and the result, the field and the hero displayed after typing. **Known
+  limitation, not changed:** at 320x640dp with 1.3x text and a result, the portion field is a 23dp
+  sliver until tapped (on a real device the IME then hides the identity row and compacts the dock).
+  Owner decision whether that corner matters; fixing it means shrinking the result dock. Negative
+  control: thumbnail inflated to 480dp fails the arrival check with `visible=Rect(0,0,0,0)`.
+- **`SearchPresentationRegressionTest.atTheDefaultScaleTheFigureSitsBesideTheName` -- TEST
+  METHODOLOGY, corrected; production untouched.** `Box(Modifier.width(411.dp))` inside a 320dp root
+  is laid out at 320dp -- `width` is a request the window overrides -- so the side-by-side contract
+  for a comfortable phone was asserted against a narrow one, where the row correctly places the
+  figure beneath the name. `showSearch(exact = true)` now uses `requiredWidth`, bounds are read
+  unclipped (`positionInRoot` + `size`), and each geometry test asserts the laid-out row width as a
+  precondition (371dp at 411, 280dp at 320). Two explicit contracts: at 411dp/1.0x the figure sits
+  beside a one-line name and figure, basis and name are laid out in full; new
+  `atTheNarrowWidthTheFigureIsCompleteAndClearOfTheName` at 320dp/1.0x requires the full name, the
+  whole "10.5 g carbs" and "/ 100 g", no overlap with name or subtitle, a click action and a row at
+  least 48dp tall. Negative controls: `FIGURE_BESIDE_MIN_NAME_EMS` = 30 fails the 411 case (figure
+  below); a 60dp cap on the beneath-text column fails the 320 case ("6 of 12 characters").
+- **`QuickCalculationScreenTest.theDetectedValueAndBasisAreShown` -- RACE IN THE TEST, made
+  explicit; production untouched.** A quick calculation autofocuses its empty field and the keyboard
+  follows; the identity row carrying "48 g carbs / 100 g" is deliberately hidden while the IME
+  inset is non-zero, and on CI's 320x640 window the test activity is also panned under the
+  keyboard. CI's failure text says the node *existed* and was *not displayed* -- the pan, caught in
+  the frames before the inset removed the row. Locally the test activity never receives the inset
+  (this file's IME-inset class), so it passes alone and in class order (3/3 runs), which is why it
+  was order-dependent only on CI. Contract chosen: **no**, the identity line need not stay while
+  typing -- the pinned dock's pending slot states "48 g per 100 g" until a result exists, and the
+  title bar says Quick calculation. The test now waits for focus, asserts the dock's basis line,
+  puts the keyboard away through the field's own Done action (`performImeAction` -> `clearFocus`),
+  waits for focus to clear and for the identity line to be displayed. No sleeps. Negative control:
+  hiding the identity row for a nameless product fails it with a 5 s condition timeout.
+
+Final tree: targeted 8/8 on three rounds at 320x640/160 and 8/8 at 1080x2400; the four classes
+79/81 at both geometries (the 2 are the local-only no-match IME-inset cases); full non-exploratory
+suite **478/478 ran, 475 passed, 3 failed (the IME-inset class), 0 ignored**; JVM **2151/2151**
+(0 skipped, `--rerun-tasks`); lint **0 errors, 28 warnings**. The real `release-gate.yml` was
+dispatched on this commit; the result is recorded below once it finishes.
 
 **One local Home failure, pre-existing:** `theFirstBackDismissesTheKeyboardAndKeepsTheSearch` (added
 in `f59d668`) fails 3/3 here and identically at clean `f59d668` (stash control). A timeline probe

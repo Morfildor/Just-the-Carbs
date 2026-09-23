@@ -3,6 +3,7 @@ package app.justthecarbs.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
@@ -10,8 +11,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -26,6 +29,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.NutritionBasis
@@ -90,6 +94,18 @@ class SearchPresentationRegressionTest {
         state: SearchUiState,
         fontScale: Float = 1f,
         width: Dp = 411.dp,
+        /**
+         * Lay the screen out at exactly [width], even on a narrower window.
+         *
+         * `Modifier.width` is a *request* that the window's own constraints override: on the
+         * release gate's 320dp emulator, `width(411.dp)` silently produced a 320dp layout, and the
+         * side-by-side geometry this class pins for a comfortable phone was being asserted against
+         * a narrow one. `requiredWidth` honours the figure regardless (the content is centred and
+         * overhangs the window, which the geometry assertions read through unclipped positions).
+         * The geometry contracts use it; the readability cases keep the plain request, where a
+         * narrower window is only a stricter test.
+         */
+        exact: Boolean = false,
     ) {
         compose.setContent {
             ImeProbe()
@@ -97,7 +113,7 @@ class SearchPresentationRegressionTest {
                 LocalDensity provides Density(LocalDensity.current.density, fontScale),
             ) {
                 JustTheCarbsTheme {
-                    Box(Modifier.width(width)) {
+                    Box(if (exact) Modifier.requiredWidth(width) else Modifier.width(width)) {
                         SearchScreen(
                             state = state,
                             onQueryChanged = {},
@@ -593,21 +609,105 @@ class SearchPresentationRegressionTest {
         )
     }
 
-    private fun boundsOfText(text: String) =
-        compose.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+    /**
+     * Unclipped bounds, from the node's position and size rather than `boundsInRoot`.
+     *
+     * `boundsInRoot` is clipped to every ancestor, so a layout laid out wider than the window by
+     * `requiredWidth` (see [showSearch]) would report the overhanging part cut off and a
+     * side-by-side figure as narrower than it is. Position plus size is what the layout produced.
+     */
+    private fun boundsOfText(text: String): Rect {
+        val node = compose.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode()
+        return Rect(node.positionInRoot, node.size.toSize())
+    }
 
-    /** Control: at the default scale the figure keeps its scannable column beside the name. */
+    /**
+     * The result row's own width in dp, as laid out. Asserted as a precondition by the geometry
+     * contracts so a width the window silently overrode cannot satisfy the wrong contract.
+     */
+    private fun rowWidthDp(): Float {
+        val row = compose.onNodeWithContentDescription("Chocomel", substring = true).fetchSemanticsNode()
+        return with(compose.density) { row.size.width.toDp() }.value
+    }
+
+    /** A laid-out text, every character placed and no line ellipsized. */
+    private fun assertLaidOutInFull(text: String, lines: Int? = null) {
+        val layout = layoutOf { it == text }
+        val last = layout.lineCount - 1
+        assertTrue(
+            "'$text' is cut: ${layout.getLineEnd(last, visibleEnd = true)} of ${text.length} " +
+                "characters over ${layout.lineCount} line(s), ellipsized=${layout.isLineEllipsized(last)}",
+            layout.getLineEnd(last, visibleEnd = true) >= text.length && !layout.isLineEllipsized(last),
+        )
+        if (lines != null) {
+            assertTrue("'$text' should take $lines line(s), took ${layout.lineCount}", layout.lineCount == lines)
+        }
+    }
+
+    // ---- The two width contracts for a result row's carbohydrate figure ----------------------
+    //
+    // A comfortable phone (411dp) keeps the figure in its scannable column beside the name; a
+    // narrow one (320dp, the historical Android minimum and the release gate's emulator) may move
+    // it beneath the text instead, and what it owes there is completeness: the full name, the
+    // whole figure, the whole "/ 100 g" basis, nothing overlapping, and a row that still taps.
+    // Both are laid out at exactly the stated width (see `exact`), whichever device runs them.
+
+    /** Control: at the default scale on a comfortable phone the figure sits beside the name. */
     @Test
     fun atTheDefaultScaleTheFigureSitsBesideTheName() {
         showSearch(
             SearchUiState(query = "choc", hits = listOf(chocomel)),
             fontScale = 1f,
             width = 411.dp,
+            exact = true,
         )
+
+        // 411dp less the list's 20dp screen-edge padding on each side. Fails if the window won.
+        val rowWidth = rowWidthDp()
+        assertTrue("Precondition: row laid out at ${rowWidth}dp, expected ~371dp", rowWidth in 370f..372f)
 
         val name = boundsOfText("Chocomel")
         val value = boundsOfText("10.5 g carbs")
         assertTrue("name=$name value=$value", value.left >= name.right)
+        assertLaidOutInFull("Chocomel", lines = 1)
+        assertLaidOutInFull("10.5 g carbs", lines = 1)
+        assertLaidOutInFull("/ 100 g", lines = 1)
+    }
+
+    /**
+     * The narrow contract. Measured on the gate's 320dp emulator at the default scale: the row
+     * places the figure beneath the name (name y=164..188, figure y=208..232, both from x=88) --
+     * the designed narrow behaviour, and not a defect, provided nothing is cut.
+     */
+    @Test
+    fun atTheNarrowWidthTheFigureIsCompleteAndClearOfTheName() {
+        showSearch(
+            SearchUiState(query = "choc", hits = listOf(chocomel)),
+            fontScale = 1f,
+            width = 320.dp,
+            exact = true,
+        )
+
+        val rowWidth = rowWidthDp()
+        assertTrue("Precondition: row laid out at ${rowWidth}dp, expected ~280dp", rowWidth in 279f..281f)
+
+        assertLaidOutInFull("Chocomel")
+        assertLaidOutInFull("10.5 g carbs", lines = 1)
+        assertLaidOutInFull("/ 100 g", lines = 1)
+
+        val name = boundsOfText("Chocomel")
+        val subtitle = boundsOfText("Chocomel \u00B7 1\u00A0l")
+        val value = boundsOfText("10.5 g carbs")
+        val basis = boundsOfText("/ 100 g")
+        listOf("name" to name, "subtitle" to subtitle).forEach { (label, text) ->
+            assertTrue("figure $value overlaps $label $text", !value.overlaps(text))
+            assertTrue("basis $basis overlaps $label $text", !basis.overlaps(text))
+        }
+
+        val row = compose.onNodeWithContentDescription("Chocomel", substring = true)
+        row.assertHasClickAction()
+        val rowHeight = with(compose.density) { row.fetchSemanticsNode().size.height.toDp() }
+        assertTrue("row is $rowHeight tall, below the 48dp touch minimum", rowHeight >= 48.dp)
     }
 
     @Test
@@ -616,6 +716,7 @@ class SearchPresentationRegressionTest {
             SearchUiState(query = "choc", hits = listOf(chocomel)),
             fontScale = 2.0f,
             width = 411.dp,
+            exact = true,
         )
 
         val name = boundsOfText("Chocomel")
@@ -629,6 +730,7 @@ class SearchPresentationRegressionTest {
             SearchUiState(query = "choc", hits = listOf(chocomel)),
             fontScale = 1.5f,
             width = 360.dp,
+            exact = true,
         )
 
         val name = boundsOfText("Chocomel")

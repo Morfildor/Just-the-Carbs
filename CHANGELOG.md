@@ -122,6 +122,10 @@ live on Production and says the first update is ready. Work accumulates here unt
   clipped their labels to one line. A label that no longer fits now takes a second line, and all
   three buttons grow together so the row still reads as one group. Nothing is renamed, dropped or
   shrunk; at ordinary sizes the row is unchanged.
+- **The Verify link beside a product's Online value badge no longer collapses on a narrow screen at
+  large text.** At 1.8x on a 320dp-wide screen it was squeezed to 13dp wide with its letters stacked
+  vertically and no usable tap area; it now moves to its own line when the badge needs the width.
+  On ordinary phones and at ordinary text sizes the two sit exactly where they did.
 
 ### Internal
 
@@ -137,6 +141,16 @@ live on Production and says the first update is ready. Work accumulates here unt
   Home tests that failed on CI's 320x640 emulator (`favouritesAndRecentsUseTheSameQuickAdd`,
   `choosingRemoveFromRecentReportsTheProductExactlyOnce`) were corrected to scroll the Home list to
   the card under test instead of assuming every card is composed; production untouched.
+- Gate-closing pass (2026-09-22): the four remaining release-gate failures at CI's 320x640 @160dpi
+  geometry classified -- one production defect (the Verify touch target above) and three test
+  corrections: `ProductScreenTest.theLargerProductImageLeavesThePortionFieldAndResultOnScreen` now
+  raises only the font scale instead of overriding the device density (which invented a 116dp-wide
+  window on the gate emulator) and asserts the field wholly in view on arrival;
+  `SearchPresentationRegressionTest` lays its geometry cases out at exactly the stated width via
+  `requiredWidth` with explicit 411dp (figure beside the name) and 320dp (figure complete, no
+  overlap, row tappable) contracts; `QuickCalculationScreenTest.theDetectedValueAndBasisAreShown`
+  makes the keyboard state explicit -- dock basis line while typing, identity line after Done --
+  instead of racing the IME. Every changed assertion has a negative control recorded in CLAUDE.md.
 
 ### Verified so far
 
@@ -158,6 +172,14 @@ passes alone). Local non-exploratory API 36 suite after the fix: **476/476 ran, 
 (the IME-inset class), 0 ignored**. Real `release-gate.yml` at `6143db3`: JVM/lint green,
 instrumented **476 run, 0 skipped, 4 failed** — the four geometry cases (the first-Back IME case
 passed there, so it is intermittent on CI); release build skipped. Those four block the gate.
+**Gate-closing pass (2026-09-22/23):** the four classified above (one production defect, three
+test corrections, each with a negative control). At `wm size 320x640` / `wm density 160`: the
+eight targeted cases (the four plus the new Verify, narrow-search and two re-scoped search
+geometry tests) pass 8/8 on three consecutive rounds and 8/8 at 1080x2400; the four classes
+together are 79/81 at both geometries, the 2 being the local-only no-match IME-inset cases. Local
+non-exploratory API 36 suite on the final tree: **478/478 ran, 475 passed, 3 failed (the same
+IME-inset class), 0 ignored** (two new tests). JVM **2151/2151** (0 skipped, `--rerun-tasks`), lint **0 errors, 28 warnings**. The real
+`release-gate.yml` was dispatched on this commit; its result is recorded in the follow-up entry.
 **Not yet seen on a physical device**: the Quick Add haptic, a live TalkBack pass, whether taps
 meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
 text. Re-check all of this, and resolve the CI failures, before the release build.

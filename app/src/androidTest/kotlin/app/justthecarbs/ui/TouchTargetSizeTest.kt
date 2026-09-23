@@ -1,5 +1,8 @@
 package app.justthecarbs.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -7,6 +10,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.domain.AppSettings
@@ -21,12 +26,14 @@ import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.VerificationStatus
 import app.justthecarbs.ui.home.HomeScreen
+import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.search.SearchScreen
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
 import app.justthecarbs.ui.theme.Space
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -280,5 +287,75 @@ class TouchTargetSizeTest {
         }
 
         assertAllTargetsAreLargeEnough()
+    }
+
+    /**
+     * The inline Verify action on a narrow screen at a large font scale, identified by name.
+     *
+     * The release gate's emulator is 320dp wide at 160dpi. There, at 1.8x, the summary row's
+     * badge took the whole details column and the `Row` beside it handed Verify what was left:
+     * 13dp, into which its label wrapped one letter per line -- a 218dp-tall sliver the case above
+     * reported as `Verify = 13x218dp`. The 48dp *height* floor was in place; nothing constrained
+     * the width, and a `Row` does not wrap.
+     *
+     * Pinned at the gate's own width rather than the emulator's default, via `requiredWidth`, so
+     * this asks the same question on a 411dp AVD as on CI. The label is also required to lay out
+     * on one line: a control that meets 48dp by stacking its letters is still unreadable.
+     */
+    @Test
+    fun theInlineVerifyActionKeepsItsTouchTargetOnANarrowScreenAtLargeFontScale() {
+        compose.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.8f),
+            ) {
+                JustTheCarbsTheme {
+                    Box(Modifier.requiredWidth(320.dp)) {
+                        ProductScreen(
+                            state = ProductUiState(
+                                loading = false,
+                                product = product(),
+                                inputMode = InputMode.GRAMS,
+                                portionUnits = listOf(sliceUnit()),
+                                barcode = product().barcode,
+                            ),
+                            settings = AppSettings(),
+                            onPortionChanged = {},
+                            onSetPortion = {},
+                            onToggleFavorite = {},
+                            onBack = {},
+                            onVerify = {},
+                            onDismissVerify = {},
+                            onConfirmVerification = { _, _, _ -> },
+                            onResetOnline = {},
+                            onScanLabel = {},
+                            onEnterManually = {},
+                            onRetry = {},
+                        )
+                    }
+                }
+            }
+        }
+
+        val density = Density(compose.density.density, compose.density.fontScale)
+        val minimumPx = with(density) { Space.minTouchTarget.toPx() }
+        val verify = compose.onNodeWithTag(PRODUCT_VERIFY_INLINE_TAG).fetchSemanticsNode()
+        val w = with(density) { verify.size.width.toDp() }
+        val h = with(density) { verify.size.height.toDp() }
+        assertTrue(
+            "Verify = ${w.value.toInt()}x${h.value.toInt()}dp, below ${Space.minTouchTarget}",
+            verify.size.width >= minimumPx && verify.size.height >= minimumPx,
+        )
+
+        // The label itself, on one line. Read through the unmerged tree: the button's merged node
+        // carries the text but not the layout action.
+        val label = compose.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult),
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes()
+            .firstOrNull { it.config.getOrNull(SemanticsProperties.Text)?.firstOrNull()?.text == "Verify" }
+            ?: throw AssertionError("No laid-out 'Verify' label found")
+        val layouts = mutableListOf<TextLayoutResult>()
+        label.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+        assertEquals("'Verify' should lay out on one line", 1, layouts.single().lineCount)
     }
 }

@@ -114,8 +114,13 @@ class ProductScreenTest {
     private fun showCalculator(
         product: Product = product(),
         settings: AppSettings = AppSettings(),
-        /** Overrides the window density/font scale, for the cases that are about running out of height. */
-        density: Density? = null,
+        /**
+         * Raises the font scale for the cases that are about running out of height, keeping the
+         * device's own density. A full `Density` override was tried first and is wrong on a
+         * low-density device: imposing 2.75 on CI's 320px/160dpi emulator invented a 116x233dp
+         * window that no supported phone has, and the result dock fell off the bottom of it.
+         */
+        fontScale: Float? = null,
     ) {
         compose.setContent {
             var portion by remember { mutableStateOf("") }
@@ -148,8 +153,11 @@ class ProductScreenTest {
                 )
             }
             }
-            if (density != null) {
-                CompositionLocalProvider(LocalDensity provides density, content = content)
+            if (fontScale != null) {
+                CompositionLocalProvider(
+                    LocalDensity provides Density(LocalDensity.current.density, fontScale),
+                    content = content,
+                )
             } else {
                 content()
             }
@@ -261,24 +269,51 @@ class ProductScreenTest {
      *
      * Asserted at 1.3x text, the scale at which this zone first overflows, so the check is made
      * where the height actually runs out rather than at the comfortable default.
+     *
+     * **Font scale only; the device's density is kept.** This case used to inject
+     * `Density(2.75f, 1.3f)` -- the reference phone's density, on the assumption it would run on
+     * one. On the release gate's 320x640px @160dpi emulator that override turned the window into a
+     * 116x233dp viewport, which is not a supported device, and `product_result` was correctly not
+     * displayed on it. At the real density the same screen is 320x640dp -- the narrowest supported
+     * width at a real height -- and that is where this is now measured.
+     *
+     * What the measurement showed there (probe, 2026-09-22): on arrival the field sits at
+     * y=307..405 of 640 with the dock starting at 447, fully in view; after a portion is typed the
+     * result-state dock (label, numeral, whole-grams line, a three-line provenance sentence and
+     * two-line meal buttons at 1.3x) is ~360dp tall and leaves the scrolling zone a 23dp band, so
+     * the group label above the field scrolls out of view while the field's own top edge, the
+     * result and the identity row all remain on screen. The old assertion on the *label* text
+     * "Portion" therefore failed for a node that is not the field. What is pinned is what the user
+     * needs: the field wholly in view when they arrive to type, and the result, the field and the
+     * identity row on screen once they have. A negative control that inflates the thumbnail to
+     * 480dp fails the arrival check.
      */
     @Test
     fun theLargerProductImageLeavesThePortionFieldAndResultOnScreen() {
-        showCalculator(density = Density(density = 2.75f, fontScale = 1.3f))
+        showCalculator(fontScale = 1.3f)
 
-        // A portion is typed first, because the result node exists only once there is a result to
+        // Arrival: the field is wholly in view, not merely present. `assertIsDisplayed` passes on
+        // any visible sliver, so the clipped bounds are compared with the node's own size.
+        val field = compose.onNode(portionField()).fetchSemanticsNode()
+        assertTrue(
+            "portion field is clipped on arrival: visible=${field.boundsInRoot} size=${field.size}",
+            field.boundsInRoot.height >= field.size.height - 1f &&
+                field.boundsInRoot.width >= field.size.width - 1f,
+        )
+
+        // A portion is typed next, because the result node exists only once there is a result to
         // show -- an empty field renders the "Enter a portion" prompt in that slot instead. Without
         // this the case failed on a missing node and said nothing at all about layout.
         typePortion("65")
 
-        // Both measured against the window rather than merely asserted to exist: "off-screen" is
+        // Measured against the window rather than merely asserted to exist: "off-screen" is
         // exactly the failure mode being guarded, and a node pushed under the dock is still present
         // in the tree. `assertIsDisplayed` is what tests visibility against the window.
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertIsDisplayed()
 
-        // The field itself, identified the way the user finds it -- by its own label, since it
-        // carries no test tag. It holds "65" now, so the prompt is gone.
-        compose.onNodeWithText("Portion").assertIsDisplayed()
+        // The field itself, by its own accessible label (it carries no test tag and no visible
+        // label text). It holds "65" now, so the placeholder is gone.
+        compose.onNode(portionField()).assertIsDisplayed()
 
         // And the thumbnail that prompted this case is on screen too, so the test cannot pass by
         // the identity row having silently disappeared.

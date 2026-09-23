@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
@@ -1007,14 +1008,26 @@ private fun ProductSummary(
             maxLines = 2,
         )
         Spacer(Modifier.height(Space.xs))
-        // The badge and the Verify link share one line.
+        // The badge and the Verify link share one line when the line can hold both, and Verify
+        // wraps to its own line when it cannot.
+        //
+        // A `FlowRow`, not a `Row`. A `Row` measures its children in order and hands the second
+        // whatever width the first left over, and it never wraps -- so on CI's 320dp emulator at
+        // 1.8x text the badge took the details column and Verify was measured at 13dp wide, its
+        // label broken one letter per line into a 218dp-tall sliver
+        // (`TouchTargetSizeTest`: "Verify = 13x218dp"). Every content-based guard on this row
+        // passed, because a 48dp *minimum height* was set and the width was never constrained.
+        // `FlowRow` measures each item against the full line width and moves an item that does
+        // not fit to the next line, so the button keeps its own intrinsic width whatever the
+        // badge takes. On a 411dp phone, or at the default scale on 320dp, both still fit on one
+        // line and nothing moves.
         //
         // `showHint = false`, always. The badge's second line ("Check package if needed") is
         // deleted from this screen rather than merely hidden while the keyboard is open: the
         // result dock now carries one provenance sentence at the number itself, which is where the
         // user is actually deciding whether to act on the figure. Two statements of the same fact,
         // one of them 250dp above the other, is what made this block three lines tall.
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        FlowRow(itemVerticalAlignment = Alignment.CenterVertically) {
             SourceBadge(product, showHint = false)
             // Discoverable verification, not just buried in the overflow menu. Only when it is
             // actually relevant: a value the app itself never checked against the package, and not
