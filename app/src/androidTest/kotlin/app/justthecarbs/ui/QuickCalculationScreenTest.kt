@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
@@ -75,6 +76,35 @@ class QuickCalculationScreenTest {
         compose.onNodeWithContentDescription("Portion in g").performTextInput(text)
         compose.onNodeWithContentDescription("Portion in g").performImeAction()
         compose.waitForIdle()
+    }
+
+    /**
+     * Arrives on a quick calculation and puts its auto-opened keyboard away, deterministically.
+     *
+     * A quick calculation focuses its empty portion field on arrival and the keyboard follows. The
+     * identity row -- the per-100 figure, its basis and the "Read from label by you" badge -- is
+     * deliberately hidden while the IME inset is non-zero (see `CalculatorBody`), and on the release
+     * gate's 320x640 emulator the test activity is also panned under the keyboard. Any assertion on
+     * that row made straight after `showQuick` therefore raced the keyboard: it passed or failed by
+     * how far the IME had got, which is how `theDetectedValueAndBasisAreShown` failed on one gate
+     * run and `theReadingIsLabelledAsComingFromTheLabel` on the next. Locally the test activity
+     * never receives the inset, so every one of them passes here in any order.
+     *
+     * Each step waits on the focus state it causes, never on time: focus claimed (the show request
+     * is issued with it), the field's own Done action (`clearFocus`, the app's real path), focus
+     * gone, and finally the identity row displayed -- which is also what proves the window is back
+     * in place. Use it before reading anything the keyboard hides.
+     */
+    private fun arriveWithKeyboardDismissed() {
+        // The one editable field, whatever unit it names ("Portion in g" / "Portion in ml").
+        val field = hasSetTextAction()
+        compose.waitUntil(5_000) { runCatching { compose.onNode(field).assertIsFocused() }.isSuccess }
+        compose.onNode(field).performImeAction()
+        compose.waitUntil(5_000) { runCatching { compose.onNode(field).assertIsNotFocused() }.isSuccess }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Read from label by you").fetchSemanticsNodes().isNotEmpty() &&
+                runCatching { compose.onNodeWithText("Read from label by you").assertIsDisplayed() }.isSuccess
+        }
     }
 
     private fun showQuick(
@@ -147,43 +177,21 @@ class QuickCalculationScreenTest {
      * per-100 figure the result will be scaled from.
      */
     /**
-     * **The keyboard's state is made explicit, because this case is otherwise a race.**
-     *
-     * A quick calculation focuses its empty portion field on arrival and the keyboard follows.
-     * The identity row that carries "48 g carbs / 100 g" is deliberately hidden while the keyboard
-     * is taking screen space (see `CalculatorBody`), and on the release gate's 320x640 emulator
-     * the window is also panned under the keyboard, so whether the line was "displayed" at the
-     * moment of the assertion depended on how far the keyboard had got -- it passed alone here,
-     * where the test activity never receives the IME inset, and failed in the full suite on CI
-     * with the node present but off the visible window.
-     *
-     * The contract is therefore stated rather than raced: while the keyboard is up the pinned dock
-     * still states the basis figure ("48 g per 100 g", the pending slot), and once the user puts
-     * the keyboard away through the field's own Done action the identity line is on screen. No
-     * sleeps -- each step waits on the focus state it causes.
+     * The keyboard's state is made explicit (see [arriveWithKeyboardDismissed]): while it is up the
+     * pinned dock still states the basis figure ("48 g per 100 g", the pending slot), and once it
+     * is put away the identity line is on screen. The contract chosen is that the identity line
+     * need not survive the keyboard -- the dock and the title carry the context while typing.
      */
     @Test
     fun theDetectedValueAndBasisAreShown() {
         showQuick()
 
-        // Arrival: the field claims focus, and the keyboard is requested with it.
-        compose.waitUntil(5_000) {
-            runCatching { compose.onNodeWithContentDescription("Portion in g").assertIsFocused() }.isSuccess
-        }
         // Context while typing: the dock's pending slot carries the per-100 figure regardless of
         // what the keyboard does to the identity row above it.
         compose.onNodeWithText("48 g per 100 g").assertExists()
 
-        // Done puts the keyboard away by clearing focus -- the app's own path, not a test hook.
-        compose.onNodeWithContentDescription("Portion in g").performImeAction()
-        compose.waitUntil(5_000) {
-            runCatching { compose.onNodeWithContentDescription("Portion in g").assertIsNotFocused() }.isSuccess
-        }
-        // The identity line returns once the inset is gone and the window is back in place.
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithText("48 g carbs / 100 g").fetchSemanticsNodes().isNotEmpty() &&
-                runCatching { compose.onNodeWithText("48 g carbs / 100 g").assertIsDisplayed() }.isSuccess
-        }
+        arriveWithKeyboardDismissed()
+
         compose.onNodeWithText("48 g carbs / 100 g").assertIsDisplayed()
     }
 
@@ -191,14 +199,22 @@ class QuickCalculationScreenTest {
     @Test
     fun aMillilitreReadingShowsAMillilitreBasis() {
         showQuick(product = scratch(carbs = "9.4", basis = NutritionBasis.PER_100_ML))
+        arriveWithKeyboardDismissed()
 
         compose.onNodeWithText("9.4 g carbs / 100 ml").assertIsDisplayed()
     }
 
-    /** Provenance is stated: the number came off a label, and it says so (P2). */
+    /**
+     * Provenance is stated: the number came off a label, and it says so (P2).
+     *
+     * This is the sibling that failed the release gate on `57ecc16` (478 run, this the only
+     * failure) after `theDetectedValueAndBasisAreShown` had been fixed alone: the same race, one
+     * line lower in the identity row. Every read of that row now goes through the helper.
+     */
     @Test
     fun theReadingIsLabelledAsComingFromTheLabel() {
         showQuick()
+        arriveWithKeyboardDismissed()
 
         compose.onNodeWithText("Read from label by you").assertIsDisplayed()
     }

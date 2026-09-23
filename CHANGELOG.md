@@ -150,7 +150,10 @@ live on Production and says the first update is ready. Work accumulates here unt
   `requiredWidth` with explicit 411dp (figure beside the name) and 320dp (figure complete, no
   overlap, row tappable) contracts; `QuickCalculationScreenTest.theDetectedValueAndBasisAreShown`
   makes the keyboard state explicit -- dock basis line while typing, identity line after Done --
-  instead of racing the IME. Every changed assertion has a negative control recorded in CLAUDE.md.
+  instead of racing the IME; the gate run on `57ecc16` then failed only its sibling
+  `theReadingIsLabelledAsComingFromTheLabel` by the same race, so the settling is now a helper used
+  by every case that reads the identity row. Every changed assertion has a negative control
+  recorded in CLAUDE.md.
 
 ### Verified so far
 

@@ -220,6 +220,13 @@ reason text, the fourth (Quick Calculation) passes here in any order and is expl
   puts the keyboard away through the field's own Done action (`performImeAction` -> `clearFocus`),
   waits for focus to clear and for the identity line to be displayed. No sleeps. Negative control:
   hiding the identity row for a nameless product fails it with a 5 s condition timeout.
+  **The gate on `57ecc16` then failed exactly one test, the sibling
+  `theReadingIsLabelledAsComingFromTheLabel`** ("Read from label by you" not displayed -- the same
+  race one line lower in the identity row, which had passed by timing on the two previous runs).
+  The settling is now a helper, `arriveWithKeyboardDismissed()`, used by every case in the class
+  that reads the identity row (`theDetectedValueAndBasisAreShown`,
+  `aMillilitreReadingShowsAMillilitreBasis`, `theReadingIsLabelledAsComingFromTheLabel`); the
+  save-action cases already type a portion (Done + idle) and wait for the action to exist.
 
 Final tree: targeted 8/8 on three rounds at 320x640/160 and 8/8 at 1080x2400; the four classes
 79/81 at both geometries (the 2 are the local-only no-match IME-inset cases); full non-exploratory
