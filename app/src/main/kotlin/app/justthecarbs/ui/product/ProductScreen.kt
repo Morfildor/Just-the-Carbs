@@ -626,9 +626,15 @@ private fun CalculatorBody(
         // dock's actions step aside while the keyboard is open -- both are for after the typing, and
         // both return the moment it closes, exactly as the identity row already does. The dock
         // keeps one height the whole time the keyboard is up (no actions and no reserved row), so
-        // the first keystroke still cannot move the field under the finger. A 411x914 phone is not
-        // affected: there the actions stay available while typing, as before.
-        val shortWindow = LocalConfiguration.current.screenHeightDp <= SHORT_WINDOW_HEIGHT_DP
+        // the first keystroke still cannot move the field under the finger. A 411x914 phone at the
+        // default text size is not affected: there the actions stay available while typing.
+        //
+        // The height is divided by the font scale, i.e. measured in lines of text rather than dp,
+        // because large text squeezes the zone exactly as a short window does: at 1.8x on the
+        // 411x914 phone the two-line meal bar and two-line meal buttons left the count field a
+        // sliver under the dock while typing. At 1.0x the rule is unchanged.
+        val shortWindow =
+            LocalConfiguration.current.screenHeightDp / LocalDensity.current.fontScale <= SHORT_WINDOW_HEIGHT_DP
         val keyboardSqueeze = imeVisible && shortWindow
 
         // Keeps the input itself in view whenever the zone is too short for the whole group.
@@ -2456,9 +2462,10 @@ private fun ResultPanel(
 }
 
 /**
- * At or below this window height the calculator counts as short: the keyboard plus the pinned dock
- * would otherwise leave the portion zone no height at all (measured at 600dp; 640dp is CI's
- * emulator). A 720dp phone keeps the ordinary behaviour.
+ * At or below this window height, divided by the font scale, the calculator counts as short: the
+ * keyboard plus the pinned dock would otherwise leave the portion zone no height at all (measured at
+ * 600dp; 640dp is CI's emulator; and 914dp at 1.8x text). A 720dp phone at the default text size
+ * keeps the ordinary behaviour.
  */
 private const val SHORT_WINDOW_HEIGHT_DP = 700
 
