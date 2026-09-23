@@ -298,7 +298,12 @@
       what this user has done before, not making a recommendation about what to eat. The
       distinction is the whole reason this is a shortcut rather than advice.
     -->
-    <string name="product_usual_label" tools:ignore="MissingTranslation">Usual</string>
+    <!--
+      Upper case from the string, matching PORTION and CARBS (2026-09-23): the eyebrow style carries
+      wide tracking, and on a title-case word it rendered as spaced-out lowercase ("U s u a l")
+      directly under the upper-case PORTION.
+    -->
+    <string name="product_usual_label" tools:ignore="MissingTranslation">USUAL</string>
     <string name="product_usual_grams" tools:ignore="MissingTranslation">%1$s %2$s</string>
     <string name="product_usual_count" tools:ignore="MissingTranslation">%1$s %2$s</string>
 

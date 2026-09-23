@@ -97,6 +97,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -136,6 +140,7 @@ import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
 import java.math.RoundingMode
+import kotlin.math.roundToInt
 
 /** Stable handle for the inline portion-unit correction field, used by instrumented tests. */
 const val PORTION_CORRECTION_FIELD_TAG = "portion_unit_correction_amount"
@@ -769,16 +774,26 @@ private fun CalculatorBody(
             // screen did not present as a labelled pair; matched eyebrows make `PORTION 65 g` and
             // `CARBS 37.4 g` read as question and answer, the way Home's Recent card already pairs
             // them.
-            Row(
+            //
+            // A `FlowRow`, not a `Row` (2026-09-23 calculator refinement). The chips used to share a
+            // `Row` with the label after a weighted spacer, and a `Row` never wraps: at 1.8x text a
+            // custom unit's chip was squeezed until "Generous tablespoon heaped" broke mid-word
+            // ("tablespoo" / "n heaped") and `PORTION` was pressed against the first chip. Now the
+            // chips stay beside the label while they fit and move, as one group, to the line under
+            // it when they do not. `SpaceBetween` keeps them at the end of the label's line in the
+            // ordinary case, which is exactly where they were.
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(Space.xs),
+                itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = stringResource(R.string.product_portion_group_label),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = Space.s),
                 )
-                Spacer(Modifier.weight(1f))
                 // Only rendered when countable units genuinely exist (§11 of the
                 // countable-portions brief) -- a product with none keeps a single field.
                 if (state.portionUnits.isNotEmpty()) {
@@ -1207,48 +1222,103 @@ private fun NumberEntryFrame(
             .padding(horizontal = Space.m, vertical = Space.s),
         contentAlignment = Alignment.CenterStart,
     ) {
-        // Baselines, not box bottoms -- the same rule `ResultValue` records for the answer.
-        Row {
-            // `IntrinsicSize.Min`: the inner text field otherwise takes every pixel the row offers,
-            // which put the unit back at the far edge of the frame -- measured on the first build,
-            // `g` at x=923 of a 1080px window beside a two-digit portion. The box is as wide as its
-            // text (or the placeholder), capped by the weight so a long entry scrolls rather than
-            // pushing the unit out of the frame.
-            Box(
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .width(IntrinsicSize.Min)
-                    .alignByBaseline(),
-            ) {
-                // An empty 48sp field with a lone unit is a large blank box that does not say what
-                // goes in it. A greyed `0` in the field's own type shows the shape of the expected
-                // input without being a value: it is a placeholder, so it never becomes part of the
-                // portion and there is no pre-filled zero to delete before typing.
-                //
-                // Cleared from semantics: the field already announces itself, and leaving the
-                // placeholder readable made the *field* match text searches for values like
-                // "0.0 g", so assertions looking for the result found the input box instead.
-                if (showPlaceholder) {
-                    Text(
-                        text = "0",
-                        style = NumberType.portion,
-                        color = colors.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.clearAndSetSemantics {},
-                    )
+        NumberBesideUnit(
+            number = {
+                // `IntrinsicSize.Min`: the inner text field otherwise takes every pixel it is
+                // offered, which put the unit back at the far edge of the frame -- measured on the
+                // first build, `g` at x=923 of a 1080px window beside a two-digit portion.
+                Box(modifier = Modifier.width(IntrinsicSize.Min)) {
+                    // An empty 48sp field with a lone unit is a large blank box that does not say
+                    // what goes in it. A greyed `0` in the field's own type shows the shape of the
+                    // expected input without being a value: it is a placeholder, so it never becomes
+                    // part of the portion and there is no pre-filled zero to delete before typing.
+                    //
+                    // Cleared from semantics: the field already announces itself, and leaving the
+                    // placeholder readable made the *field* match text searches for values like
+                    // "0.0 g", so assertions looking for the result found the input box instead.
+                    if (showPlaceholder) {
+                        Text(
+                            text = "0",
+                            style = NumberType.portion,
+                            color = colors.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.clearAndSetSemantics {},
+                        )
+                    }
+                    innerTextField()
                 }
-                innerTextField()
-            }
-            Spacer(Modifier.width(Space.s))
-            Text(
-                text = unit,
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.onSurfaceVariant,
-                maxLines = 1,
-                modifier = Modifier.alignByBaseline(),
-            )
+            },
+            unit = {
+                Text(
+                    text = unit,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.onSurfaceVariant,
+                    // Two lines, then an ellipsis: a custom unit's name can be long ("generous
+                    // tablespoon heaped"), and it wraps beside the number rather than pushing it out.
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+        )
+    }
+}
+
+/**
+ * The number and its unit on one baseline, with the number measured first.
+ *
+ * A plain `Row` (what this was until 2026-09-23) measures the unit's `Text` before the weighted
+ * number, and a `Text` takes all the width it wants. With a short unit that never mattered; with a
+ * countable unit named "generous tablespoon heaped" at 1.8x text the unit took the whole row and
+ * the typed count was laid out **zero pixels wide** -- the user could not see the number they were
+ * typing, and the unit was clipped at the frame's edge besides. Measured on the emulator.
+ *
+ * So the order is reversed: the number takes the width it needs up to [NUMBER_WIDTH_SHARE] of the
+ * frame, and the unit gets whatever is left, wrapping to a second line if it must. Both sit on the
+ * number's baseline, the same rule [app.justthecarbs.ui.components.ResultValue] follows for the
+ * answer. With the ordinary units ("g", "ml", "slices") this places both exactly where the `Row`
+ * did.
+ */
+@Composable
+private fun NumberBesideUnit(
+    number: @Composable () -> Unit,
+    unit: @Composable () -> Unit,
+) {
+    val gap = Space.s
+    Layout(
+        content = {
+            number()
+            unit()
+        },
+    ) { measurables, constraints ->
+        val gapPx = gap.roundToPx()
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val numberPlaceable = measurables[0].measure(
+            loose.copy(maxWidth = (constraints.maxWidth * NUMBER_WIDTH_SHARE).roundToInt()),
+        )
+        val unitPlaceable = measurables[1].measure(
+            loose.copy(maxWidth = (constraints.maxWidth - numberPlaceable.width - gapPx).coerceAtLeast(0)),
+        )
+        // First baselines, falling back to the bottom edge when a child reports none (intrinsic
+        // measurement passes do not carry alignment lines).
+        fun Placeable.baseline(): Int =
+            this[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: height
+        val baseline = maxOf(numberPlaceable.baseline(), unitPlaceable.baseline())
+        val numberY = baseline - numberPlaceable.baseline()
+        val unitY = baseline - unitPlaceable.baseline()
+        val height = maxOf(numberY + numberPlaceable.height, unitY + unitPlaceable.height)
+        layout(numberPlaceable.width + gapPx + unitPlaceable.width, height) {
+            numberPlaceable.placeRelative(0, numberY)
+            unitPlaceable.placeRelative(numberPlaceable.width + gapPx, unitY)
         }
     }
 }
+
+/**
+ * The most of the frame's width the number may take before it scrolls inside its field.
+ *
+ * Wide enough for any portion a person types ("1250.5" at 48sp is about 45% of a 360dp frame), and
+ * leaves the unit at least two fifths of the row, where even a long custom name fits in two lines.
+ */
+private const val NUMBER_WIDTH_SHARE = 0.6f
 
 /**
  * The portion field's resting height.
@@ -1423,6 +1493,12 @@ private fun UsualPortionRow(
             modifier = Modifier.fillMaxWidth().padding(vertical = Space.xs),
             horizontalArrangement = Arrangement.spacedBy(Space.s),
         ) {
+            // One third of the row per shortcut, however many there are (2026-09-23 calculator
+            // refinement). With a single usual portion the one button used to stretch across the
+            // whole width, where it read as a second field or a wide primary button rather than as
+            // one of the pack row's siblings directly beneath it. Empty slots are plain weighted
+            // space, so one, two and three shortcuts all share the pack row's column grid.
+            val slots = maxOf(usages.size, USUAL_SLOTS)
             usages.forEach { usage ->
                 val unit = usage.portionUnitId?.let { id -> units.firstOrNull { it.id == id } }
                 val amount = ResultFormatter.editable(usage.amount)
@@ -1439,9 +1515,13 @@ private fun UsualPortionRow(
                     modifier = Modifier.weight(1f),
                 )
             }
+            repeat(slots - usages.size) { Spacer(Modifier.weight(1f)) }
         }
     }
 }
+
+/** The pack row's column count, which the usual row shares so the two read as one grid. */
+private const val USUAL_SLOTS = 3
 
 /**
  * Grams | <one chip per countable unit> (countable-portions brief §9, §11). Only rendered when
@@ -1464,9 +1544,13 @@ private fun PortionModeRow(
     //
     // No longer `fillMaxWidth`: the row shares the portion group's label line and sizes to its
     // chips, so a product with one countable unit does not stretch two chips across the screen.
-    Row(
+    //
+    // A `FlowRow` for the same reason as the line it sits on: several long unit names at a large
+    // font scale wrap onto a second line instead of being squeezed into each other.
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(Space.xs),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(Space.xs),
+        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         JtcFilterChip(
             selected = isGramsSelected,
@@ -1537,12 +1621,18 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
         keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         interactionSource = interactionSource,
-        // The same frame as the portion field, with the unit's own plural beside the count.
+        // The same frame as the portion field, with the unit's word agreeing with the count typed
+        // (2026-09-23): "1 slice", "2 slices". It was always the plural, so a pre-filled `1` read
+        // "1 slices". Exactly one takes the singular and anything else the plural, the rule Recents
+        // already follows, so a fractional count reads "1.5 slices".
         decorationBox = { innerTextField ->
+            val typed = PortionParser.parse(fieldValue.text)
             NumberEntryFrame(
                 focused = focused,
                 compact = false,
-                unit = unit.unitLabel(count = 2),
+                unit = unit.unitLabel(
+                    count = if (typed != null && typed.compareTo(BigDecimal.ONE) == 0) 1 else 2,
+                ),
                 showPlaceholder = fieldValue.text.isEmpty(),
                 innerTextField = innerTextField,
             )

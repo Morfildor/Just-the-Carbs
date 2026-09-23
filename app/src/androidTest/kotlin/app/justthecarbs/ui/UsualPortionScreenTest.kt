@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.test.platform.app.InstrumentationRegistry
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.CarbCalculator
 import app.justthecarbs.domain.InputMode
@@ -165,7 +166,12 @@ class UsualPortionScreenTest {
         showWithUsual(listOf(usage("65")))
 
         compose.onNodeWithTag(USUAL_PORTION_ROW_TAG).assertIsDisplayed()
-        compose.onNodeWithText("Usual").assertIsDisplayed()
+        // Read from the resource rather than typed here, so the label's wording or case can change
+        // without breaking a test about whether the row is offered.
+        compose.onNodeWithText(
+            InstrumentationRegistry.getInstrumentation().targetContext
+                .getString(app.justthecarbs.R.string.product_usual_label),
+        ).assertIsDisplayed()
         compose.onNodeWithText("65 g").assertIsDisplayed()
     }
 
