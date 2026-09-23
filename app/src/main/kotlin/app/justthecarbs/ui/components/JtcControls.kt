@@ -4,7 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
@@ -25,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -130,7 +130,13 @@ fun JtcValueButton(
     // Light is unchanged and deliberately keeps no border: there the same two tokens are #FBF8F1
     // on cream, which reads as a control without one, and adding an edge there would put back one
     // of the borders this pass exists to remove.
-    val needsBorder = isSystemInDarkTheme() && enabled
+    //
+    // Dark is read from the THEME, not the phone (2026-09-23). This was `isSystemInDarkTheme()`,
+    // which answers a different question: the app's own theme choice overrides the system's, so a
+    // user who picked Dark in Settings on a light phone got these buttons with no edge at all --
+    // the 1.07:1 fill on its own, measured on the calculator's Usual and pack rows. The page colour
+    // is the one fact that always follows the theme actually in force.
+    val needsBorder = MaterialTheme.colorScheme.background.luminance() < 0.5f && enabled
     Box(
         modifier = modifier
             .heightIn(min = Space.valueButtonHeight)
