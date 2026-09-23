@@ -93,6 +93,12 @@ private val OnDisabledBlueDark = Color(0xFF7F8798)
 // still light enough to stay compatible with a photo whose own background is baked-in white.
 private val MediaSurfaceDark = Color(0xFFE8E4DC)
 
+// The answer surface (see ExtendedColors.resultDock). Light is the scheme's surfaceContainerLowest;
+// Dark is its surfaceContainerHigh -- the same values the colour schemes below declare, named here
+// so the two docks read one token rather than each picking a scheme role.
+private val DockLight = Color(0xFFFFFEFB)
+private val DockDark = Color(0xFF272C35)
+
 /**
  * The result red and a few tokens Material's ColorScheme has no matching role for (brief: "Why
  * red here and blue elsewhere"). `result` is spent on exactly one thing per screen — the
@@ -128,6 +134,16 @@ data class ExtendedColors(
      */
     val primaryTile: Color,
     val onPrimaryTile: Color,
+    /**
+     * The pinned answer surface: the calculator's result dock and the meal's total panel.
+     *
+     * A raised surface moves *away* from the page's own luminance (DESIGN.md), which is
+     * `surfaceContainerLowest` in Light and `surfaceContainerHigh` in Dark. Both docks used the
+     * Lowest token in both themes, which in Dark is *darker* than the page (measured 1.04:1) with
+     * a 6dp shadow that dark ground cannot show, so the app's most important surface read as a
+     * recessed slab with no edge. One token, read by both docks, so they cannot disagree again.
+     */
+    val resultDock: Color,
 )
 
 /**
@@ -167,6 +183,7 @@ private val LightExtendedColors = ExtendedColors(
     mediaSurface = MediaSurfaceLight,
     primaryTile = Blue,
     onPrimaryTile = WarmWhite,
+    resultDock = DockLight,
 )
 
 private val DarkExtendedColors = ExtendedColors(
@@ -183,6 +200,7 @@ private val DarkExtendedColors = ExtendedColors(
     mediaSurface = MediaSurfaceDark,
     primaryTile = PrimaryTileDark,
     onPrimaryTile = Chalk,
+    resultDock = DockDark,
 )
 
 /**
@@ -453,14 +471,28 @@ object NumberType {
         ),
     )
 
-    /** The portion being edited. */
+    /**
+     * The portion being edited.
+     *
+     * One step down from [result] in every property that can carry hierarchy, not just size
+     * (2026-09-23 hierarchy pass). It was 52sp Bold, centred: the same family and weight as the
+     * 72sp result, both dark on the page, so at a glance the screen showed two headline numerals
+     * and the labels had to explain which one the user controls. Measured on the emulator, the
+     * ink numeral and the red numeral sit at 3.2:1 against each other, and with the keyboard open
+     * the result shrinks to about 50sp, at which point they were the same size too.
+     *
+     * SemiBold rather than Bold, 48sp rather than 52, and left-aligned so the unit can sit beside
+     * the number the way a form value does. The result keeps Bold, 72sp and its colour, so the
+     * answer outranks the input by weight, scale and hue at once, and still by weight and scale
+     * alone in monochrome.
+     */
     val portion = TextStyle(
         fontFamily = SpaceGrotesk,
-        fontSize = 52.sp,
-        lineHeight = 58.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = (-1.5).sp,
-        textAlign = TextAlign.Center,
+        fontSize = 48.sp,
+        lineHeight = 52.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = (-1).sp,
+        textAlign = TextAlign.Start,
     )
 
     /** The supporting decimal, e.g. `31.3 g calculated` — legible, not a whisper (design 3.2). */

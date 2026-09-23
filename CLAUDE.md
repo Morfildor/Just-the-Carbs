@@ -51,6 +51,107 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Calculator hierarchy pass (2026-09-23) — still 1.0.8 / versionCode 9, READ FIRST
+
+A visual/UX pass on the Product / Calculator screen on `main` above `71d9f57`, driven by the
+owner's report that on a remembered saved product the portion and the carbohydrate result read as
+two headline figures ("the carbs and entered value is similar in color, so hard to differentiate at
+first glance"). Review, plan and measured outcome: `docs/plans/2026-09-23-calculator-hierarchy-
+review-and-plan.md`. **Presentation only**: calculations, `ResultFormatter`, persistence, meal
+semantics, navigation, scanners, OCR and every safety rule are untouched; `ResultValue`'s API and
+the 72sp red answer are unchanged. Still not built for release, not uploaded, the owner's hold
+unchanged.
+
+### What was measured, and what changed
+
+Three "number + g" figures shared one family; the input was 52sp Bold *centred* in a box whose fill
+was **1.05:1** against the page (1.07:1 in Dark) with the unit 350px away; ink and result red sit
+at **3.23:1** against each other, so in monochrome they were two heavy numerals; with the keyboard
+open the result autosized to ~50sp beside a 52sp input. The dead band between the last control
+and the dock was **216dp** (result state) to **335dp** (empty state) on 411x914.
+
+- **`NumberEntryFrame`** (`ProductScreen.kt`) replaces the two `OutlinedTextField`s: a
+  `BasicTextField` in a 12dp frame with a 1dp `outline` hairline at rest (3.3:1 light, 5.3:1 dark)
+  and the 2dp primary stroke on focus; numeral left-aligned in the new `NumberType.portion`
+  (**48sp SemiBold**, was 52sp Bold centred) with the unit on its baseline. **The text box must be
+  `width(IntrinsicSize.Min)` inside its row weight** -- without it the inner field takes the whole
+  row and the unit lands at the far edge again (measured: `g` at x=923 on the first build).
+- **Matched eyebrows.** `product_portion_group_label` is now `PORTION` (upper case from the string,
+  like `CARBS`), rendered `labelSmall`/`onSurfaceVariant` exactly as the dock's label. The
+  tutorial preview reads the same resource and was restyled to match.
+- **The portion group is bottom-anchored** (`Arrangement.Bottom` in the weighted scroll zone), so
+  it rests on the dock and the slack collects under the identity header. Two things make that
+  safe: the dock **reserves the meal-actions row while the keyboard is open and no result exists**
+  (an invisible, disabled `MealActions` with cleared semantics), so the first keystroke cannot grow
+  the dock under the finger; and the scroll zone's fade is now **symmetric** (top and bottom),
+  because a focused field that overflows the zone is scrolled into view from below the top edge.
+  `weight(1f, fill = false)` and a weighted sibling spacer remain rejected (they unpin the dock).
+- **One `AnimatedContent` keyed on the displayed numeral (null while pending)** owns the dock's
+  fixed-height slot: the answer fades in when it first exists and cross-fades on digit changes,
+  `sizeTransform = null`. Pending, the slot holds the per-100 preview centred (bottom-aligned was
+  tried and read as a hole); the hint moved to the supporting-line position so pending and result
+  have the same silhouette.
+- **`ExtendedColors.resultDock`** (light `surfaceContainerLowest`, dark `surfaceContainerHigh`) is
+  read by both docks (calculator and meal total). In Dark the Lowest token was *darker* than the
+  page (1.04:1) with a shadow dark ground cannot show.
+- Photo **96 → 112dp** (compact 72dp rule unchanged); per-100 line `titleLarge` → `titleMedium`;
+  countable equation left-aligned (still inside the dock -- its visibility with the keyboard open
+  is what the countable tests rely on, so it was not moved into the scroll zone); `Add portion
+  unit` has zero horizontal content padding so it aligns with the column; the mode chip says
+  `Millilitres` on an ml product (`product_mode_millilitres`).
+
+**DESIGN.md records the one deliberate exception** to "a field at rest is a quiet fill with no
+border": the number-entry frame carries a hairline because its value is shown at headline size
+beside another headline number.
+
+### The test that pinned the old composition
+
+`ProductScreenTest.thePortionControlsFollowTheProductHeaderWithoutALargeDeadBand` asserted the
+header→`Portion` gap under 140dp, i.e. the top-anchored layout. It is re-aimed as
+`thePortionControlsSitDirectlyAboveTheResultDockWithoutADeadBand`: last control → dock label gap in
+`[0dp, 64dp)`, measured 45dp on the reference phone. The invariant (no dead band splitting the
+calculation) is the same; only where it lives moved.
+
+### Emulator trap closed on the way
+
+Gboard on `carbscan` showed a floating **stylus-handwriting toolbar** for the Compose decimal field
+(backspace/check/emoji/menu pill, "Try handwriting demo"), which takes no window inset, so every
+keyboard-open branch of this screen silently never ran on the emulator. Fix:
+`adb shell settings put secure stylus_handwriting_enabled 0` then restart Gboard. `pm clear`,
+`show_ime_with_hard_keyboard`, dragging the floating keyboard and unbinding the emulated PS/2
+keyboard were all tried first and do not fix it. Every keyboard-open capture in this pass has a
+docked keypad and a real inset.
+
+### Verified
+
+JVM **2151/2151** (0 failures, 0 errors, 0 skipped, 220 XML files). Lint **0 errors, 28 warnings**
+(unchanged baseline). Debug APK and debug test APK build. Instrumented, run directly with
+`am instrument` on the `carbscan` AVD at 1080x2400/420 and 1.0x: **167/167, 0 ignored** in one
+run (329.8 s) across `ProductScreenTest`, `QuickCalculationScreenTest`,
+`CountablePortionScreenTest`, `TouchTargetSizeTest`, `MealScreenTest`, `UsualPortionScreenTest`,
+`DirectCarbResultScreenTest`, `ResultValueTest`, `PackShortcutsResponsiveTest`,
+`TutorialScreenTest`, `TutorialVisualTest`, `ThemeRefinementVisualTest` and
+`CorrectingKnownAmountScreenTest`. The four geometry-sensitive classes were then re-run at CI's
+`wm size 320x640` / `wm density 160`: **89/90 on the first run**, the one failure being
+`theLargerProductImageLeavesThePortionFieldAndResultOnScreen` -- `ProductIdentityRow`'s compact
+rule used a strict `<` against 640dp, so CI's exactly-640dp window got the full 112dp plate and
+the result-state dock left no room for the field at 1.3x. **The rule is now `<=`** (a 640dp window
+is compact, 720dp phones keep the full size), and
+`theProductHeroImageIsSubstantiallyLargerThanARecentThumbnail` is `>= 72dp` rather than `> 72dp`
+because 72dp is the documented compact size and the strict form had only ever passed at 320x640
+by the same accident. After both: `ProductScreenTest` **39/39 at 320x640 and 39/39 at 1080x2400**;
+`QuickCalculationScreenTest`, `CountablePortionScreenTest` and `MealScreenTest` all green at
+320x640 in the same run. **Run any new calculator geometry test at 320x640/160 before trusting
+it** -- this pass would have shipped a CI-only failure otherwise.
+
+**Not verified on physical hardware.** Everything above is JVM plus the emulator, including every
+screenshot; whether the hairline and the 48/72sp pairing read the same on a real panel is the open
+gate. Known visual debt: with the keyboard open at 1.8x the result autosizes to fit its 60dp
+compact slot and ends up smaller than the scaled input (hierarchy holds by colour, weight and
+label); at 320x640 and at 1.8x the shortcut rows sit under the dock and scroll with the fade, as
+before; Nutella's `400 g e` quantity is declined by the package parser so no pack row appears on
+that common label form (domain, out of scope).
+
 ## Stabilization pass (2026-09-22) — 1.0.8 / versionCode 9, READ FIRST
 
 A targeted pass on `main` above `f59d668` while `1.0.7` is under Production review. Still `1.0.8` /

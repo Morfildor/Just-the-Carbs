@@ -101,6 +101,20 @@ live on Production and says the first update is ready. Work accumulates here unt
 
 ### Changed
 
+- **The calculator reads as one column: portion in, carbs out.** On a saved product the remembered
+  portion and the carbohydrate result could both read as headline figures (two bold dark numbers,
+  the input centred in a box with no visible edge). The portion is now an unmistakable input: a
+  framed field with a hairline edge, the number left-aligned with its unit beside it, in a lighter
+  weight and a smaller size than the answer, under a `PORTION` caption that matches the dock's
+  `CARBS` caption. The portion controls sit directly above the result instead of leaving a band of
+  empty page between them, the product photo is a little larger (112dp), and the per-100 figure is
+  one step quieter so the row reads photo, then figure, then source. The answer itself is unchanged.
+- **Dark mode's answer surface is raised, not sunken.** The result dock and the meal total now use a
+  lighter graphite than the page in Dark (they were darker than it, with a shadow dark ground cannot
+  show), and the portion field keeps a visible hairline in both themes.
+- The mode chip on a millilitre product says *Millilitres* instead of *Grams*; the countable
+  equation in the dock is left-aligned like the lines around it; *Add portion unit* aligns with the
+  column edge; the result fades in when it first appears rather than cutting.
 - **Home cards are laid out in two aligned rows:** the product name with its carb figure, then the
   remembered portion with the **+** and the Favourite star together at the right edge, where they
   sit in the same place on every card. At large text sizes the CARBS caption moves under the figure
@@ -129,6 +143,22 @@ live on Production and says the first update is ready. Work accumulates here unt
 
 ### Internal
 
+- Calculator hierarchy pass (2026-09-23): `ProductScreenTest.thePortionControlsFollowTheProduct‑
+  HeaderWithoutALargeDeadBand` pinned the top-anchored layout (header→label gap under 140dp) and is
+  re-aimed as `thePortionControlsSitDirectlyAboveTheResultDockWithoutADeadBand` (last control →
+  dock label gap in `[0dp, 64dp)`); the invariant it protects, no dead band splitting the
+  calculation, is unchanged. New `ExtendedColors.resultDock` token; `NumberType.portion` is 48sp
+  SemiBold left-aligned. 167/167 instrumented across the thirteen calculator-, meal-, theme- and
+  tutorial-affected classes on the 1080x2400 AVD; JVM 2151/2151; lint 0 errors, 28 warnings. At
+  CI's `wm size 320x640` / `wm density 160`, the first run failed
+  `theLargerProductImageLeavesThePortionFieldAndResultOnScreen` (89/90): the compact-thumbnail
+  rule used a strict `<` against a 640dp threshold, so a window exactly 640dp tall got the full
+  112dp plate and the result-state dock left no room for the field at 1.3x. The rule is now `<=`;
+  `theProductHeroImageIsSubstantiallyLargerThanARecentThumbnail` then needed `>= 72dp` rather than
+  `> 72dp`, because 72dp is the documented compact size and the strict form had only ever passed
+  there by that same accident. `ProductScreenTest` 39/39 at 320x640 and 39/39 at 1080x2400 after
+  both fixes; `QuickCalculationScreenTest`, `CountablePortionScreenTest` and `MealScreenTest`
+  passed in full at 320x640.
 - Search-row geometry checks now use explicit viewport widths and font scales, and release-candidate
   pushes to `release/**` automatically start the blocking pre-upload release gate.
 - Stabilization pass (2026-09-22): the two `CountablePortionScreenTest` failures were a stale

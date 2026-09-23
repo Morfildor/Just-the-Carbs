@@ -324,10 +324,11 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
             // Same lift as the calculator's result panel, and for the same reason recorded there:
             // this surface is `surfaceContainerLowest` on a cream page, a ~1% difference, so without
             // a shadow the screen's most important number has no edge and reads as part of the
-            // background. The two panels are the same element in the same place and must not differ.
+            // background. The two panels are the same element in the same place and must not differ,
+            // which is why both read the theme's `resultDock` token rather than each naming a role.
             .shadow(elevation = Space.resultElevation, shape = panelShape, clip = false)
             .clip(panelShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .background(MaterialTheme.extendedColors.resultDock)
             .navigationBarsPadding()
             .padding(
                 start = Space.screenEdge,

@@ -141,8 +141,11 @@
     <string name="remote_changed_body">The database now reports %1$s g / 100 %2$s. Your current value is unchanged.</string>
     <string name="remote_changed_apply">Use new value</string>
     <!-- The portion group's own label on the calculator, replacing the centred question above.
-         A noun, not a question: the field below it and its `0` placeholder already ask. -->
-    <string name="product_portion_group_label">Portion</string>
+         A noun, not a question: the field below it and its `0` placeholder already ask.
+         Upper case from the string, exactly like `product_result_label`: the two are a matched pair
+         of eyebrows (PORTION over the input, CARBS over the answer), which is what lets the eye pair
+         each label with its number instead of reading two headline figures. -->
+    <string name="product_portion_group_label">PORTION</string>
     <!-- Screen-reader labels for the two amount fields. Neither has a visible `label`: the
          question above them names them for sighted users, but that heading is a separate node and
          is not read as part of the field. -->
@@ -185,6 +188,8 @@
       ServingSizeParser still recognizes Dutch remote text; that is input parsing, not app display.
     -->
     <string name="product_mode_grams" tools:ignore="MissingTranslation">Grams</string>
+    <!-- The same chip on a millilitre product. It said "Grams" beside a field asking for ml. -->
+    <string name="product_mode_millilitres" tools:ignore="MissingTranslation">Millilitres</string>
     <string name="product_count_equation" tools:ignore="MissingTranslation">%1$s %2$s × %3$s %4$s = %5$s %4$s</string>
     <!-- No leading `+` in the text: the button draws a real 18dp Add icon instead, so the glyph
          scales with the font and is not a punctuation mark pretending to be an affordance. -->

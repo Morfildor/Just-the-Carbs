@@ -36,6 +36,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.R
 import app.justthecarbs.ui.components.ProductIdentityRow
 import app.justthecarbs.ui.components.PRODUCT_HERO_TAG
 import app.justthecarbs.ui.components.PRODUCT_GALLERY_NEXT_TAG
@@ -415,11 +417,15 @@ class ProductScreenTest {
             .height
 
         with(compose.density) {
-            // 52dp is Space.thumbnail, what Recents uses. The calculator's plate is 96dp (72dp on a
+            // 52dp is Space.thumbnail, what Recents uses. The calculator's plate is 112dp (72dp on a
             // short device), so this floor is what would catch a regression back toward the 56dp
             // the 2026-09-22 visual pass briefly shipped -- a tile too small to identify a package,
             // which is the whole reason this assertion exists.
-            assert(heroHeight.toDp() > 72.dp) {
+            //
+            // `>=`, not `>`: the compact plate is exactly 72dp and is a documented size, not a
+            // regression. The strict form only ever passed on CI's 320x640 emulator because the
+            // compact rule used to skip a window that is exactly 640dp tall (2026-09-23).
+            assert(heroHeight.toDp() >= 72.dp) {
                 "hero image was ${heroHeight.toDp()}, expected well above the 52dp thumbnail"
             }
         }
@@ -811,21 +817,29 @@ class ProductScreenTest {
      * below it.
      */
     @Test
-    fun thePortionControlsFollowTheProductHeaderWithoutALargeDeadBand() {
+    fun thePortionControlsSitDirectlyAboveTheResultDockWithoutADeadBand() {
+        // Re-aimed 2026-09-23. The old assertion measured header-to-label and pinned the
+        // top-anchored layout, in which the slack of a tall screen sat BETWEEN the input and the
+        // answer: 216dp of empty page in the result state on a 411x914 phone, measured. The
+        // portion group now rests on the dock and the slack collects under the identity header
+        // instead, so the invariant this test protects -- no dead band splitting the calculation
+        // -- is measured where it now lives: from the last portion control to the dock's label.
         showCalculator(product())
 
-        val headerBottom = compose.onNodeWithText("48.2 g carbs / 100 g", substring = true)
+        val strings = InstrumentationRegistry.getInstrumentation().targetContext
+        val lastControlBottom = compose.onNodeWithText(strings.getString(R.string.product_add_portion_unit))
             .fetchSemanticsNode()
             .boundsInRoot
             .bottom
-        val questionTop = compose.onNodeWithText("Portion")
+        val dockLabelTop = compose.onNodeWithText(strings.getString(R.string.product_result_label))
             .fetchSemanticsNode()
             .boundsInRoot
             .top
 
         with(compose.density) {
-            val gap = (questionTop - headerBottom).toDp()
-            assert(gap < 140.dp) { "dead band between product header and portion question was $gap" }
+            val gap = (dockLabelTop - lastControlBottom).toDp()
+            assert(gap >= 0.dp) { "the last portion control is underneath the dock: gap $gap" }
+            assert(gap < 64.dp) { "dead band between the portion controls and the result dock was $gap" }
         }
     }
 

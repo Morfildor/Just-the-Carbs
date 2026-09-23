@@ -97,10 +97,23 @@ Warm surface steps separate page, field, card, and modal layers. The result dock
 content surface allowed a meaningful shadow because its separation is functional. **Fewer edges** is
 the governing rule: no box inside a box, no border around every control, no decorative outline, and
 no second elevated surface competing with the dock. A field at rest is a quiet fill with no border
-at all; the border appears on focus.
+at all; the border appears on focus. **One exception, deliberate:** the calculator's number-entry
+frame (the portion and count fields) carries a 1dp `outline` hairline at rest, because its value is
+shown at headline size directly above another headline number and the fill alone measured 1.05:1
+against the page: a remembered portion read as a readout, not an input. The hairline is the "this
+is a field" cue the 17sp fields never needed; focus still promotes it to the 2dp primary stroke.
 
 A raised surface moves *away* from the page’s own luminance, which means `surfaceContainerLowest`
-in Light and `surfaceContainerHigh` in Dark. Modals follow that rule rather than one fixed token.
+in Light and `surfaceContainerHigh` in Dark. Modals follow that rule rather than one fixed token,
+and so do the two answer docks (the calculator's result and the meal's total) through the single
+`resultDock` token: in Dark the dock is a raised graphite slab, never a surface darker than the page.
+
+The calculator reads as one column: `PORTION` over the input, `CARBS` over the answer, the same
+`labelSmall` eyebrow on both so the two figures present as a labelled pair. The input is 48sp
+SemiBold ink, left-aligned with its unit on its baseline, in the hairlined frame; the answer is 72sp
+Bold in the result colour on the elevated dock. They differ by kind, weight, scale and hue at once,
+so the pairing survives dark mode, monochrome and large font scales. The portion group rests
+directly on the dock, and the slack of a tall screen collects under the identity header.
 
 The decorative motif — a compact 92×96dp set of unequal nutrition bars — is drawn on **Home only**,
 over an opaque page. It was previously painted on every root screen, where it collided with the

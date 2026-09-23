@@ -228,23 +228,26 @@ private fun ProductPreview(anchors: TutorialAnchors, teachingTop: Dp, teachingHe
             // the centred question `product_portion_question` -- which the visual pass removed
             // from the real screen, and which a user following this tutorial would then look for
             // and not find.
+            // The same eyebrow the real screen now pairs with its `CARBS` label (2026-09-23).
             Text(
                 text = stringResource(R.string.product_portion_group_label),
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(Space.xs))
-            // A quiet fill with no border, matching `jtcTextFieldColors()` at rest. The 1dp
-            // `outline` ring drawn here before is the treatment the design system replaced: the
-            // fill alone is what says "field".
+            // A quiet fill with a hairline `outline` edge and a left-aligned value, matching the
+            // calculator's own number-entry frame at rest (2026-09-23): the hairline is what says
+            // "field" next to a headline number, and the value sits at the start like a form value.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(if (compact) 52.dp else 64.dp)
                     .clip(RoundedCornerShape(Space.buttonRadius))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow),
-                contentAlignment = Alignment.Center,
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(Space.buttonRadius))
+                    .padding(horizontal = Space.m),
+                contentAlignment = Alignment.CenterStart,
             ) {
                 Text(
                     text = "$EXAMPLE_PORTION g",

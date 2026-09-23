@@ -68,8 +68,15 @@ const val PRODUCT_HERO_TAG = "product_hero_image"
  * motivated shrinking the hero in the first place. The identity row is already hidden outright
  * while the IME is up, so the keyboard case costs nothing; [COMPACT_THUMBNAIL_SIZE] covers the
  * remaining squeeze, a short screen at a large font scale with the keyboard closed.
+ *
+ * **112dp since the 2026-09-23 hierarchy pass.** The portion group now rests on the result dock
+ * and the slack in the zone collects under this row, so the 16dp cost no longer comes out of the
+ * calculator at the default scale; it comes out of empty page. At 112dp a jar's label and a can's
+ * wordmark read at arm's length where 96dp was at the small end of useful, and the row is still a
+ * header, not a hero: under a fifth of the height the 245dp photo took. Compared at 104, 112, 120
+ * and 128 on the emulator; 120 and 128 began to crowd the two-line name in the bar above at 1.3x.
  */
-private val THUMBNAIL_SIZE = 96.dp
+private val THUMBNAIL_SIZE = 112.dp
 
 /**
  * The thumbnail on a genuinely height-constrained screen — a 360x720dp phone at 1.3x text, where
@@ -80,7 +87,16 @@ private val THUMBNAIL_SIZE = 96.dp
  */
 private val COMPACT_THUMBNAIL_SIZE = 72.dp
 
-/** Below this usable height the row uses [COMPACT_THUMBNAIL_SIZE]. Covers 720dp-tall devices. */
+/**
+ * At or below this window height the row uses [COMPACT_THUMBNAIL_SIZE]; 720dp-tall phones keep the
+ * full size.
+ *
+ * *At or below*, not *below*: CI's release-gate emulator is exactly 320x640dp, and a strict `<`
+ * gave it the full-size thumbnail. At 112dp that took the last of the height the result-state
+ * dock leaves the portion zone there at 1.3x text, and
+ * `ProductScreenTest.theLargerProductImageLeavesThePortionFieldAndResultOnScreen` found the field
+ * wholly under the dock after typing (2026-09-23). The 411dp phone is unaffected either way.
+ */
 private val COMPACT_HEIGHT_THRESHOLD = 640.dp
 
 /**
@@ -147,7 +163,7 @@ fun ProductIdentityRow(
             // decision the calculator makes. `LocalConfiguration` reports the window in dp, which
             // already accounts for a split-screen or folded window.
             val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-            val size = if (screenHeight < COMPACT_HEIGHT_THRESHOLD) COMPACT_THUMBNAIL_SIZE else THUMBNAIL_SIZE
+            val size = if (screenHeight <= COMPACT_HEIGHT_THRESHOLD) COMPACT_THUMBNAIL_SIZE else THUMBNAIL_SIZE
             ProductIdentityThumbnail(product = product, onClick = onOpenGallery, size = size)
             Spacer(Modifier.width(Space.m))
         }
