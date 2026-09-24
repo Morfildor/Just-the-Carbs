@@ -1,6 +1,9 @@
 package app.justthecarbs.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -742,5 +745,39 @@ class SearchScreenTest {
         compose.onNodeWithTag(SEARCH_RESULTS_TAG).assertIsDisplayed()
         compose.onNodeWithText("Hagelslag puur").assertIsDisplayed()
         compose.onNodeWithText("Hagelslag melk").assertIsDisplayed()
+    }
+
+    // ---- list position -------------------------------------------------------------------------
+
+    private var liveState by mutableStateOf(SearchUiState())
+
+    /**
+     * A refined query replaces the list; the new list starts at its top rather than wherever the old
+     * one had been scrolled to (the lazy list otherwise keeps the first visible row by key).
+     */
+    @Test
+    fun aRefinedQueryShowsItsResultsFromTheTop() {
+        val hits = (0 until 30).map { hit(barcode = "10000$it", name = "Product $it") }
+        liveState = SearchUiState(query = "prod", hits = hits)
+        compose.setContent {
+            JustTheCarbsTheme {
+                SearchScreen(
+                    state = liveState,
+                    onQueryChanged = {},
+                    onSearchSubmit = {},
+                    onSelect = {},
+                    onScanLabel = {},
+                    onEnterManually = {},
+                    onRetry = {},
+                    onBack = {},
+                )
+            }
+        }
+        compose.onNodeWithTag(SEARCH_RESULTS_TAG).performScrollToIndex(hits.lastIndex)
+        compose.onNodeWithText("Product 2").assertDoesNotExist()
+
+        compose.runOnIdle { liveState = SearchUiState(query = "produ", hits = hits.drop(2)) }
+
+        compose.onNodeWithText("Product 2").assertIsDisplayed()
     }
 }

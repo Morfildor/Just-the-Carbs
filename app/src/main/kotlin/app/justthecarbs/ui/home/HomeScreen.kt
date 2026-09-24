@@ -49,6 +49,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -140,13 +142,14 @@ import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.ProductThumbnail
 import app.justthecarbs.ui.components.RecoveryPanel
-import app.justthecarbs.ui.components.RefreshErrorBanner
 import app.justthecarbs.ui.components.SearchResultRow
 import app.justthecarbs.ui.components.dismissKeyboardOnTouch
 import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.meal.MealBarIfPresent
 import app.justthecarbs.ui.product.unitLabel
 import app.justthecarbs.ui.search.SearchInformationalState
+import app.justthecarbs.ui.search.SearchResultsNotice
+import app.justthecarbs.ui.search.rememberSearchResultsListState
 import app.justthecarbs.ui.search.SearchProgressLine
 import app.justthecarbs.ui.search.SearchingLine
 import app.justthecarbs.ui.search.SearchViewModel
@@ -440,6 +443,11 @@ fun HomeScreen(
                 )
             }
 
+            // Held here, above the switch between search and body, so clearing a search returns
+            // to Recents where they were rather than to the top: the body leaves composition while
+            // results are shown, and a list state remembered inside it would go with it.
+            val bodyListState = rememberLazyListState()
+
             // The two camera entry points, then history beneath them. Both live in the scrolling
             // region rather than pinned at the bottom, which is a deliberate change: the app's three
             // ways in must all be visible before any history (§7 of the entry-points brief), and
@@ -454,6 +462,7 @@ fun HomeScreen(
                 HomeSearchResults(
                     state = searchState,
                     onSelect = onSearchSelect,
+                    onScan = onScan,
                     onScanLabel = onSearchScanLabel,
                     onEnterManually = onSearchEnterManually,
                     onRetry = onSearchRetry,
@@ -466,6 +475,7 @@ fun HomeScreen(
                 )
             } else {
                 HomeBody(
+                    listState = bodyListState,
                     recents = recents,
                     settings = settings,
                     onScan = onScan,
@@ -730,12 +740,16 @@ private fun HomeSearchField(
 private fun HomeSearchResults(
     state: SearchUiState,
     onSelect: (ProductSearchHit) -> Unit,
+    onScan: () -> Unit,
     onScanLabel: () -> Unit,
     onEnterManually: () -> Unit,
     onRetry: () -> Unit,
     onListTouched: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Above the state `when`, so it outlives the searching line a refinement passes through.
+    val resultsListState = rememberSearchResultsListState(state.query)
+
     Column(modifier = modifier.fillMaxWidth()) {
         // The same hairline as the search screen, in the same place, for a first search as well as
         // a refresh. Home had no refresh indication at all until the smoothing pass, and its first
@@ -748,36 +762,17 @@ private fun HomeSearchResults(
             // but costs the user nothing, so it must not take the region away from a usable list.
             state.hasResults -> Column(modifier = region.fillMaxWidth()) {
                 // No Retry while rate limited — the queued query resumes by itself, and a button there
-                // would invite the hammering the backoff exists to stop. Same rule as SearchScreen.
-                if (state.rateLimited) {
-                    RefreshErrorBanner(
-                        text = stringResource(R.string.search_rate_limited),
-                        modifier = Modifier
-                            .padding(horizontal = Space.screenEdge, vertical = Space.xs)
-                            .testTag(HOME_SEARCH_RATE_LIMITED_TAG),
-                    )
-                } else if (state.refreshFailed) {
-                    RefreshErrorBanner(
-                        text = stringResource(R.string.search_refresh_failed),
-                        retryText = stringResource(R.string.error_retry),
-                        onRetry = onRetry,
-                        modifier = Modifier
-                            .padding(horizontal = Space.screenEdge, vertical = Space.xs)
-                            .testTag(HOME_SEARCH_REFRESH_ERROR_TAG),
-                    )
-                } else if (state.error != null) {
-                    // Only stored matches are listed and the online search failed. Same rule as
-                    // SearchScreen: keep the list, say what is missing from it.
-                    RefreshErrorBanner(
-                        text = stringResource(R.string.search_online_failed),
-                        retryText = stringResource(R.string.error_retry),
-                        onRetry = onRetry,
-                        modifier = Modifier
-                            .padding(horizontal = Space.screenEdge, vertical = Space.xs)
-                            .testTag(HOME_SEARCH_ONLINE_ERROR_TAG),
-                    )
-                }
+                // would invite the hammering the backoff exists to stop. Same rule, and the same
+                // composable, as SearchScreen.
+                SearchResultsNotice(
+                    state = state,
+                    onRetry = onRetry,
+                    rateLimitedTag = HOME_SEARCH_RATE_LIMITED_TAG,
+                    refreshErrorTag = HOME_SEARCH_REFRESH_ERROR_TAG,
+                    onlineErrorTag = HOME_SEARCH_ONLINE_ERROR_TAG,
+                )
                 LazyColumn(
+                    state = resultsListState,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -809,6 +804,9 @@ private fun HomeSearchResults(
                 Box(modifier = region.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     RecoveryPanel(title = title, body = body) {
                         PrimaryAction(text = stringResource(R.string.error_retry), onClick = onRetry)
+                        // The barcode is the other way to the same product, and Home (unlike the
+                        // search screen, which a failed barcode lookup opens) has not tried it yet.
+                        SecondaryAction(text = stringResource(R.string.home_scan_button), onClick = onScan)
                         SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
                         SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
                     }
@@ -840,6 +838,9 @@ private fun HomeSearchResults(
                     body = stringResource(R.string.search_no_matches, state.query),
                 ) {
                     PrimaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+                    // Same reason as the failure panel above: a name that matched nothing says
+                    // nothing about the barcode, which Home has not tried.
+                    SecondaryAction(text = stringResource(R.string.home_scan_button), onClick = onScan)
                     SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
                 }
             }
@@ -889,6 +890,7 @@ private fun HomeSearchResults(
  */
 @Composable
 private fun HomeBody(
+    listState: LazyListState,
     recents: List<RecentEntry>,
     settings: AppSettings,
     onScan: () -> Unit,
@@ -906,6 +908,7 @@ private fun HomeBody(
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxWidth().testTag(HOME_BODY_TAG),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             start = Space.screenEdge,
@@ -1003,10 +1006,14 @@ private fun HomeBody(
                 item(key = "favorites_heading") {
                     SectionHeading(
                         text = stringResource(R.string.home_favorites_title),
-                        modifier = Modifier.testTag(HOME_FAVORITES_HEADING_TAG),
+                        modifier = Modifier.animateItem().testTag(HOME_FAVORITES_HEADING_TAG),
                     )
                 }
-                items(items = favorites, key = { "fav_${it.product.barcode}" }) { entry ->
+                // The bare barcode, the same key the card has under Recent. The two sections are
+                // `filter`/`filterNot` of one list, so a product is in exactly one of them and the
+                // key is still unique; sharing it is what lets `animateItem` move a starred card up
+                // into Favourites instead of deleting it in one place and inserting it in another.
+                items(items = favorites, key = { it.product.barcode }) { entry ->
                     RecentCard(
                         entry = entry,
                         settings = settings,
@@ -1027,7 +1034,10 @@ private fun HomeBody(
 
             if (others.isNotEmpty()) {
                 item(key = "recent_heading") {
-                    SectionHeading(text = stringResource(R.string.home_recent_title))
+                    SectionHeading(
+                        text = stringResource(R.string.home_recent_title),
+                        modifier = Modifier.animateItem(),
+                    )
                 }
                 items(items = others, key = { it.product.barcode }) { entry ->
                     RecentCard(

@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -949,5 +952,81 @@ class HomeScreenTest {
 
     private fun hasLongClickLabelOf(label: String) = SemanticsMatcher("long-click label is '$label'") {
         it.config.getOrNull(SemanticsActions.OnLongClick)?.label == label
+    }
+
+    // ---- Search panels and list position ----------------------------------------------------
+
+    private fun numberedHit(i: Int) = searchHit().copy(barcode = "10000$i", name = "Product $i")
+
+    /** Search state a test can change after the screen is up, the way the ViewModel does. */
+    private var liveSearch by mutableStateOf(SearchUiState())
+
+    private fun showWithLiveSearch(recents: List<RecentEntry> = emptyList()) {
+        compose.setContent {
+            JustTheCarbsTheme {
+                HomeScreen(
+                    recents = recents,
+                    settings = AppSettings(),
+                    onScan = {},
+                    onManualEntry = {},
+                    onOpenProduct = {},
+                    onToggleFavorite = {},
+                    onOpenSettings = {},
+                    searchState = liveSearch,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun aSearchThatMatchesNothingOffersToScanTheBarcode() {
+        var scans = 0
+        show(searchState = SearchUiState(query = "zzqxvkw", noMatches = true), onScan = { scans++ })
+
+        compose.onNodeWithText(stringOf(R.string.home_scan_button)).performScrollTo().performClick()
+
+        assertEquals(1, scans)
+    }
+
+    @Test
+    fun aFailedFirstSearchOffersToScanTheBarcode() {
+        var scans = 0
+        show(searchState = SearchUiState(query = "hagelslag", error = LookupError.OFFLINE), onScan = { scans++ })
+
+        compose.onNodeWithText(stringOf(R.string.home_scan_button)).performScrollTo().performClick()
+
+        assertEquals(1, scans)
+    }
+
+    /**
+     * A refined query replaces the list; the new list starts at its top rather than wherever the old
+     * one had been scrolled to (the lazy list otherwise keeps the first visible row by key).
+     */
+    @Test
+    fun aRefinedQueryShowsItsResultsFromTheTop() {
+        val hits = (0 until 30).map(::numberedHit)
+        liveSearch = SearchUiState(query = "prod", hits = hits)
+        showWithLiveSearch()
+        compose.onNodeWithTag(HOME_SEARCH_RESULTS_TAG).performScrollToIndex(hits.lastIndex)
+        compose.onNodeWithText("Product 2").assertDoesNotExist()
+
+        compose.runOnIdle { liveSearch = SearchUiState(query = "produ", hits = hits.drop(2)) }
+
+        compose.onNodeWithText("Product 2").assertIsDisplayed()
+    }
+
+    /** Clearing a search returns to Recents where they were, not to the top of Home. */
+    @Test
+    fun clearingASearchReturnsToWhereRecentsWereScrolled() {
+        val recents = (1..15).map { recentEntry(barcode = "$it", name = "Recent $it") }
+        showWithLiveSearch(recents = recents)
+        compose.onNodeWithTag(HOME_BODY_TAG).performScrollToNode(hasText("Recent 15"))
+        compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertDoesNotExist()
+
+        compose.runOnIdle { liveSearch = SearchUiState(query = "choc", hits = listOf(searchHit())) }
+        compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
+        compose.runOnIdle { liveSearch = SearchUiState() }
+
+        compose.onNodeWithText("Recent 15").assertIsDisplayed()
     }
 }

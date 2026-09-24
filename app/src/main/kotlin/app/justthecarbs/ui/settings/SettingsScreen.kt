@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,6 +43,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,6 +94,9 @@ fun SettingsScreen(
     onClearRecents: () -> Unit,
     onClearProducts: () -> Unit,
     onReplayTutorial: () -> Unit = {},
+    /** A clear that has just finished, to confirm in a Snackbar; null when there is none. */
+    cleared: ClearedData? = null,
+    onClearedShown: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     var confirmClearRecents by remember { mutableStateOf(false) }
@@ -100,6 +109,21 @@ fun SettingsScreen(
     var evidenceExportFailed by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
+
+    // Confirms a clear once it has actually run (the ViewModel reports it only after the database
+    // has answered), then consumes the report. Keyed on it, so a second, different clear replaces
+    // the first message rather than queueing behind it.
+    val snackbarHostState = remember { SnackbarHostState() }
+    val clearedMessage = when (cleared) {
+        ClearedData.RECENT_HISTORY -> stringResource(R.string.settings_cleared_recents)
+        ClearedData.SAVED_PRODUCTS -> stringResource(R.string.settings_cleared_products)
+        null -> null
+    }
+    LaunchedEffect(cleared) {
+        if (clearedMessage == null) return@LaunchedEffect
+        snackbarHostState.showSnackbar(clearedMessage)
+        onClearedShown()
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
@@ -168,8 +192,17 @@ fun SettingsScreen(
                 HorizontalDivider()
 
                 SectionLabel(stringResource(R.string.settings_interaction))
+                // One control, not a label beside a switch: the whole row toggles, so tapping the
+                // words works, and TalkBack meets a single switch that carries its own name.
                 Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.minTouchTarget),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = Space.minTouchTarget)
+                        .toggleable(
+                            value = settings.hapticsEnabled,
+                            role = Role.Switch,
+                            onValueChange = onHapticsChanged,
+                        ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -177,7 +210,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f),
                     )
-                    Switch(checked = settings.hapticsEnabled, onCheckedChange = onHapticsChanged)
+                    Switch(checked = settings.hapticsEnabled, onCheckedChange = null)
                 }
 
                 // Replaying the tutorial belongs with Interaction rather than in a section of its
@@ -397,6 +430,16 @@ fun SettingsScreen(
                 Spacer(Modifier.height(Space.l))
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = Space.screenEdge, vertical = Space.s),
+        ) { data ->
+            Snackbar(snackbarData = data, shape = RoundedCornerShape(Space.buttonRadius))
+        }
     }
 
     // Both destructive actions confirm first (§43). The product wording spells out that verified
@@ -438,6 +481,8 @@ private fun SettingsChoiceSegment(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // One group of mutually exclusive options, announced as such.
+            .selectableGroup()
             .clip(outerShape)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, outerShape)

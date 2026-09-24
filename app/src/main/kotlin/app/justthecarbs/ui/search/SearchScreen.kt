@@ -1,5 +1,11 @@
 package app.justthecarbs.ui.search
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,7 +38,10 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -60,6 +71,7 @@ import app.justthecarbs.ui.components.SearchResultRow
 import app.justthecarbs.ui.components.SecondaryAction
 import app.justthecarbs.ui.components.SectionLabel
 import app.justthecarbs.ui.theme.Destination
+import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.accent
 
@@ -141,6 +153,9 @@ fun SearchScreen(
     if (claimsFocusOnArrival) {
         LaunchedEffect(Unit) { searchFieldFocus.requestFocus() }
     }
+
+    // Above the state `when`, so it outlives the searching line a refinement passes through.
+    val resultsListState = rememberSearchResultsListState(state.query)
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
@@ -245,6 +260,7 @@ fun SearchScreen(
                     // lose, and this branch is the one where they lose nothing.
                     state.hasResults -> SearchResults(
                         state = state,
+                        listState = resultsListState,
                         onSelect = onSelect,
                         onRetry = onRetry,
                         onListTouched = { focusManager.clearFocus() },
@@ -425,44 +441,22 @@ internal fun SearchInformationalState(
 @Composable
 private fun SearchResults(
     state: SearchUiState,
+    listState: LazyListState,
     onSelect: (ProductSearchHit) -> Unit,
     onRetry: () -> Unit,
     onListTouched: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        // Rate limiting first, and deliberately without a Retry action: the queued query resumes by
-        // itself, so a button there would only invite the request hammering the backoff exists to
-        // stop. It is not an error and is never drawn as one.
-        if (state.rateLimited) {
-            RefreshErrorBanner(
-                text = stringResource(R.string.search_rate_limited),
-                modifier = Modifier
-                    .padding(horizontal = Space.screenEdge, vertical = Space.xs)
-                    .testTag(SEARCH_RATE_LIMITED_TAG),
-            )
-        } else if (state.refreshFailed) {
-            RefreshErrorBanner(
-                text = stringResource(R.string.search_refresh_failed),
-                retryText = stringResource(R.string.error_retry),
-                onRetry = onRetry,
-                modifier = Modifier
-                    .padding(horizontal = Space.screenEdge, vertical = Space.xs)
-                    .testTag(SEARCH_REFRESH_ERROR_TAG),
-            )
-        } else if (state.error != null) {
-            // Only stored matches are listed and the online search failed: the list stays, and this
-            // says what is missing from it rather than replacing it with a full-screen failure.
-            RefreshErrorBanner(
-                text = stringResource(R.string.search_online_failed),
-                retryText = stringResource(R.string.error_retry),
-                onRetry = onRetry,
-                modifier = Modifier
-                    .padding(horizontal = Space.screenEdge, vertical = Space.xs)
-                    .testTag(SEARCH_ONLINE_ERROR_TAG),
-            )
-        }
+        SearchResultsNotice(
+            state = state,
+            onRetry = onRetry,
+            rateLimitedTag = SEARCH_RATE_LIMITED_TAG,
+            refreshErrorTag = SEARCH_REFRESH_ERROR_TAG,
+            onlineErrorTag = SEARCH_ONLINE_ERROR_TAG,
+        )
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = Space.screenEdge)
@@ -475,6 +469,87 @@ private fun SearchResults(
             searchResultItems(state, onSelect)
         }
     }
+}
+
+/** Which inline notice, if any, sits above a list of results. */
+private enum class ResultsNotice { RATE_LIMITED, REFRESH_FAILED, ONLINE_FAILED }
+
+/**
+ * The inline notice a failed refresh leaves above the results, shared by Home and this screen so the
+ * two cannot drift.
+ *
+ * Rate limiting first, and deliberately without a Retry action: the queued query resumes by itself,
+ * so a button there would only invite the request hammering the backoff exists to stop. It is not an
+ * error and is never drawn as one. The online-failed notice means only stored matches are listed and
+ * the online search failed: the list stays, and the notice says what is missing from it rather than
+ * replacing it with a full-screen failure.
+ *
+ * Animated in and out, height included, so a notice arriving over a list someone is reading slides
+ * the rows down rather than shoving them in one frame.
+ */
+@Composable
+internal fun SearchResultsNotice(
+    state: SearchUiState,
+    onRetry: () -> Unit,
+    rateLimitedTag: String,
+    refreshErrorTag: String,
+    onlineErrorTag: String,
+) {
+    val notice = when {
+        state.rateLimited -> ResultsNotice.RATE_LIMITED
+        state.refreshFailed -> ResultsNotice.REFRESH_FAILED
+        state.error != null -> ResultsNotice.ONLINE_FAILED
+        else -> null
+    }
+    AnimatedContent(
+        targetState = notice,
+        transitionSpec = {
+            fadeIn(tween(Motion.STANDARD_MS)) togetherWith fadeOut(tween(Motion.QUICK_MS)) using
+                SizeTransform(clip = false) { _, _ -> tween(Motion.STANDARD_MS) }
+        },
+        label = "results-notice",
+    ) { shown ->
+        val bannerModifier = Modifier.padding(horizontal = Space.screenEdge, vertical = Space.xs)
+        when (shown) {
+            ResultsNotice.RATE_LIMITED -> RefreshErrorBanner(
+                text = stringResource(R.string.search_rate_limited),
+                modifier = bannerModifier.testTag(rateLimitedTag),
+            )
+            ResultsNotice.REFRESH_FAILED -> RefreshErrorBanner(
+                text = stringResource(R.string.search_refresh_failed),
+                retryText = stringResource(R.string.error_retry),
+                onRetry = onRetry,
+                modifier = bannerModifier.testTag(refreshErrorTag),
+            )
+            ResultsNotice.ONLINE_FAILED -> RefreshErrorBanner(
+                text = stringResource(R.string.search_online_failed),
+                retryText = stringResource(R.string.error_retry),
+                onRetry = onRetry,
+                modifier = bannerModifier.testTag(onlineErrorTag),
+            )
+            null -> Unit
+        }
+    }
+}
+
+/**
+ * The results list's scroll position, starting again from the top whenever the query changes.
+ *
+ * A lazy list keeps its first visible row by key, so a refined query whose results still contained
+ * that row stayed scrolled deep into the new list. Only a *change* resets it: coming back to the
+ * screen with the same query (from a product, say) keeps the reader where they were.
+ */
+@Composable
+internal fun rememberSearchResultsListState(query: String): LazyListState {
+    val listState = rememberLazyListState()
+    var positionedFor by remember { mutableStateOf(query) }
+    LaunchedEffect(query) {
+        if (query != positionedFor) {
+            positionedFor = query
+            listState.scrollToItem(0)
+        }
+    }
+    return listState
 }
 
 /**
@@ -490,13 +565,13 @@ internal fun LazyListScope.searchResultItems(state: SearchUiState, onSelect: (Pr
         return
     }
     item(key = SAVED_SECTION_KEY) {
-        SearchSectionLabel(R.string.search_saved_section, SEARCH_SAVED_SECTION_TAG)
+        SearchSectionLabel(R.string.search_saved_section, SEARCH_SAVED_SECTION_TAG, Modifier.animateItem())
     }
     resultRows(state.savedHits, onSelect)
     val online = state.onlineHits
     if (online.isNotEmpty()) {
         item(key = ONLINE_SECTION_KEY) {
-            SearchSectionLabel(R.string.search_online_section, SEARCH_ONLINE_SECTION_TAG)
+            SearchSectionLabel(R.string.search_online_section, SEARCH_ONLINE_SECTION_TAG, Modifier.animateItem())
         }
         resultRows(online, onSelect)
     }
@@ -504,16 +579,20 @@ internal fun LazyListScope.searchResultItems(state: SearchUiState, onSelect: (Pr
 
 private fun LazyListScope.resultRows(hits: List<ProductSearchHit>, onSelect: (ProductSearchHit) -> Unit) {
     items(hits, key = { it.barcode }) { hit ->
-        SearchResultRow(hit = hit, onClick = { onSelect(hit) })
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        // One animated node per row, divider included, so a refined list fades rows in and out and
+        // slides the survivors rather than cutting between two lists.
+        Column(modifier = Modifier.animateItem()) {
+            SearchResultRow(hit = hit, onClick = { onSelect(hit) })
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
     }
 }
 
 @Composable
-private fun SearchSectionLabel(text: Int, tag: String) {
+private fun SearchSectionLabel(text: Int, tag: String, modifier: Modifier = Modifier) {
     SectionLabel(
         text = stringResource(text),
-        modifier = Modifier.padding(top = Space.m, bottom = Space.xs).testTag(tag),
+        modifier = modifier.padding(top = Space.m, bottom = Space.xs).testTag(tag),
     )
 }
 

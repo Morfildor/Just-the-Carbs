@@ -256,6 +256,8 @@
     <string name="meal_total_empty_placeholder" tools:ignore="MissingTranslation">—</string>
     <string name="meal_empty_title" tools:ignore="MissingTranslation">No items yet</string>
     <string name="meal_empty_body" tools:ignore="MissingTranslation">Calculate a portion, then tap Add to meal.</string>
+    <!-- The empty meal's way forward, so clearing a meal never leaves a screen with nothing to do. -->
+    <string name="meal_empty_scan" tools:ignore="MissingTranslation">Scan barcode</string>
     <string name="meal_clear" tools:ignore="MissingTranslation">Clear meal</string>
     <string name="meal_clear_confirm" tools:ignore="MissingTranslation">Clear this meal? The items are not saved anywhere.</string>
     <string name="meal_remove_item" tools:ignore="MissingTranslation">Remove %1$s</string>
@@ -757,6 +759,9 @@
          the user tapped said `Clear`. A confirm button should repeat the verb it is confirming. -->
     <string name="settings_confirm_clear">Clear</string>
     <string name="settings_cancel">Cancel</string>
+    <!-- Shown once the clear has actually finished, never on the confirm tap itself. -->
+    <string name="settings_cleared_recents">Recent history cleared</string>
+    <string name="settings_cleared_products">Saved products deleted</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Version %1$s</string>
     <string name="settings_privacy_policy" tools:ignore="MissingTranslation">Privacy Policy</string>

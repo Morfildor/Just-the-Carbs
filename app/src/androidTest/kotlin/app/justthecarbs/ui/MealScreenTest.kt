@@ -37,6 +37,7 @@ import app.justthecarbs.ui.meal.MEAL_ADD_TAG
 import app.justthecarbs.ui.meal.MEAL_BAR_TAG
 import app.justthecarbs.ui.meal.MEAL_CLEAR_TAG
 import app.justthecarbs.ui.meal.MEAL_COPY_TAG
+import app.justthecarbs.ui.meal.MEAL_EMPTY_SCAN_TAG
 import app.justthecarbs.ui.meal.MEAL_SCAN_NEXT_TAG
 import app.justthecarbs.ui.meal.MEAL_TOTAL_TAG
 import app.justthecarbs.ui.meal.MealScreen
@@ -93,7 +94,7 @@ class MealScreenTest {
 
     // ---- the meal screen itself ----------------------------------------------------------------
 
-    private fun showMeal(initial: List<MealItem>) {
+    private fun showMeal(initial: List<MealItem>, onScanNext: () -> Unit = {}) {
         compose.setContent {
             var items by remember { mutableStateOf(initial) }
             var confirming by remember { mutableStateOf(false) }
@@ -125,6 +126,7 @@ class MealScreenTest {
                         lastRemoved = null
                     },
                     onUndoExpired = { lastRemoved = null },
+                    onScanNext = onScanNext,
                 )
             }
         }
@@ -559,11 +561,33 @@ class MealScreenTest {
 
     @Test
     fun anEmptyMealDoesNotOfferScanNext() {
-        // On an empty meal the primary action is still to calculate a portion, which the empty
-        // state already says; a second competing call to action would just be noise.
+        // "Next" presumes a first item. The empty state carries its own way forward instead (below),
+        // so the total panel does not repeat it as a second competing call to action.
         showMeal(emptyList())
 
         compose.onNodeWithTag(MEAL_SCAN_NEXT_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun anEmptyMealOffersAWayToScanABarcode() {
+        var scans = 0
+        showMeal(emptyList(), onScanNext = { scans++ })
+
+        compose.onNodeWithTag(MEAL_EMPTY_SCAN_TAG).assertIsDisplayed().performClick()
+
+        assertEquals(1, scans)
+    }
+
+    /** Clearing the meal is not a dead end: the emptied screen still offers a way on. */
+    @Test
+    fun clearingTheMealLeavesAWayToScanTheNextItem() {
+        showMeal(listOf(item(1, "A", "50 g", "37.3", "18.65")))
+
+        compose.onNodeWithTag(MEAL_CLEAR_TAG).performClick()
+        compose.onNode(hasAnyAncestor(isDialog()) and hasText("Clear meal") and hasClickAction())
+            .performClick()
+
+        compose.onNodeWithTag(MEAL_EMPTY_SCAN_TAG).assertIsDisplayed()
     }
 
     // ---- copying the total ---------------------------------------------------------------------

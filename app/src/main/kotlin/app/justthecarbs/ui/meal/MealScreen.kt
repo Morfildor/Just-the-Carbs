@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -51,6 +52,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
@@ -85,6 +87,7 @@ const val MEAL_TOTAL_TAG = "meal_total"
 const val MEAL_COPY_TAG = "meal_copy"
 const val MEAL_CLEAR_TAG = "meal_clear"
 const val MEAL_SCAN_NEXT_TAG = "meal_scan_next"
+const val MEAL_EMPTY_SCAN_TAG = "meal_empty_scan"
 const val MEAL_SNACKBAR_TAG = "meal_snackbar"
 const val MEAL_ITEM_ROW_TAG = "meal_item_row"
 const val MEAL_EDIT_FIELD_TAG = "meal_edit_field"
@@ -211,7 +214,7 @@ fun MealScreen(
             // larger-font one — the exact trap the original bottom-anchor fix already named.
             Box(modifier = Modifier.weight(1f)) {
                 if (state.items.isEmpty()) {
-                    EmptyMeal(modifier = Modifier.fillMaxSize())
+                    EmptyMeal(onScan = onScanNext, modifier = Modifier.fillMaxSize())
                 } else {
                     LazyColumn(
                         modifier = Modifier
@@ -219,12 +222,17 @@ fun MealScreen(
                             .padding(horizontal = Space.screenEdge),
                     ) {
                         items(state.items, key = { it.id }) { item ->
-                            MealItemRow(
-                                item = item,
-                                onEdit = { onEditItem(item) },
-                                onRemove = { onRemoveItem(item) },
-                            )
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            // One animated node per line, divider included: a removed line fades
+                            // and the gap closes, and Undo brings it back the same way, instead of
+                            // the list snapping between two states.
+                            Column(modifier = Modifier.animateItem()) {
+                                MealItemRow(
+                                    item = item,
+                                    onEdit = { onEditItem(item) },
+                                    onRemove = { onRemoveItem(item) },
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
                         }
                     }
                 }
@@ -248,8 +256,13 @@ fun MealScreen(
     }
 }
 
+/**
+ * No items. Reached on arrival with nothing added and, more often, straight after *Clear meal* —
+ * which previously left a screen whose only way on was Back. The barcode action goes where *Scan
+ * next item* goes, the app's fastest way to a product; nothing navigates by itself.
+ */
 @Composable
-private fun EmptyMeal(modifier: Modifier = Modifier) {
+private fun EmptyMeal(onScan: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -267,6 +280,10 @@ private fun EmptyMeal(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(Space.m))
+            Box(modifier = Modifier.testTag(MEAL_EMPTY_SCAN_TAG)) {
+                PrimaryAction(text = stringResource(R.string.meal_empty_scan), onClick = onScan)
+            }
         }
     }
 }
@@ -520,6 +537,9 @@ private fun MealItemEditDialog(
         )
     }
 
+    // Save and the keyboard's Done share this, so the two cannot disagree about what is saveable.
+    val save = { if (preview != null && amount != null) onSave(amount, description) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.jtcDialogOutline(),
@@ -550,7 +570,12 @@ private fun MealItemEditDialog(
                         )
                     },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
+                    ),
+                    // An amount Save would refuse does nothing here either; the dialog stays open.
+                    keyboardActions = KeyboardActions(onDone = { save() }),
                     isError = text.isNotBlank() && preview == null,
                     shape = RoundedCornerShape(Space.buttonRadius),
                     colors = jtcTextFieldColors(),
@@ -573,7 +598,7 @@ private fun MealItemEditDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { amount?.let { onSave(it, description) } },
+                onClick = save,
                 enabled = preview != null,
                 modifier = Modifier.testTag(MEAL_EDIT_SAVE_TAG),
             ) { Text(stringResource(R.string.meal_edit_save)) }
