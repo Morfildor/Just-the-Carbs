@@ -1,5 +1,6 @@
 package app.justthecarbs.ui
 
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -10,6 +11,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
@@ -24,6 +28,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.justthecarbs.AppContainer
+import app.justthecarbs.R
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.MealTotal
 import app.justthecarbs.domain.NutritionBasis
@@ -50,6 +55,7 @@ import app.justthecarbs.ui.product.ProductNavigationEvent
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductViewModel
 import app.justthecarbs.domain.ProductDataOrigin
+import app.justthecarbs.ui.scan.CameraWarmUp
 import app.justthecarbs.ui.scan.LabelScannerScreen
 import app.justthecarbs.ui.scan.ScannerScreen
 import app.justthecarbs.ui.settings.SettingsScreen
@@ -421,76 +427,95 @@ fun JustTheCarbsNavHost(
             val quickAddStatus by viewModel.quickAdd.collectAsStateWithLifecycle()
             val staleMeal by viewModel.staleMeal.collectAsStateWithLifecycle()
 
-            HomeScreen(
-                recents = recents,
-                settings = settings,
-                onScan = { navController.navigate(Routes.SCAN) },
-                onManualEntry = { navController.navigate(Routes.manual()) },
-                onOpenProduct = { navController.navigate(Routes.product(it)) },
-                onToggleFavorite = viewModel::toggleFavorite,
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-                onForgetRecent = viewModel::forgetRecentUse,
-                forgotten = forgottenRecent,
-                onUndoForgetRecent = viewModel::undoForgetRecentUse,
-                onForgetUndoExpired = viewModel::clearForgetUndo,
-                quickAddStatus = quickAddStatus,
-                onQuickAdd = viewModel::quickAdd,
-                quickAddEvents = viewModel.quickAddEvents,
-                onScanLabel = { navController.navigate(Routes.labelScan()) },
-                // The tutorial is offered here rather than opened automatically. Both actions are
-                // ordinary forward navigations / a single write — neither is a gate.
-                showTutorialReminder = TutorialReminder.shouldShow(
-                    hasSeenTutorial = settings.hasSeenTutorial,
-                    launchCount = settings.launchCount,
-                ),
-                onStartTutorial = { navController.navigate(Routes.onboarding()) },
-                // Dismissing is the same statement finishing and skipping make — "I am done with
-                // this" — so it sets the same single flag and the reminder never returns.
-                //
-                // Written here rather than through HomeViewModel: that ViewModel owns products and
-                // the meal and has no settings dependency, and giving it one so it can set a
-                // preference would widen it for a single one-line write. `homeScope` outlives the
-                // card being removed from composition, so the write cannot be cancelled by its own
-                // effect.
-                onDismissTutorialReminder = {
-                    homeScope.launch { container.settingsRepository.setHasSeenTutorial(true) }
-                },
-                mealItems = mealItems,
-                mealTotal = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems),
-                onOpenMeal = { navController.navigate(Routes.MEAL) },
-                searchState = searchState,
-                onSearchQueryChanged = searchViewModel::onQueryChanged,
-                onSearchSubmit = searchViewModel::search,
-                onSearchSelect = { hit -> navController.navigate(Routes.product(hit.barcode)) },
-                onSearchScanLabel = { navController.navigate(Routes.labelScan()) },
-                onSearchEnterManually = { navController.navigate(Routes.manual()) },
-                onSearchRetry = searchViewModel::retry,
-                staleMeal = staleMeal,
-                onResolveStaleMeal = viewModel::resolveStaleMeal,
-                onDismissStaleMeal = viewModel::dismissStaleMeal,
-            )
+            // Time to full display: Home is complete once the database has answered for Recents —
+            // including with nothing, on a first run. Reported once per Activity; reaching Home later
+            // (after the welcome carousel, or back from a shortcut-opened scanner) reports it then.
+            val recentsLoaded by viewModel.recentsLoaded.collectAsStateWithLifecycle()
+            ReportDrawnWhen { recentsLoaded }
+
+            // Warm CameraX once Home's first frame is on screen, so the first scan does not open on
+            // a black preview while CameraX initialises. After the frame rather than at process start
+            // so it never competes with the launch; see CameraWarmUp for why it opens no camera.
+            val appContext = LocalContext.current.applicationContext
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                CameraWarmUp.startOnce(appContext)
+            }
+
+            DestinationPane(stringResource(R.string.app_name)) {
+                HomeScreen(
+                    recents = recents,
+                    settings = settings,
+                    onScan = { navController.navigate(Routes.SCAN) },
+                    onManualEntry = { navController.navigate(Routes.manual()) },
+                    onOpenProduct = { navController.navigate(Routes.product(it)) },
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                    onForgetRecent = viewModel::forgetRecentUse,
+                    forgotten = forgottenRecent,
+                    onUndoForgetRecent = viewModel::undoForgetRecentUse,
+                    onForgetUndoExpired = viewModel::clearForgetUndo,
+                    quickAddStatus = quickAddStatus,
+                    onQuickAdd = viewModel::quickAdd,
+                    quickAddEvents = viewModel.quickAddEvents,
+                    onScanLabel = { navController.navigate(Routes.labelScan()) },
+                    // The tutorial is offered here rather than opened automatically. Both actions are
+                    // ordinary forward navigations / a single write — neither is a gate.
+                    showTutorialReminder = TutorialReminder.shouldShow(
+                        hasSeenTutorial = settings.hasSeenTutorial,
+                        launchCount = settings.launchCount,
+                    ),
+                    onStartTutorial = { navController.navigate(Routes.onboarding()) },
+                    // Dismissing is the same statement finishing and skipping make — "I am done with
+                    // this" — so it sets the same single flag and the reminder never returns.
+                    //
+                    // Written here rather than through HomeViewModel: that ViewModel owns products and
+                    // the meal and has no settings dependency, and giving it one so it can set a
+                    // preference would widen it for a single one-line write. `homeScope` outlives the
+                    // card being removed from composition, so the write cannot be cancelled by its own
+                    // effect.
+                    onDismissTutorialReminder = {
+                        homeScope.launch { container.settingsRepository.setHasSeenTutorial(true) }
+                    },
+                    mealItems = mealItems,
+                    mealTotal = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems),
+                    onOpenMeal = { navController.navigate(Routes.MEAL) },
+                    searchState = searchState,
+                    onSearchQueryChanged = searchViewModel::onQueryChanged,
+                    onSearchSubmit = searchViewModel::search,
+                    onSearchSelect = { hit -> navController.navigate(Routes.product(hit.barcode)) },
+                    onSearchScanLabel = { navController.navigate(Routes.labelScan()) },
+                    onSearchEnterManually = { navController.navigate(Routes.manual()) },
+                    onSearchRetry = searchViewModel::retry,
+                    staleMeal = staleMeal,
+                    onResolveStaleMeal = viewModel::resolveStaleMeal,
+                    onDismissStaleMeal = viewModel::dismissStaleMeal,
+                )
+            }
         }
 
         composable(Routes.SCAN) {
-            ScannerScreen(
-                hapticsEnabled = settings.hapticsEnabled,
-                onBarcode = { barcode ->
-                    navController.navigate(Routes.product(barcode)) {
-                        popUpTo(Routes.SCAN) { inclusive = true }
-                    }
-                },
-                onManualBarcode = { barcode ->
-                    navController.navigate(Routes.product(barcode)) {
-                        popUpTo(Routes.SCAN) { inclusive = true }
-                    }
-                },
-                onClose = { navController.popBackStack() },
-                onEnterManually = {
-                    navController.navigate(Routes.manual()) {
-                        popUpTo(Routes.SCAN) { inclusive = true }
-                    }
-                },
-            )
+            DestinationPane(stringResource(R.string.home_scan_button)) {
+                ScannerScreen(
+                    hapticsEnabled = settings.hapticsEnabled,
+                    onBarcode = { barcode ->
+                        navController.navigate(Routes.product(barcode)) {
+                            popUpTo(Routes.SCAN) { inclusive = true }
+                        }
+                    },
+                    onManualBarcode = { barcode ->
+                        navController.navigate(Routes.product(barcode)) {
+                            popUpTo(Routes.SCAN) { inclusive = true }
+                        }
+                    },
+                    onClose = { navController.popBackStack() },
+                    onEnterManually = {
+                        navController.navigate(Routes.manual()) {
+                            popUpTo(Routes.SCAN) { inclusive = true }
+                        }
+                    },
+                )
+            }
         }
 
         composable(
@@ -541,104 +566,106 @@ fun JustTheCarbsNavHost(
                 }
             }
 
-            ProductScreen(
-                state = state,
-                settings = settings,
-                onPortionChanged = viewModel::onPortionChanged,
-                onSetPortion = viewModel::setPortion,
-                onToggleFavorite = viewModel::toggleFavorite,
-                onBack = {
-                    // The portion is remembered on the way out, not on every keystroke, so a
-                    // half-typed number never becomes the pre-fill for next time (§20).
-                    //
-                    // Awaited before popping: the final semantic snapshot must finish writing (or
-                    // be recognized as already recorded by a successful Add) before this
-                    // back-stack entry and its ViewModel are destroyed.
-                    coroutineScope.launch {
-                        viewModel.rememberUsageAndAwait()
-                        navController.popBackStack()
-                    }
-                },
-                // *Verify label* opens the camera straight into nutrition-label OCR (spec §7).
-                // It previously opened a dialog asking the user to retype the figure — which is
-                // verification only in the sense that they had to read the package to do it, and
-                // is precisely the transcription step the app exists to remove. The typed path is
-                // still reachable from the comparison's *Edit detected value*.
-                onVerify = { navController.navigate(Routes.labelScan(barcode, compare = true)) },
-                onVerifyByTyping = { viewModel.showVerifyDialog(true) },
-                onDismissVerify = { viewModel.showVerifyDialog(false) },
-                onConfirmVerification = viewModel::confirmVerification,
-                onResetOnline = viewModel::resetToOnlineValue,
-                // Shared by two very different situations: the calculator's "rescan" (a product is
-                // loaded, so the reading is a comparison) and the not-found screen's recovery action
-                // (no product loaded yet, so the reading should create one). Only `state.product`
-                // tells them apart — the barcode is non-empty in both cases (§12).
-                onScanLabel = {
-                    navController.navigate(Routes.labelScan(barcode, compare = state.product != null))
-                },
-                onEnterManually = { navController.navigate(Routes.manual(barcode)) },
-                onRetry = { viewModel.load(barcode) },
-                onSearch = { navController.navigate(Routes.SEARCH) },
-                // One tap from *Product not found* back to the camera (§5). The not-found product is
-                // popped rather than left underneath: it is a dead end the user is leaving, and
-                // keeping it would put a stale failure between the next result and Home. `SCAN` is a
-                // fresh entry, so its analyzer — and with it BarcodeStabilityTracker's held-barcode
-                // count and one-shot latch — is rebuilt from scratch.
-                onScanAgain = {
-                    navController.navigate(Routes.SCAN) {
-                        popUpTo(Routes.PRODUCT) { inclusive = true }
-                    }
-                },
-                onApplyNewerRemote = viewModel::applyNewerRemoteValue,
-                onDismissNewerRemote = viewModel::dismissNewerRemoteValue,
-                onSwitchToGrams = viewModel::switchToGrams,
-                onSwitchToPortionUnit = viewModel::switchToPortionUnit,
-                onCountChanged = viewModel::onCountChanged,
-                onShowAddPortionUnitForm = viewModel::showAddPortionUnitForm,
-                onAddPortionUnit = viewModel::addPortionUnit,
-                onVerifyPortionUnit = viewModel::verifySelectedPortionUnit,
-                onApplyNewerRemotePortionUnit = viewModel::applyNewerRemotePortionUnit,
-                onDismissNewerRemotePortionUnit = viewModel::dismissNewerRemotePortionUnit,
-                onCorrectPortionUnit = viewModel::correctSelectedPortionUnit,
-                onCancelPortionUnitCorrection = viewModel::cancelPortionUnitCorrection,
-                onAddToMeal = { description, fallbackName ->
-                    viewModel.addCurrentToMeal(description, fallbackName, scanNext = false)
-                },
-                // Straight back to the camera, with this product popped off the stack, once the
-                // write has landed: after adding a fourth item the user wants the scanner, not a
-                // four-deep back stack of products they have already finished with (§11). The
-                // navigation itself happens in the `navigationEvents` collector above, only after
-                // `addCurrentToMeal` confirms persistence succeeded (P0 §1) — this call only starts
-                // the write and cannot itself trigger navigation.
-                onAddToMealAndScanNext = { description, fallbackName ->
-                    viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
-                },
-                // *Add & scan next* while "Added" is still held: the item is already in the meal,
-                // so this only opens the scanner, the same way the write's success event does.
-                onScanNext = {
-                    navController.navigate(Routes.SCAN) { popUpTo(Routes.HOME) }
-                },
-                onOpenMeal = { navController.navigate(Routes.MEAL) },
-                onResolveStaleMeal = viewModel::resolveStaleMeal,
-                onDismissStaleMeal = viewModel::dismissStaleMeal,
-                onConfirmLabelMatch = viewModel::confirmLabelMatch,
-                onDismissLabelHandoffFailure = viewModel::dismissLabelHandoffFailure,
-                onUseDetectedLabelValue = viewModel::useDetectedLabelValue,
-                onEditDetectedLabelValue = { detected ->
-                    // "Edit detected value" hands the reading to manual entry pre-filled, so the
-                    // user corrects the OCR rather than retyping the whole label from scratch.
-                    viewModel.dismissLabelVerdict()
-                    navController.navigate(
-                        Routes.manual(
-                            barcode,
-                            detected.toPlainString(),
-                            state.product?.basis?.name.orEmpty(),
-                        ),
-                    )
-                },
-                onDismissLabelVerdict = viewModel::dismissLabelVerdict,
-                onSelectUsualPortion = viewModel::applyUsualPortion,
-            )
+            DestinationPane(productPaneTitle(state.product?.name, stringResource(R.string.quick_title))) {
+                ProductScreen(
+                    state = state,
+                    settings = settings,
+                    onPortionChanged = viewModel::onPortionChanged,
+                    onSetPortion = viewModel::setPortion,
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onBack = {
+                        // The portion is remembered on the way out, not on every keystroke, so a
+                        // half-typed number never becomes the pre-fill for next time (§20).
+                        //
+                        // Awaited before popping: the final semantic snapshot must finish writing (or
+                        // be recognized as already recorded by a successful Add) before this
+                        // back-stack entry and its ViewModel are destroyed.
+                        coroutineScope.launch {
+                            viewModel.rememberUsageAndAwait()
+                            navController.popBackStack()
+                        }
+                    },
+                    // *Verify label* opens the camera straight into nutrition-label OCR (spec §7).
+                    // It previously opened a dialog asking the user to retype the figure — which is
+                    // verification only in the sense that they had to read the package to do it, and
+                    // is precisely the transcription step the app exists to remove. The typed path is
+                    // still reachable from the comparison's *Edit detected value*.
+                    onVerify = { navController.navigate(Routes.labelScan(barcode, compare = true)) },
+                    onVerifyByTyping = { viewModel.showVerifyDialog(true) },
+                    onDismissVerify = { viewModel.showVerifyDialog(false) },
+                    onConfirmVerification = viewModel::confirmVerification,
+                    onResetOnline = viewModel::resetToOnlineValue,
+                    // Shared by two very different situations: the calculator's "rescan" (a product is
+                    // loaded, so the reading is a comparison) and the not-found screen's recovery action
+                    // (no product loaded yet, so the reading should create one). Only `state.product`
+                    // tells them apart — the barcode is non-empty in both cases (§12).
+                    onScanLabel = {
+                        navController.navigate(Routes.labelScan(barcode, compare = state.product != null))
+                    },
+                    onEnterManually = { navController.navigate(Routes.manual(barcode)) },
+                    onRetry = { viewModel.load(barcode) },
+                    onSearch = { navController.navigate(Routes.SEARCH) },
+                    // One tap from *Product not found* back to the camera (§5). The not-found product is
+                    // popped rather than left underneath: it is a dead end the user is leaving, and
+                    // keeping it would put a stale failure between the next result and Home. `SCAN` is a
+                    // fresh entry, so its analyzer — and with it BarcodeStabilityTracker's held-barcode
+                    // count and one-shot latch — is rebuilt from scratch.
+                    onScanAgain = {
+                        navController.navigate(Routes.SCAN) {
+                            popUpTo(Routes.PRODUCT) { inclusive = true }
+                        }
+                    },
+                    onApplyNewerRemote = viewModel::applyNewerRemoteValue,
+                    onDismissNewerRemote = viewModel::dismissNewerRemoteValue,
+                    onSwitchToGrams = viewModel::switchToGrams,
+                    onSwitchToPortionUnit = viewModel::switchToPortionUnit,
+                    onCountChanged = viewModel::onCountChanged,
+                    onShowAddPortionUnitForm = viewModel::showAddPortionUnitForm,
+                    onAddPortionUnit = viewModel::addPortionUnit,
+                    onVerifyPortionUnit = viewModel::verifySelectedPortionUnit,
+                    onApplyNewerRemotePortionUnit = viewModel::applyNewerRemotePortionUnit,
+                    onDismissNewerRemotePortionUnit = viewModel::dismissNewerRemotePortionUnit,
+                    onCorrectPortionUnit = viewModel::correctSelectedPortionUnit,
+                    onCancelPortionUnitCorrection = viewModel::cancelPortionUnitCorrection,
+                    onAddToMeal = { description, fallbackName ->
+                        viewModel.addCurrentToMeal(description, fallbackName, scanNext = false)
+                    },
+                    // Straight back to the camera, with this product popped off the stack, once the
+                    // write has landed: after adding a fourth item the user wants the scanner, not a
+                    // four-deep back stack of products they have already finished with (§11). The
+                    // navigation itself happens in the `navigationEvents` collector above, only after
+                    // `addCurrentToMeal` confirms persistence succeeded (P0 §1) — this call only starts
+                    // the write and cannot itself trigger navigation.
+                    onAddToMealAndScanNext = { description, fallbackName ->
+                        viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
+                    },
+                    // *Add & scan next* while "Added" is still held: the item is already in the meal,
+                    // so this only opens the scanner, the same way the write's success event does.
+                    onScanNext = {
+                        navController.navigate(Routes.SCAN) { popUpTo(Routes.HOME) }
+                    },
+                    onOpenMeal = { navController.navigate(Routes.MEAL) },
+                    onResolveStaleMeal = viewModel::resolveStaleMeal,
+                    onDismissStaleMeal = viewModel::dismissStaleMeal,
+                    onConfirmLabelMatch = viewModel::confirmLabelMatch,
+                    onDismissLabelHandoffFailure = viewModel::dismissLabelHandoffFailure,
+                    onUseDetectedLabelValue = viewModel::useDetectedLabelValue,
+                    onEditDetectedLabelValue = { detected ->
+                        // "Edit detected value" hands the reading to manual entry pre-filled, so the
+                        // user corrects the OCR rather than retyping the whole label from scratch.
+                        viewModel.dismissLabelVerdict()
+                        navController.navigate(
+                            Routes.manual(
+                                barcode,
+                                detected.toPlainString(),
+                                state.product?.basis?.name.orEmpty(),
+                            ),
+                        )
+                    },
+                    onDismissLabelVerdict = viewModel::dismissLabelVerdict,
+                    onSelectUsualPortion = viewModel::applyUsualPortion,
+                )
+            }
         }
 
         /**
@@ -710,45 +737,50 @@ fun JustTheCarbsNavHost(
                 }
             }
 
-            ProductScreen(
-                state = state,
-                settings = settings,
-                onPortionChanged = viewModel::onPortionChanged,
-                onSetPortion = viewModel::setPortion,
-                onToggleFavorite = {},
-                onBack = { navController.popBackStack() },
-                onVerify = {},
-                onDismissVerify = {},
-                onConfirmVerification = { _, _, _ -> },
-                onResetOnline = {},
-                // Re-scanning replaces this calculation with the next reading, rather than layering a
-                // second quick screen on the stack.
-                onScanLabel = {
-                    navController.navigate(Routes.labelScan()) {
-                        popUpTo(Routes.QUICK) { inclusive = true }
-                    }
-                },
-                onEnterManually = { navController.navigate(Routes.manual()) },
-                onRetry = {},
-                onAddToMeal = { description, fallbackName ->
-                    viewModel.addCurrentToMeal(description, fallbackName, scanNext = false)
-                },
-                // Navigation happens in the `navigationEvents` collector above, only after the write
-                // succeeds (P0 §1) — same as the barcode-product route.
-                onAddToMealAndScanNext = { description, fallbackName ->
-                    viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
-                },
-                // *Add & scan next* while "Added" is still held: the item is already in the meal,
-                // so this only opens the scanner, the same way the write's success event does.
-                onScanNext = {
-                    navController.navigate(Routes.SCAN) { popUpTo(Routes.HOME) }
-                },
-                onOpenMeal = { navController.navigate(Routes.MEAL) },
-                onResolveStaleMeal = viewModel::resolveStaleMeal,
-                onDismissStaleMeal = viewModel::dismissStaleMeal,
-                onShowSaveQuickCalculation = viewModel::showSaveQuickCalculation,
-                onSaveQuickCalculation = viewModel::saveQuickCalculation,
-            )
+            DestinationPane(
+                title = productPaneTitle(state.product?.name, stringResource(R.string.quick_title))
+                    ?: stringResource(R.string.quick_title),
+            ) {
+                ProductScreen(
+                    state = state,
+                    settings = settings,
+                    onPortionChanged = viewModel::onPortionChanged,
+                    onSetPortion = viewModel::setPortion,
+                    onToggleFavorite = {},
+                    onBack = { navController.popBackStack() },
+                    onVerify = {},
+                    onDismissVerify = {},
+                    onConfirmVerification = { _, _, _ -> },
+                    onResetOnline = {},
+                    // Re-scanning replaces this calculation with the next reading, rather than layering a
+                    // second quick screen on the stack.
+                    onScanLabel = {
+                        navController.navigate(Routes.labelScan()) {
+                            popUpTo(Routes.QUICK) { inclusive = true }
+                        }
+                    },
+                    onEnterManually = { navController.navigate(Routes.manual()) },
+                    onRetry = {},
+                    onAddToMeal = { description, fallbackName ->
+                        viewModel.addCurrentToMeal(description, fallbackName, scanNext = false)
+                    },
+                    // Navigation happens in the `navigationEvents` collector above, only after the write
+                    // succeeds (P0 §1) — same as the barcode-product route.
+                    onAddToMealAndScanNext = { description, fallbackName ->
+                        viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
+                    },
+                    // *Add & scan next* while "Added" is still held: the item is already in the meal,
+                    // so this only opens the scanner, the same way the write's success event does.
+                    onScanNext = {
+                        navController.navigate(Routes.SCAN) { popUpTo(Routes.HOME) }
+                    },
+                    onOpenMeal = { navController.navigate(Routes.MEAL) },
+                    onResolveStaleMeal = viewModel::resolveStaleMeal,
+                    onDismissStaleMeal = viewModel::dismissStaleMeal,
+                    onShowSaveQuickCalculation = viewModel::showSaveQuickCalculation,
+                    onSaveQuickCalculation = viewModel::saveQuickCalculation,
+                )
+            }
         }
 
         composable(Routes.SEARCH) {
@@ -771,32 +803,34 @@ fun JustTheCarbsNavHost(
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
 
-            SearchScreen(
-                state = state,
-                onQueryChanged = viewModel::onQueryChanged,
-                onSearchSubmit = viewModel::search,
-                onSelect = { hit ->
-                    // Selecting a result runs an ordinary barcode lookup, so a searched product is
-                    // cached, validated and given provenance by exactly the same path as a scanned
-                    // one. The search screen is popped: it was a way through, not a place to return
-                    // to with a stale query.
-                    navController.navigate(Routes.product(hit.barcode)) {
-                        popUpTo(Routes.SEARCH) { inclusive = true }
-                    }
-                },
-                onScanLabel = {
-                    navController.navigate(Routes.labelScan()) {
-                        popUpTo(Routes.SEARCH) { inclusive = true }
-                    }
-                },
-                onEnterManually = {
-                    navController.navigate(Routes.manual()) {
-                        popUpTo(Routes.SEARCH) { inclusive = true }
-                    }
-                },
-                onRetry = viewModel::retry,
-                onBack = { navController.popBackStack() },
-            )
+            DestinationPane(stringResource(R.string.search_title)) {
+                SearchScreen(
+                    state = state,
+                    onQueryChanged = viewModel::onQueryChanged,
+                    onSearchSubmit = viewModel::search,
+                    onSelect = { hit ->
+                        // Selecting a result runs an ordinary barcode lookup, so a searched product is
+                        // cached, validated and given provenance by exactly the same path as a scanned
+                        // one. The search screen is popped: it was a way through, not a place to return
+                        // to with a stale query.
+                        navController.navigate(Routes.product(hit.barcode)) {
+                            popUpTo(Routes.SEARCH) { inclusive = true }
+                        }
+                    },
+                    onScanLabel = {
+                        navController.navigate(Routes.labelScan()) {
+                            popUpTo(Routes.SEARCH) { inclusive = true }
+                        }
+                    },
+                    onEnterManually = {
+                        navController.navigate(Routes.manual()) {
+                            popUpTo(Routes.SEARCH) { inclusive = true }
+                        }
+                    },
+                    onRetry = viewModel::retry,
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
 
         composable(Routes.MEAL) {
@@ -805,22 +839,24 @@ fun JustTheCarbsNavHost(
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
 
-            MealScreen(
-                state = state,
-                settings = settings,
-                onBack = { navController.popBackStack() },
-                onRemoveItem = viewModel::removeItem,
-                onClear = viewModel::clear,
-                onShowClearConfirmation = viewModel::showClearConfirmation,
-                // An ordinary forward navigation, so the scanner's own "back" returns to the meal
-                // the user is still building rather than skipping past it to Home.
-                onScanNext = { navController.navigate(Routes.SCAN) },
-                onUndoRemove = viewModel::undoRemove,
-                onUndoExpired = viewModel::clearUndo,
-                onEditItem = viewModel::startEdit,
-                onSaveEdit = viewModel::saveEdit,
-                onCancelEdit = viewModel::cancelEdit,
-            )
+            DestinationPane(stringResource(R.string.meal_title)) {
+                MealScreen(
+                    state = state,
+                    settings = settings,
+                    onBack = { navController.popBackStack() },
+                    onRemoveItem = viewModel::removeItem,
+                    onClear = viewModel::clear,
+                    onShowClearConfirmation = viewModel::showClearConfirmation,
+                    // An ordinary forward navigation, so the scanner's own "back" returns to the meal
+                    // the user is still building rather than skipping past it to Home.
+                    onScanNext = { navController.navigate(Routes.SCAN) },
+                    onUndoRemove = viewModel::undoRemove,
+                    onUndoExpired = viewModel::clearUndo,
+                    onEditItem = viewModel::startEdit,
+                    onSaveEdit = viewModel::saveEdit,
+                    onCancelEdit = viewModel::cancelEdit,
+                )
+            }
         }
 
         composable(
@@ -869,18 +905,20 @@ fun JustTheCarbsNavHost(
                 }
             }
 
-            ManualEntryScreen(
-                state = state,
-                onNameChanged = viewModel::onNameChanged,
-                onCarbsChanged = viewModel::onCarbsChanged,
-                onBasisChanged = viewModel::onBasisChanged,
-                onPackageChanged = viewModel::onPackageChanged,
-                onSave = viewModel::save,
-                onBack = { navController.popBackStack() },
-                // Read from the route, not from the state: the state is still blank on the first
-                // frame, because `start` above runs only after it.
-                arrivedWithCarbs = carbs.isNotBlank(),
-            )
+            DestinationPane(stringResource(R.string.manual_title)) {
+                ManualEntryScreen(
+                    state = state,
+                    onNameChanged = viewModel::onNameChanged,
+                    onCarbsChanged = viewModel::onCarbsChanged,
+                    onBasisChanged = viewModel::onBasisChanged,
+                    onPackageChanged = viewModel::onPackageChanged,
+                    onSave = viewModel::save,
+                    onBack = { navController.popBackStack() },
+                    // Read from the route, not from the state: the state is still blank on the
+                    // first frame, because `start` above runs only after it.
+                    arrivedWithCarbs = carbs.isNotBlank(),
+                )
+            }
         }
 
         composable(
@@ -922,114 +960,116 @@ fun JustTheCarbsNavHost(
                 }
             }
 
-            LabelScannerScreen(
-                hapticsEnabled = settings.hapticsEnabled,
-                onUseValue = { carbs, basis ->
-                    // For a product already on the calculator, a label reading comes back as a
-                    // *comparison* rather than as a new product (§12): the user scanned to check
-                    // the value they were looking at, so send them back to it with both figures.
-                    // Routing to manual entry instead — as this did — quietly reframed "check this"
-                    // as "create this", and lost the value being checked against.
-                    //
-                    // `compare` is decided by the caller from whether a product was actually loaded,
-                    // not from whether `barcode` is blank: a not-found product screen has a real
-                    // barcode but no loaded product, and must still take the "create" path below —
-                    // otherwise the reading is silently dropped (ProductViewModel.onLabelDetected
-                    // no-ops with no product to compare against) and the screen just bounces back.
-                    if (compare) {
-                        navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
-                            handle[KEY_DETECTED_CARBS] = carbs.toPlainString()
-                            handle[KEY_DETECTED_BASIS] = basis.name
+            DestinationPane(stringResource(R.string.product_scan_label)) {
+                LabelScannerScreen(
+                    hapticsEnabled = settings.hapticsEnabled,
+                    onUseValue = { carbs, basis ->
+                        // For a product already on the calculator, a label reading comes back as a
+                        // *comparison* rather than as a new product (§12): the user scanned to check
+                        // the value they were looking at, so send them back to it with both figures.
+                        // Routing to manual entry instead — as this did — quietly reframed "check this"
+                        // as "create this", and lost the value being checked against.
+                        //
+                        // `compare` is decided by the caller from whether a product was actually loaded,
+                        // not from whether `barcode` is blank: a not-found product screen has a real
+                        // barcode but no loaded product, and must still take the "create" path below —
+                        // otherwise the reading is silently dropped (ProductViewModel.onLabelDetected
+                        // no-ops with no product to compare against) and the screen just bounces back.
+                        if (compare) {
+                            navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
+                                handle[KEY_DETECTED_CARBS] = carbs.toPlainString()
+                                handle[KEY_DETECTED_BASIS] = basis.name
+                            }
+                            navController.popBackStack()
+                        } else {
+                            // Straight to the calculator (1.0.3 P1). This used to open manual entry,
+                            // which would not proceed without a product name and wrote a Room row before
+                            // it would navigate — so reading one number off one photograph cost a named,
+                            // saved record the user never asked for. A label states a carbohydrate figure
+                            // and its basis, which is everything the calculation needs; what the product
+                            // is called is a question only *saving* has to ask, and saving is now
+                            // optional and offered from the result.
+                            navController.navigate(Routes.quick(carbs.toPlainString(), basis.name)) {
+                                popUpTo(Routes.LABEL_SCAN) { inclusive = true }
+                            }
                         }
-                        navController.popBackStack()
-                    } else {
-                        // Straight to the calculator (1.0.3 P1). This used to open manual entry,
-                        // which would not proceed without a product name and wrote a Room row before
-                        // it would navigate — so reading one number off one photograph cost a named,
-                        // saved record the user never asked for. A label states a carbohydrate figure
-                        // and its basis, which is everything the calculation needs; what the product
-                        // is called is a question only *saving* has to ask, and saving is now
-                        // optional and offered from the result.
-                        navController.navigate(Routes.quick(carbs.toPlainString(), basis.name)) {
+                    },
+                    // *Edit* keeps the basis the label stated and leaves the amount blank.
+                    //
+                    // The basis used to be dropped here, and a device recording showed what that costs:
+                    // a coconut-milk label whose `per 100 ml` column the classifier had read correctly
+                    // opened manual entry with **`100 g`** selected, because that is
+                    // `ManualEntryUiState`'s default and nothing had overridden it. A user typing the
+                    // right figure there stores it against the wrong denominator, and no later stage can
+                    // detect that. The amount stays empty deliberately — this action is reached when the
+                    // app's number was wrong or withheld, so re-proposing it would undo the rejection.
+                    onEditManually = { basis ->
+                        navController.navigate(editManuallyRoute(barcode, basis)) {
                             popUpTo(Routes.LABEL_SCAN) { inclusive = true }
                         }
-                    }
-                },
-                // *Edit* keeps the basis the label stated and leaves the amount blank.
-                //
-                // The basis used to be dropped here, and a device recording showed what that costs:
-                // a coconut-milk label whose `per 100 ml` column the classifier had read correctly
-                // opened manual entry with **`100 g`** selected, because that is
-                // `ManualEntryUiState`'s default and nothing had overridden it. A user typing the
-                // right figure there stores it against the wrong denominator, and no later stage can
-                // detect that. The amount stays empty deliberately — this action is reached when the
-                // app's number was wrong or withheld, so re-proposing it would undo the rejection.
-                onEditManually = { basis ->
-                    navController.navigate(editManuallyRoute(barcode, basis)) {
-                        popUpTo(Routes.LABEL_SCAN) { inclusive = true }
-                    }
-                },
-                // *Correct* carries the detected figure into the same field the user would
-                // otherwise have to fill from scratch. It uses the create route even when
-                // `compare` is true: correcting a reading means the user has decided the OCR value
-                // is wrong, and a comparison of a value they have already rejected is not what they
-                // asked for — they asked to type the right one.
-                onCorrectValue = ::openManualEntryWith,
-                onClose = { navController.popBackStack() },
-                // Two genuinely different situations, decided by whether the product row actually
-                // exists rather than by whether the barcode string is non-empty (correction §2).
-                // A not-found product screen has a real barcode and no product row, and that is
-                // exactly the case where capturing a countable portion matters most.
-                //
-                // The scan is the user reading their own package, so the unit is stored as verified
-                // with OCR provenance — the same provenance/verification split products already use.
-                onSavePortionUnit = if (!productExists) {
-                    null
-                } else {
-                    { kind, conversion ->
-                        // Suspends until the write completes and reports what happened, so the
-                        // scanner can only show "saved" once the row is genuinely on disk.
-                        //
-                        // A plain runCatching would also catch CancellationException — if this
-                        // screen is torn down mid-write, that would report as an ordinary failed
-                        // save rather than letting the cancellation propagate (P1 §14).
-                        try {
-                            container.productRepository.saveUserPortionUnit(
-                                barcode = barcode,
-                                kind = kind,
-                                conversion = conversion,
-                                origin = ProductDataOrigin.OCR,
-                            )
-                            true
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            false
+                    },
+                    // *Correct* carries the detected figure into the same field the user would
+                    // otherwise have to fill from scratch. It uses the create route even when
+                    // `compare` is true: correcting a reading means the user has decided the OCR value
+                    // is wrong, and a comparison of a value they have already rejected is not what they
+                    // asked for — they asked to type the right one.
+                    onCorrectValue = ::openManualEntryWith,
+                    onClose = { navController.popBackStack() },
+                    // Two genuinely different situations, decided by whether the product row actually
+                    // exists rather than by whether the barcode string is non-empty (correction §2).
+                    // A not-found product screen has a real barcode and no product row, and that is
+                    // exactly the case where capturing a countable portion matters most.
+                    //
+                    // The scan is the user reading their own package, so the unit is stored as verified
+                    // with OCR provenance — the same provenance/verification split products already use.
+                    onSavePortionUnit = if (!productExists) {
+                        null
+                    } else {
+                        { kind, conversion ->
+                            // Suspends until the write completes and reports what happened, so the
+                            // scanner can only show "saved" once the row is genuinely on disk.
+                            //
+                            // A plain runCatching would also catch CancellationException — if this
+                            // screen is torn down mid-write, that would report as an ordinary failed
+                            // save rather than letting the cancellation propagate (P1 §14).
+                            try {
+                                container.productRepository.saveUserPortionUnit(
+                                    barcode = barcode,
+                                    kind = kind,
+                                    conversion = conversion,
+                                    origin = ProductDataOrigin.OCR,
+                                )
+                                true
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                false
+                            }
                         }
-                    }
-                },
-                // No product row yet: carry the accepted portion into creation instead of writing
-                // it against a foreign key with nothing to point at.
-                onCarryPendingPortionUnit = if (productExists) {
-                    null
-                } else {
-                    { kind, conversion ->
-                        val weight = conversion as? PortionConversion.WeightBased
-                        val direct = conversion as? PortionConversion.DirectCarbs
-                        navController.navigate(
-                            Routes.manualWithPendingPortion(
-                                barcode = barcode,
-                                carbs = "",
-                                basis = "",
-                                unitKind = kind.name,
-                                unitCarbs = direct?.carbsPerUnit?.toPlainString().orEmpty(),
-                                unitWeight = weight?.amountPerUnit?.toPlainString().orEmpty(),
-                                unitBasis = weight?.basis?.name.orEmpty(),
-                            ),
-                        ) { popUpTo(Routes.LABEL_SCAN) { inclusive = true } }
-                    }
-                },
-            )
+                    },
+                    // No product row yet: carry the accepted portion into creation instead of writing
+                    // it against a foreign key with nothing to point at.
+                    onCarryPendingPortionUnit = if (productExists) {
+                        null
+                    } else {
+                        { kind, conversion ->
+                            val weight = conversion as? PortionConversion.WeightBased
+                            val direct = conversion as? PortionConversion.DirectCarbs
+                            navController.navigate(
+                                Routes.manualWithPendingPortion(
+                                    barcode = barcode,
+                                    carbs = "",
+                                    basis = "",
+                                    unitKind = kind.name,
+                                    unitCarbs = direct?.carbsPerUnit?.toPlainString().orEmpty(),
+                                    unitWeight = weight?.amountPerUnit?.toPlainString().orEmpty(),
+                                    unitBasis = weight?.basis?.name.orEmpty(),
+                                ),
+                            ) { popUpTo(Routes.LABEL_SCAN) { inclusive = true } }
+                        }
+                    },
+                )
+            }
         }
 
         composable(Routes.SETTINGS) {
@@ -1038,21 +1078,23 @@ fun JustTheCarbsNavHost(
                     SettingsViewModel(container.settingsRepository, container.localProducts)
                 },
             )
-            SettingsScreen(
-                settings = settings,
-                onThemeChanged = viewModel::setTheme,
-                onResultStyleChanged = viewModel::setResultStyle,
-                onHapticsChanged = viewModel::setHaptics,
-                onClearRecents = viewModel::clearRecents,
-                onClearProducts = viewModel::clearProducts,
-                cleared = viewModel.cleared.collectAsStateWithLifecycle().value,
-                onClearedShown = viewModel::onClearedShown,
-                // An ordinary forward navigation, so the tutorial's own exit pops straight back to
-                // this screen. Replay mode writes nothing, so watching it again cannot alter
-                // onboarding state.
-                onReplayTutorial = { navController.navigate(Routes.onboarding(replay = true)) },
-                onBack = { navController.popBackStack() },
-            )
+            DestinationPane(stringResource(R.string.settings_title)) {
+                SettingsScreen(
+                    settings = settings,
+                    onThemeChanged = viewModel::setTheme,
+                    onResultStyleChanged = viewModel::setResultStyle,
+                    onHapticsChanged = viewModel::setHaptics,
+                    onClearRecents = viewModel::clearRecents,
+                    onClearProducts = viewModel::clearProducts,
+                    cleared = viewModel.cleared.collectAsStateWithLifecycle().value,
+                    onClearedShown = viewModel::onClearedShown,
+                    // An ordinary forward navigation, so the tutorial's own exit pops straight back to
+                    // this screen. Replay mode writes nothing, so watching it again cannot alter
+                    // onboarding state.
+                    onReplayTutorial = { navController.navigate(Routes.onboarding(replay = true)) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
     }
 
@@ -1092,6 +1134,13 @@ fun JustTheCarbsNavHost(
         }
     }
 }
+
+/**
+ * The product destination's pane title: the product's name, or [unnamed] (*Quick calculation*) for a
+ * product without one — the same rule its top bar follows. Null while no product has loaded, so a
+ * lookup in flight is not announced as a blank screen.
+ */
+private fun productPaneTitle(name: String?, unnamed: String): String? = name?.ifEmpty { unnamed }
 
 /** Small helper so each destination can build its ViewModel from the container. */
 private inline fun <reified VM : ViewModel> factory(

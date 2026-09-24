@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
@@ -57,6 +58,18 @@ sealed interface QuickAddEvent {
 
 class HomeViewModel(private val repository: ProductRepository) : ViewModel() {
 
+    private val _recentsLoaded = MutableStateFlow(false)
+
+    /**
+     * Whether the database has answered for [recents] at least once — the moment Home shows its real
+     * content, which is when the launch is reported fully drawn.
+     *
+     * A separate flag because the list cannot say it: an empty database and "not answered yet" are
+     * the same empty list, and a first-run Home must still count as drawn. Never reset, so a rotation
+     * or a WhileSubscribed restart cannot turn a loaded Home back into a loading one.
+     */
+    val recentsLoaded: StateFlow<Boolean> = _recentsLoaded.asStateFlow()
+
     /**
      * Recents come straight from the database, so home draws without waiting for anything (§7).
      * `WhileSubscribed` keeps the query alive briefly across a rotation instead of re-running it.
@@ -79,6 +92,7 @@ class HomeViewModel(private val repository: ProductRepository) : ViewModel() {
                 RecentEntry(product, lastUnit)
             }
         }
+        .onEach { _recentsLoaded.value = true }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),

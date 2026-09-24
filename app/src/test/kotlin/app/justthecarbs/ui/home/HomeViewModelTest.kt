@@ -357,6 +357,36 @@ class HomeViewModelTest {
         assertEquals("only the most recent is restorable", listOf("222"), local.restored.map { it.barcode })
     }
 
+    // ---- recentsLoaded: the signal Home's time-to-full-display is reported on ----------------------
+
+    @Test
+    fun `recents are not loaded before the database has answered`() = runTest {
+        val vm = viewModel(listOf(product("111", unitId = null)), CountingPortionUnitStore(emptyList()))
+
+        assertEquals(false, vm.recentsLoaded.value)
+    }
+
+    @Test
+    fun `an empty database still counts as loaded`() = runTest {
+        // The case the list alone cannot express: an empty answer and "not answered yet" are the same
+        // empty list, and a first-run Home must still report itself drawn.
+        val vm = viewModel(emptyList(), CountingPortionUnitStore(emptyList()))
+        subscribe(vm)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(true, vm.recentsLoaded.value)
+    }
+
+    @Test
+    fun `loaded is reported with the recents already in state`() = runTest {
+        val vm = viewModel(listOf(product("111", unitId = null)), CountingPortionUnitStore(emptyList()))
+        subscribe(vm)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(true, vm.recentsLoaded.value)
+        assertEquals(listOf("111"), vm.recents.value.map { it.product.barcode })
+    }
+
     @Test
     fun `recents with several countable products cost exactly one batch lookup`() = runTest {
         val units = CountingPortionUnitStore(listOf(unit(1, "111"), unit(2, "222"), unit(3, "333")))
