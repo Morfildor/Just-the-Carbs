@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.platform.app.InstrumentationRegistry
 import app.justthecarbs.R
@@ -135,6 +136,34 @@ class MealSessionAndSavedSearchScreenTest {
 
         val description = context.getString(R.string.meal_edit_count_description, "3", ResultFormatter.quantity(BigDecimal("14.2")))
         assertEquals(listOf(BigDecimal("3") to description), saved)
+    }
+
+    /** The keyboard's Done saves exactly as the Save button does, so the edit needs no reach. */
+    @Test
+    fun theKeyboardsDoneActionSavesTheCorrection() {
+        val saved = mutableListOf<Pair<BigDecimal, String>>()
+        showMeal(listOf(bread), saved)
+
+        compose.onNodeWithTag(MEAL_ITEM_ROW_TAG).performClick()
+        compose.onNodeWithTag(MEAL_EDIT_FIELD_TAG).performTextReplacement("35")
+        compose.onNodeWithTag(MEAL_EDIT_FIELD_TAG).performImeAction()
+
+        assertEquals(listOf(BigDecimal("35") to "35 g"), saved)
+        compose.onNodeWithTag(MEAL_EDIT_FIELD_TAG).assertDoesNotExist()
+    }
+
+    /** Done on an amount Save would refuse writes nothing and leaves the dialog open. */
+    @Test
+    fun theKeyboardsDoneActionSavesNothingForAnInvalidAmount() {
+        val saved = mutableListOf<Pair<BigDecimal, String>>()
+        showMeal(listOf(bread), saved)
+
+        compose.onNodeWithTag(MEAL_ITEM_ROW_TAG).performClick()
+        compose.onNodeWithTag(MEAL_EDIT_FIELD_TAG).performTextReplacement("0")
+        compose.onNodeWithTag(MEAL_EDIT_FIELD_TAG).performImeAction()
+
+        assertEquals(emptyList<Pair<BigDecimal, String>>(), saved)
+        compose.onNodeWithTag(MEAL_EDIT_FIELD_TAG).assertIsDisplayed()
     }
 
     @Test

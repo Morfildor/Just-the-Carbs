@@ -1032,6 +1032,8 @@ fun JustTheCarbsNavHost(
                 onHapticsChanged = viewModel::setHaptics,
                 onClearRecents = viewModel::clearRecents,
                 onClearProducts = viewModel::clearProducts,
+                cleared = viewModel.cleared.collectAsStateWithLifecycle().value,
+                onClearedShown = viewModel::onClearedShown,
                 // An ordinary forward navigation, so the tutorial's own exit pops straight back to
                 // this screen. Replay mode writes nothing, so watching it again cannot alter
                 // onboarding state.

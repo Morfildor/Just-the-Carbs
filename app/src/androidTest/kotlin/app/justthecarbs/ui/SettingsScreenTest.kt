@@ -1,6 +1,22 @@
 package app.justthecarbs.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.isToggleable
+import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.R
+import app.justthecarbs.ui.settings.ClearedData
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.test.assertIsDisplayed
@@ -59,6 +75,86 @@ class SettingsScreenTest {
                 }
             }
         }
+    }
+
+    private fun string(id: Int): String =
+        InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
+
+    /** Mirrors SettingsViewModel: a clear reports itself once it has run, and is consumed once shown. */
+    private fun showStateful(initialHaptics: Boolean = true) {
+        compose.setContent {
+            var settings by remember { mutableStateOf(AppSettings(hapticsEnabled = initialHaptics)) }
+            var cleared by remember { mutableStateOf<ClearedData?>(null) }
+            JustTheCarbsTheme {
+                SettingsScreen(
+                    settings = settings,
+                    onThemeChanged = {},
+                    onResultStyleChanged = {},
+                    onHapticsChanged = { settings = settings.copy(hapticsEnabled = it) },
+                    onClearRecents = { cleared = ClearedData.RECENT_HISTORY },
+                    onClearProducts = { cleared = ClearedData.SAVED_PRODUCTS },
+                    cleared = cleared,
+                    onClearedShown = { cleared = null },
+                    onBack = {},
+                )
+            }
+        }
+    }
+
+    /**
+     * The haptics row is one control: its label toggles it, and TalkBack meets one switch carrying
+     * its name rather than an unlabelled switch beside a line of text.
+     */
+    @Test
+    fun tappingTheHapticsLabelTogglesTheSetting() {
+        showStateful(initialHaptics = true)
+        val row = compose.onNode(isToggleable() and hasText(string(R.string.settings_haptics)))
+
+        row.assertIsOn()
+        compose.onNodeWithText(string(R.string.settings_haptics)).performClick()
+
+        row.assertIsOff()
+    }
+
+    @Test
+    fun theThemeAndResultStyleChoicesAreEachAnnouncedAsAGroup() {
+        showStateful()
+
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.SelectableGroup))
+            .assertCountEquals(2)
+    }
+
+    @Test
+    fun clearingRecentHistorySaysSoOnceItHasRun() {
+        showStateful()
+
+        compose.onNodeWithText(string(R.string.settings_clear_recents)).performScrollTo().performClick()
+        compose.onNode(hasText(string(R.string.settings_confirm_clear)) and hasAnyAncestor(isDialog()))
+            .performClick()
+
+        compose.onNodeWithText(string(R.string.settings_cleared_recents)).assertIsDisplayed()
+    }
+
+    @Test
+    fun clearingSavedProductsSaysSoOnceItHasRun() {
+        showStateful()
+
+        compose.onNodeWithText(string(R.string.settings_clear_products)).performScrollTo().performClick()
+        compose.onNode(hasText(string(R.string.settings_confirm_clear)) and hasAnyAncestor(isDialog()))
+            .performClick()
+
+        compose.onNodeWithText(string(R.string.settings_cleared_products)).assertIsDisplayed()
+    }
+
+    @Test
+    fun cancellingAClearSaysNothing() {
+        showStateful()
+
+        compose.onNodeWithText(string(R.string.settings_clear_recents)).performScrollTo().performClick()
+        compose.onNode(hasText(string(R.string.settings_cancel)) and hasAnyAncestor(isDialog()))
+            .performClick()
+
+        compose.onNodeWithText(string(R.string.settings_cleared_recents)).assertDoesNotExist()
     }
 
     @Test
