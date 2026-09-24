@@ -89,6 +89,19 @@ live on Production and says the first update is ready. Work accumulates here unt
 
 ### Added
 
+- **A hint when a portion is more than the whole pack.** When the pack size is known and the typed
+  portion is larger ("More than the whole pack (400 g)"), a quiet line says so under the field. It
+  changes no number and blocks nothing; a portion can legitimately span two packs.
+- **The active shortcut is marked.** A Usual or pack button whose amount matches the current
+  portion shows as selected (compared by value, so 65 and 65.0 match).
+- **Clearer ways forward.** An empty meal offers *Scan barcode*; Home's no-match and search-failure
+  panels offer *Scan barcode* too; a product lookup still running after 4 seconds says *Still
+  looking…* and offers *Enter manually* and *Scan nutrition label*; Settings confirms *Recent history
+  cleared* / *Saved products deleted* after a clear.
+- **TalkBack names each screen** (pane titles on Home, both scanners, the calculator, Search, Meal,
+  Manual entry and Settings), announces *Added to meal*, and reads the result as "31.3 grams of
+  carbs" rather than "31.3 grams", which could be mistaken for the portion.
+
 - **Quick Add from Home.** A remembered product on Home — Favourite or Recent — now has a small
   **+** beside its last portion. One tap adds exactly that portion ("35 g", "2 slices") to the
   current meal and stays on Home: the button turns into a check, the meal bar updates and glows, and
@@ -114,6 +127,23 @@ live on Production and says the first update is ready. Work accumulates here unt
   Recents.
 
 ### Changed
+
+- **UX polish pass (2026-09-24).** Typing and scanning feel steadier:
+  - the result figure updates in place as you type instead of cross-fading on every digit;
+  - a product's photo appears at once when Home already has it, sharpening as the larger one loads,
+    and the photo plate eases in instead of snapping;
+  - meal rows, search results and Home's favourite cards animate when they move, appear or go;
+  - tapping an empty part of the calculator puts the keyboard away;
+  - search results return to the top when the query changes; Home keeps its scroll position after
+    a search is cleared, and its wordmark folds away while a query is typed;
+  - forms move through their fields with the keyboard's Next and Done keys, and the carbs field of
+    manual entry flags an impossible figure as you type (same limits as before);
+  - the label scanner's crop handles are sized in dp, *Read table* shows its progress in the
+    button, and assisted typing focuses its field on arrival;
+  - the scanners open faster: the camera library starts after Home's first frame (no camera is
+    opened until you scan);
+  - plainer wording throughout: no em dashes, Open Food Facts named instead of "the database",
+    no internal terms, and a welcome carousel that no longer promises "no searching".
 
 - **The calculator reads as one column: portion in, carbs out.** On a saved product the remembered
   portion and the carbohydrate result could both read as headline figures (two bold dark numbers,
@@ -171,6 +201,22 @@ live on Production and says the first update is ready. Work accumulates here unt
   The privacy policy names the archive and Amazon Web Services.
 
 ### Fixed
+
+- **Typing over a remembered portion appended to it.** Tapping a pre-filled "65" and typing 80 read
+  6580 g (3783.5 g of carbs, seen on the emulator). The grams field now selects its contents on
+  focus, as the count field already did.
+- **The launch splash was effectively invisible:** a white mark on cream. It now shows the
+  launcher icon's own coral mark.
+- **System Back on a frozen label photo threw the photo away.** Back now steps back (an assisted
+  sub-step returns to its choices; otherwise it behaves as *Retake*). The live camera is unchanged.
+- **One Back on the camera permission prompt sent you to Settings.** The app now offers *Allow
+  camera* again, and sends you to Settings only when Android no longer shows the prompt.
+- **Add & scan next could add the same portion twice** right after *Add to meal*; during the
+  *Added* confirmation it reads *Scan next item* and only opens the scanner. *Add to meal* ignores a
+  second tap during the same confirmation.
+- The torch icon now follows the camera's real torch state after a retake or a return to the app.
+- The Settings haptics switch can be toggled from its label, and reads as one control.
+- A meal line's edit dialog saves from the keyboard's Done key.
 
 - Portion history now records deliberate completed actions only: typing and remembered pre-fills
   no longer inflate *Usual*, and leaving after an unchanged successful meal add does not count it

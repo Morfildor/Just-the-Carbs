@@ -166,6 +166,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
 /** Stable handles for instrumented tests. */
+const val HOME_BACKDROP_TAG = "home_backdrop"
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
 const val HOME_SEARCH_SUBMIT_TAG = "home_search_submit"
 const val HOME_MANUAL_TAG = "home_manual_entry"
@@ -352,13 +353,24 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        AccentBackdrop(
-            accent = MaterialTheme.colorScheme.primary,
-            // Keep the decorative nutrition bars clear of the Settings touch target.
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = Space.xxl + Space.l),
-        )
+        // The bars sit behind the wordmark, so they fold away with it while a query is typed: left
+        // behind, their stubs poked out between the search field and the meal bar (seen on the
+        // emulator) and read as a rendering fault. A fade only: they are decoration and take no
+        // layout room.
+        AnimatedVisibility(
+            visible = searchState.query.isBlank(),
+            enter = fadeIn(tween(Motion.STANDARD_MS)),
+            exit = fadeOut(tween(Motion.QUICK_MS)),
+            modifier = Modifier.align(Alignment.TopEnd),
+        ) {
+            AccentBackdrop(
+                accent = MaterialTheme.colorScheme.primary,
+                // Keep the decorative nutrition bars clear of the Settings touch target.
+                modifier = Modifier
+                    .padding(end = Space.xxl + Space.l)
+                    .testTag(HOME_BACKDROP_TAG),
+            )
+        }
 
         Column(
             modifier = Modifier

@@ -51,6 +51,63 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## UX polish pass (2026-09-24) — still 1.0.8, READ FIRST
+
+Branch `ux-polish-2026-09-24`, on top of `meal-search-patch-2026-09-23` (both unmerged, not
+pushed). Driven by a device review (emulator screenshots) plus six code reviewers. Owner: "always
+the safest, most future-proof option". No calculation, parsing, persistence, OCR recognition or
+acceptance rule changed; the CHANGELOG 1.0.8 entries list every user-visible change.
+
+**Bugs found on the emulator and fixed, each test-first with a negative control:**
+
+- **Typing over a remembered portion appended to it** (65 then 80 read 6580 g). `PortionField` now
+  owns a `TextFieldValue` and selects all on focus gain, exactly like `CountField`. A text field
+  that receives a pre-filled value must select on focus; `performTextInput` (not
+  `performTextReplacement`) is the only way a test reproduces a thumb.
+- **Invisible splash.** `ic_splash_mark` referenced `@color/ic_launcher_background` as a "coral
+  plate", but the 68c85a3 icon redesign made that colour cream (coral moved to
+  `ic_launcher_mark`), so the splash drew white on cream. It is now a `<layer-list>` of the
+  launcher's own background and foreground drawables. **Never copy launcher colours or paths into
+  another drawable; reference the layers.** `SplashIconVisibilityTest` resolves the platform
+  `windowSplashScreenAnimatedIcon` through a real `Theme` (a bare `obtainStyledAttributes(styleRes)`
+  cannot resolve the library's `?attr/` mapping) and renders it. Its floor is 2:1, not 3:1: logos are
+  exempt from WCAG 1.4.11 and the brand's own coral on cream measures **2.85:1**, an owner design
+  question, not a test's. Diagnosis tool worth reusing: `adb shell wm shell protolog enable-text
+  WM_SHELL_STARTING_WINDOW` logs which theme and icon the system splash used.
+- **One Back on the camera permission prompt looked like a permanent denial** (Android 11+ gives
+  `shouldShowRequestPermissionRationale == false` either way). `CameraPermissionGate` now re-offers
+  *Allow camera*; Settings only when the request returns without a dialog (under 300 ms) or twice in
+  a row. Verified on the emulator: Back on the prompt, *Allow camera*, the system dialog returns.
+
+**Other changes worth knowing when editing these files:**
+
+- The calculator result's live region and accessible description sit on a stable Box **outside**
+  the dock's `AnimatedContent` (a live region on a node that is recreated never announces), and
+  `PRODUCT_RESULT_TAG` moved to that Box. The description is now **"N grams of carbs"**; ~40 test
+  literals were updated. The dock `AnimatedContent` uses `contentKey = { it != null }`: only
+  pending to answer cross-fades.
+- `MealActions`: during the *Added* hold, *Add to meal* ignores taps and *Add & scan next* reads
+  *Scan next item* and only navigates.
+- The calculator's large photo uses `placeholderMemoryCacheKey(thumbnailUrl)` so Home's cached
+  thumbnail shows instantly; container sizing is unchanged (the room still decides it).
+- Home favourites and recents now share the bare barcode as their lazy key (they are
+  `filter`/`filterNot` of one list, so it stays unique); the old `fav_` prefix made starring a
+  delete-and-insert.
+- `CameraWarmUp.startOnce` calls `ProcessCameraProvider.getInstance` once, after Home's first
+  frame. It opens no camera (verified: `dumpsys media.camera` shows no clients on Home, with the
+  permission granted or revoked). On the emulator CameraX init takes ~5.6 s (missing front camera).
+- `DestinationPane` gives each destination a TalkBack pane title; `ReportDrawnWhen { recentsLoaded }`
+  at Home (new `HomeViewModel.recentsLoaded`, because an empty list cannot say "loaded").
+- Left deliberately: Home's meal bar stays visible while searching (documented in HomeScreen:
+  search is how the next meal item is found); the ML Kit `DEPENDENCIES` manifest entry (both models
+  are bundled, so it only matters for Play Services variants; removing it bought nothing certain).
+
+**Parallel-agent workflow used here (reusable).** Worktrees on short paths (`C:\wt|b|c`, MAX_PATH),
+one agent per disjoint file set, one shared emulator serialised by `/c/wt/itest.sh` (a `mkdir`
+lock; any 320x640 run must `wm size reset` before releasing it). Extra emulators do not fit in this
+machine's RAM (4-6 GB each). Merge one branch at a time and re-run the overlapping classes on the
+merged tree: branches cut before a sibling merged are not evidence for the combination.
+
 ## Search photos from Open Food Facts' S3 archive (2026-09-23, latest) — still 1.0.8
 
 Same branch as the next section (`meal-search-patch-2026-09-23`), its own commit, pushed, **not merged**.

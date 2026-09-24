@@ -1046,6 +1046,21 @@ class HomeScreenTest {
         compose.onNodeWithContentDescription(settingsLabel).assertDoesNotExist()
     }
 
+    /**
+     * The decorative nutrition bars sit behind the wordmark and must fold away with it: seen on the
+     * emulator, the collapsed header left the bars' stubs poking out between the search field and
+     * the meal bar, reading as a rendering fault.
+     */
+    @Test
+    fun theDecorativeBarsFoldAwayWithTheWordmark() {
+        showWithLiveSearch()
+        compose.onNodeWithTag(app.justthecarbs.ui.home.HOME_BACKDROP_TAG).assertExists()
+
+        compose.runOnIdle { liveSearch = SearchUiState(query = "choc", hits = listOf(searchHit())) }
+
+        compose.onNodeWithTag(app.justthecarbs.ui.home.HOME_BACKDROP_TAG).assertDoesNotExist()
+    }
+
     @Test
     fun clearingTheSearchRestoresTheWordmarkHeader() {
         liveSearch = SearchUiState(query = "choc", hits = listOf(searchHit()))
