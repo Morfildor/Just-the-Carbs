@@ -136,11 +136,18 @@ class ThemeRoleOwnershipTest {
         val home = java.io.File("src/main/kotlin/app/justthecarbs/ui/home/HomeScreen.kt")
             .readText()
             .replace(Regex("""\s+"""), " ")
+        // The backdrop must be the first thing drawn inside the painted Box, before any content.
+        // Since 2026-09-24 it sits inside an AnimatedVisibility (it fades with the wordmark while
+        // searching), so the check is "painted Box, then the backdrop, with no content between",
+        // not an exact adjacency of the two calls.
+        val paintedGround =
+            "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {"
+        val groundAt = home.indexOf(paintedGround)
+        val backdropAt = home.indexOf("AccentBackdrop(", startIndex = maxOf(groundAt, 0))
+        val contentAt = home.indexOf("Column(", startIndex = maxOf(groundAt, 0))
         assertTrue(
             "HomeScreen must paint the opaque page ground below AccentBackdrop",
-            home.contains(
-                "Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { AccentBackdrop(",
-            ),
+            groundAt >= 0 && backdropAt > groundAt && (contentAt < 0 || backdropAt < contentAt),
         )
 
         listOf(
