@@ -24,8 +24,9 @@
         <item name="windowSplashScreenBackground">@color/splash_background</item>
         <!--
           The splash draws this icon *alone*, with no adaptive-icon background behind it, so it
-          cannot be `ic_launcher_foreground` — that drawable's paths are white and were rendering
-          white-on-cream. `ic_splash_mark` carries the launcher's own coral plate with it.
+          is `ic_splash_mark`, which stacks the launcher's own background and foreground layers so
+          the splash always matches the icon the user tapped (see that file for the white-on-cream
+          defect this closed).
         -->
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_mark</item>
         <item name="postSplashScreenTheme">@style/Theme.JustTheCarbs</item>
