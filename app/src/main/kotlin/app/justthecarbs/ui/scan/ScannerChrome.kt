@@ -1,5 +1,7 @@
 package app.justthecarbs.ui.scan
 
+import androidx.camera.core.Camera
+import androidx.camera.core.TorchState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -30,6 +32,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,6 +47,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Observer
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.theme.Space
 
@@ -230,4 +238,26 @@ internal fun ScannerGhostButton(
             color = Color.White.copy(alpha = if (enabled) 1f else 0.38f),
         )
     }
+}
+
+/**
+ * Whether [camera]'s torch is actually lit, read from the camera rather than remembered.
+ *
+ * Both scanners used to keep their own `torchOn` flag, which drifted from the hardware whenever
+ * something other than the torch button turned the torch off: the label scanner rebinding its
+ * camera after a Retake, or the system closing the camera while the app was in the background. The
+ * icon then said the torch was on for a torch that was already off, and the next tap "turned off" a
+ * dark torch. CameraX publishes the real state, so the icon reads that and a tap asks for the
+ * opposite of it. False while there is no camera yet.
+ */
+@Composable
+internal fun rememberTorchOn(camera: Camera?): Boolean {
+    var lit by remember(camera) { mutableStateOf(false) }
+    DisposableEffect(camera) {
+        val torchState = camera?.cameraInfo?.torchState
+        val observer = Observer<Int> { lit = it == TorchState.ON }
+        torchState?.observeForever(observer)
+        onDispose { torchState?.removeObserver(observer) }
+    }
+    return lit
 }

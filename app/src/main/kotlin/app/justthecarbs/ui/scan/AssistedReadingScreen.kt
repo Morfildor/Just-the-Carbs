@@ -1,6 +1,7 @@
 package app.justthecarbs.ui.scan
 
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -56,7 +57,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.CarbBasis
-import app.justthecarbs.domain.CarbPlausibility
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.ocr.CorrectionFieldState
@@ -76,6 +76,7 @@ import java.math.BigDecimal
 const val ASSIST_OVERLAY_TAG = "assist_overlay"
 const val ASSIST_MANUAL_FIELD_TAG = "assist_manual_field"
 const val ASSIST_FOCUSED_FIELD_TAG = "assist_focused_field"
+const val ASSIST_FOCUSED_SUBMIT_TAG = "assist_focused_submit"
 const val ASSIST_CORRECTION_FIELD_TAG = "assist_correction_field"
 const val ASSIST_CORRECTION_SUBMIT_TAG = "assist_correction_submit"
 const val ASSIST_CORRECTION_HIGHLIGHT_TAG = "assist_correction_highlight"
@@ -218,6 +219,19 @@ private sealed interface AssistStep {
     data object CorrectingKnownAmount : AssistStep
 }
 
+/** Where system Back goes from this step, or null when Back belongs to the scanner (Retake). */
+private val AssistStep.previous: AssistStep?
+    get() = when (this) {
+        AssistStep.PickingLabelled,
+        AssistStep.PickingRow,
+        AssistStep.TypingValue,
+        AssistStep.TypingFocusedAmount,
+        -> AssistStep.Choosing
+        AssistStep.Choosing,
+        AssistStep.CorrectingKnownAmount,
+        -> null
+    }
+
 /**
  * The accept actions for a value **the user typed** — the one place both 1.0.3 safety rules apply.
  *
@@ -256,17 +270,28 @@ private sealed interface AssistStep {
  *
  * The two rules compose: a preserved basis does not exempt a value from the plausibility barrier,
  * so an impossible value under a known basis still leaves no accept action at all.
+ *
+ * ## Nothing typed yet: the actions stand, disabled
+ *
+ * Only for an *empty* field ([TypedValueEntry.Actions.Pending]), so the first keystroke does not
+ * move the layout under the user's thumb. There is no figure there to be wrong about yet; the
+ * impossible-figure rule above is unchanged.
  */
 @Composable
 private fun BasisActions(
-    value: BigDecimal,
+    actions: TypedValueEntry.Actions,
     statedBasis: NutritionBasis?,
     onUseValue: (BigDecimal, NutritionBasis) -> Unit,
 ) {
-    // Asked per basis, not once: 150 is impossible per 100 g and legitimate per 100 ml, so a single
-    // verdict would either block a correct reading or admit an impossible one.
-    val offered = (statedBasis?.let(::listOf) ?: NutritionBasis.entries)
-        .filter { CarbPlausibility.isPlausiblePer100(value, it) }
+    // Asked per basis, not once, inside [TypedValueEntry]: 150 is impossible per 100 g and
+    // legitimate per 100 ml, so a single verdict would either block a correct reading or admit an
+    // impossible one.
+    val offered = when (actions) {
+        is TypedValueEntry.Actions.Pending -> actions.bases
+        is TypedValueEntry.Actions.Offered -> actions.bases
+        TypedValueEntry.Actions.Implausible -> emptyList()
+    }
+    val value = (actions as? TypedValueEntry.Actions.Offered)?.value
 
     if (offered.isEmpty()) {
         Text(
@@ -296,7 +321,8 @@ private fun BasisActions(
     ) {
         offered.forEach { basis ->
             Button(
-                onClick = { onUseValue(value, basis) },
+                onClick = { value?.let { onUseValue(it, basis) } },
+                enabled = value != null,
                 modifier = Modifier.weight(1f).heightIn(min = Space.minTouchTarget),
                 shape = RoundedCornerShape(Space.buttonRadius),
             ) {
@@ -515,6 +541,11 @@ fun AssistedReadingScreen(
         val basis = (perHundred.basis as? CarbBasis.PerHundred)?.basis ?: return
         onUseValue(perHundred.amount, basis)
     }
+
+    // System Back steps back through this screen's own sub-steps, like their Back buttons. From the
+    // choices, or a correction (which has none to return to), it is left to the scanner, which
+    // retakes: the same path as the Retake button, so the photograph is released exactly once.
+    BackHandler(enabled = step.previous != null) { step.previous?.let { step = it } }
 
     val scannerColors = MaterialTheme.extendedColors.scanner
 
@@ -905,6 +936,22 @@ fun AssistedReadingScreen(
                     if (focusedTarget == null) {
                         step = AssistStep.Choosing
                     } else {
+                        val focusManager = LocalFocusManager.current
+                        val focusRequester = remember { FocusRequester() }
+                        // Once, on arriving at this step: the field is the only thing to do here.
+                        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                        val bases = listOf(focusedTarget.basis)
+                        val actions = TypedValueEntry.actions(typed, bases)
+
+                        // The one submit path, for the button and the keyboard's Done alike, so the
+                        // two can never carry different validation.
+                        fun trySubmit(): Boolean {
+                            val (amount, basis) = TypedValueEntry.imeSubmission(typed, bases) ?: return false
+                            focusManager.clearFocus()
+                            onUseValue(amount, basis)
+                            return true
+                        }
+
                         Text(
                             text = stringResource(
                                 R.string.assist_focused_prompt,
@@ -923,33 +970,53 @@ fun AssistedReadingScreen(
                                 }
                             },
                             label = { Text(stringResource(R.string.assist_type_label)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Done,
+                            ),
+                            // Nothing submittable: Done only puts the keyboard away.
+                            keyboardActions = KeyboardActions(
+                                onDone = { if (!trySubmit()) defaultKeyboardAction(ImeAction.Done) },
+                            ),
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag(ASSIST_FOCUSED_FIELD_TAG),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                                .testTag(ASSIST_FOCUSED_FIELD_TAG),
                         )
-                        val parsed = typed.replace(',', '.').toBigDecimalOrNull()
                         // The plausibility barrier still applies. A basis the label stated does not
-                        // exempt a figure from being impossible under it.
-                        if (parsed != null && CarbPlausibility.isPlausiblePer100(parsed, focusedTarget.basis)) {
-                            Button(
-                                onClick = { onUseValue(parsed, focusedTarget.basis) },
-                                shape = RoundedCornerShape(Space.buttonRadius),
-                                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
-                            ) {
-                                Text(
-                                    stringResource(
-                                        R.string.assist_focused_confirm,
-                                        ResultFormatter.quantity(parsed),
-                                        focusedTarget.basis.unitLabel,
-                                    ),
-                                )
-                            }
-                        } else if (parsed != null) {
+                        // exempt a figure from being impossible under it, and an impossible figure
+                        // gets a sentence, not a disabled button. Before anything is typed the button
+                        // stands disabled, so the first keystroke does not move the layout.
+                        if (actions == TypedValueEntry.Actions.Implausible) {
                             Text(
                                 text = stringResource(R.string.assist_value_implausible),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.error,
                             )
+                        } else {
+                            val offered = actions as? TypedValueEntry.Actions.Offered
+                            Button(
+                                onClick = { trySubmit() },
+                                enabled = offered != null,
+                                shape = RoundedCornerShape(Space.buttonRadius),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = Space.primaryButtonHeight)
+                                    .testTag(ASSIST_FOCUSED_SUBMIT_TAG),
+                            ) {
+                                Text(
+                                    if (offered != null) {
+                                        stringResource(
+                                            R.string.assist_focused_confirm,
+                                            ResultFormatter.quantity(offered.value),
+                                            focusedTarget.basis.unitLabel,
+                                        )
+                                    } else {
+                                        stringResource(R.string.assist_focused_title)
+                                    },
+                                )
+                            }
                         }
                         TextButton(
                             onClick = { step = AssistStep.Choosing },
@@ -1075,6 +1142,11 @@ fun AssistedReadingScreen(
                 }
 
                 AssistStep.TypingValue -> {
+                    val focusRequester = remember { FocusRequester() }
+                    // Once, on arriving at this step: the field is the only thing to do here.
+                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                    // The label's stated basis fixes it; otherwise both stay open for the user to say.
+                    val bases = statedBasis?.let(::listOf) ?: NutritionBasis.entries
                     OutlinedTextField(
                         value = typed,
                         onValueChange = { input ->
@@ -1084,18 +1156,34 @@ fun AssistedReadingScreen(
                             }
                         },
                         label = { Text(stringResource(R.string.assist_type_label)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Done,
+                        ),
+                        // Done submits only what the single action would, with the basis the label
+                        // stated. With both bases open it never picks one: it puts the keyboard away
+                        // so the user can tap the basis they mean.
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val submission = TypedValueEntry.imeSubmission(typed, bases)
+                                if (submission != null) {
+                                    onUseValue(submission.first, submission.second)
+                                } else {
+                                    defaultKeyboardAction(ImeAction.Done)
+                                }
+                            },
+                        ),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag(ASSIST_MANUAL_FIELD_TAG),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester)
+                            .testTag(ASSIST_MANUAL_FIELD_TAG),
                     )
-                    val parsed = typed.replace(',', '.').toBigDecimalOrNull()
-                    if (parsed != null) {
-                        BasisActions(
-                            value = parsed,
-                            statedBasis = statedBasis,
-                            onUseValue = onUseValue,
-                        )
-                    }
+                    BasisActions(
+                        actions = TypedValueEntry.actions(typed, bases),
+                        statedBasis = statedBasis,
+                        onUseValue = onUseValue,
+                    )
                     TextButton(onClick = { step = AssistStep.Choosing }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.action_back))
                     }

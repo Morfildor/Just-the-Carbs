@@ -113,10 +113,10 @@ private fun CameraPreview(
     val haptics = LocalHapticFeedback.current
 
     var showBarcodeDialog by remember { mutableStateOf(false) }
-    var torchOn by remember { mutableStateOf(false) }
     var torchAvailable by remember { mutableStateOf(false) }
     var cameraFailed by remember { mutableStateOf(false) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+    val torchOn = rememberTorchOn(camera)
 
     // Which of the two guidance lines to show (§4). Only ever these two: the scanner has one reason
     // to be waiting that the user can act on — aim it, then hold it.
@@ -276,10 +276,8 @@ private fun CameraPreview(
             trailing = if (torchAvailable) {
                 {
                     ScannerScrimButton(
-                        onClick = {
-                            torchOn = !torchOn
-                            camera?.cameraControl?.enableTorch(torchOn)
-                        },
+                        // The camera's own torch state, not a remembered flag: see [rememberTorchOn].
+                        onClick = { camera?.cameraControl?.enableTorch(!torchOn) },
                         icon = if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff,
                         description = stringResource(
                             if (torchOn) R.string.scanner_torch_off else R.string.scanner_torch_on,
