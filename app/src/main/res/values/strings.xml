@@ -337,6 +337,8 @@
       wide tracking, and on a title-case word it rendered as spaced-out lowercase ("U s u a l")
       directly under the upper-case PORTION.
     -->
+    <!-- Shown under the portion field when the typed amount exceeds the package size. No number changes. -->
+    <string name="product_more_than_pack">More than the whole pack (%1$s %2$s)</string>
     <string name="product_usual_label" tools:ignore="MissingTranslation">USUAL</string>
     <string name="product_usual_grams" tools:ignore="MissingTranslation">%1$s %2$s</string>
     <string name="product_usual_count" tools:ignore="MissingTranslation">%1$s %2$s</string>

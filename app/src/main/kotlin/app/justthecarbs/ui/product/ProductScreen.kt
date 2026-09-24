@@ -886,6 +886,11 @@ private fun CalculatorBody(
                         compact = imeVisible,
                     )
                 }
+                MoreThanThePackHint(
+                    portionText = state.portionText,
+                    pack = product.packageAmount,
+                    unit = product.portionUnit,
+                )
 
                 // Usual portions, immediately under the field they fill.
                 //
@@ -1168,6 +1173,31 @@ private fun ProductSummary(
     }
 }
 
+/**
+ * A quiet line under the portion field when the typed amount is more than the whole package
+ * (2026-09-24 review). On the emulator a typo produced 6580 g of a 400 g jar with nothing on
+ * screen to say so.
+ *
+ * It changes no number and blocks nothing: a portion can legitimately span two packs. It only
+ * names a fact the app already holds -- the package size read confidently, the same value the
+ * pack shortcuts are built from -- so an unknown size never produces it. Ordinary supporting ink,
+ * not the result colour and not an error colour: it is a prompt to glance, not a warning. Polite
+ * live region, so TalkBack users hear it when it appears.
+ */
+@Composable
+private fun MoreThanThePackHint(portionText: String, pack: BigDecimal?, unit: String) {
+    val portion = PortionParser.parse(portionText)
+    if (pack == null || portion == null || portion <= pack) return
+    Text(
+        text = stringResource(R.string.product_more_than_pack, ResultFormatter.quantity(pack), unit),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .padding(top = Space.xs)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+    )
+}
+
 @Composable
 private fun PortionField(
     value: String,
@@ -1192,6 +1222,15 @@ private fun PortionField(
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
+    // The same select-on-focus as the count field (2026-09-24). A returning product arrives with
+    // its remembered portion, and a thumb that taps the field and types a new amount expects to
+    // replace it: with the caret after `65`, typing `80` read 6580 g (measured on the emulator as
+    // 3783.5 g of carbs). The composable owns the selection; the caller still owns the text.
+    var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    if (fieldValue.text != value) {
+        fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
+    }
+    var hasFocus by remember { mutableStateOf(false) }
 
     // Requested once per screen, not once per recomposition: `Unit` as the key means a later
     // recomposition — a keystroke, a result arriving, the meal bar appearing — cannot pull focus
@@ -1202,8 +1241,11 @@ private fun PortionField(
     }
 
     BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = fieldValue,
+        onValueChange = {
+            fieldValue = it
+            onValueChange(it.text)
+        },
         textStyle = NumberType.portion.copy(color = MaterialTheme.colorScheme.onSurface),
         singleLine = true,
         // Decimal keypad, because portions have decimals and a full keyboard would be noise (§16).
@@ -1228,6 +1270,14 @@ private fun PortionField(
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(focusRequester)
+            .onFocusChanged { focus ->
+                // Only on the transition into focus, as the count field does: re-selecting on
+                // every focused recomposition would fight the user's own caret placement.
+                if (focus.isFocused && !hasFocus) {
+                    fieldValue = fieldValue.copy(selection = TextRange(0, fieldValue.text.length))
+                }
+                hasFocus = focus.isFocused
+            }
             // A real label, not an empty one. This field has no visible `label`, so
             // `contentDescription = ""` left TalkBack announcing an unnamed edit box on the screen's
             // primary input — the question above it is a separate node and is not read with it.

@@ -123,9 +123,11 @@ class ProductScreenTest {
          * window that no supported phone has, and the result dock fell off the bottom of it.
          */
         fontScale: Float? = null,
+        /** A remembered portion the screen arrives with, as a returning product does. */
+        initialPortion: String = "",
     ) {
         compose.setContent {
-            var portion by remember { mutableStateOf("") }
+            var portion by remember { mutableStateOf(initialPortion) }
             val parsed = app.justthecarbs.domain.PortionParser.parse(portion)
 
             val content = @androidx.compose.runtime.Composable {
@@ -1065,6 +1067,63 @@ class ProductScreenTest {
         compose.waitForIdle()
 
         compose.onNodeWithText("Added").assertDoesNotExist()
+    }
+
+    /**
+     * Regression for the portion-field append defect (2026-09-24 UX review, seen on the emulator).
+     *
+     * A returning product arrives with its remembered portion pre-filled. A user who wants a
+     * different amount taps the field and types it. Before the fix the caret landed after the
+     * remembered `65`, so typing `80` produced **6580 g** -- measured on the device as
+     * 3783.5 g of carbs. The count field already selected its contents on focus; this field never
+     * did.
+     *
+     * `performTextInput` types at the cursor, as a thumb does; `performTextReplacement` would
+     * replace wholesale and could not reproduce the defect.
+     */
+    @Test
+    fun typingAPortionOverTheRememberedOneReplacesItRatherThanAppending() {
+        showCalculator(initialPortion = "65")
+
+        compose.onNode(portionField()).performClick()
+        compose.onNode(portionField()).performTextInput("80")
+
+        // 48.2 x 80 / 100 = 38.56 -> 38.6 g, not 6580 g (3171.6 g).
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("38.6 grams")
+    }
+
+    /**
+     * A portion larger than the whole package gets a quiet, non-blocking hint (2026-09-24 review).
+     *
+     * On the emulator the append defect above produced 6580 g of a 400 g jar with nothing on
+     * screen to say so. The hint changes no number and blocks nothing: it only names the package
+     * size the app already read confidently, the same fact the pack shortcuts are built from.
+     */
+    @Test
+    fun aPortionLargerThanTheWholePackSaysSo() {
+        showCalculator(product(packageAmount = "400"))
+
+        typePortion("500")
+
+        compose.onNodeWithText("More than the whole pack (400 g)").assertExists()
+    }
+
+    @Test
+    fun aPortionOfExactlyTheWholePackHasNoHint() {
+        showCalculator(product(packageAmount = "400"))
+
+        typePortion("400")
+
+        compose.onAllNodesWithText("More than the whole pack", substring = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun anUnknownPackSizeNeverProducesTheHint() {
+        showCalculator(product(packageAmount = null))
+
+        typePortion("5000")
+
+        compose.onAllNodesWithText("More than the whole pack", substring = true).assertCountEquals(0)
     }
 
     /** The portion field is the only text input on this screen. */
