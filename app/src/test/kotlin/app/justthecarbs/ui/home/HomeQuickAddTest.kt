@@ -43,7 +43,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.math.BigDecimal
+import java.time.Clock
+import java.time.Duration
 import java.time.Instant
+import java.time.ZoneOffset
 
 /**
  * *Quick Add* from Home, above storage: what reaches the meal, what reaches usage history, and that
@@ -82,9 +85,14 @@ class HomeQuickAddTest {
      * Records every insert. [gate], when set, holds each insert open until completed — the only way
      * to put a second tap genuinely *inside* the in-flight window rather than after it.
      */
-    private class RecordingMeal(var gate: CompletableDeferred<Unit>? = null, var fail: Boolean = false) : MealStore {
+    private class RecordingMeal(
+        var gate: CompletableDeferred<Unit>? = null,
+        var fail: Boolean = false,
+        seed: List<MealItem> = emptyList(),
+    ) : MealStore {
         val added = mutableListOf<MealItem>()
-        private val items = MutableStateFlow<List<MealItem>>(emptyList())
+        val items = MutableStateFlow(seed)
+        var clears = 0
         override fun observeItems(): Flow<List<MealItem>> = items
         override suspend fun findItems(): List<MealItem> = items.value
         override suspend fun add(item: MealItem): MealItem {
@@ -96,7 +104,10 @@ class HomeQuickAddTest {
         }
         override suspend fun update(item: MealItem) {}
         override suspend fun remove(item: MealItem) {}
-        override suspend fun clear() {}
+        override suspend fun clear() {
+            clears++
+            items.value = emptyList()
+        }
     }
 
     private class RecordingUsage : PortionUsageStore {
@@ -142,7 +153,12 @@ class HomeQuickAddTest {
         val usage: RecordingUsage,
     )
 
-    private fun rig(products: List<Product>, units: List<PortionUnit> = emptyList(), meal: RecordingMeal = RecordingMeal()): Rig {
+    private fun rig(
+        products: List<Product>,
+        units: List<PortionUnit> = emptyList(),
+        meal: RecordingMeal = RecordingMeal(),
+        clock: Clock = Clock.systemUTC(),
+    ): Rig {
         val local = StoringLocal(products)
         val usage = RecordingUsage()
         val vm = HomeViewModel(
@@ -153,6 +169,7 @@ class HomeQuickAddTest {
                 meal = meal,
                 portionUsage = usage,
                 searchSource = noSearch,
+                clock = clock,
             ),
         )
         return Rig(vm, local, meal, usage)
@@ -426,5 +443,105 @@ class HomeQuickAddTest {
         // And nothing was recorded as used: the portion never reached the meal.
         assertNotNull(rig.local.products["111"])
         assertEquals(Instant.EPOCH, rig.local.products.getValue("111").lastUsedAt)
+    }
+
+    // ---- a meal that has gone quiet -----------------------------------------------------------
+
+    private val now: Instant = Instant.parse("2026-09-23T08:00:00Z")
+    private val fixedClock: Clock = Clock.fixed(now, ZoneOffset.UTC)
+
+    /** Last night's line, added [hoursAgo] before [now]. */
+    private fun dinnerLine(hoursAgo: Long) = MealItem.weightBased(
+        id = 1,
+        productBarcode = "999",
+        displayName = "Pasta",
+        portionDescription = "250 g",
+        resolvedAmount = BigDecimal("250"),
+        basis = NutritionBasis.PER_100_G,
+        carbsPer100 = BigDecimal("30"),
+        exactCarbs = BigDecimal("75"),
+        addedAt = now.minus(Duration.ofHours(hoursAgo)),
+    )
+
+    @Test
+    fun `a quick add onto a meal quiet for two hours asks first and writes nothing`() = runTest {
+        val meal = RecordingMeal(seed = listOf(dinnerLine(hoursAgo = 9)))
+        val rig = rig(listOf(bread), meal = meal, clock = fixedClock)
+
+        rig.vm.quickAdd(RecentEntry(bread, null), "72 g")
+        dispatcher.scheduler.runCurrent()
+
+        val question = rig.vm.staleMeal.value
+        assertNotNull(question)
+        assertEquals(1, question!!.itemCount)
+        assertEquals(0, BigDecimal("75").compareTo(question.exactCarbs))
+        assertEquals(Duration.ofHours(9), question.sinceLastAdded)
+        assertTrue("nothing is written while the question is open", meal.added.isEmpty())
+        assertEquals(0, meal.clears)
+        assertNull("the card is not left looking busy", rig.vm.quickAdd.value["111"])
+        assertEquals("usage is not recorded for an add that has not happened", Instant.EPOCH, rig.local.products.getValue("111").lastUsedAt)
+    }
+
+    @Test
+    fun `starting a new meal clears the old lines and adds only the tapped one`() = runTest {
+        val meal = RecordingMeal(seed = listOf(dinnerLine(hoursAgo = 9)))
+        val rig = rig(listOf(bread), meal = meal, clock = fixedClock)
+
+        rig.vm.quickAdd(RecentEntry(bread, null), "72 g")
+        dispatcher.scheduler.runCurrent()
+        rig.vm.resolveStaleMeal(startNewMeal = true)
+        dispatcher.scheduler.runCurrent()
+
+        assertNull(rig.vm.staleMeal.value)
+        assertEquals(1, meal.clears)
+        assertEquals(listOf("111"), meal.items.value.map { it.productBarcode })
+        assertEquals(now, rig.local.products.getValue("111").lastUsedAt)
+    }
+
+    @Test
+    fun `adding to the quiet meal keeps its lines and asks only once`() = runTest {
+        val yoghurt = bread.copy(barcode = "222", name = "Yoghurt", lastPortion = BigDecimal("150"))
+        val meal = RecordingMeal(seed = listOf(dinnerLine(hoursAgo = 3)))
+        val rig = rig(listOf(bread, yoghurt), meal = meal, clock = fixedClock)
+
+        rig.vm.quickAdd(RecentEntry(bread, null), "72 g")
+        dispatcher.scheduler.runCurrent()
+        rig.vm.resolveStaleMeal(startNewMeal = false)
+        dispatcher.scheduler.runCurrent()
+        // The line just added is recent, so the next add is part of the same session.
+        rig.vm.quickAdd(RecentEntry(yoghurt, null), "150 g")
+        dispatcher.scheduler.runCurrent()
+
+        assertNull(rig.vm.staleMeal.value)
+        assertEquals(0, meal.clears)
+        assertEquals(listOf("999", "111", "222"), meal.items.value.map { it.productBarcode })
+    }
+
+    @Test
+    fun `dismissing the question adds nothing and clears nothing`() = runTest {
+        val meal = RecordingMeal(seed = listOf(dinnerLine(hoursAgo = 9)))
+        val rig = rig(listOf(bread), meal = meal, clock = fixedClock)
+
+        rig.vm.quickAdd(RecentEntry(bread, null), "72 g")
+        dispatcher.scheduler.runCurrent()
+        rig.vm.dismissStaleMeal()
+        rig.vm.resolveStaleMeal(startNewMeal = true)
+        dispatcher.scheduler.runCurrent()
+
+        assertNull(rig.vm.staleMeal.value)
+        assertEquals(0, meal.clears)
+        assertEquals(listOf("999"), meal.items.value.map { it.productBarcode })
+    }
+
+    @Test
+    fun `a meal added to within two hours is not questioned`() = runTest {
+        val meal = RecordingMeal(seed = listOf(dinnerLine(hoursAgo = 1)))
+        val rig = rig(listOf(bread), meal = meal, clock = fixedClock)
+
+        rig.vm.quickAdd(RecentEntry(bread, null), "72 g")
+        dispatcher.scheduler.runCurrent()
+
+        assertNull(rig.vm.staleMeal.value)
+        assertEquals(listOf("999", "111"), meal.items.value.map { it.productBarcode })
     }
 }

@@ -8,6 +8,7 @@ import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.PortionUnit
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.RecentUseSnapshot
+import app.justthecarbs.domain.StaleMeal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -136,31 +137,14 @@ class HomeViewModel(private val repository: ProductRepository) : ViewModel() {
     fun quickAdd(entry: RecentEntry, portionDescription: String) {
         val plan = quickAddPlan(entry.product, entry.lastUnit) ?: return
         val barcode = plan.barcode
-        if (barcode in _quickAdd.value) return
+        if (barcode in _quickAdd.value || _staleMeal.value != null) return
         _quickAdd.update { it + (barcode to QuickAddStatus.IN_FLIGHT) }
 
         viewModelScope.launch {
-            try {
-                when (plan) {
-                    is QuickAddPlan.DirectCarbs -> repository.addDirectCarbMealItem(
-                        productBarcode = barcode,
-                        displayName = plan.displayName,
-                        portionDescription = portionDescription,
-                        count = plan.count,
-                        carbsPerUnit = plan.carbsPerUnit,
-                        exactCarbs = plan.exactCarbs,
-                    )
-
-                    is QuickAddPlan.Weighed -> repository.addMealItem(
-                        productBarcode = barcode,
-                        displayName = plan.displayName,
-                        portionDescription = portionDescription,
-                        resolvedAmount = plan.resolvedAmount,
-                        basis = plan.basis,
-                        carbsPer100 = plan.carbsPer100,
-                        exactCarbs = plan.exactCarbs,
-                    )
-                }
+            // Same question the calculator asks before its Add (see ProductRepository.findStaleMeal):
+            // a one-tap add is exactly how breakfast would land on top of last night's dinner.
+            val stale = try {
+                repository.findStaleMeal()
             } catch (e: CancellationException) {
                 _quickAdd.update { it - barcode }
                 throw e
@@ -169,33 +153,112 @@ class HomeViewModel(private val repository: ProductRepository) : ViewModel() {
                 _quickAddEvents.trySend(QuickAddEvent.Failed(plan.displayName))
                 return@launch
             }
-
-            _quickAdd.update { it + (barcode to QuickAddStatus.ADDED) }
-            _quickAddEvents.trySend(QuickAddEvent.Added(barcode))
-
-            // The same usage write the calculator's *Add to meal* makes, so Recents order and the
-            // *Usual* shortcuts behave identically whichever way the portion was added. Like there,
-            // a history failure must not turn a committed meal line into a reported failure.
-            try {
-                repository.recordUse(
-                    barcode = barcode,
-                    // Null on the direct-carb path, which preserves any earlier weight (see
-                    // `ProductRepository.recordUse`) — never the count.
-                    portion = (plan as? QuickAddPlan.Weighed)?.resolvedAmount,
-                    mode = plan.inputMode,
-                    portionUnitId = plan.portionUnitId,
-                    count = plan.count,
-                    expectedBasis = plan.basis,
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // Nothing to show: the meal line is what the user asked for, and it exists.
+            if (stale != null) {
+                // The card is released while the question is up; the dialog is modal, and the held
+                // add re-takes the card's guard when it is answered.
+                _quickAdd.update { it - barcode }
+                // A second card tapped before the question appeared does not replace the first:
+                // one question, about the tap that raised it. The second card shows no confirmation,
+                // so nothing claims it was added.
+                if (heldQuickAdd == null) {
+                    heldQuickAdd = HeldQuickAdd(plan, portionDescription)
+                    _staleMeal.value = stale
+                }
+                return@launch
             }
-
-            delay(CONFIRMATION_MS)
-            _quickAdd.update { it - barcode }
+            commitQuickAdd(plan, portionDescription, startNewMeal = false)
         }
+    }
+
+    /**
+     * A meal in progress has gone quiet and a Quick Add is waiting for the user to say whether it
+     * starts a new meal. Nothing has been written. Answered by [resolveStaleMeal] or
+     * [dismissStaleMeal].
+     */
+    private val _staleMeal = MutableStateFlow<StaleMeal?>(null)
+    val staleMeal: StateFlow<StaleMeal?> = _staleMeal.asStateFlow()
+
+    private data class HeldQuickAdd(val plan: QuickAddPlan, val portionDescription: String)
+
+    private var heldQuickAdd: HeldQuickAdd? = null
+
+    /** [startNewMeal] true empties the stored meal before the held item is written. */
+    fun resolveStaleMeal(startNewMeal: Boolean) {
+        val held = heldQuickAdd ?: return
+        heldQuickAdd = null
+        _staleMeal.value = null
+        val barcode = held.plan.barcode
+        if (barcode in _quickAdd.value) return
+        _quickAdd.update { it + (barcode to QuickAddStatus.IN_FLIGHT) }
+        viewModelScope.launch { commitQuickAdd(held.plan, held.portionDescription, startNewMeal) }
+    }
+
+    /** The stale-meal question was dismissed: nothing is added and nothing is cleared. */
+    fun dismissStaleMeal() {
+        heldQuickAdd = null
+        _staleMeal.value = null
+    }
+
+    /** The write and the usage record behind one Quick Add; the card already holds IN_FLIGHT. */
+    private suspend fun commitQuickAdd(plan: QuickAddPlan, portionDescription: String, startNewMeal: Boolean) {
+        val barcode = plan.barcode
+        try {
+            when (plan) {
+                is QuickAddPlan.DirectCarbs -> repository.addDirectCarbMealItem(
+                    productBarcode = barcode,
+                    displayName = plan.displayName,
+                    portionDescription = portionDescription,
+                    count = plan.count,
+                    carbsPerUnit = plan.carbsPerUnit,
+                    exactCarbs = plan.exactCarbs,
+                    startNewMeal = startNewMeal,
+                )
+
+                is QuickAddPlan.Weighed -> repository.addMealItem(
+                    productBarcode = barcode,
+                    displayName = plan.displayName,
+                    portionDescription = portionDescription,
+                    resolvedAmount = plan.resolvedAmount,
+                    basis = plan.basis,
+                    carbsPer100 = plan.carbsPer100,
+                    exactCarbs = plan.exactCarbs,
+                    startNewMeal = startNewMeal,
+                )
+            }
+        } catch (e: CancellationException) {
+            _quickAdd.update { it - barcode }
+            throw e
+        } catch (_: Exception) {
+            _quickAdd.update { it - barcode }
+            _quickAddEvents.trySend(QuickAddEvent.Failed(plan.displayName))
+            return
+        }
+
+        _quickAdd.update { it + (barcode to QuickAddStatus.ADDED) }
+        _quickAddEvents.trySend(QuickAddEvent.Added(barcode))
+
+        // The same usage write the calculator's *Add to meal* makes, so Recents order and the
+        // *Usual* shortcuts behave identically whichever way the portion was added. Like there,
+        // a history failure must not turn a committed meal line into a reported failure.
+        try {
+            repository.recordUse(
+                barcode = barcode,
+                // Null on the direct-carb path, which preserves any earlier weight (see
+                // `ProductRepository.recordUse`) — never the count.
+                portion = (plan as? QuickAddPlan.Weighed)?.resolvedAmount,
+                mode = plan.inputMode,
+                portionUnitId = plan.portionUnitId,
+                count = plan.count,
+                expectedBasis = plan.basis,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Nothing to show: the meal line is what the user asked for, and it exists.
+        }
+
+        delay(CONFIRMATION_MS)
+        _quickAdd.update { it - barcode }
     }
 
     fun toggleFavorite(product: Product) {

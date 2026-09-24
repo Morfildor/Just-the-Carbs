@@ -1,8 +1,10 @@
 package app.justthecarbs.data.local
 
 import app.justthecarbs.domain.LocalProductDataSource
+import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductFetchResult
+import app.justthecarbs.domain.ProductSearchHit
 import app.justthecarbs.domain.RecentUseSnapshot
 import app.justthecarbs.domain.toInputModeOrNull
 import kotlinx.coroutines.flow.Flow
@@ -34,9 +36,34 @@ class RoomProductDataSource(private val dao: ProductDao) : LocalProductDataSourc
     override suspend fun restoreRecentUse(snapshot: RecentUseSnapshot) =
         dao.restoreRecentUse(snapshot.toRow())
 
+    /**
+     * Every stored product as a search candidate, for matching typed names on the device.
+     *
+     * Room-only rather than on [LocalProductDataSource]: it serves the search screens, not the §10
+     * lookup, and a tap on one of these still runs the ordinary lookup. A row whose figure or basis
+     * cannot be read shows no figure rather than a guessed one, the same rule remote hits follow.
+     */
+    fun observeSearchable(): Flow<List<ProductSearchHit>> =
+        dao.observeSearchable().map { rows -> rows.map { it.toSearchHit() } }
+
     suspend fun clearRecentHistory() = dao.clearRecentHistory()
 
     suspend fun deleteAllProducts() = dao.deleteAllProducts()
+}
+
+private fun SearchableProductRow.toSearchHit(): ProductSearchHit {
+    val basis = NutritionBasis.entries.firstOrNull { it.name == basis }
+    val carbs = carbsPer100.toBigDecimalOrNull()?.takeIf { basis != null }
+    return ProductSearchHit(
+        barcode = barcode,
+        name = name,
+        brand = brand,
+        packageQuantity = packageAmount?.toBigDecimalOrNull()?.takeIf { basis != null }
+            ?.let { "${it.stripTrailingZeros().toPlainString()} ${basis?.unitLabel}" },
+        carbsPer100 = carbs,
+        basis = basis.takeIf { carbs != null },
+        imageUrl = imageUrl,
+    )
 }
 
 private fun RecentUseSnapshotRow.toDomain(): RecentUseSnapshot = RecentUseSnapshot(

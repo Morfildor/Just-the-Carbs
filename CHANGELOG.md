@@ -98,6 +98,20 @@ live on Production and says the first update is ready. Work accumulates here unt
 - **Remove from Recent, with Undo.** Long-press a card on Home and choose *Remove from Recent* to
   forget that product's remembered portion and usual portions, keeping the product, its carb value,
   its portion units and its Favourite star. *Undo* puts it back exactly.
+- **A meal left from earlier no longer collects the next meal's items.** The meal is kept across
+  restarts, so a meal nobody cleared was still there hours later, and the next *Add to meal* (or
+  Quick Add) silently added to it, making a total too high. When the meal's last item was added two
+  hours ago or more, the next add now asks first: *Start new meal* (the old items go) or *Add to this
+  meal*. Dismissing adds nothing. The question is asked once per meal: after either answer the meal
+  counts as active again. Nothing is ever cleared without that tap.
+- **Change a meal line's portion.** Tap a line on the meal screen to correct its amount (grams or
+  millilitres, or the count for a counted line). The carbs are recalculated from the figures stored
+  with that line, never from the product as it is now, and nothing is recorded as a new use.
+- **Products on this phone are found by name.** Home's search and the search screen now list
+  matching products already stored on the phone (anything you have opened, and products you entered
+  yourself) under *On this phone*, above the Open Food Facts results and without waiting for them.
+  They also appear offline. Products entered without a barcode were previously reachable only from
+  Recents.
 
 ### Changed
 

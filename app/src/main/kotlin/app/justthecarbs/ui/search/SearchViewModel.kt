@@ -11,10 +11,12 @@ import app.justthecarbs.domain.SearchQueryMatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
@@ -92,7 +94,28 @@ data class SearchUiState(
      * still coming, and the progress affordance stays up until it arrives.
      */
     val narrowedLocally: Boolean = false,
-)
+    /**
+     * Products already stored on this phone that match the query — every word of it, in the name or
+     * brand — in the order Recents uses. Answered on the device on every keystroke, independently of
+     * the remote search: nothing here affects [hits], [noMatches], [error] or any request.
+     */
+    val savedHits: List<ProductSearchHit> = emptyList(),
+) {
+    /**
+     * [hits] less anything already listed in [savedHits], so one product never appears twice (the
+     * lists share row keys) and the stored copy — the one a tap will actually open — is the one shown.
+     */
+    val onlineHits: List<ProductSearchHit>
+        get() = if (savedHits.isEmpty()) {
+            hits
+        } else {
+            val saved = savedHits.mapTo(HashSet()) { it.barcode }
+            hits.filterNot { it.barcode in saved }
+        }
+
+    /** Something can be listed: stored matches, online results, or both. */
+    val hasResults: Boolean get() = savedHits.isNotEmpty() || hits.isNotEmpty()
+}
 
 /**
  * Free-text product search (spec §9).
@@ -152,10 +175,19 @@ class SearchViewModel(
      */
     private val governor: RemoteSearchGovernor = RemoteSearchGovernor(),
     /**
+     * Every product stored on this phone, as search candidates, in Recents order.
+     *
+     * Matched in memory on each keystroke rather than queried per keystroke, so the stored matches
+     * need no debounce, no cancellation and no generation of their own: they are a pure function of
+     * the current text and the latest list, and cannot race the remote pipeline or each other.
+     */
+    savedProducts: Flow<List<ProductSearchHit>> = emptyFlow(),
+    /**
      * Wall clock, injectable so request pacing is testable on virtual time.
      *
      * Must agree with the clock the [governor] was built with — both default to
-     * `System.currentTimeMillis`, and tests pass the same fake to both.
+     * `System.currentTimeMillis`, and tests pass the same fake to both. Kept last, so it can be
+     * passed as a trailing lambda.
      */
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
@@ -247,7 +279,17 @@ class SearchViewModel(
      */
     private var retriedGeneration: Long? = null
 
+    /** [savedProducts]' latest list, each folded once for matching rather than on every keystroke. */
+    private var savedSubjects: List<Pair<ProductSearchHit, SearchQueryMatcher.Subject>> = emptyList()
+
     init {
+        viewModelScope.launch {
+            savedProducts.collect { hits ->
+                savedSubjects = hits.map { it to SearchQueryMatcher.Subject(listOf(it.name), it.brand) }
+                // The list can arrive, or change, after the text was typed.
+                _state.update { it.copy(savedHits = savedMatchesFor(normalize(it.query))) }
+            }
+        }
         viewModelScope.launch {
             requests
                 .flatMapLatest { request ->
@@ -397,6 +439,7 @@ class SearchViewModel(
                 awaitingRemotePermit = false,
                 rateLimited = if (willSearch) governor.isServerBackoffActive(nowMs()) else false,
                 narrowedLocally = if (hadResultsForThisQuery) it.narrowedLocally else narrowed,
+                savedHits = savedMatchesFor(terms),
             )
         }
 
@@ -442,6 +485,27 @@ class SearchViewModel(
         return remoteHits.filterIndexed { index, _ ->
             matcher.match(subjects[index]).strength != SearchQueryMatcher.Strength.WEAK
         }
+    }
+
+    /**
+     * Stored products matching [terms]: every query word must appear in the name or brand, after the
+     * same folding the remote ranking uses (so "cafe" finds "Café" and "pinar" finds "Pınar"). Only a
+     * full match, because these are listed *above* the online results and a partial one would push
+     * the product the user typed down beneath products they did not.
+     *
+     * The same minimum length as a remote search, so two letters do not list half the phone.
+     */
+    private fun savedMatchesFor(terms: String): List<ProductSearchHit> {
+        if (terms.length < MIN_QUERY_LENGTH || savedSubjects.isEmpty()) return emptyList()
+        val matcher = SearchQueryMatcher(terms, emptyList())
+        // A query of only one-letter words has no words to match, and the matcher would call
+        // everything a full match.
+        if (matcher.words.isEmpty()) return emptyList()
+        return savedSubjects.asSequence()
+            .filter { (_, subject) -> matcher.match(subject).strength == SearchQueryMatcher.Strength.FULL }
+            .map { it.first }
+            .take(MAX_SAVED_HITS)
+            .toList()
     }
 
     /**
@@ -699,6 +763,12 @@ class SearchViewModel(
          * refusal is made with, rather than repeating "3" in a string that could drift from it.
          */
         const val MIN_QUERY_LENGTH = 3
+
+        /**
+         * At most this many stored products are listed above the online results, so a common word
+         * ("melk") cannot push every online result off the screen. More words narrow the list.
+         */
+        const val MAX_SAVED_HITS = 10
 
         /**
          * How long typing must pause before a remote search is *scheduled*.

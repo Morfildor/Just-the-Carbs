@@ -405,7 +405,11 @@ fun JustTheCarbsNavHost(
                 // The governor here paces the PRIMARY; the legacy fallback carries its own stricter
                 // budget inside GovernedProductSearch.
                 factory = factory {
-                    SearchViewModel(container.searchSource, container.primarySearchGovernor)
+                    SearchViewModel(
+                        container.searchSource,
+                        container.primarySearchGovernor,
+                        savedProducts = container.localProducts.observeSearchable(),
+                    )
                 },
             )
             val searchState by searchViewModel.state.collectAsStateWithLifecycle()
@@ -415,6 +419,7 @@ fun JustTheCarbsNavHost(
             // the alternative silently finalises a removal the user was still deciding about.
             val forgottenRecent by viewModel.lastForgotten.collectAsStateWithLifecycle()
             val quickAddStatus by viewModel.quickAdd.collectAsStateWithLifecycle()
+            val staleMeal by viewModel.staleMeal.collectAsStateWithLifecycle()
 
             HomeScreen(
                 recents = recents,
@@ -460,6 +465,9 @@ fun JustTheCarbsNavHost(
                 onSearchScanLabel = { navController.navigate(Routes.labelScan()) },
                 onSearchEnterManually = { navController.navigate(Routes.manual()) },
                 onSearchRetry = searchViewModel::retry,
+                staleMeal = staleMeal,
+                onResolveStaleMeal = viewModel::resolveStaleMeal,
+                onDismissStaleMeal = viewModel::dismissStaleMeal,
             )
         }
 
@@ -606,6 +614,8 @@ fun JustTheCarbsNavHost(
                     viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
                 },
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
+                onResolveStaleMeal = viewModel::resolveStaleMeal,
+                onDismissStaleMeal = viewModel::dismissStaleMeal,
                 onConfirmLabelMatch = viewModel::confirmLabelMatch,
                 onDismissLabelHandoffFailure = viewModel::dismissLabelHandoffFailure,
                 onUseDetectedLabelValue = viewModel::useDetectedLabelValue,
@@ -724,6 +734,8 @@ fun JustTheCarbsNavHost(
                     viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
                 },
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
+                onResolveStaleMeal = viewModel::resolveStaleMeal,
+                onDismissStaleMeal = viewModel::dismissStaleMeal,
                 onShowSaveQuickCalculation = viewModel::showSaveQuickCalculation,
                 onSaveQuickCalculation = viewModel::saveQuickCalculation,
             )
@@ -740,7 +752,11 @@ fun JustTheCarbsNavHost(
                 // The governor here paces the PRIMARY; the legacy fallback carries its own stricter
                 // budget inside GovernedProductSearch.
                 factory = factory {
-                    SearchViewModel(container.searchSource, container.primarySearchGovernor)
+                    SearchViewModel(
+                        container.searchSource,
+                        container.primarySearchGovernor,
+                        savedProducts = container.localProducts.observeSearchable(),
+                    )
                 },
             )
             val state by viewModel.state.collectAsStateWithLifecycle()
@@ -791,6 +807,9 @@ fun JustTheCarbsNavHost(
                 onScanNext = { navController.navigate(Routes.SCAN) },
                 onUndoRemove = viewModel::undoRemove,
                 onUndoExpired = viewModel::clearUndo,
+                onEditItem = viewModel::startEdit,
+                onSaveEdit = viewModel::saveEdit,
+                onCancelEdit = viewModel::cancelEdit,
             )
         }
 

@@ -140,6 +140,7 @@ import app.justthecarbs.ui.components.WrappingRow
 import app.justthecarbs.domain.PortionUsage
 import app.justthecarbs.ui.meal.MealActions
 import app.justthecarbs.ui.meal.MealBarIfPresent
+import app.justthecarbs.ui.meal.StaleMealDialog
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
@@ -215,6 +216,9 @@ fun ProductScreen(
     onShowSaveQuickCalculation: (Boolean) -> Unit = {},
     /** Persist the calculation on screen under this name (1.0.3 P1). */
     onSaveQuickCalculation: (String) -> Unit = {},
+    /** The answer to [ProductUiState.staleMeal]: true starts a new meal, false adds to the stored one. */
+    onResolveStaleMeal: (Boolean) -> Unit = {},
+    onDismissStaleMeal: () -> Unit = {},
 ) {
     var galleryOpen by remember(state.product?.barcode) { mutableStateOf(false) }
     val galleryImages = remember(state.product?.images) {
@@ -238,6 +242,15 @@ fun ProductScreen(
             productName = state.product.name,
             images = galleryImages,
             onDismiss = { galleryOpen = false },
+        )
+    }
+
+    state.staleMeal?.let { staleMeal ->
+        StaleMealDialog(
+            staleMeal = staleMeal,
+            onStartNewMeal = { onResolveStaleMeal(true) },
+            onAddToMeal = { onResolveStaleMeal(false) },
+            onDismiss = onDismissStaleMeal,
         )
     }
 

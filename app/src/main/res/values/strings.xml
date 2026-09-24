@@ -277,6 +277,33 @@
     </plurals>
 
     <!--
+      A meal that has gone quiet (MealStaleness). Asked when the next item is added, never on
+      opening the app, and nothing is cleared unless the user chooses it. The wording states what
+      is stored and what the choice does; it never guesses why the user is adding (no "breakfast",
+      no "new day").
+    -->
+    <string name="meal_stale_title" tools:ignore="MissingTranslation">Start a new meal?</string>
+    <string name="meal_stale_body" tools:ignore="MissingTranslation">The meal already has %1$s (%2$s g carbs). The last was added %3$s ago. Starting a new meal removes them.</string>
+    <plurals name="meal_stale_hours" tools:ignore="MissingTranslation">
+        <item quantity="one">%d hour</item>
+        <item quantity="other">%d hours</item>
+    </plurals>
+    <string name="meal_stale_start_new" tools:ignore="MissingTranslation">Start new meal</string>
+    <string name="meal_stale_add_to_it" tools:ignore="MissingTranslation">Add to this meal</string>
+
+    <!-- Changing the amount of a line already in the meal. The figure is recalculated from the
+         line's own stored values, never from the product as it is now. -->
+    <string name="meal_edit_action" tools:ignore="MissingTranslation">Change portion</string>
+    <string name="meal_edit_title" tools:ignore="MissingTranslation">Change portion</string>
+    <string name="meal_edit_amount_label" tools:ignore="MissingTranslation">Portion (%1$s)</string>
+    <string name="meal_edit_count_label" tools:ignore="MissingTranslation">Count</string>
+    <string name="meal_edit_result" tools:ignore="MissingTranslation">%1$s g carbs</string>
+    <!-- A counted line after its count is changed. The unit word ("slices") is not stored with the
+         line, so the edited line says what it is made of instead of guessing a plural. -->
+    <string name="meal_edit_count_description" tools:ignore="MissingTranslation">%1$s × %2$s g carbs</string>
+    <string name="meal_edit_save" tools:ignore="MissingTranslation">Save</string>
+
+    <!--
       Integrated label verification (development-pass brief §12, design spec §7). English only,
       same reasoning as the countable-portion strings above.
 
@@ -336,6 +363,14 @@
          what did not happen ("couldn't refresh") rather than what went wrong: the results below are
          still good, and naming the network fault would read as a verdict on them. -->
     <string name="search_refresh_failed" tools:ignore="MissingTranslation">Couldn\'t refresh results</string>
+    <!-- Products already stored on the phone that match the query, listed before online results.
+         "On this phone" rather than "Saved": it includes every product the user has opened, not
+         only ones they entered. -->
+    <string name="search_saved_section" tools:ignore="MissingTranslation">On this phone</string>
+    <string name="search_online_section" tools:ignore="MissingTranslation">Open Food Facts</string>
+    <!-- The online search failed while products from this phone are on screen: the list stays, and
+         this says what is missing from it. -->
+    <string name="search_online_failed" tools:ignore="MissingTranslation">Couldn\'t search Open Food Facts</string>
     <!-- The app is pacing its own requests, or the server asked it to wait. Deliberately says
          nothing about quotas, rate limits, requests-per-minute or Open Food Facts: none of that is
          the user's problem, and the queued search runs by itself. No Retry action goes with this —

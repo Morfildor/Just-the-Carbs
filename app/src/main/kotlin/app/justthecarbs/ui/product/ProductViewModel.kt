@@ -27,6 +27,7 @@ import app.justthecarbs.domain.PortionUsage
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductDataOrigin
 import app.justthecarbs.domain.ProductFetchResult
+import app.justthecarbs.domain.StaleMeal
 import app.justthecarbs.domain.UnusableReason
 import app.justthecarbs.domain.VerificationStatus
 import kotlinx.coroutines.CancellationException
@@ -147,6 +148,11 @@ data class ProductUiState(
      * (see `rememberSuccessPulse`) restarts on a new value, not on a value going from true to true.
      */
     val lastMealAddSucceeded: Long? = null,
+    /**
+     * An Add is waiting for the user to say whether it starts a new meal, because the meal already
+     * stored has gone quiet (see [app.justthecarbs.domain.MealStaleness]). Nothing has been written.
+     */
+    val staleMeal: StaleMeal? = null,
     /**
      * A label reading waiting to be compared against the current value (§12).
      *
@@ -828,49 +834,100 @@ class ProductViewModel(
      * this coroutine) before the write has actually landed. On failure the screen stays put, the
      * guard is released and [ProductUiState.mealAddFailed] is set so the user can retry; nothing
      * pretends the item was added.
+     *
+     * If the stored meal has gone quiet ([ProductRepository.findStaleMeal]), nothing is written yet:
+     * the snapshot is held and [ProductUiState.staleMeal] asks whether this starts a new meal. The
+     * answer comes back through [resolveStaleMeal], and the write that follows is the one held here.
      */
     fun addCurrentToMeal(portionDescription: String, fallbackName: String = "", scanNext: Boolean = false) {
-        if (_state.value.addingToMeal) return
+        if (_state.value.addingToMeal || _state.value.staleMeal != null) return
         val pending = buildPendingMealItem(portionDescription, fallbackName) ?: return
-        val usage = buildUsageSnapshot()
+        val add = HeldMealAdd(pending, buildUsageSnapshot(), scanNext)
 
         _state.update { it.copy(addingToMeal = true, mealAddFailed = false) }
         viewModelScope.launch {
-            try {
-                when (pending) {
-                    is PendingMealItem.DirectCarbs -> repository.addDirectCarbMealItem(
-                        productBarcode = pending.barcode,
-                        displayName = pending.displayName,
-                        portionDescription = pending.portionDescription,
-                        count = pending.count,
-                        carbsPerUnit = pending.carbsPerUnit,
-                        exactCarbs = pending.exactCarbs,
-                    )
-
-                    is PendingMealItem.Weighed -> repository.addMealItem(
-                        productBarcode = pending.barcode,
-                        displayName = pending.displayName,
-                        portionDescription = pending.portionDescription,
-                        resolvedAmount = pending.resolvedAmount,
-                        basis = pending.basis,
-                        carbsPer100 = pending.carbsPer100,
-                        exactCarbs = pending.exactCarbs,
-                    )
-                }
-                // A completed Add is a deliberate usage event (§13). Await it after the meal write,
-                // but report history failure separately from the already committed meal.
-                recordUsageSnapshot(usage, deduplicate = false)
-                _state.update {
-                    it.copy(addingToMeal = false, lastMealAddSucceeded = System.currentTimeMillis())
-                }
-                if (scanNext) {
-                    _navigationEvents.send(ProductNavigationEvent.ScanNext)
-                }
+            val stale = try {
+                repository.findStaleMeal()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _state.update { it.copy(addingToMeal = false, mealAddFailed = true) }
+                return@launch
             }
+            if (stale != null) {
+                heldMealAdd = add
+                _state.update { it.copy(addingToMeal = false, staleMeal = stale) }
+                return@launch
+            }
+            commitMealAdd(add, startNewMeal = false)
+        }
+    }
+
+    /**
+     * The answer to [ProductUiState.staleMeal]: [startNewMeal] true empties the stored meal before
+     * the held item is written, false adds it to the meal as it is. Either way the item written is
+     * exactly the one the user tapped *Add* for.
+     */
+    fun resolveStaleMeal(startNewMeal: Boolean) {
+        val add = heldMealAdd ?: return
+        heldMealAdd = null
+        _state.update { it.copy(staleMeal = null, addingToMeal = true, mealAddFailed = false) }
+        viewModelScope.launch { commitMealAdd(add, startNewMeal) }
+    }
+
+    /** The stale-meal question was dismissed: nothing is added and nothing is cleared. */
+    fun dismissStaleMeal() {
+        heldMealAdd = null
+        _state.update { it.copy(staleMeal = null) }
+    }
+
+    /** One *Add* waiting on the stale-meal question, exactly as it was when the user tapped. */
+    private data class HeldMealAdd(
+        val pending: PendingMealItem,
+        val usage: UsageSnapshot?,
+        val scanNext: Boolean,
+    )
+
+    private var heldMealAdd: HeldMealAdd? = null
+
+    private suspend fun commitMealAdd(add: HeldMealAdd, startNewMeal: Boolean) {
+        val pending = add.pending
+        try {
+            when (pending) {
+                is PendingMealItem.DirectCarbs -> repository.addDirectCarbMealItem(
+                    productBarcode = pending.barcode,
+                    displayName = pending.displayName,
+                    portionDescription = pending.portionDescription,
+                    count = pending.count,
+                    carbsPerUnit = pending.carbsPerUnit,
+                    exactCarbs = pending.exactCarbs,
+                    startNewMeal = startNewMeal,
+                )
+
+                is PendingMealItem.Weighed -> repository.addMealItem(
+                    productBarcode = pending.barcode,
+                    displayName = pending.displayName,
+                    portionDescription = pending.portionDescription,
+                    resolvedAmount = pending.resolvedAmount,
+                    basis = pending.basis,
+                    carbsPer100 = pending.carbsPer100,
+                    exactCarbs = pending.exactCarbs,
+                    startNewMeal = startNewMeal,
+                )
+            }
+            // A completed Add is a deliberate usage event (§13). Await it after the meal write,
+            // but report history failure separately from the already committed meal.
+            recordUsageSnapshot(add.usage, deduplicate = false)
+            _state.update {
+                it.copy(addingToMeal = false, lastMealAddSucceeded = System.currentTimeMillis())
+            }
+            if (add.scanNext) {
+                _navigationEvents.send(ProductNavigationEvent.ScanNext)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _state.update { it.copy(addingToMeal = false, mealAddFailed = true) }
         }
     }
 

@@ -1,6 +1,7 @@
 package app.justthecarbs.domain
 
 import java.math.BigDecimal
+import java.time.Duration
 import java.time.Instant
 
 /** Which of the two legitimate meal-item shapes a row holds. Always explicit, never inferred. */
@@ -126,4 +127,89 @@ object MealTotal {
         exact = exact(items),
         basis = items.firstNotNullOfOrNull { it.basis } ?: NutritionBasis.PER_100_G,
     )
+}
+
+/** The amount this line was calculated from, in the terms its portion field takes: grams/ml or a count. */
+val MealItem.editableAmount: BigDecimal?
+    get() = when (kind) {
+        MealItemKind.WEIGHT_BASED -> resolvedAmount
+        MealItemKind.DIRECT_CARBS -> count
+    }
+
+/**
+ * This line with a different amount, recalculated from the line's **own** stored figures.
+ *
+ * Never from the product: the line is a snapshot, and a correction made to the product since it was
+ * added must not leak into a line the user is only resizing (§9). The carbohydrate figure comes
+ * from the same calculator that produced it originally, so the app still has one formula per portion
+ * shape. Identity, name, basis and [MealItem.addedAt] are kept, so the line keeps its place.
+ *
+ * Null for an amount that is not positive (a zero line is a removal, which has its own action) and
+ * for a row missing the figures its [MealItem.kind] requires, which cannot be recalculated honestly.
+ */
+fun MealItem.withPortion(amount: BigDecimal, portionDescription: String): MealItem? {
+    if (amount.signum() <= 0) return null
+    return when (kind) {
+        MealItemKind.WEIGHT_BASED -> {
+            val per100 = carbsPer100 ?: return null
+            val itemBasis = basis ?: return null
+            copy(
+                portionDescription = portionDescription,
+                resolvedAmount = amount,
+                exactCarbs = CarbCalculator.calculate(per100, amount, itemBasis).exact,
+            )
+        }
+        MealItemKind.DIRECT_CARBS -> {
+            val perUnit = carbsPerUnit ?: return null
+            copy(
+                portionDescription = portionDescription,
+                count = amount,
+                exactCarbs = DirectCarbCalculator.exactCarbs(amount, perUnit),
+            )
+        }
+    }
+}
+
+/** A meal in progress that has gone quiet — see [MealStaleness]. */
+data class StaleMeal(
+    val itemCount: Int,
+    val exactCarbs: BigDecimal,
+    /** Time between the most recent addition and now, whichever way the clock moved. */
+    val sinceLastAdded: Duration,
+)
+
+/**
+ * Whether the next item added probably belongs to a **different** eating session than the meal
+ * already stored.
+ *
+ * The meal survives restarts on purpose, so an app switch or a process death cannot cost a
+ * half-built plate. The same persistence means a meal nobody cleared is still there hours later,
+ * and the next Add would quietly put breakfast on top of last night's dinner: a total that is too
+ * high, read off a screen designed to be copied into another calculator.
+ *
+ * The signal is the time since the **most recent** addition, not the age of the oldest item. A long
+ * dinner that gets a dessert added counts as active, and once the user has answered "add to this
+ * meal" the new line is itself recent, so the question is asked once per session, never on every
+ * add that follows.
+ *
+ * [AFTER] is two hours: longer than the gaps inside one meal (the items of a plate, then a dessert),
+ * and no longer than the usual gap between one eating occasion and the next. Being wrong in either
+ * direction costs little: a false alarm is one extra tap, and nothing is ever cleared without the
+ * user choosing it.
+ *
+ * The distance is taken in either direction: a last addition two hours in the *future* means the
+ * clock was moved, and a timestamp that far from now says nothing about the current session. Small
+ * corrections (network time adjusting by seconds) stay well inside the window.
+ */
+object MealStaleness {
+
+    val AFTER: Duration = Duration.ofHours(2)
+
+    /** Null for an empty meal or one added to within [AFTER] of [now]. */
+    fun check(items: List<MealItem>, now: Instant): StaleMeal? {
+        val lastAdded = items.maxOfOrNull { it.addedAt } ?: return null
+        val since = Duration.between(lastAdded, now).abs()
+        if (since < AFTER) return null
+        return StaleMeal(itemCount = items.size, exactCarbs = MealTotal.exact(items), sinceLastAdded = since)
+    }
 }

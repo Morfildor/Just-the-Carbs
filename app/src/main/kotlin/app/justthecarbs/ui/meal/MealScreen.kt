@@ -1,6 +1,7 @@
 package app.justthecarbs.ui.meal
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
@@ -23,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -32,15 +35,24 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
@@ -48,17 +60,23 @@ import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.AppSettings
+import app.justthecarbs.domain.MealItemKind
+import app.justthecarbs.domain.PortionParser
+import app.justthecarbs.domain.editableAmount
+import app.justthecarbs.domain.withPortion
 import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
 import app.justthecarbs.ui.components.jtcDialogOutline
+import app.justthecarbs.ui.components.jtcTextFieldColors
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.NumberType
 import app.justthecarbs.ui.theme.accent
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
+import java.math.BigDecimal
 
 /** Stable handles for instrumented tests. */
 const val MEAL_TOTAL_TAG = "meal_total"
@@ -68,6 +86,9 @@ const val MEAL_COPY_TAG = "meal_copy"
 const val MEAL_CLEAR_TAG = "meal_clear"
 const val MEAL_SCAN_NEXT_TAG = "meal_scan_next"
 const val MEAL_SNACKBAR_TAG = "meal_snackbar"
+const val MEAL_ITEM_ROW_TAG = "meal_item_row"
+const val MEAL_EDIT_FIELD_TAG = "meal_edit_field"
+const val MEAL_EDIT_SAVE_TAG = "meal_edit_save"
 
 /**
  * The meal total (development-pass brief §10).
@@ -91,8 +112,18 @@ fun MealScreen(
     onScanNext: () -> Unit = {},
     onUndoRemove: () -> Unit = {},
     onUndoExpired: () -> Unit = {},
+    onEditItem: (MealItem) -> Unit = {},
+    onSaveEdit: (BigDecimal, String) -> Unit = { _, _ -> },
+    onCancelEdit: () -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+
+    state.editing?.let { item ->
+        // Keyed on the line, so a second line opened later starts from its own amount.
+        key(item.id) {
+            MealItemEditDialog(item = item, onSave = onSaveEdit, onDismiss = onCancelEdit)
+        }
+    }
 
     // One Snackbar per removal, keyed on the removed item so a second removal replaces the first
     // rather than queueing behind it — a queue would let the user tap Undo and restore an item they
@@ -188,7 +219,11 @@ fun MealScreen(
                             .padding(horizontal = Space.screenEdge),
                     ) {
                         items(state.items, key = { it.id }) { item ->
-                            MealItemRow(item = item, onRemove = { onRemoveItem(item) })
+                            MealItemRow(
+                                item = item,
+                                onEdit = { onEditItem(item) },
+                                onRemove = { onRemoveItem(item) },
+                            )
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
@@ -243,8 +278,9 @@ private fun EmptyMeal(modifier: Modifier = Modifier) {
  * a line added before the product was corrected must keep showing what the user accepted (§9).
  */
 @Composable
-private fun MealItemRow(item: MealItem, onRemove: () -> Unit) {
+private fun MealItemRow(item: MealItem, onEdit: () -> Unit, onRemove: () -> Unit) {
     val removeLabel = stringResource(R.string.meal_remove_item, item.displayName)
+    val editLabel = stringResource(R.string.meal_edit_action)
 
     // The carbohydrate figure is separated from the portion metadata.
     //
@@ -266,10 +302,13 @@ private fun MealItemRow(item: MealItem, onRemove: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // Tapping the line changes its portion; the remove button inside it keeps its own tap.
+            .clickable(onClickLabel = editLabel, onClick = onEdit)
             .padding(vertical = Space.s)
             .semantics(mergeDescendants = true) {
                 contentDescription = "${item.displayName}. $spokenSummary"
-            },
+            }
+            .testTag(MEAL_ITEM_ROW_TAG),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -442,4 +481,105 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
             }
         }
     }
+}
+
+/**
+ * Change one line's amount: grams or millilitres for a weighed line, the count for a counted one.
+ *
+ * The preview under the field is the same recalculation Save performs ([withPortion], from the
+ * line's own stored figures), so what the user reads is what gets written. Save stays disabled for
+ * anything that is not a positive number; zero is a removal, which the row's own button does.
+ */
+@Composable
+private fun MealItemEditDialog(
+    item: MealItem,
+    onSave: (BigDecimal, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Opens focused with the amount selected: the dialog exists to replace a number, so typing
+    // replaces it rather than landing in front of it.
+    var field by remember {
+        val initial = item.editableAmount?.let(ResultFormatter::editable).orEmpty()
+        mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length)))
+    }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val text = field.text
+    val amount = PortionParser.parse(text)
+    val preview = amount?.let { item.withPortion(it, "") }
+    val typed = text.trim()
+    val weighed = item.kind == MealItemKind.WEIGHT_BASED
+    val unitLabel = item.basis?.unitLabel.orEmpty()
+    val description = if (weighed) {
+        "$typed $unitLabel"
+    } else {
+        stringResource(
+            R.string.meal_edit_count_description,
+            typed,
+            item.carbsPerUnit?.let(ResultFormatter::quantity).orEmpty(),
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.jtcDialogOutline(),
+        shape = JtcDialogDefaults.shape,
+        containerColor = JtcDialogDefaults.containerColor,
+        iconContentColor = JtcDialogDefaults.iconContentColor,
+        titleContentColor = JtcDialogDefaults.titleContentColor,
+        textContentColor = JtcDialogDefaults.textContentColor,
+        tonalElevation = JtcDialogDefaults.tonalElevation,
+        title = { Text(stringResource(R.string.meal_edit_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Space.s)) {
+                Text(
+                    text = item.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                OutlinedTextField(
+                    value = field,
+                    onValueChange = { field = it },
+                    label = {
+                        Text(
+                            if (weighed) {
+                                stringResource(R.string.meal_edit_amount_label, unitLabel)
+                            } else {
+                                stringResource(R.string.meal_edit_count_label)
+                            },
+                        )
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = text.isNotBlank() && preview == null,
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                    colors = jtcTextFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .testTag(MEAL_EDIT_FIELD_TAG),
+                )
+                if (preview != null) {
+                    Text(
+                        text = stringResource(
+                            R.string.meal_edit_result,
+                            ResultFormatter.decimal(preview.exactCarbs),
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.extendedColors.result,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { amount?.let { onSave(it, description) } },
+                enabled = preview != null,
+                modifier = Modifier.testTag(MEAL_EDIT_SAVE_TAG),
+            ) { Text(stringResource(R.string.meal_edit_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }

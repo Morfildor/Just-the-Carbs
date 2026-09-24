@@ -5,6 +5,7 @@ import app.justthecarbs.domain.LocalProductDataSource
 import app.justthecarbs.domain.MealItem
 import app.justthecarbs.domain.MealStore
 import app.justthecarbs.domain.MealItemKind
+import app.justthecarbs.domain.MealStaleness
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnit
@@ -20,6 +21,7 @@ import app.justthecarbs.domain.ProductFetchResult
 import app.justthecarbs.domain.ProductSearchResult
 import app.justthecarbs.domain.ProductSearchSource
 import app.justthecarbs.domain.RecentUseSnapshot
+import app.justthecarbs.domain.StaleMeal
 import app.justthecarbs.domain.UsualPortionSelector
 import app.justthecarbs.domain.VerificationStatus
 import kotlinx.coroutines.flow.Flow
@@ -535,6 +537,9 @@ class ProductRepository(
      * a snapshot of the number the user actually saw and accepted, and re-deriving it here would be
      * a second place where a carbohydrate figure gets produced. The app keeps one formula, in
      * [app.justthecarbs.domain.CarbCalculator], and this method only records its output.
+     *
+     * [startNewMeal] empties the meal first: the user was asked about a stale meal (see
+     * [findStaleMeal]) and chose to start over.
      */
     suspend fun addMealItem(
         productBarcode: String?,
@@ -544,7 +549,9 @@ class ProductRepository(
         basis: NutritionBasis,
         carbsPer100: BigDecimal,
         exactCarbs: BigDecimal,
-    ): MealItem = meal.add(
+        startNewMeal: Boolean = false,
+    ): MealItem = addToMeal(
+        startNewMeal,
         MealItem.weightBased(
             productBarcode = productBarcode?.takeIf { it.isNotEmpty() },
             displayName = displayName,
@@ -564,7 +571,7 @@ class ProductRepository(
      * the portion weighs. Writing a derived gram figure here would make a counted portion
      * indistinguishable from a weighed one, which is the exact confusion [MealItemKind] exists to
      * prevent. As with [addMealItem], [exactCarbs] is the number the user already saw — nothing is
-     * recomputed here.
+     * recomputed here. [startNewMeal] as for [addMealItem].
      */
     suspend fun addDirectCarbMealItem(
         productBarcode: String?,
@@ -573,7 +580,9 @@ class ProductRepository(
         count: BigDecimal,
         carbsPerUnit: BigDecimal,
         exactCarbs: BigDecimal,
-    ): MealItem = meal.add(
+        startNewMeal: Boolean = false,
+    ): MealItem = addToMeal(
+        startNewMeal,
         MealItem.directCarbs(
             productBarcode = productBarcode?.takeIf { it.isNotEmpty() },
             displayName = displayName,
@@ -585,7 +594,32 @@ class ProductRepository(
         ),
     )
 
-    /** Replace a line wholesale — the caller has recalculated it via `CarbCalculator` (§10). */
+    /**
+     * Clear-then-add, in that order, and deliberately two writes rather than one transaction: if the
+     * add fails after the clear, the user is left with an empty meal and a reported failure — never
+     * with the old items plus the new one, which is the contaminated total this choice exists to
+     * avoid. They asked for the old items to go, so losing them is not a surprise.
+     */
+    private suspend fun addToMeal(startNewMeal: Boolean, item: MealItem): MealItem {
+        if (startNewMeal) meal.clear()
+        return meal.add(item)
+    }
+
+    /**
+     * The meal in progress, if it has gone quiet long enough that the next item probably belongs
+     * to a new eating session (see [MealStaleness]). Null for an empty or recently added-to meal.
+     *
+     * Read from storage at the moment of the add rather than from a screen's observed copy, which
+     * starts out empty until its first emission and would miss the very meal it should flag.
+     */
+    suspend fun findStaleMeal(): StaleMeal? = MealStaleness.check(meal.findItems(), clock.instant())
+
+    /**
+     * Replace a line wholesale — the caller has recalculated it with [MealItem.withPortion] (§10).
+     *
+     * A resize, not a new use: no usage history, *Usual* aggregate or remembered portion is
+     * written, because the user already counted this portion once when they added it.
+     */
     suspend fun updateMealItem(item: MealItem) = meal.update(item)
 
     suspend fun removeMealItem(item: MealItem) = meal.remove(item)

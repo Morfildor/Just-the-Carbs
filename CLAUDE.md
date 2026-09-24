@@ -51,7 +51,35 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
-## Product photos: their own timeouts (2026-09-23, latest) — still 1.0.8 / versionCode 9
+## Meal staleness, meal-line edit, stored products in search (2026-09-23, latest) — still 1.0.8
+
+Branch `meal-search-patch-2026-09-23` off `c31818a`, committed and pushed, **not merged**. Roadmap and the corrections
+to it: `docs/plans/2026-09-23-ux-usefulness-review-and-plan.md` (Status section). No schema,
+migration, calculation-formula, OCR, scanner or navigation-route change.
+
+- **Stale meal.** `MealStaleness` (domain, pure): stale when the **most recent** `addedAt` is ≥ 2 h
+  from now in either direction (a future stamp means the clock moved). Checked only at add time,
+  reading storage (`ProductRepository.findStaleMeal`), never a screen's observed copy (it starts
+  empty). `ProductViewModel.addCurrentToMeal` and `HomeViewModel.quickAdd` hold the exact pending
+  write and show `StaleMealDialog`; `resolveStaleMeal(startNewMeal)` writes it; dismiss writes
+  nothing. `startNewMeal` is clear-then-add, deliberately two writes: a failed add leaves an empty
+  meal plus a reported failure, never old items plus new. Do not switch it to "oldest item": that
+  re-asks on every add after "Add to this meal".
+- **Edit a meal line.** Tap a row → `MealItemEditDialog`; `MealItem.withPortion` recalculates via
+  `CarbCalculator`/`DirectCarbCalculator` from the line's own snapshot; `MealViewModel.saveEdit`
+  calls the previously unused `updateMealItem` and writes **no** usage/product rows (pinned by
+  fakes that throw on any such write). An unchanged amount writes nothing, so a counted line keeps
+  its "2 slices" wording; an edited counted line reads `3 × 14.2 g carbs` (no unit word is stored).
+- **Stored products in search.** `ProductDao.observeSearchable()` (projection, every row, favourites
+  → recent → name) → `RoomProductDataSource.observeSearchable()` → `SearchViewModel(savedProducts)`.
+  Matched in memory on each keystroke with `SearchQueryMatcher` (FULL only, ≥ 3 chars, max 10) into
+  `SearchUiState.savedHits`; `hits` keeps its remote-only meaning, so every existing pipeline test
+  is untouched. `onlineHits` drops barcodes already in `savedHits` (**required**: both lists share
+  `LazyColumn` keys, and a duplicate key crashes). Renderers share `LazyListScope.searchResultItems`;
+  labels appear only when stored matches exist. **`nowMs` must stay the last `SearchViewModel`
+  parameter** — tests pass it as a trailing lambda.
+
+## Product photos: their own timeouts (2026-09-23) — still 1.0.8 / versionCode 9
 
 Owner report: "photos of the products are not loading". **Not the redesign below**: the request,
 the URL and Coil's disk cache are unchanged, and Home's thumbnails, which that redesign never

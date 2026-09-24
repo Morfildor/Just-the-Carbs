@@ -26,6 +26,17 @@ data class RecentUseSnapshotRow(
     val portionUsage: List<PortionUsageEntity>,
 )
 
+/** The columns of one stored product that a search row needs — see [ProductDao.observeSearchable]. */
+data class SearchableProductRow(
+    val barcode: String,
+    val name: String,
+    val brand: String?,
+    val carbsPer100: String,
+    val basis: String,
+    val imageUrl: String?,
+    val packageAmount: String?,
+)
+
 /**
  * Product reads and writes, plus the two destructive Settings actions (§43).
  *
@@ -61,6 +72,22 @@ abstract class ProductDao {
         """,
     )
     abstract fun observeRecents(limit: Int): Flow<List<ProductEntity>>
+
+    /**
+     * Every stored product, as the few columns a search row shows, for matching typed names on the
+     * device (Home's search and the search screen).
+     *
+     * Every row, not only Recents: a product entered by hand has no barcode to scan again, and once
+     * it falls out of the 25 Recents this was the only way left to find it. The order is the one a
+     * match should keep — favourites, then most recently used, then everything else by name.
+     */
+    @Query(
+        """
+        SELECT barcode, name, brand, carbsPer100, basis, imageUrl, packageAmount FROM products
+        ORDER BY favorite DESC, lastUsedAt IS NULL, lastUsedAt DESC, name COLLATE NOCASE
+        """,
+    )
+    abstract fun observeSearchable(): Flow<List<SearchableProductRow>>
 
     /**
      * Every column on `products` that records *that the user ate the thing*, cleared for every row.

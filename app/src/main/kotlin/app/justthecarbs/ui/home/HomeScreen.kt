@@ -135,6 +135,7 @@ import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.CarbResult
 import app.justthecarbs.domain.MealItem
+import app.justthecarbs.domain.StaleMeal
 import app.justthecarbs.ui.components.AccentBackdrop
 import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.ProductThumbnail
@@ -152,6 +153,8 @@ import app.justthecarbs.ui.search.SearchViewModel
 import app.justthecarbs.ui.search.SearchUiState
 import app.justthecarbs.ui.theme.Motion
 import app.justthecarbs.ui.components.jtcTextFieldColors
+import app.justthecarbs.ui.meal.StaleMealDialog
+import app.justthecarbs.ui.search.searchResultItems
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
@@ -165,6 +168,7 @@ const val HOME_MANUAL_TAG = "home_manual_entry"
 const val HOME_BODY_TAG = "home_body"
 const val HOME_SEARCH_RESULTS_TAG = "home_search_results"
 const val HOME_SEARCH_REFRESH_ERROR_TAG = "home_search_refresh_error"
+const val HOME_SEARCH_ONLINE_ERROR_TAG = "home_search_online_error"
 const val HOME_SEARCH_RATE_LIMITED_TAG = "home_search_rate_limited"
 const val HOME_SEARCH_PENDING_TAG = "home_search_pending"
 const val HOME_SEARCH_PROGRESS_TAG = "home_search_progress"
@@ -220,7 +224,20 @@ fun HomeScreen(
     showTutorialReminder: Boolean = false,
     onStartTutorial: () -> Unit = {},
     onDismissTutorialReminder: () -> Unit = {},
+    /** A Quick Add waiting on the stale-meal question; null when none is. */
+    staleMeal: StaleMeal? = null,
+    onResolveStaleMeal: (Boolean) -> Unit = {},
+    onDismissStaleMeal: () -> Unit = {},
 ) {
+    staleMeal?.let {
+        StaleMealDialog(
+            staleMeal = it,
+            onStartNewMeal = { onResolveStaleMeal(true) },
+            onAddToMeal = { onResolveStaleMeal(false) },
+            onDismiss = onDismissStaleMeal,
+        )
+    }
+
     // Back peels one layer at a time: keyboard, then search, then the app.
     //
     // **This replaces a handler keyed on the query alone, which destroyed the search it was meant
@@ -729,7 +746,7 @@ private fun HomeSearchResults(
         when {
             // Results first, for the same reason as SearchScreen: a refresh failure carries an error
             // but costs the user nothing, so it must not take the region away from a usable list.
-            state.hits.isNotEmpty() -> Column(modifier = region.fillMaxWidth()) {
+            state.hasResults -> Column(modifier = region.fillMaxWidth()) {
                 // No Retry while rate limited — the queued query resumes by itself, and a button there
                 // would invite the hammering the backoff exists to stop. Same rule as SearchScreen.
                 if (state.rateLimited) {
@@ -748,6 +765,17 @@ private fun HomeSearchResults(
                             .padding(horizontal = Space.screenEdge, vertical = Space.xs)
                             .testTag(HOME_SEARCH_REFRESH_ERROR_TAG),
                     )
+                } else if (state.error != null) {
+                    // Only stored matches are listed and the online search failed. Same rule as
+                    // SearchScreen: keep the list, say what is missing from it.
+                    RefreshErrorBanner(
+                        text = stringResource(R.string.search_online_failed),
+                        retryText = stringResource(R.string.error_retry),
+                        onRetry = onRetry,
+                        modifier = Modifier
+                            .padding(horizontal = Space.screenEdge, vertical = Space.xs)
+                            .testTag(HOME_SEARCH_ONLINE_ERROR_TAG),
+                    )
                 }
                 LazyColumn(
                     modifier = Modifier
@@ -761,10 +789,7 @@ private fun HomeSearchResults(
                         .dismissKeyboardOnTouch(onListTouched)
                         .testTag(HOME_SEARCH_RESULTS_TAG),
                 ) {
-                    items(state.hits, key = { it.barcode }) { hit ->
-                        SearchResultRow(hit = hit, onClick = { onSelect(hit) })
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
+                    searchResultItems(state, onSelect)
                 }
             }
 

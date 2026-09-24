@@ -588,4 +588,40 @@ class ProductDaoTest {
         }
         assertEquals("the favourite is still starred", true, dao.findByBarcode("222")!!.favorite)
     }
+
+    // ---- products found by name on the device (search) ---------------------------------------
+
+    @Test
+    fun everyStoredProductIsSearchableFavouritesThenRecentThenByName() = runTest {
+        dao.upsert(product("111").copy(name = "banana").toEntity())
+        dao.upsert(product("222", usedSecondsAfterEpoch = 10).toEntity())
+        dao.upsert(product("333", usedSecondsAfterEpoch = 30).toEntity())
+        dao.upsert(product("444", favorite = true).toEntity())
+        dao.upsert(product("local:abc", origin = ProductDataOrigin.MANUAL).copy(name = "Apple").toEntity())
+
+        val rows = RoomProductDataSource(dao).observeSearchable().first()
+
+        // Never-used products are included, not only Recents; the name order ignores case.
+        assertEquals(listOf("444", "333", "222", "local:abc", "111"), rows.map { it.barcode })
+    }
+
+    @Test
+    fun aSearchableRowCarriesTheStoredFigureAndBasis() = runTest {
+        dao.upsert(
+            product("555", carbs = "9.40").copy(
+                name = "Chocomel",
+                brand = "Nutricia",
+                basis = NutritionBasis.PER_100_ML,
+                packageAmount = BigDecimal("1000"),
+            ).toEntity(),
+        )
+
+        val hit = RoomProductDataSource(dao).observeSearchable().first().single()
+
+        assertEquals("Chocomel", hit.name)
+        assertEquals("Nutricia", hit.brand)
+        assertEquals(0, BigDecimal("9.40").compareTo(hit.carbsPer100))
+        assertEquals(NutritionBasis.PER_100_ML, hit.basis)
+        assertEquals("1000 ml", hit.packageQuantity)
+    }
 }

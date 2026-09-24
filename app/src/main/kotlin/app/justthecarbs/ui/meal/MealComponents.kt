@@ -24,6 +24,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +40,9 @@ import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.CarbResult
 import app.justthecarbs.domain.ResultFormatter
+import app.justthecarbs.domain.StaleMeal
+import app.justthecarbs.ui.components.JtcDialogDefaults
+import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.ui.components.jtcOutlinedButtonBorder
 import app.justthecarbs.ui.components.rememberSuccessPulse
 import app.justthecarbs.ui.theme.Space
@@ -47,6 +52,9 @@ import app.justthecarbs.ui.theme.extendedColors
 const val MEAL_ADD_TAG = "meal_add"
 const val MEAL_ADD_AND_SCAN_TAG = "meal_add_and_scan"
 const val MEAL_BAR_TAG = "meal_bar"
+const val MEAL_STALE_DIALOG_TAG = "meal_stale_dialog"
+const val MEAL_STALE_START_NEW_TAG = "meal_stale_start_new"
+const val MEAL_STALE_ADD_TO_IT_TAG = "meal_stale_add_to_it"
 
 /**
  * *Add to meal* and *Add & scan next* (development-pass brief §9, §11).
@@ -265,4 +273,55 @@ fun MealBarIfPresent(
         compact = compact,
     )
     Spacer(Modifier.height(if (compact) Space.xs else Space.s))
+}
+
+/**
+ * Asked when an Add would land on a meal that has gone quiet (see
+ * [app.justthecarbs.domain.MealStaleness]).
+ *
+ * Both answers add the item the user tapped for; they differ only in what happens to the stored
+ * meal. *Start new meal* is the confirm action because it is the likely intent after hours of
+ * silence, and it states that the old items go. Dismissing adds nothing and clears nothing.
+ */
+@Composable
+fun StaleMealDialog(
+    staleMeal: StaleMeal,
+    onStartNewMeal: () -> Unit,
+    onAddToMeal: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val items = pluralStringResource(R.plurals.meal_item_count, staleMeal.itemCount, staleMeal.itemCount)
+    val hours = staleMeal.sinceLastAdded.toHours().toInt()
+    val age = pluralStringResource(R.plurals.meal_stale_hours, hours, hours)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.jtcDialogOutline().testTag(MEAL_STALE_DIALOG_TAG),
+        shape = JtcDialogDefaults.shape,
+        containerColor = JtcDialogDefaults.containerColor,
+        iconContentColor = JtcDialogDefaults.iconContentColor,
+        titleContentColor = JtcDialogDefaults.titleContentColor,
+        textContentColor = JtcDialogDefaults.textContentColor,
+        tonalElevation = JtcDialogDefaults.tonalElevation,
+        title = { Text(stringResource(R.string.meal_stale_title)) },
+        text = {
+            Text(
+                stringResource(
+                    R.string.meal_stale_body,
+                    items,
+                    ResultFormatter.decimal(staleMeal.exactCarbs),
+                    age,
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onStartNewMeal, modifier = Modifier.testTag(MEAL_STALE_START_NEW_TAG)) {
+                Text(stringResource(R.string.meal_stale_start_new))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onAddToMeal, modifier = Modifier.testTag(MEAL_STALE_ADD_TO_IT_TAG)) {
+                Text(stringResource(R.string.meal_stale_add_to_it))
+            }
+        },
+    )
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -57,6 +58,7 @@ import app.justthecarbs.ui.components.RecoveryPanel
 import app.justthecarbs.ui.components.RefreshErrorBanner
 import app.justthecarbs.ui.components.SearchResultRow
 import app.justthecarbs.ui.components.SecondaryAction
+import app.justthecarbs.ui.components.SectionLabel
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.accent
@@ -70,6 +72,9 @@ const val SEARCH_REFRESH_PROGRESS_TAG = "search_refresh_progress"
 const val SEARCH_RATE_LIMITED_TAG = "search_rate_limited"
 const val SEARCH_PENDING_TAG = "search_pending"
 const val SEARCH_SEARCHING_TAG = "search_searching"
+const val SEARCH_ONLINE_ERROR_TAG = "search_online_error"
+const val SEARCH_SAVED_SECTION_TAG = "search_saved_section"
+const val SEARCH_ONLINE_SECTION_TAG = "search_online_section"
 
 /**
  * The weighted slot below the field that every search state occupies — results, failure, waiting
@@ -238,7 +243,7 @@ fun SearchScreen(
                     // failure does, so testing `error != null` first would take the whole region away from
                     // results that are still good. The two are distinguished by what the user stands to
                     // lose, and this branch is the one where they lose nothing.
-                    state.hits.isNotEmpty() -> SearchResults(
+                    state.hasResults -> SearchResults(
                         state = state,
                         onSelect = onSelect,
                         onRetry = onRetry,
@@ -445,6 +450,17 @@ private fun SearchResults(
                     .padding(horizontal = Space.screenEdge, vertical = Space.xs)
                     .testTag(SEARCH_REFRESH_ERROR_TAG),
             )
+        } else if (state.error != null) {
+            // Only stored matches are listed and the online search failed: the list stays, and this
+            // says what is missing from it rather than replacing it with a full-screen failure.
+            RefreshErrorBanner(
+                text = stringResource(R.string.search_online_failed),
+                retryText = stringResource(R.string.error_retry),
+                onRetry = onRetry,
+                modifier = Modifier
+                    .padding(horizontal = Space.screenEdge, vertical = Space.xs)
+                    .testTag(SEARCH_ONLINE_ERROR_TAG),
+            )
         }
         LazyColumn(
             modifier = Modifier
@@ -456,13 +472,54 @@ private fun SearchResults(
                 .dismissKeyboardOnTouch(onListTouched)
                 .testTag(SEARCH_RESULTS_TAG),
         ) {
-            items(state.hits, key = { it.barcode }) { hit ->
-                SearchResultRow(hit = hit, onClick = { onSelect(hit) })
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
+            searchResultItems(state, onSelect)
         }
     }
 }
+
+/**
+ * The result rows, shared by Home's inline search and this screen so the two cannot drift.
+ *
+ * Products stored on this phone come first, under their own label, then the online results not
+ * already among them. With no stored match the list is exactly the online results, unlabelled, as
+ * it always was.
+ */
+internal fun LazyListScope.searchResultItems(state: SearchUiState, onSelect: (ProductSearchHit) -> Unit) {
+    if (state.savedHits.isEmpty()) {
+        resultRows(state.hits, onSelect)
+        return
+    }
+    item(key = SAVED_SECTION_KEY) {
+        SearchSectionLabel(R.string.search_saved_section, SEARCH_SAVED_SECTION_TAG)
+    }
+    resultRows(state.savedHits, onSelect)
+    val online = state.onlineHits
+    if (online.isNotEmpty()) {
+        item(key = ONLINE_SECTION_KEY) {
+            SearchSectionLabel(R.string.search_online_section, SEARCH_ONLINE_SECTION_TAG)
+        }
+        resultRows(online, onSelect)
+    }
+}
+
+private fun LazyListScope.resultRows(hits: List<ProductSearchHit>, onSelect: (ProductSearchHit) -> Unit) {
+    items(hits, key = { it.barcode }) { hit ->
+        SearchResultRow(hit = hit, onClick = { onSelect(hit) })
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+@Composable
+private fun SearchSectionLabel(text: Int, tag: String) {
+    SectionLabel(
+        text = stringResource(text),
+        modifier = Modifier.padding(top = Space.m, bottom = Space.xs).testTag(tag),
+    )
+}
+
+/** Row keys for the two labels. A barcode is digits or `local:<uuid>`, so these cannot collide. */
+private const val SAVED_SECTION_KEY = "section:saved"
+private const val ONLINE_SECTION_KEY = "section:online"
 
 @Composable
 private fun SearchFailure(
