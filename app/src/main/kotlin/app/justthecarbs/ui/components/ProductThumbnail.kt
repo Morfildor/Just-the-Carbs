@@ -1,14 +1,15 @@
 package app.justthecarbs.ui.components
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,6 +17,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +62,7 @@ fun ProductThumbnail(
         ProductImageSelector.thumbnailUrl(product)
     }
     var imageLoaded by remember(safeImageUrl) { mutableStateOf(false) }
+    val plate = thumbnailPlateColour(imageLoaded)
 
     Box(
         modifier = modifier
@@ -67,10 +71,7 @@ fun ProductThumbnail(
             // Matches ProductHeroImage: a loaded photo sits on the same neutral media ground the
             // hero uses, not the tinted monogram container — the monogram keeps its own colour so
             // the fallback state stays a deliberate, recognisable plate.
-            .background(
-                if (imageLoaded) MaterialTheme.extendedColors.mediaSurface
-                else MaterialTheme.colorScheme.primaryContainer,
-            )
+            .drawBehind { drawRect(plate.value) }
             // Purely decorative: the product name sits next to it, so announcing it again would
             // make a screen reader say everything twice (§39).
             .clearAndSetSemantics { },
@@ -134,15 +135,13 @@ fun SearchThumbnail(
     var archiveFailed by remember(safeArchiveUrl) { mutableStateOf(false) }
     val photoUrl = safeArchiveUrl?.takeUnless { archiveFailed } ?: safeImageUrl
     var imageLoaded by remember(photoUrl) { mutableStateOf(false) }
+    val plate = thumbnailPlateColour(imageLoaded)
 
     Box(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(
-                if (imageLoaded) MaterialTheme.extendedColors.mediaSurface
-                else MaterialTheme.colorScheme.primaryContainer,
-            )
+            .drawBehind { drawRect(plate.value) }
             .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {
@@ -177,6 +176,24 @@ fun SearchThumbnail(
         }
     }
 }
+
+/**
+ * The tile behind a thumbnail: the monogram's tint until a photo loads, then the photo's neutral
+ * ground. Eased over the photo's own fade rather than flipped in one frame, so the tint does not
+ * snap to white under a picture that is still fading in. Returned as state and read in the draw
+ * phase, so the fade redraws the tile without recomposing it.
+ */
+@Composable
+private fun thumbnailPlateColour(photoLoaded: Boolean): State<Color> =
+    animateColorAsState(
+        targetValue = if (photoLoaded) {
+            MaterialTheme.extendedColors.mediaSurface
+        } else {
+            MaterialTheme.colorScheme.primaryContainer
+        },
+        animationSpec = tween(Motion.STANDARD_MS),
+        label = "thumbnailPlate",
+    )
 
 /**
  * Up to two initials from the product name — "Hagelslag puur" becomes "HP".

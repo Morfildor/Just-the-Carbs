@@ -58,6 +58,12 @@ import app.justthecarbs.domain.ProductImageType
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.VerificationStatus
 import app.justthecarbs.ui.meal.MEAL_ADD_TAG
+import app.justthecarbs.ui.meal.MEAL_ADD_AND_SCAN_TAG
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.semantics.Role
 import app.justthecarbs.ui.product.PRODUCT_RESULT_TAG
 import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
@@ -1047,6 +1053,10 @@ class ProductScreenTest {
         gate: CompletableDeferred<Unit>,
         /** Called once per add the screen actually asks for, so a refused tap can be counted. */
         onAddRequested: () -> Unit = {},
+        /** Called once per *Add & scan next* the screen actually asks for. */
+        onAddAndScanRequested: () -> Unit = {},
+        /** Called once per plain *Scan next* (no add) the screen asks for. */
+        onScanNextRequested: () -> Unit = {},
     ) {
         compose.setContent {
             var portion by remember { mutableStateOf("65") }
@@ -1090,6 +1100,8 @@ class ProductScreenTest {
                             lastMealAddSucceeded = System.currentTimeMillis()
                         }
                     },
+                    onAddToMealAndScanNext = { _, _ -> onAddAndScanRequested() },
+                    onScanNext = onScanNextRequested,
                 )
             }
         }
@@ -1163,6 +1175,139 @@ class ProductScreenTest {
 
         assertEquals(1, adds)
     }
+
+    /**
+     * *Add & scan next* during the same "Added" hold used to add the portion a second time: the
+     * hold refused a second *Add to meal*, but the button beside it still added. While the item has
+     * just been added the second button reads *Scan next item* and only opens the scanner.
+     */
+    @Test
+    fun duringTheAddedHoldTheSecondButtonScansNextWithoutAddingAgain() {
+        val gate = CompletableDeferred<Unit>()
+        var adds = 0
+        var scans = 0
+        showCalculatorWithControllableMealAdd(
+            gate,
+            onAddRequested = { adds++ },
+            onAddAndScanRequested = { adds++; scans++ },
+            onScanNextRequested = { scans++ },
+        )
+
+        compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
+        gate.complete(Unit)
+        compose.waitForIdle()
+        compose.onNodeWithText("Added").assertExists()
+        compose.onNodeWithTag(MEAL_ADD_AND_SCAN_TAG)
+            .assert(androidx.compose.ui.test.hasText(string(R.string.meal_scan_next)))
+
+        compose.onNodeWithTag(MEAL_ADD_AND_SCAN_TAG).performClick()
+        compose.waitForIdle()
+
+        assertEquals("the portion was added twice", 1, adds)
+        assertEquals("the scanner must still open", 1, scans)
+    }
+
+    // ---- a tap outside the field closes the keyboard -------------------------------------------
+
+    /**
+     * The meal actions step aside while the keyboard is open, so reaching them meant finding Done.
+     * A tap on a part of the calculator that does nothing now puts the keyboard away, as it does in
+     * most apps -- and a tap on the field itself still focuses it.
+     */
+    @Test
+    fun tappingAnEmptyPartOfTheCalculatorClearsThePortionFieldsFocus() {
+        showCalculator()
+
+        compose.onNode(portionField()).performClick()
+        compose.onNode(portionField()).assertIsFocused()
+
+        compose.onNodeWithText("48.2 g carbs / 100 g").performClick()
+
+        compose.onNode(portionField()).assertIsNotFocused()
+    }
+
+    // ---- the active shortcut is marked ---------------------------------------------------------
+
+    @Test
+    fun thePackShortcutMatchingThePortionIsMarkedSelected() {
+        showCalculator(product(packageAmount = "500"))
+
+        compose.onNodeWithText(string(R.string.product_half_pack)).performScrollTo().performClick()
+
+        compose.onNodeWithText(string(R.string.product_half_pack)).assertIsSelected()
+        compose.onNodeWithText(string(R.string.product_quarter_pack)).assertIsNotSelected()
+        compose.onNodeWithText(string(R.string.product_full_pack)).assertIsNotSelected()
+    }
+
+    /** Selection is by value: a typed `125.0` is the quarter of a 500 g pack, not a new amount. */
+    @Test
+    fun aTypedPortionEqualInValueMarksThePackShortcut() {
+        showCalculator(product(packageAmount = "500"))
+
+        typePortion("125.0")
+
+        compose.onNodeWithText(string(R.string.product_quarter_pack)).assertIsSelected()
+    }
+
+    @Test
+    fun packShortcutsAreAnnouncedAsButtons() {
+        showCalculator(product(packageAmount = "500"))
+
+        compose.onNodeWithText(string(R.string.product_full_pack))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+    }
+
+    // ---- a stalled lookup offers a way forward -------------------------------------------------
+
+    private fun showLoading(onEnterManually: () -> Unit = {}, onScanLabel: () -> Unit = {}) {
+        compose.setContent {
+            JustTheCarbsTheme {
+                ProductScreen(
+                    state = ProductUiState(loading = true, barcode = "8712100849060"),
+                    settings = AppSettings(),
+                    onPortionChanged = {},
+                    onSetPortion = {},
+                    onToggleFavorite = {},
+                    onBack = {},
+                    onVerify = {},
+                    onDismissVerify = {},
+                    onConfirmVerification = { _, _, _ -> },
+                    onResetOnline = {},
+                    onScanLabel = onScanLabel,
+                    onEnterManually = onEnterManually,
+                    onRetry = {},
+                )
+            }
+        }
+    }
+
+    /**
+     * A lookup that is still running after a few seconds says so and offers the recoveries the
+     * failure screen would, instead of a spinner the user can only wait on. The clock is the test's.
+     */
+    @Test
+    fun aLookupStillRunningAfterAFewSecondsOffersToEnterItManually() {
+        var manual = 0
+        compose.mainClock.autoAdvance = false
+        showLoading(onEnterManually = { manual++ })
+        compose.mainClock.advanceTimeByFrame()
+
+        compose.onNodeWithText(string(R.string.product_still_looking)).assertDoesNotExist()
+        compose.onNodeWithText(string(R.string.permission_manual)).assertDoesNotExist()
+
+        compose.mainClock.advanceTimeBy(3_800)
+        compose.onNodeWithText(string(R.string.product_still_looking)).assertDoesNotExist()
+
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithText(string(R.string.product_still_looking)).assertExists()
+        compose.onNodeWithText(string(R.string.product_scan_label)).assertExists()
+        compose.onNodeWithText(string(R.string.permission_manual)).performClick()
+        compose.mainClock.advanceTimeByFrame()
+
+        assertEquals(1, manual)
+    }
+
+    private fun string(id: Int) = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
 
     /**
      * Regression for the portion-field append defect (2026-09-24 UX review, seen on the emulator).

@@ -613,6 +613,11 @@ fun JustTheCarbsNavHost(
                 onAddToMealAndScanNext = { description, fallbackName ->
                     viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
                 },
+                // *Add & scan next* while "Added" is still held: the item is already in the meal,
+                // so this only opens the scanner, the same way the write's success event does.
+                onScanNext = {
+                    navController.navigate(Routes.SCAN) { popUpTo(Routes.HOME) }
+                },
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
                 onResolveStaleMeal = viewModel::resolveStaleMeal,
                 onDismissStaleMeal = viewModel::dismissStaleMeal,
@@ -732,6 +737,11 @@ fun JustTheCarbsNavHost(
                 // succeeds (P0 §1) — same as the barcode-product route.
                 onAddToMealAndScanNext = { description, fallbackName ->
                     viewModel.addCurrentToMeal(description, fallbackName, scanNext = true)
+                },
+                // *Add & scan next* while "Added" is still held: the item is already in the meal,
+                // so this only opens the scanner, the same way the write's success event does.
+                onScanNext = {
+                    navController.navigate(Routes.SCAN) { popUpTo(Routes.HOME) }
                 },
                 onOpenMeal = { navController.navigate(Routes.MEAL) },
                 onResolveStaleMeal = viewModel::resolveStaleMeal,

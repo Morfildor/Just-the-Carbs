@@ -25,6 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -113,8 +116,16 @@ fun JtcValueButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /**
+     * Whether this shortcut is the portion currently entered, for a row of alternatives (the Usual
+     * and pack rows). Null where the button is not one of a set, which reports no selection at all.
+     * Selected takes the paired container, per DESIGN.md's "pressed/selected uses the paired
+     * container", so the row says which one the field holds without a second indicator.
+     */
+    selected: Boolean? = null,
 ) {
     val shape = RoundedCornerShape(Space.buttonRadius)
+    val isSelected = selected == true
     // In Dark the fill alone is not a boundary, so the button takes a hairline there.
     //
     // Measured: the dark page is `Night` (#111318, relative luminance 0.0065) and the fill is
@@ -141,10 +152,10 @@ fun JtcValueButton(
         modifier = modifier
             .heightIn(min = Space.valueButtonHeight)
             .background(
-                color = if (enabled) {
-                    MaterialTheme.colorScheme.surfaceContainerLow
-                } else {
-                    Color.Transparent
+                color = when {
+                    !enabled -> Color.Transparent
+                    isSelected -> MaterialTheme.colorScheme.primaryContainer
+                    else -> MaterialTheme.colorScheme.surfaceContainerLow
                 },
                 shape = shape,
             )
@@ -158,7 +169,10 @@ fun JtcValueButton(
             // Clip before clickable so the ripple follows the rounded corner instead of
             // painting a square over it.
             .clip(shape)
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            // `Role.Button` so TalkBack says what it is; the selection, where there is one, is
+            // announced as a state of that button.
+            .then(if (enabled) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .then(if (selected != null) Modifier.semantics { this.selected = selected } else Modifier)
             .padding(horizontal = Space.s + Space.xs, vertical = Space.s),
         contentAlignment = Alignment.Center,
     ) {
@@ -166,10 +180,10 @@ fun JtcValueButton(
             text = text,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
+            color = when {
+                !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
+                isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+                else -> MaterialTheme.colorScheme.onSurface
             },
             // Two lines, not one.
             //

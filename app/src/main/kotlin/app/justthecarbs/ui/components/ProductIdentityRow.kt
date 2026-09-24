@@ -1,6 +1,8 @@
 package app.justthecarbs.ui.components
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,7 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.IntrinsicMeasurable
 import androidx.compose.ui.layout.IntrinsicMeasureScope
@@ -285,6 +289,13 @@ private fun ProductImagePlate(product: Product, onClick: (() -> Unit)?) {
     val imageUrl = remember(product.imageUrl, product.largeImageUrl, product.images) {
         ProductImageSelector.heroImageUrl(product)
     }
+    // The picture Home's thumbnail loaded, by the same selector and so the same validated URL. If
+    // it is still in memory it stands in while the larger photo loads: the larger one is a
+    // different URL, and waiting for it showed initials for 4 to 10 s on the emulator for a packet
+    // Home had just drawn. Only the memory cache is read for it, never the network.
+    val thumbnailUrl = remember(product.imageUrl, product.largeImageUrl) {
+        ProductImageSelector.thumbnailUrl(product)
+    }
     // The photo's width over its height, known once it has loaded. Null means nothing to show yet
     // (loading, failed or no photo at all), which is when the initials are drawn.
     var photoAspect by remember(imageUrl) { mutableStateOf<Float?>(null) }
@@ -317,6 +328,15 @@ private fun ProductImagePlate(product: Product, onClick: (() -> Unit)?) {
         val hero = maxHeight >= HERO_PHOTO_HEIGHTS.min()
         val edge = minOf(maxWidth, maxHeight)
         val shape = RoundedCornerShape(Space.mediaRadius)
+        val plateColour by animateColorAsState(
+            targetValue = if (loaded) {
+                MaterialTheme.extendedColors.mediaSurface
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            animationSpec = tween(Motion.STANDARD_MS),
+            label = "identityPlate",
+        )
         Box(
             modifier = Modifier
                 .then(
@@ -333,49 +353,59 @@ private fun ProductImagePlate(product: Product, onClick: (() -> Unit)?) {
                 // Neutral while there is no photo (2026-09-23 calculator refinement): the lavender
                 // `primaryContainer` it replaced made two initials the most coloured object in the
                 // header. The near-white media surface matches Open Food Facts' baked-in white
-                // photo backgrounds once there is a photo on it.
-                .background(
-                    if (loaded) {
-                        MaterialTheme.extendedColors.mediaSurface
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerHigh
-                    },
-                ),
+                // photo backgrounds once there is a photo on it. The change eases over the photo's
+                // own fade (2026-09-24): it used to flip in one frame, a grey-to-white snap under a
+                // picture that was still fading in. Read while drawing, so the fade redraws the
+                // plate without recomposing it.
+                .drawBehind { drawRect(plateColour) },
             contentAlignment = Alignment.Center,
         ) {
-            if (!loaded) {
-                Text(
-                    text = product.monogram(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = minOf(edge.value * 0.34f, MONOGRAM_MAX_SP).sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // The initials fade out as the photo fades in, as the list thumbnails already do,
+            // rather than vanishing the frame the photo starts to appear.
+            Crossfade(
+                targetState = loaded,
+                animationSpec = tween(Motion.STANDARD_MS),
+                label = "identityInitials",
+            ) { photoShown ->
+                if (!photoShown) {
+                    Text(
+                        text = product.monogram(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = minOf(edge.value * 0.34f, MONOGRAM_MAX_SP).sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             if (imageUrl != null) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(imageUrl)
+                        .placeholderMemoryCacheKey(thumbnailUrl)
                         .crossfade(Motion.STANDARD_MS)
                         .build(),
                     contentDescription = null,
                     // Fit, not Crop -- a tall bottle keeps its silhouette. The 4dp inset keeps an
                     // unusually narrow package off the plate's rounded edge.
                     contentScale = ContentScale.Fit,
-                    onSuccess = { state ->
-                        val size = state.painter.intrinsicSize
-                        photoAspect = if (size.isSpecified && size.width > 0f && size.height > 0f) {
-                            size.width / size.height
-                        } else {
-                            1f
-                        }
-                    },
+                    // A cached thumbnail arrives as the loading state's painter: it is the photo
+                    // until the larger one replaces it, so it sets the plate's shape the same way.
+                    onLoading = { state -> state.painter?.let { photoAspect = aspectOf(it) } },
+                    onSuccess = { state -> photoAspect = aspectOf(state.painter) },
+                    // Back to the initials, as before, if the larger photo fails after a stand-in.
+                    onError = { photoAspect = null },
                     modifier = Modifier.matchParentSize().padding(Space.xs),
                 )
             }
         }
     }
+}
+
+/** A loaded picture's width over its height, or square when it reports no usable size. */
+private fun aspectOf(painter: Painter): Float {
+    val size = painter.intrinsicSize
+    return if (size.isSpecified && size.width > 0f && size.height > 0f) size.width / size.height else 1f
 }
 
 /**
