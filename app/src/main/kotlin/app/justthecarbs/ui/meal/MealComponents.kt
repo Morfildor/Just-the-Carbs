@@ -73,6 +73,12 @@ const val MEAL_STALE_ADD_TO_IT_TAG = "meal_stale_add_to_it"
 fun MealActions(
     onAdd: () -> Unit,
     onAddAndScanNext: () -> Unit,
+    /**
+     * Opens the scanner and adds nothing. What the second button does while "Added" is held: the
+     * item it would add has just been added, so adding it again would put the same portion in the
+     * meal twice.
+     */
+    onScanNext: () -> Unit,
     modifier: Modifier = Modifier,
     /**
      * False while a previous tap's write is still in flight.
@@ -157,8 +163,12 @@ fun MealActions(
         // the answer it was the brightest object on the screen -- brighter than the coral figure the
         // dock exists to show. `primaryTile` is the deep cobalt Home's scan tile already uses for
         // exactly this reason (see ExtendedColors.primaryTile).
+        //
+        // During the "Added" hold it is *Scan next item* and only opens the scanner. It used to add
+        // again: the hold refused a second *Add to meal*, but a user who had just added and now
+        // wanted the next product tapped this and put the same portion in the meal twice.
         Button(
-            onClick = onAddAndScanNext,
+            onClick = if (showAdded) onScanNext else onAddAndScanNext,
             enabled = enabled,
             shape = RoundedCornerShape(Space.buttonRadius),
             colors = ButtonDefaults.buttonColors(
@@ -172,7 +182,10 @@ fun MealActions(
                 .fillMaxHeight()
                 .testTag(MEAL_ADD_AND_SCAN_TAG),
         ) {
-            Text(stringResource(R.string.meal_add_and_scan), textAlign = TextAlign.Center)
+            Text(
+                stringResource(if (showAdded) R.string.meal_scan_next else R.string.meal_add_and_scan),
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

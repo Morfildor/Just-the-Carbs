@@ -4,7 +4,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -221,6 +229,50 @@ class UsualPortionScreenTest {
 
         // 2 slices × 36 g = 72 g; 48.2 g/100 g × 72 g = 34.704 → 34.7.
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("34.7 grams of carbs")
+    }
+
+    // ---- the shortcut matching the portion is marked ---------------------------------------------
+
+    @Test
+    fun theUsualPortionMatchingThePortionIsMarkedSelected() {
+        showWithUsual(listOf(usage("65"), usage("45")))
+
+        compose.onNodeWithText("65 g").performClick()
+
+        compose.onNodeWithText("65 g").assertIsSelected()
+        compose.onNodeWithText("45 g").assertIsNotSelected()
+    }
+
+    /** By value, not by spelling: a typed `65.0` is the usual 65 g. */
+    @Test
+    fun aTypedPortionEqualInValueMarksTheUsualShortcut() {
+        showWithUsual(listOf(usage("65")))
+
+        compose.onNode(hasSetTextAction()).performTextInput("65.0")
+
+        compose.onNodeWithText("65 g").assertIsSelected()
+    }
+
+    /** "2 slices" is a count of a unit, so 2 grams (or 2 of another unit) is not it. */
+    @Test
+    fun aCountableUsualPortionIsMarkedSelectedOnlyForItsOwnUnit() {
+        showWithUsual(
+            usuals = listOf(usage("2", mode = InputMode.PORTION_UNIT, unitId = 7), usage("2")),
+            units = listOf(sliceUnit()),
+        )
+
+        compose.onNodeWithText("2 slices").performScrollTo().performClick()
+
+        compose.onNodeWithText("2 slices").assertIsSelected()
+        compose.onNodeWithText("2 g").assertIsNotSelected()
+    }
+
+    @Test
+    fun usualShortcutsAreAnnouncedAsButtons() {
+        showWithUsual(listOf(usage("65")))
+
+        compose.onNodeWithText("65 g")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
     }
 
     /** §13's explicit cap: a row of shortcuts the user has to read is not a shortcut. */

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
@@ -50,10 +52,13 @@ import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
+import app.justthecarbs.ui.theme.Motion
+import app.justthecarbs.ui.theme.extendedColors
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.annotation.DelicateCoilApi
 import coil3.asImage
+import coil3.memory.MemoryCache
 import coil3.decode.DataSource
 import coil3.intercept.Interceptor
 import coil3.request.ErrorResult
@@ -177,6 +182,91 @@ class ProductImageContainerTest {
 
         assertEquals("the photo arrived and something moved", before, snapshot())
     }
+
+    // ---- 2b. a photo Home already has is shown at once -------------------------------------------
+
+    /**
+     * Home's thumbnail and the calculator's larger photo are different URLs, so the calculator
+     * showed initials for seconds (4 to 10 s on the emulator) while the larger one loaded, although
+     * the same packet was already in memory from Home. The thumbnail now stands in until the larger
+     * photo arrives. Here the larger photo never arrives, so anything but the cached picture fails.
+     */
+    @Test
+    fun aThumbnailAlreadyInMemoryIsShownWhileTheLargerPhotoLoads() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val loader = ImageLoader.Builder(context)
+            .memoryCache { MemoryCache.Builder().maxSizeBytes(8L * 1024 * 1024).build() }
+            .diskCache(null)
+            .components { add(ControlledImages(latePhoto, answered)) }
+            .build()
+        val cached = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
+        cached.eraseColor(android.graphics.Color.rgb(40, 180, 40))
+        loader.memoryCache!![MemoryCache.Key(photoUrl("thumb"))] = MemoryCache.Value(cached.asImage())
+        SingletonImageLoader.setUnsafe(loader)
+
+        showCalculator(
+            product = product(name = "Cached thumb", imageUrl = photoUrl("thumb"))
+                .copy(largeImageUrl = photoUrl("slow")),
+        )
+
+        compose.waitUntil(timeoutMillis = 5_000) { containerCentreIs(0) { r, g, b -> g > 150 && r < 90 && b < 90 } }
+    }
+
+    // ---- 2c. the photo arrives without a snap --------------------------------------------------
+
+    /**
+     * The plate behind the picture changes from the initials' grey to the photo's white ground when
+     * the photo lands. It used to change in one frame while only the photo faded in; it now eases
+     * over the same duration. Read at the plate's edge, which the photo's 4dp inset never covers.
+     */
+    @Test
+    fun thePlateEasesToThePhotoGroundRatherThanSnapping() {
+        var initialsGround = 0
+        var photoGround = 0
+        compose.setContent {
+            JustTheCarbsTheme {
+                initialsGround = MaterialTheme.colorScheme.surfaceContainerHigh.toArgb()
+                photoGround = MaterialTheme.extendedColors.mediaSurface.toArgb()
+                Box(Modifier.requiredSize(300.dp, HERO_PHOTO_HEIGHTS.min() - 1.dp)) {
+                    ProductIdentityRow(product = product(name = "Late photo", imageUrl = photoUrl("late")), allowHero = true) {
+                        Text(text = "57.5 g carbs / 100 g")
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        assertEquals("precondition: the initials' ground", initialsGround, plateEdge())
+
+        compose.mainClock.autoAdvance = false
+        latePhoto.complete(Unit)
+        compose.waitUntil(timeoutMillis = 5_000) { synchronized(answered) { answered.any { "late" in it } } }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy((Motion.STANDARD_MS / 2).toLong())
+
+        val midway = plateEdge()
+        assertTrue(
+            "the plate snapped: ${Integer.toHexString(midway)} is not between " +
+                "${Integer.toHexString(initialsGround)} and ${Integer.toHexString(photoGround)}",
+            colourDistance(midway, initialsGround) > 6 && colourDistance(midway, photoGround) > 6,
+        )
+
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals("the plate settles on the photo's ground", photoGround, plateEdge())
+    }
+
+    /** The plate's left edge, 2dp in: inside the plate, outside the photo's 4dp inset. */
+    private fun plateEdge(): Int {
+        val bitmap = compose.onNodeWithTag(PRODUCT_HERO_TAG).captureToImage().asAndroidBitmap()
+        val x = with(compose.density) { 2.dp.roundToPx() }
+        return bitmap.getPixel(x, bitmap.height / 2)
+    }
+
+    private fun colourDistance(a: Int, b: Int): Int =
+        kotlin.math.abs(android.graphics.Color.red(a) - android.graphics.Color.red(b)) +
+            kotlin.math.abs(android.graphics.Color.green(a) - android.graphics.Color.green(b)) +
+            kotlin.math.abs(android.graphics.Color.blue(a) - android.graphics.Color.blue(b))
 
     // ---- 3. a long name keeps usable width -----------------------------------------------------
 
@@ -324,12 +414,13 @@ class ProductImageContainerTest {
     }
 
     /** The centre of the [index]th container is the controlled photo's red, not a plate or initials. */
-    private fun containerShowsThePhoto(index: Int): Boolean {
+    private fun containerShowsThePhoto(index: Int): Boolean =
+        containerCentreIs(index) { r, g, b -> r > 150 && g < 90 && b < 90 }
+
+    private fun containerCentreIs(index: Int, test: (Int, Int, Int) -> Boolean): Boolean {
         val bitmap = compose.onAllNodesWithTag(PRODUCT_HERO_TAG)[index].captureToImage().asAndroidBitmap()
         val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
-        return android.graphics.Color.red(pixel) > 150 &&
-            android.graphics.Color.green(pixel) < 90 &&
-            android.graphics.Color.blue(pixel) < 90
+        return test(android.graphics.Color.red(pixel), android.graphics.Color.green(pixel), android.graphics.Color.blue(pixel))
     }
 
     /**

@@ -30,6 +30,7 @@
     <string name="home_empty_scan_label">Scan nutrition label</string>
     <string name="home_settings">Settings</string>
     <string name="product_finding">Finding product…</string>
+    <string name="product_still_looking">Still looking…</string>
     <string name="home_search_label">Search products</string>
     <string name="home_action_barcode_subtitle">Fastest way to find a packaged product</string>
     <string name="home_action_label_subtitle">Read carbs straight from the package</string>

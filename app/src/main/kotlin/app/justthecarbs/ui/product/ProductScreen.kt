@@ -73,11 +73,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -93,7 +95,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
@@ -205,6 +209,11 @@ fun ProductScreen(
      */
     onAddToMeal: (String, String) -> Unit = { _, _ -> },
     onAddToMealAndScanNext: (String, String) -> Unit = { _, _ -> },
+    /**
+     * Opens the scanner without adding anything: *Add & scan next* while the item it would add has
+     * just been added (see `MealActions`).
+     */
+    onScanNext: () -> Unit = {},
     onOpenMeal: () -> Unit = {},
     onConfirmLabelMatch: () -> Unit = {},
     onUseDetectedLabelValue: (BigDecimal) -> Unit = {},
@@ -333,7 +342,11 @@ fun ProductScreen(
             )
 
             when {
-                state.loading -> LoadingBody(state.barcode)
+                state.loading -> LoadingBody(
+                    barcode = state.barcode,
+                    onScanLabel = onScanLabel,
+                    onEnterManually = onEnterManually,
+                )
                 state.failure != null -> FailureBody(
                     failure = state.failure,
                     barcode = state.barcode,
@@ -365,6 +378,7 @@ fun ProductScreen(
                     onCancelPortionUnitCorrection = onCancelPortionUnitCorrection,
                     onAddToMeal = onAddToMeal,
                     onAddToMealAndScanNext = onAddToMealAndScanNext,
+                    onScanNext = onScanNext,
                     onOpenMeal = onOpenMeal,
                     onSelectUsualPortion = onSelectUsualPortion,
                     onShowSaveQuickCalculation = onShowSaveQuickCalculation,
@@ -479,7 +493,17 @@ private fun ProductTopBar(
 }
 
 @Composable
-private fun LoadingBody(barcode: String) {
+private fun LoadingBody(barcode: String, onScanLabel: () -> Unit, onEnterManually: () -> Unit) {
+    // A lookup still running after a few seconds is a slow connection or a stalled one, and a
+    // spinner alone left the user nothing to do but wait (2026-09-24 UX review). The line then says
+    // so and the failure screen's own recoveries appear under it. The lookup keeps running: if it
+    // lands, the calculator replaces this screen as before. Keyed on the barcode so a new lookup
+    // starts its own wait.
+    var stalled by remember(barcode) { mutableStateOf(false) }
+    LaunchedEffect(barcode) {
+        delay(STALLED_LOOKUP_MS)
+        stalled = true
+    }
     // §37: a brief, quiet loading state. Never a full-screen blocking spinner.
     //
     // The spinner now says what it is waiting for. A bare indeterminate circle is the same picture
@@ -494,7 +518,7 @@ private fun LoadingBody(barcode: String) {
         ) {
             CircularProgressIndicator(strokeWidth = 2.dp)
             Text(
-                text = stringResource(R.string.product_finding),
+                text = stringResource(if (stalled) R.string.product_still_looking else R.string.product_finding),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -506,9 +530,18 @@ private fun LoadingBody(barcode: String) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // Secondary, not primary: the lookup may still answer, and these are ways round it
+            // rather than the thing this screen is for.
+            if (stalled) {
+                SecondaryAction(text = stringResource(R.string.permission_manual), onClick = onEnterManually)
+                SecondaryAction(text = stringResource(R.string.product_scan_label), onClick = onScanLabel)
+            }
         }
     }
 }
+
+/** How long a lookup runs before the loading screen offers a way round it. */
+private const val STALLED_LOOKUP_MS = 4_000L
 
 @Composable
 private fun FailureBody(
@@ -617,6 +650,7 @@ private fun CalculatorBody(
     onCancelPortionUnitCorrection: () -> Unit = {},
     onAddToMeal: (String, String) -> Unit = { _, _ -> },
     onAddToMealAndScanNext: (String, String) -> Unit = { _, _ -> },
+    onScanNext: () -> Unit = {},
     onOpenMeal: () -> Unit = {},
     onSelectUsualPortion: (PortionUsage) -> Unit = {},
     /** Opens the *Save product* form on an unsaved quick calculation (1.0.3 P1). */
@@ -624,11 +658,27 @@ private fun CalculatorBody(
     /** Null when the product has no safe gallery image, which is what removes the hero's tap. */
     onOpenGallery: (() -> Unit)? = null,
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    val focusManager = LocalFocusManager.current
+    // A tap on anything that does nothing puts the keyboard away (2026-09-24 UX review). The meal
+    // actions step aside while typing, so without this the only way to reach them was the
+    // keyboard's Done. Buttons, chips, the field and the gallery handle their own taps and consume
+    // them, so this sees only taps that landed on nothing; a drag cancels it, so scrolling the
+    // portion zone never clears focus.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(focusManager) { detectTapGestures(onTap = { focusManager.clearFocus() }) },
+    ) {
 
         // Read from the IME inset's height rather than the experimental `isImeVisible`, which is a
         // stable API giving the same fact. Non-zero means the keyboard is taking screen space.
-        val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        //
+        // Through `derivedStateOf`, so only the shown/hidden change recomposes this body. Read
+        // directly, the inset's height is state that changes on every frame of the keyboard's
+        // slide, and the whole calculator recomposed with it for a boolean that flips once.
+        val ime = WindowInsets.ime
+        val density = LocalDensity.current
+        val imeVisible by remember(ime, density) { derivedStateOf { ime.getBottom(density) > 0 } }
 
         val selectedUnit = state.selectedPortionUnit
         val countableActive = state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null
@@ -837,6 +887,8 @@ private fun CalculatorBody(
                         usages = state.usualPortions,
                         units = state.portionUnits,
                         basisUnit = product.portionUnit,
+                        entered = PortionParser.parse(state.countText),
+                        enteredUnitId = selectedUnit?.id,
                         onSelect = onSelectUsualPortion,
                     )
                     Spacer(Modifier.height(Space.s))
@@ -910,6 +962,8 @@ private fun CalculatorBody(
                         usages = state.usualPortions,
                         units = state.portionUnits,
                         basisUnit = product.portionUnit,
+                        entered = PortionParser.parse(state.portionText),
+                        enteredUnitId = null,
                         onSelect = onSelectUsualPortion,
                     )
                 }
@@ -932,7 +986,11 @@ private fun CalculatorBody(
                 // would be a wrong portion presented as a shortcut (§14, §13).
                 product.packageAmount?.let { pack ->
                     Spacer(Modifier.height(Space.s))
-                    PackShortcuts(pack = pack, onSetPortion = onSetPortion)
+                    PackShortcuts(
+                        pack = pack,
+                        onSetPortion = onSetPortion,
+                        entered = PortionParser.parse(state.portionText),
+                    )
                 }
             }
 
@@ -1003,6 +1061,7 @@ private fun CalculatorBody(
             imeVisible = imeVisible,
             onAddToMeal = { onAddToMeal(portionDescription, mealFallbackName) },
             onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription, mealFallbackName) },
+            onScanNext = onScanNext,
             onOpenMeal = onOpenMeal,
         )
     }
@@ -1468,7 +1527,15 @@ private val PORTION_FIELD_HEIGHT_COMPACT = 64.dp
  * base-unit path as a typed portion — no separate calculation.
  */
 @Composable
-internal fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit) {
+internal fun PackShortcuts(
+    pack: BigDecimal,
+    onSetPortion: (BigDecimal) -> Unit,
+    /**
+     * The portion the field holds, if it parses: the shortcut equal to it is marked selected. By
+     * value (`compareTo`), since the field holds `125` where the quarter is `125.00`.
+     */
+    entered: BigDecimal? = null,
+) {
     // Scale 2 with HALF_UP: a 355 ml can quartered is 88.75 ml, and truncating to a whole number
     // would silently change the portion the user asked for.
     val fractions = listOf(
@@ -1519,6 +1586,7 @@ internal fun PackShortcuts(pack: BigDecimal, onSetPortion: (BigDecimal) -> Unit)
                 text = stringResource(label),
                 onClick = { onSetPortion(amount) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
+                selected = entered != null && amount.compareTo(entered) == 0,
             )
         }
     }
@@ -1599,6 +1667,10 @@ private fun UsualPortionRow(
     usages: List<PortionUsage>,
     units: List<PortionUnit>,
     basisUnit: String,
+    /** The amount the active field holds (grams, or a count), for marking the matching shortcut. */
+    entered: BigDecimal?,
+    /** The unit that count is of, or null while the field is in grams. */
+    enteredUnitId: Long?,
     onSelect: (PortionUsage) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().testTag(USUAL_PORTION_ROW_TAG)) {
@@ -1632,6 +1704,10 @@ private fun UsualPortionRow(
                     text = label,
                     onClick = { onSelect(usage) },
                     modifier = Modifier.weight(1f),
+                    // The same amount of the same unit: "2 slices" is not 2 g. By value, so a typed
+                    // `65.0` is the usual 65 g.
+                    selected = usage.portionUnitId == enteredUnitId &&
+                        entered != null && usage.amount.compareTo(entered) == 0,
                 )
             }
             repeat(slots - usages.size) { Spacer(Modifier.weight(1f)) }
@@ -2224,6 +2300,7 @@ private fun ResultPanel(
     imeVisible: Boolean = false,
     onAddToMeal: () -> Unit = {},
     onAddToMealAndScanNext: () -> Unit = {},
+    onScanNext: () -> Unit = {},
     onOpenMeal: () -> Unit = {},
 ) {
     // The exact figure, whichever path produced it. Reading `state.result` alone left a valid
@@ -2530,6 +2607,7 @@ private fun ResultPanel(
                 MealActions(
                     onAdd = onAddToMeal,
                     onAddAndScanNext = onAddToMealAndScanNext,
+                    onScanNext = onScanNext,
                     enabled = !state.addingToMeal,
                     justAdded = state.lastMealAddSucceeded,
                 )
