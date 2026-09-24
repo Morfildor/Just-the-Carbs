@@ -82,7 +82,7 @@ class QuickCalculationScreenTest {
      * Arrives on a quick calculation and puts its auto-opened keyboard away, deterministically.
      *
      * A quick calculation focuses its empty portion field on arrival and the keyboard follows. The
-     * identity row -- the per-100 figure, its basis and the "Read from label by you" badge -- is
+     * identity row -- the per-100 figure, its basis and the "Scanned from the label" badge -- is
      * deliberately hidden while the IME inset is non-zero (see `CalculatorBody`), and on the release
      * gate's 320x640 emulator the test activity is also panned under the keyboard. Any assertion on
      * that row made straight after `showQuick` therefore raced the keyboard: it passed or failed by
@@ -102,8 +102,8 @@ class QuickCalculationScreenTest {
         compose.onNode(field).performImeAction()
         compose.waitUntil(5_000) { runCatching { compose.onNode(field).assertIsNotFocused() }.isSuccess }
         compose.waitUntil(5_000) {
-            compose.onAllNodesWithText("Read from label by you").fetchSemanticsNodes().isNotEmpty() &&
-                runCatching { compose.onNodeWithText("Read from label by you").assertIsDisplayed() }.isSuccess
+            compose.onAllNodesWithText("Scanned from the label").fetchSemanticsNodes().isNotEmpty() &&
+                runCatching { compose.onNodeWithText("Scanned from the label").assertIsDisplayed() }.isSuccess
         }
     }
 
@@ -219,7 +219,7 @@ class QuickCalculationScreenTest {
         showQuick()
         arriveWithKeyboardDismissed()
 
-        compose.onNodeWithText("Read from label by you").assertIsDisplayed()
+        compose.onNodeWithText("Scanned from the label").assertIsDisplayed()
     }
 
     /**

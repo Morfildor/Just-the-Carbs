@@ -292,7 +292,7 @@ class SearchPresentationRegressionTest {
     fun theNoCarbValueMessageIsNotClippedAtTheDefaultFontScale() {
         showSearch(SearchUiState(query = "hag", hits = listOf(hit(carbs = null))))
 
-        assertIsFullyReadable("No carbohydrate value")
+        assertIsFullyReadable("No carb value")
     }
 
     /**
@@ -306,7 +306,7 @@ class SearchPresentationRegressionTest {
             fontScale = 1.8f,
         )
 
-        assertIsFullyReadable("No carbohydrate value")
+        assertIsFullyReadable("No carb value")
     }
 
     /** A row that *has* a value keeps its compact scannable column — the fix must not cost that. */
@@ -347,7 +347,7 @@ class SearchPresentationRegressionTest {
             "Chocoladehagel puur",
             "De Ruijter",
             "390 gram",
-            "No carbohydrate value",
+            "No carb value",
         )
     }
 

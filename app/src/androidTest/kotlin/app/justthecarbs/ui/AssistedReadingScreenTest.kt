@@ -470,7 +470,7 @@ class AssistedReadingScreenTest {
         rule.onNodeWithText("Type it in").performClick()
         rule.onNodeWithTag(ASSIST_MANUAL_FIELD_TAG).performTextInput("790")
 
-        rule.onNodeWithText("That can't be right — check the figure.").assertIsDisplayed()
+        rule.onNodeWithText("That can't be right. Check the figure.").assertIsDisplayed()
     }
 
     /**
@@ -523,7 +523,7 @@ class AssistedReadingScreenTest {
 
         rule.onNodeWithText("Use / 100 g").assertIsDisplayed()
         rule.onNodeWithText("Use / 100 ml").assertIsDisplayed()
-        rule.onNodeWithText("That can't be right — check the figure.").assertDoesNotExist()
+        rule.onNodeWithText("That can't be right. Check the figure.").assertDoesNotExist()
     }
 
     /**
@@ -744,7 +744,7 @@ class AssistedReadingScreenTest {
         }
 
         rule.onNodeWithText("Check this against the label").assertIsDisplayed()
-        rule.onNodeWithText("Read once, not confirmed. Compare it with the package before using it.")
+        rule.onNodeWithText("Compare it with the package before you use it.")
             .assertIsDisplayed()
         rule.onNodeWithText("2.3 g per 100 g").assertIsDisplayed()
     }

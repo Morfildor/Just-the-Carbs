@@ -167,7 +167,7 @@ class SearchScreenTest {
     fun aResultWithNoCarbohydrateValueSaysSoRatherThanShowingZero() {
         show(SearchUiState(query = "x", hits = listOf(hit(carbs = null))))
 
-        compose.onNodeWithText("No carbohydrate value — check the package").assertIsDisplayed()
+        compose.onNodeWithText("No carb value. Check the package.").assertIsDisplayed()
         compose.onNodeWithText("0 g carbs").assertDoesNotExist()
     }
 
@@ -185,7 +185,7 @@ class SearchScreenTest {
         val unknownBasisHit = hit(carbs = "67").copy(basis = null)
         show(SearchUiState(query = "hagelslag", hits = listOf(unknownBasisHit)))
 
-        compose.onNodeWithText("No carbohydrate value — check the package").assertIsDisplayed()
+        compose.onNodeWithText("No carb value. Check the package.").assertIsDisplayed()
         compose.onNodeWithText("67 g carbs").assertDoesNotExist()
     }
 
@@ -194,7 +194,7 @@ class SearchScreenTest {
     fun searchRowsShowAQuietNoValueStateForAMissingCarbFigure() {
         show(SearchUiState(query = "hagelslag", hits = listOf(hit(carbs = null))))
 
-        compose.onNodeWithText("No carbohydrate value — check the package").assertIsDisplayed()
+        compose.onNodeWithText("No carb value. Check the package.").assertIsDisplayed()
     }
 
     @Test
@@ -583,7 +583,7 @@ class SearchScreenTest {
         show(SearchUiState(query = "chocolate", searching = true, awaitingRemotePermit = true))
 
         compose.onNodeWithTag(SEARCH_PENDING_TAG).assertIsDisplayed()
-        compose.onNodeWithText("The product database is unavailable").assertDoesNotExist()
+        compose.onNodeWithText("Open Food Facts isn't available right now").assertDoesNotExist()
         compose.onNodeWithText("Try again").assertDoesNotExist()
         compose.onNodeWithText("No products found", substring = true).assertDoesNotExist()
     }
@@ -608,7 +608,7 @@ class SearchScreenTest {
 
         compose.onNodeWithTag(SEARCH_RATE_LIMITED_TAG).assertIsDisplayed()
         compose.onNodeWithText("Try again").assertDoesNotExist()
-        compose.onNodeWithText("The product database is unavailable").assertDoesNotExist()
+        compose.onNodeWithText("Open Food Facts isn't available right now").assertDoesNotExist()
         // The results the user was reading survive the backoff.
         compose.onNodeWithText("Chocoladehagel puur").assertIsDisplayed()
     }
