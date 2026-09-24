@@ -143,7 +143,10 @@ live on Production and says the first update is ready. Work accumulates here unt
   - the scanners open faster: the camera library starts after Home's first frame (no camera is
     opened until you scan);
   - plainer wording throughout: no em dashes, Open Food Facts named instead of "the database",
-    no internal terms, and a welcome carousel that no longer promises "no searching".
+    no internal terms, and a welcome carousel that no longer promises "no searching";
+  - the calculator fades in from its loading state; the meal bar sets its total in a heavier
+    weight; TalkBack reads Usual and pack shortcuts as "Use usual portion, 65 g";
+  - the label scanner's proposal and conflict screens have a Close button like its other screens.
 
 - **The calculator reads as one column: portion in, carbs out.** On a saved product the remembered
   portion and the carbohydrate result could both read as headline figures (two bold dark numbers,
@@ -217,6 +220,9 @@ live on Production and says the first update is ready. Work accumulates here unt
 - The torch icon now follows the camera's real torch state after a retake or a return to the app.
 - The Settings haptics switch can be toggled from its label, and reads as one control.
 - A meal line's edit dialog saves from the keyboard's Done key.
+- The label scanner's candidate figure follows the device's decimal separator ("7,2" on a Dutch
+  phone), with every digit kept so a misread is visible.
+- Home's decorative nutrition bars no longer poke out under the search field while searching.
 
 - Portion history now records deliberate completed actions only: typing and remembered pre-fills
   no longer inflate *Usual*, and leaving after an unchanged successful meal add does not count it
