@@ -819,4 +819,69 @@ class ManualEntryViewModelTest {
             // unlike a genuine portion-write failure, cancellation must not be misreported either way.
             assertEquals(1, journal.entries.count { it == "product:$barcode" })
         }
+
+    // --- The range error while typing (UX polish, wave 2): the same validator save() uses, shown as
+    // the figure is typed rather than only after a Save that refuses it. ---
+
+    private fun ordinaryEntry(): ManualEntryViewModel {
+        val journal = Journal()
+        return ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal))).also { it.start(null) }
+    }
+
+    @Test
+    fun `an impossible per-100 g figure is reported while it is typed`() = runTest(dispatcher) {
+        val viewModel = ordinaryEntry()
+
+        viewModel.onCarbsChanged("482")
+
+        assertEquals(CarbsError.OUT_OF_RANGE, viewModel.state.value.carbsError)
+    }
+
+    @Test
+    fun `a plausible or half-typed figure shows no error while typing`() = runTest(dispatcher) {
+        val viewModel = ordinaryEntry()
+
+        viewModel.onCarbsChanged("48")
+        assertNull(viewModel.state.value.carbsError)
+        // Mid-entry text that does not parse yet is not an error the user has made; only Save says so.
+        viewModel.onCarbsChanged("48,")
+        assertNull(viewModel.state.value.carbsError)
+    }
+
+    @Test
+    fun `correcting an impossible figure clears the range error`() = runTest(dispatcher) {
+        val viewModel = ordinaryEntry()
+        viewModel.onCarbsChanged("482")
+
+        viewModel.onCarbsChanged("48.2")
+
+        assertNull(viewModel.state.value.carbsError)
+    }
+
+    @Test
+    fun `changing the basis re-checks the typed figure against that basis ceiling`() = runTest(dispatcher) {
+        val viewModel = ordinaryEntry()
+        viewModel.onCarbsChanged("150")
+        assertEquals(CarbsError.OUT_OF_RANGE, viewModel.state.value.carbsError)
+
+        viewModel.onBasisChanged(NutritionBasis.PER_100_ML)
+        assertNull("150 per 100 ml is within the millilitre ceiling", viewModel.state.value.carbsError)
+
+        viewModel.onBasisChanged(NutritionBasis.PER_100_G)
+        assertEquals(CarbsError.OUT_OF_RANGE, viewModel.state.value.carbsError)
+    }
+
+    @Test
+    fun `an unresolved basis reports no range error until a basis is chosen`() = runTest(dispatcher) {
+        val journal = Journal()
+        val viewModel = ManualEntryViewModel(repositoryOf(FakeLocal(journal), FakeUnits(journal)))
+        viewModel.start(barcode, ocrCarbs = "48", ocrBasis = "")
+
+        viewModel.onCarbsChanged("150")
+        assertNull("no ceiling can be named without a basis", viewModel.state.value.carbsError)
+        assertNull("the basis stays unresolved", viewModel.state.value.basis)
+
+        viewModel.onBasisChanged(NutritionBasis.PER_100_G)
+        assertEquals(CarbsError.OUT_OF_RANGE, viewModel.state.value.carbsError)
+    }
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
@@ -19,7 +20,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
@@ -64,6 +70,10 @@ fun VerifyDialog(
         NutritionValueValidator.validateCarbsPer100(it.toDouble(), basis)
     }
     val canConfirm = name.isNotBlank() && validCarbs != null
+    val focusManager = LocalFocusManager.current
+    val carbsFocus = remember { FocusRequester() }
+    // The confirm button's own action, shared with the keyboard's Done key so the two cannot differ.
+    val confirm = { validCarbs?.let { onConfirm(it, basis, name.trim()) } }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -88,6 +98,11 @@ fun VerifyDialog(
                     onValueChange = { name = it },
                     label = { Text(stringResource(R.string.manual_name)) },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(onNext = { carbsFocus.requestFocus() }),
                     shape = RoundedCornerShape(Space.buttonRadius),
                     colors = jtcTextFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
@@ -103,11 +118,14 @@ fun VerifyDialog(
                     // g/ml relabels the field, exactly as it does on the manual-entry screen.
                     label = { Text(stringResource(R.string.manual_carbs, basis.unitLabel)) },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = { if (canConfirm) confirm() else focusManager.clearFocus() },
+                    ),
                     isError = carbs.isNotBlank() && validCarbs == null,
                     shape = RoundedCornerShape(Space.buttonRadius),
                     colors = jtcTextFieldColors(),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(carbsFocus),
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
@@ -128,7 +146,7 @@ fun VerifyDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { validCarbs?.let { onConfirm(it, basis, name.trim()) } },
+                onClick = { confirm() },
                 enabled = canConfirm,
             ) { Text(stringResource(R.string.verify_confirm)) }
         },

@@ -877,6 +877,9 @@ fun JustTheCarbsNavHost(
                 onPackageChanged = viewModel::onPackageChanged,
                 onSave = viewModel::save,
                 onBack = { navController.popBackStack() },
+                // Read from the route, not from the state: the state is still blank on the first
+                // frame, because `start` above runs only after it.
+                arrivedWithCarbs = carbs.isNotBlank(),
             )
         }
 

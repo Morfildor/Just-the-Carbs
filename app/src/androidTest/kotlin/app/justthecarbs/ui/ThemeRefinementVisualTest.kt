@@ -153,6 +153,7 @@ class ThemeRefinementVisualTest {
                         onPackageChanged = {},
                         onSave = {},
                         onBack = {},
+                        arrivedWithCarbs = false,
                     )
                 }
             }

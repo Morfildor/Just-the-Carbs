@@ -156,10 +156,32 @@ class ManualEntryViewModel(
         _state.update { it.copy(name = value, nameError = false, saveFailed = false) }
 
     fun onCarbsChanged(value: String) =
-        _state.update { it.copy(carbsPer100 = value, carbsError = null, saveFailed = false) }
+        _state.update {
+            it.copy(carbsPer100 = value, carbsError = rangeErrorWhileTyping(value, it.basis), saveFailed = false)
+        }
 
+    // The basis names the ceiling, so choosing one re-checks the figure already typed.
     fun onBasisChanged(basis: NutritionBasis) =
-        _state.update { it.copy(basis = basis, saveFailed = false) }
+        _state.update {
+            it.copy(basis = basis, carbsError = rangeErrorWhileTyping(it.carbsPer100, basis), saveFailed = false)
+        }
+
+    /**
+     * The out-of-range error, shown as the figure is typed rather than only once Save refuses it.
+     *
+     * The same [NutritionValueValidator] ceiling [save] applies, never a second one. Only a figure
+     * that parses is judged: `48,` mid-entry is not a mistake yet, so a malformed figure is still
+     * reported by [save] alone. With no basis there is no ceiling to name, so nothing is reported.
+     */
+    private fun rangeErrorWhileTyping(text: String, basis: NutritionBasis?): CarbsError? {
+        val carbs = PortionParser.parse(text) ?: return null
+        basis ?: return null
+        return if (NutritionValueValidator.validateCarbsPer100(carbs.toDouble(), basis) == null) {
+            CarbsError.OUT_OF_RANGE
+        } else {
+            null
+        }
+    }
 
     fun onPackageChanged(value: String) =
         _state.update { it.copy(packageAmount = value, packageError = false, saveFailed = false) }
