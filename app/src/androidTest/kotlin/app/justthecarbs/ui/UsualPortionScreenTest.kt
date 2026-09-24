@@ -193,7 +193,7 @@ class UsualPortionScreenTest {
         compose.onNodeWithText("65 g").performClick()
 
         // 48.2 g/100 g × 65 g = 31.33 → 31.3, through the production calculator.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
     }
 
     /**
@@ -220,7 +220,7 @@ class UsualPortionScreenTest {
         compose.onNodeWithText("2 slices").performScrollTo().performClick()
 
         // 2 slices × 36 g = 72 g; 48.2 g/100 g × 72 g = 34.704 → 34.7.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("34.7 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("34.7 grams of carbs")
     }
 
     /** §13's explicit cap: a row of shortcuts the user has to read is not a shortcut. */

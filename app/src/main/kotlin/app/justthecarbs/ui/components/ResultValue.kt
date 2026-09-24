@@ -35,7 +35,14 @@ const val RESULT_VALUE_NUMERAL_TAG_SUFFIX = "_numeral"
 fun ResultValue(
     dominant: String,
     unit: String,
-    accessibleLabel: String,
+    /**
+     * What TalkBack says for this value, announced politely whenever it changes. Null when the
+     * caller announces the value from a stable node of its own (see the calculator's dock): a live
+     * region only speaks when a property of an existing node changes, so one that lives on a node
+     * the caller rebuilds, as `AnimatedContent` does, is not reliably announced. Null leaves the two
+     * texts unmerged here so they merge into that caller's node instead.
+     */
+    accessibleLabel: String?,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.extendedColors.result,
     testTag: String? = null,
@@ -48,10 +55,16 @@ fun ResultValue(
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             // One coherent node for TalkBack: without this the numeral and the unit are two
             // separately-focusable fragments a screen-reader user has to reassemble themselves.
-            .semantics(mergeDescendants = true) {
-                contentDescription = accessibleLabel
-                liveRegion = LiveRegionMode.Polite
-            },
+            .then(
+                if (accessibleLabel != null) {
+                    Modifier.semantics(mergeDescendants = true) {
+                        contentDescription = accessibleLabel
+                        liveRegion = LiveRegionMode.Polite
+                    }
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         Text(
             text = dominant,

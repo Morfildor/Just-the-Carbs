@@ -173,8 +173,10 @@
     <string name="product_result_basis_preview" tools:ignore="MissingTranslation">%1$s g per 100 %2$s</string>
     <!-- The unit beside a split-typography result (see ResultValue), e.g. the "g" in "31.2 g". -->
     <string name="result_unit_grams">g</string>
-    <!-- Spoken form for TalkBack: reads the numeral and unit as one phrase, e.g. "31.2 grams". -->
-    <string name="result_accessible_grams">%1$s grams</string>
+    <!-- Spoken form for TalkBack: reads the numeral and unit as one phrase, e.g. "31.2 grams of
+         carbs". "of carbs" because a bare "31.2 grams" is indistinguishable from the portion the
+         user just typed; this is the figure they act on, so it says what it measures. -->
+    <string name="result_accessible_grams">%1$s grams of carbs</string>
     <string name="product_quarter_pack">¼ pack</string>
     <string name="product_half_pack">½ pack</string>
     <string name="product_full_pack">Full pack</string>
@@ -246,6 +248,8 @@
     <!-- Brief success label on *Add to meal*, shown for a few seconds right after a successful
          add — see rememberSuccessPulse. -->
     <string name="meal_added" tools:ignore="MissingTranslation">Added</string>
+    <!-- TalkBack state on *Add to meal* while "Added" is shown: the label change alone is silent. -->
+    <string name="meal_added_state" tools:ignore="MissingTranslation">Added to meal</string>
     <string name="meal_add_and_scan" tools:ignore="MissingTranslation">Add &amp; scan next</string>
     <string name="meal_add_failed" tools:ignore="MissingTranslation">Could not add this to the meal. Your calculation is unchanged.</string>
     <string name="meal_bar_summary" tools:ignore="MissingTranslation">Meal · %1$s · %2$s g carbs</string>

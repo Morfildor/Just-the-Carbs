@@ -125,7 +125,7 @@ class DirectCarbResultScreenTest {
         // 4 × 14.2 = 56.8. The exact figure the workflow this pass exists to fix must produce.
         showDirectCarbResult(count = "4", carbsPerUnit = "14.2")
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("56.8 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("56.8 grams of carbs")
     }
 
     @Test
@@ -166,6 +166,6 @@ class DirectCarbResultScreenTest {
         // 2 × 15 = 30. Guards the formatting path for a value with no fractional part.
         showDirectCarbResult(count = "2", carbsPerUnit = "15")
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.0 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.0 grams of carbs")
     }
 }

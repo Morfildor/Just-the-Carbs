@@ -2365,61 +2365,84 @@ private fun ResultPanel(
         // this is not a result, it is the input to one, and a per-100 figure that looked like an
         // answer would be the worst possible confusion on this screen.
         //
-        // The whole slot is one `AnimatedContent` keyed on the displayed numeral (null while
-        // pending), so the answer fades in when it first exists and cross-fades when its digits
-        // change -- one 120ms transition for both, long enough to notice the number moved, short
-        // enough that nobody waits. `sizeTransform = null`: both states are the slot's fixed
-        // height, and a size animation would only ever be a bug made visible.
-        if (showsSlot) {
-            AnimatedContent(
-                targetState = dominantNumeral,
-                transitionSpec = {
-                    ContentTransform(
-                        targetContentEnter = fadeIn(tween(Motion.QUICK_MS)),
-                        initialContentExit = fadeOut(tween(Motion.QUICK_MS)),
-                        sizeTransform = null,
-                    )
+        // The whole slot is one `AnimatedContent` over the displayed numeral (null while pending),
+        // keyed only on whether an answer exists: the answer fades in when it first exists, over
+        // 120ms, and after that its digits change in place. Keyed on the numeral itself, typing
+        // `125` faded through ghosts of `1` and `12` (2026-09-24). `sizeTransform = null`: both
+        // states are the slot's fixed height, and a size animation would only ever be a bug made
+        // visible.
+        //
+        // TalkBack hears the result from the wrapping Box, not from anything inside the
+        // `AnimatedContent`. A polite live region speaks when a property of an existing node
+        // changes, and the content inside is rebuilt on the first answer (and the slot itself only
+        // exists once there is one or the keyboard is up), so a live region in there was not
+        // reliably announced. The Box exists in every state; its description appears with the
+        // first answer and changes with each one after. Its merged text still carries the numeral
+        // and the pending preview; the copy button stays its own node.
+        val accessibleResult = dominantNumeral?.let {
+            stringResource(R.string.result_accessible_grams, it)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(PRODUCT_RESULT_TAG)
+                .semantics(mergeDescendants = true) {
+                    liveRegion = LiveRegionMode.Polite
+                    accessibleResult?.let { contentDescription = it }
                 },
-                label = "result",
-                modifier = Modifier.fillMaxWidth().height(resultSlotHeight),
-            ) { numeral ->
-                if (numeral == null) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                        state.product?.let { product ->
-                            Text(
-                                text = stringResource(
-                                    R.string.product_result_basis_preview,
-                                    // See the note on the same call in ProductSummary.
-                                    ResultFormatter.quantity(product.carbsPer100),
-                                    product.portionUnit,
-                                ),
-                                style = NumberType.supporting,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        ) {
+            if (showsSlot) {
+                AnimatedContent(
+                    targetState = dominantNumeral,
+                    contentKey = { it != null },
+                    transitionSpec = {
+                        ContentTransform(
+                            targetContentEnter = fadeIn(tween(Motion.QUICK_MS)),
+                            initialContentExit = fadeOut(tween(Motion.QUICK_MS)),
+                            sizeTransform = null,
+                        )
+                    },
+                    label = "result",
+                    modifier = Modifier.fillMaxWidth().height(resultSlotHeight),
+                ) { numeral ->
+                    if (numeral == null) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                            state.product?.let { product ->
+                                Text(
+                                    text = stringResource(
+                                        R.string.product_result_basis_preview,
+                                        // See the note on the same call in ProductSummary.
+                                        ResultFormatter.quantity(product.carbsPer100),
+                                        product.portionUnit,
+                                    ),
+                                    style = NumberType.supporting,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            ResultValue(
+                                dominant = numeral,
+                                unit = resultUnit,
+                                // Announced by the wrapping Box; see above.
+                                accessibleLabel = null,
+                                modifier = Modifier.weight(1f),
+                            )
+
+                            Spacer(Modifier.width(Space.s))
+
+                            // Shared with the meal total's own copy button (see `CopyResultButton`), so
+                            // the two most important numbers in the app are transferred and confirmed
+                            // identically rather than by two hand-written copies of the same logic.
+                            CopyResultButton(
+                                value = copiedValue.orEmpty(),
+                                hapticsEnabled = settings.hapticsEnabled,
                             )
                         }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ResultValue(
-                            dominant = numeral,
-                            unit = resultUnit,
-                            accessibleLabel = stringResource(R.string.result_accessible_grams, numeral),
-                            testTag = PRODUCT_RESULT_TAG,
-                            modifier = Modifier.weight(1f),
-                        )
-
-                        Spacer(Modifier.width(Space.s))
-
-                        // Shared with the meal total's own copy button (see `CopyResultButton`), so
-                        // the two most important numbers in the app are transferred and confirmed
-                        // identically rather than by two hand-written copies of the same logic.
-                        CopyResultButton(
-                            value = copiedValue.orEmpty(),
-                            hapticsEnabled = settings.hapticsEnabled,
-                        )
                     }
                 }
             }

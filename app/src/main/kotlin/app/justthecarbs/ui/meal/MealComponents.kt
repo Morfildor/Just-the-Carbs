@@ -34,7 +34,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
@@ -88,6 +90,7 @@ fun MealActions(
     justAdded: Any? = null,
 ) {
     val showAdded = rememberSuccessPulse(justAdded)
+    val addedState = stringResource(R.string.meal_added_state)
     // One height for the pair (2026-09-23 calculator refinement). *Add to meal* was 48dp and *Add &
     // scan next* 56dp, top-aligned, so the two labels sat on different baselines; at 1.3x text the
     // filled one wrapped and grew while the outlined one did not. Both now have the primary floor,
@@ -105,8 +108,14 @@ fun MealActions(
         // filled blue `Add & scan next`. It is a real alternative, and now looks like one. Built
         // out of the same pieces as `JtcOutlinedButton` rather than calling it, because this
         // button's label is a slot: it swaps to a check icon plus `Added` on success.
+        //
+        // While "Added" is held the button refuses taps rather than disabling: a disabled button
+        // would grey out the very confirmation it is showing. A second tap in that window (a double
+        // tap, or a user unsure the first worked) used to add the same portion twice. The state
+        // description is what TalkBack hears, since the label swap alone is silent; both follow
+        // Home's Quick Add, which confirms the same action the same way.
         OutlinedButton(
-            onClick = onAdd,
+            onClick = { if (!showAdded) onAdd() },
             enabled = enabled,
             shape = RoundedCornerShape(Space.buttonRadius),
             colors = ButtonDefaults.outlinedButtonColors(
@@ -118,6 +127,12 @@ fun MealActions(
                 .weight(1f)
                 .heightIn(min = Space.primaryButtonHeight)
                 .fillMaxHeight()
+                .semantics {
+                    if (showAdded) {
+                        stateDescription = addedState
+                        disabled()
+                    }
+                }
                 .testTag(MEAL_ADD_TAG),
         ) {
             if (showAdded) {
