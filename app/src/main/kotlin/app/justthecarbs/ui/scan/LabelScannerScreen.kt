@@ -1,6 +1,7 @@
 package app.justthecarbs.ui.scan
 
 import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import android.util.Size
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -483,9 +484,9 @@ private fun LabelCamera(
         mutableStateOf<CaptureEvidenceCoordinator.LiveEvidenceSnapshot?>(null)
     }
     var camera by remember { mutableStateOf<Camera?>(null) }
+    val torchOn = rememberTorchOn(camera)
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var torchAvailable by remember { mutableStateOf(false) }
-    var torchOn by remember { mutableStateOf(false) }
     var cameraFailed by remember { mutableStateOf(false) }
 
     /**
@@ -1574,6 +1575,14 @@ private fun LabelCamera(
         val declaredServingBasis = scaleProposal?.candidate?.reading?.basis
             ?.takeIf { ConfirmationEligibility.isDeclaredServing(it) }
 
+        // System Back on the photograph goes one step back, never out of the scanner (which threw
+        // the capture away). Every frozen screen's Retake is `resumeLive`, so Back is exactly
+        // Retake: the photograph is released the same way, once. The assisted screen handles its
+        // own sub-steps first (its handler is composed inside this one, so it takes precedence) and
+        // leaves only its choices and a correction to this one. Composed only while frozen: on the
+        // live camera Back still leaves the screen.
+        BackHandler(onBack = ::resumeLive)
+
         when {
             assist != null -> AssistedReadingScreen(
                 bitmap = frozenBitmap,
@@ -1884,10 +1893,8 @@ private fun LabelCamera(
             trailing = if (torchAvailable) {
                 {
                     ScannerScrimButton(
-                        onClick = {
-                            torchOn = !torchOn
-                            camera?.cameraControl?.enableTorch(torchOn)
-                        },
+                        // The camera's own torch state, not a remembered flag: see [rememberTorchOn].
+                        onClick = { camera?.cameraControl?.enableTorch(!torchOn) },
                         icon = if (torchOn) Icons.Filled.FlashlightOn else Icons.Filled.FlashlightOff,
                         description = stringResource(
                             if (torchOn) R.string.scanner_torch_off else R.string.scanner_torch_on,

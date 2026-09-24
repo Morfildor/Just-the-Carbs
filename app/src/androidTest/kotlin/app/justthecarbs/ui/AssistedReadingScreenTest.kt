@@ -2,6 +2,7 @@ package app.justthecarbs.ui
 
 import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -275,10 +276,9 @@ class AssistedReadingScreenTest {
     /**
      * An empty field cannot complete the scan — there would be no value to complete it with.
      *
-     * The accept actions are now *absent* rather than present-and-disabled: with no parsed value
-     * there is no value to judge, so there is nothing to offer. Previously this asserted that
-     * clicking a disabled button did nothing, which is a weaker claim and — as the 1.0.3 P0 work
-     * showed — one that a disabled control satisfies while still telling the user nothing.
+     * The accept actions stand in place but disabled while nothing is typed, so the first keystroke
+     * does not move the layout. That is only for an *empty* field: an impossible figure still gets
+     * no action at all, and a sentence saying why (the 1.0.3 P0 cases below).
      */
     @Test
     fun anEmptyInlineValueOffersNoAcceptAction() {
@@ -297,8 +297,9 @@ class AssistedReadingScreenTest {
 
         rule.onNodeWithText("Type it in").performClick()
 
-        rule.onNodeWithText("Use / 100 g").assertDoesNotExist()
-        rule.onNodeWithText("Use / 100 ml").assertDoesNotExist()
+        rule.onNodeWithText("Use / 100 g").assertIsNotEnabled()
+        rule.onNodeWithText("Use / 100 ml").assertIsNotEnabled()
+        rule.onNodeWithText("Use / 100 g").performClick()
         assertNull(used)
     }
 

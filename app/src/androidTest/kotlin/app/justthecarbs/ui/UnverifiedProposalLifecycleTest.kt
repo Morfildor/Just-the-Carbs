@@ -262,7 +262,10 @@ class UnverifiedProposalLifecycleTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
 
         // The basis the label stated survives the rejection, and is stated without a picker.
-        rule.onNodeWithText("100 g", substring = true).assertExists()
+        // Matched exactly: a bare "100 g" substring also matches the field's own label, so it could
+        // pass with no basis stated at all.
+        rule.onNodeWithText("Read from the label as per 100 g").assertExists()
+        rule.onNodeWithText("Use / 100 ml").assertDoesNotExist()
     }
 
     @Test
@@ -438,7 +441,10 @@ class UnverifiedProposalLifecycleTest {
         rule.waitForIdle()
         rule.onNodeWithTag(ASSIST_MANUAL_FIELD_TAG)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
-        rule.onNodeWithText("100 g", substring = true).assertExists()
+        // Matched exactly: a bare "100 g" substring also matches the field's own label, so it could
+        // pass with no basis stated at all.
+        rule.onNodeWithText("Read from the label as per 100 g").assertExists()
+        rule.onNodeWithText("Use / 100 ml").assertDoesNotExist()
     }
 
     /**

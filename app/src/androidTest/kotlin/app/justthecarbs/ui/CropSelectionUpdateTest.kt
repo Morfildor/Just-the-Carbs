@@ -3,6 +3,11 @@ package app.justthecarbs.ui
 import android.graphics.Bitmap
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -31,5 +36,25 @@ class CropSelectionUpdateTest {
         compose.runOnIdle { target.value = automatic }
         compose.onNodeWithTag(CROP_READ_TAG).performClick()
         compose.runOnIdle { assertEquals(automatic, submitted) }
+    }
+
+    /** The progress is shown where the thumb is, inside the disabled Read table button. */
+    @Test fun readingShowsProgressInsideTheReadTableButton() {
+        val bitmap = Bitmap.createBitmap(200, 300, Bitmap.Config.ARGB_8888)
+        val reading = mutableStateOf(false)
+        compose.setContent {
+            MaterialTheme {
+                CropConfirmationScreen(bitmap, NormalizedRegion(0.05, 0.05, 0.95, 0.95), reading = reading.value,
+                    onReadTable = {}, onRetake = {})
+            }
+        }
+        val progressInButton = hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate) and
+            hasAnyAncestor(hasTestTag(CROP_READ_TAG))
+        compose.onNode(progressInButton, useUnmergedTree = true).assertDoesNotExist()
+
+        compose.runOnIdle { reading.value = true }
+
+        compose.onNodeWithTag(CROP_READ_TAG).assertIsNotEnabled()
+        compose.onNode(progressInButton, useUnmergedTree = true).assertExists()
     }
 }

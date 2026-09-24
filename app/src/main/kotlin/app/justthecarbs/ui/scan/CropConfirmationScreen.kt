@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -23,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -225,9 +228,10 @@ fun CropConfirmationScreen(
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             // No separate spinner row. The header already says `Reading the table...` while a pass
-            // runs (see the title ordering above) and the button below carries the same state by
-            // being disabled -- three simultaneous indications of one operation, which is the
-            // duplication P0-5 names on the live screens and is the same mistake here.
+            // runs (see the title ordering above); a third indication in its own row would be the
+            // duplication P0-5 names on the live screens. The progress goes *inside* the disabled
+            // button instead, as on the shutter: the header is at the far end of the screen from the
+            // thumb that just pressed Read table, and a disabled button alone reads as a dead one.
             Button(
                 onClick = { onReadTable(selection) },
                 enabled = !reading,
@@ -236,7 +240,17 @@ fun CropConfirmationScreen(
                     .fillMaxWidth()
                     .heightIn(min = Space.primaryButtonHeight)
                     .testTag(CROP_READ_TAG),
-            ) { Text(stringResource(R.string.crop_read)) }
+            ) {
+                if (reading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = LocalContentColor.current,
+                    )
+                    Spacer(Modifier.width(Space.xs))
+                }
+                Text(stringResource(R.string.crop_read))
+            }
             JtcOutlinedButton(
                 text = stringResource(R.string.crop_retake),
                 onClick = onRetake,
@@ -260,7 +274,10 @@ private fun CropOverlay(
     onSelectionChange: (NormalizedRegion) -> Unit,
 ) {
     val rect = CropSelectionGeometry.toViewRect(selection, displayed)
-    val handleRadius = with(androidx.compose.ui.platform.LocalDensity.current) { CROP_HANDLE_TOUCH_DP.dp.toPx() }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val handleRadius = with(density) { CROP_HANDLE_TOUCH_DP.dp.toPx() }
+    // What is drawn, in dp like the touch target above; see [CropHandleStyle].
+    val drawn = remember(density) { CropHandleStyle.inPx(density) }
     val selectionLabel = stringResource(R.string.crop_selection)
     val scannerColors = MaterialTheme.extendedColors.scanner
 
@@ -334,13 +351,13 @@ private fun CropOverlay(
             color = scannerColors.darkEdge,
             topLeft = Offset(rect.left, rect.top),
             size = Size(rect.width, rect.height),
-            style = Stroke(width = 7f),
+            style = Stroke(width = drawn.selectionOuterStroke),
         )
         drawRect(
             color = scannerColors.lightEdge,
             topLeft = Offset(rect.left, rect.top),
             size = Size(rect.width, rect.height),
-            style = Stroke(width = 3f),
+            style = Stroke(width = drawn.selectionInnerStroke),
         )
 
         // The handles are the only control that changes the outcome, so they are drawn to look
@@ -355,8 +372,11 @@ private fun CropOverlay(
             Offset(rect.right, rect.bottom) to Pair(-1, -1),
         ).forEach { (corner, direction) ->
             val (dx, dy) = direction
-            val arm = HANDLE_ARM_PX
-            listOf(scannerColors.darkEdge to 11f, scannerColors.handle to 6f).forEach { (color, width) ->
+            val arm = drawn.armLength
+            listOf(
+                scannerColors.darkEdge to drawn.armOuterStroke,
+                scannerColors.handle to drawn.armInnerStroke,
+            ).forEach { (color, width) ->
                 drawLine(
                     color = color,
                     start = corner,
@@ -372,15 +392,9 @@ private fun CropOverlay(
                     cap = androidx.compose.ui.graphics.StrokeCap.Round,
                 )
             }
-            drawCircle(scannerColors.darkEdge, radius = HANDLE_DRAW_PX + 3f, center = corner)
-            drawCircle(scannerColors.handle, radius = HANDLE_DRAW_PX, center = corner)
-            drawCircle(scannerColors.lightEdge, radius = HANDLE_DRAW_PX * 0.45f, center = corner)
+            drawCircle(scannerColors.darkEdge, radius = drawn.handleRadius + drawn.handleRing, center = corner)
+            drawCircle(scannerColors.handle, radius = drawn.handleRadius, center = corner)
+            drawCircle(scannerColors.lightEdge, radius = drawn.handleRadius * 0.45f, center = corner)
         }
     }
 }
-
-private const val HANDLE_DRAW_PX = 18f
-
-/** Length of each corner bracket arm, in px. Long enough to read as a handle, short enough not to
- * imply the selection edge continues past the rectangle. */
-private const val HANDLE_ARM_PX = 34f
