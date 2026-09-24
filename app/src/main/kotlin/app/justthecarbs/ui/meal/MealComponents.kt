@@ -37,7 +37,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.CarbResult
@@ -225,11 +229,18 @@ fun MealBar(
     compact: Boolean = false,
 ) {
     val itemsLabel = pluralStringResource(R.plurals.meal_item_count, itemCount, itemCount)
-    val summary = stringResource(
-        R.string.meal_bar_summary,
-        itemsLabel,
-        ResultFormatter.decimal(total.exact),
-    )
+    // The total is the figure the bar exists for, so it is set SemiBold within the sentence. The
+    // sentence is built around a marker rather than by searching it for the figure, which could
+    // also match inside the item count ("45 items"). The node's text is still the whole sentence.
+    val figure = ResultFormatter.decimal(total.exact)
+    val template = stringResource(R.string.meal_bar_summary, itemsLabel, FIGURE_MARKER)
+    val at = template.indexOf(FIGURE_MARKER)
+    val styledSummary = buildAnnotatedString {
+        append(template.substring(0, at))
+        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(figure) }
+        append(template.substring(at + FIGURE_MARKER.length))
+    }
+    val summary = styledSummary.text
     val openLabel = stringResource(R.string.meal_open)
 
     Row(
@@ -257,7 +268,7 @@ fun MealBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = summary,
+            text = styledSummary,
             style = if (compact) {
                 MaterialTheme.typography.labelLarge
             } else {
@@ -282,6 +293,9 @@ fun MealBar(
         )
     }
 }
+
+/** Holds the total's place while [MealBar] builds its sentence: a private-use character. */
+private const val FIGURE_MARKER = "\uE000"
 
 /** Reserves nothing when the meal is empty — see [MealBar]'s comment on why that matters. */
 @Composable

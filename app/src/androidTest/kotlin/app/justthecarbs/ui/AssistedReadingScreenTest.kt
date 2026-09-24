@@ -4,11 +4,14 @@ import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.ocr.CarbCandidate
 import app.justthecarbs.ocr.EvidenceResolver
@@ -852,5 +855,68 @@ class AssistedReadingScreenTest {
         rule.onNodeWithTag(CONFLICT_ASSIST_TAG).performClick()
 
         assertEquals(true, assisted)
+    }
+
+    // ---- leaving: every photo screen offers the same one-tap way out -----------------------------
+
+    private val closeScanner: String
+        get() = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.scanner_close)
+
+    /**
+     * The crop screen has a Close in its header; a proposal on the same frozen photograph had only
+     * Retake, which goes back to the live camera rather than out of the scanner.
+     */
+    @Test
+    fun aProposalCanBeLeftInOneTapWithoutConfirmingRejectingOrRetaking() {
+        var closed = 0
+        var other = 0
+        rule.setContent {
+            JustTheCarbsTheme {
+                VerificationScreen(
+                    bitmap = bitmap(),
+                    proposal = EvidenceResolver.Outcome.NeedsVerification(
+                        reading = LabelReading.Confident(candidate("2.3")),
+                        report = NutritionParseReport(LabelReading.Confident(candidate("2.3")), emptyList()),
+                        source = EvidenceSource.SELECTED_REGION_OCR,
+                    ),
+                    onConfirm = { _, _ -> other++ },
+                    onReject = { other++ },
+                    onRetake = { other++ },
+                    onClose = { closed++ },
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription(closeScanner).assertIsDisplayed().performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, closed)
+        assertEquals(0, other)
+    }
+
+    @Test
+    fun aConflictCanBeLeftInOneTapWithoutAssistingOrRetaking() {
+        var closed = 0
+        var other = 0
+        rule.setContent {
+            JustTheCarbsTheme {
+                ConflictScreen(
+                    bitmap = bitmap(),
+                    conflict = EvidenceResolver.Outcome.Conflicted(
+                        values = listOf("2.09/PER_100_G", "2/PER_100_G"),
+                        sources = listOf(EvidenceSource.FULL_FRAME_PASS_A, EvidenceSource.SELECTED_REGION_OCR),
+                    ),
+                    onAssist = { other++ },
+                    onRetake = { other++ },
+                    onClose = { closed++ },
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription(closeScanner).assertIsDisplayed().performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, closed)
+        assertEquals(0, other)
     }
 }

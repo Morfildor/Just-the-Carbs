@@ -1,5 +1,8 @@
 package app.justthecarbs.ui
 
+import app.justthecarbs.R
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
@@ -52,7 +55,7 @@ class PackShortcutsResponsiveTest {
             ) {
                 JustTheCarbsTheme {
                     Box(Modifier.width(widthDp.dp)) {
-                        PackShortcuts(pack = BigDecimal("500"), onSetPortion = {})
+                        PackShortcuts(pack = BigDecimal("500"), unit = "g", onSetPortion = {})
                     }
                 }
             }
@@ -159,5 +162,24 @@ class PackShortcutsResponsiveTest {
         compose.onNodeWithText("¼ pack").assertExists()
         compose.onNodeWithText("½ pack").assertExists()
         compose.onNodeWithText("Full pack").assertExists()
+    }
+
+    /**
+     * The visible label is only a fraction of the pack. TalkBack also hears that it is a portion to
+     * use and how much it sets, which a sighted user reads from the field it fills.
+     */
+    @Test
+    fun eachShortcutSaysWhatItSetsToAScreenReader() {
+        showAt(widthDp = 411, fontScale = 1.0f)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        compose.onNodeWithText("¼ pack").assertContentDescriptionEquals(
+            context.getString(R.string.product_quarter_pack_description, "125", "g"),
+        )
+        compose.onNodeWithText("½ pack").assertContentDescriptionEquals(
+            context.getString(R.string.product_half_pack_description, "250", "g"),
+        )
+        compose.onNodeWithText("Full pack").assertContentDescriptionEquals(
+            context.getString(R.string.product_full_pack_description, "500", "g"),
+        )
     }
 }

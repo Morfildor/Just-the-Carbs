@@ -6,18 +6,25 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -27,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -134,6 +142,7 @@ fun VerificationScreen(
     onConfirm: (BigDecimal, NutritionBasis) -> Unit,
     onReject: () -> Unit,
     onRetake: () -> Unit,
+    onClose: (() -> Unit)? = null,
 ) {
     val candidate = proposal.reading.candidate
     VerificationScreen(
@@ -148,6 +157,7 @@ fun VerificationScreen(
         onConfirm = onConfirm,
         onReject = onReject,
         onRetake = onRetake,
+        onClose = onClose,
     )
 }
 
@@ -191,6 +201,7 @@ fun VerificationScreen(
      */
     printedAmount: BigDecimal? = null,
     printedBasisLabel: String? = null,
+    onClose: (() -> Unit)? = null,
 ) {
     val scannerColors = MaterialTheme.extendedColors.scanner
     Column(
@@ -201,12 +212,7 @@ fun VerificationScreen(
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState()),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.m, vertical = Space.s),
-            verticalArrangement = Arrangement.spacedBy(Space.xs),
-        ) {
+        PhotoScreenHeader(onClose = onClose) {
             Text(
                 text = stringResource(
                     when (mode) {
@@ -425,6 +431,7 @@ fun ConflictScreen(
     conflict: EvidenceResolver.Outcome.Conflicted,
     onAssist: () -> Unit,
     onRetake: () -> Unit,
+    onClose: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -433,12 +440,7 @@ fun ConflictScreen(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.m, vertical = Space.s),
-            verticalArrangement = Arrangement.spacedBy(Space.xs),
-        ) {
+        PhotoScreenHeader(onClose = onClose) {
             Text(
                 text = stringResource(R.string.conflict_title),
                 style = MaterialTheme.typography.titleMedium,
@@ -479,6 +481,40 @@ fun ConflictScreen(
             ) { Text(stringResource(R.string.conflict_assist)) }
             TextButton(onClick = onRetake, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.crop_retake))
+            }
+        }
+    }
+}
+
+/**
+ * The title block over a frozen photograph, with the scanner's Close beside it.
+ *
+ * The same shape as [CropConfirmationScreen]'s header, so every screen showing the capture offers
+ * the same one-tap way out of the scanner. Before this a proposal or a conflict had only Retake,
+ * which goes back to the live camera rather than out. Close is the scanner's own: leaving the
+ * screen is what releases the capture, exactly as it does from the crop screen. With no [onClose]
+ * the block is laid out as it always was.
+ */
+@Composable
+private fun PhotoScreenHeader(onClose: (() -> Unit)?, content: @Composable ColumnScope.() -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = Space.m, end = if (onClose != null) Space.s else Space.m, top = Space.s, bottom = Space.s),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(Space.xs),
+            content = content,
+        )
+        if (onClose != null) {
+            IconButton(onClick = onClose, modifier = Modifier.size(Space.minTouchTarget)) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.scanner_close),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }

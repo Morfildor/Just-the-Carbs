@@ -341,53 +341,85 @@ fun ProductScreen(
                 onResetOnline = onResetOnline,
             )
 
-            when {
-                state.loading -> LoadingBody(
-                    barcode = state.barcode,
-                    onScanLabel = onScanLabel,
-                    onEnterManually = onEnterManually,
-                )
-                state.failure != null -> FailureBody(
-                    failure = state.failure,
-                    barcode = state.barcode,
-                    onScanLabel = onScanLabel,
-                    onEnterManually = onEnterManually,
-                    onRetry = onRetry,
-                    onSearch = onSearch,
-                    onScanAgain = onScanAgain,
-                )
-                state.product != null -> CalculatorBody(
-                    product = state.product,
-                    state = state,
-                    settings = settings,
-                    onPortionChanged = onPortionChanged,
-                    onSetPortion = onSetPortion,
-                    onApplyNewerRemote = onApplyNewerRemote,
-                    onDismissNewerRemote = onDismissNewerRemote,
-                    onSwitchToGrams = onSwitchToGrams,
-                    onSwitchToPortionUnit = onSwitchToPortionUnit,
-                    onCountChanged = onCountChanged,
-                    onShowAddPortionUnitForm = onShowAddPortionUnitForm,
-                    onAddPortionUnit = onAddPortionUnit,
-                    onVerifyPortionUnit = onVerifyPortionUnit,
-                    onVerify = onVerify,
-                    onVerifyByTyping = onVerifyByTyping,
-                    onApplyNewerRemotePortionUnit = onApplyNewerRemotePortionUnit,
-                    onDismissNewerRemotePortionUnit = onDismissNewerRemotePortionUnit,
-                    onCorrectPortionUnit = onCorrectPortionUnit,
-                    onCancelPortionUnitCorrection = onCancelPortionUnitCorrection,
-                    onAddToMeal = onAddToMeal,
-                    onAddToMealAndScanNext = onAddToMealAndScanNext,
-                    onScanNext = onScanNext,
-                    onOpenMeal = onOpenMeal,
-                    onSelectUsualPortion = onSelectUsualPortion,
-                    onShowSaveQuickCalculation = onShowSaveQuickCalculation,
-                    onOpenGallery = { galleryOpen = true }.takeIf { galleryImages.isNotEmpty() },
-                )
+            // The body fades from one state to the next rather than cutting (2026-09-24 UX review):
+            // the spinner snapped to the whole calculator in one frame. Keyed on WHICH body shows,
+            // never on the state itself, so typing, a result and every other change inside the
+            // calculator recompose it in place exactly as before. Each body is given its own last
+            // state, so a body fading out keeps drawing what it showed. `sizeTransform = null`:
+            // every body fills the space below the top bar, and a size animation could only move
+            // the calculator while the user reaches for it.
+            AnimatedContent(
+                targetState = state,
+                contentKey = { it.body },
+                transitionSpec = {
+                    ContentTransform(
+                        targetContentEnter = fadeIn(tween(Motion.STANDARD_MS)),
+                        initialContentExit = fadeOut(tween(Motion.QUICK_MS)),
+                        sizeTransform = null,
+                    )
+                },
+                label = "product body",
+            ) { shown ->
+                when (shown.body) {
+                    ProductBody.LOADING -> LoadingBody(
+                        barcode = shown.barcode,
+                        onScanLabel = onScanLabel,
+                        onEnterManually = onEnterManually,
+                    )
+                    ProductBody.FAILURE -> FailureBody(
+                        failure = checkNotNull(shown.failure),
+                        barcode = shown.barcode,
+                        onScanLabel = onScanLabel,
+                        onEnterManually = onEnterManually,
+                        onRetry = onRetry,
+                        onSearch = onSearch,
+                        onScanAgain = onScanAgain,
+                    )
+                    ProductBody.CALCULATOR -> CalculatorBody(
+                        product = checkNotNull(shown.product),
+                        state = shown,
+                        settings = settings,
+                        onPortionChanged = onPortionChanged,
+                        onSetPortion = onSetPortion,
+                        onApplyNewerRemote = onApplyNewerRemote,
+                        onDismissNewerRemote = onDismissNewerRemote,
+                        onSwitchToGrams = onSwitchToGrams,
+                        onSwitchToPortionUnit = onSwitchToPortionUnit,
+                        onCountChanged = onCountChanged,
+                        onShowAddPortionUnitForm = onShowAddPortionUnitForm,
+                        onAddPortionUnit = onAddPortionUnit,
+                        onVerifyPortionUnit = onVerifyPortionUnit,
+                        onVerify = onVerify,
+                        onVerifyByTyping = onVerifyByTyping,
+                        onApplyNewerRemotePortionUnit = onApplyNewerRemotePortionUnit,
+                        onDismissNewerRemotePortionUnit = onDismissNewerRemotePortionUnit,
+                        onCorrectPortionUnit = onCorrectPortionUnit,
+                        onCancelPortionUnitCorrection = onCancelPortionUnitCorrection,
+                        onAddToMeal = onAddToMeal,
+                        onAddToMealAndScanNext = onAddToMealAndScanNext,
+                        onScanNext = onScanNext,
+                        onOpenMeal = onOpenMeal,
+                        onSelectUsualPortion = onSelectUsualPortion,
+                        onShowSaveQuickCalculation = onShowSaveQuickCalculation,
+                        onOpenGallery = { galleryOpen = true }.takeIf { galleryImages.isNotEmpty() },
+                    )
+                    ProductBody.NONE -> Unit
+                }
             }
         }
     }
 }
+
+/** Which of the screen's bodies a state shows, in the order the screen has always chosen them. */
+private enum class ProductBody { LOADING, FAILURE, CALCULATOR, NONE }
+
+private val ProductUiState.body: ProductBody
+    get() = when {
+        loading -> ProductBody.LOADING
+        failure != null -> ProductBody.FAILURE
+        product != null -> ProductBody.CALCULATOR
+        else -> ProductBody.NONE
+    }
 
 /**
  * Product's own top bar — deliberately not [app.justthecarbs.ui.components.JtcTopBar].
@@ -988,6 +1020,7 @@ private fun CalculatorBody(
                     Spacer(Modifier.height(Space.s))
                     PackShortcuts(
                         pack = pack,
+                        unit = product.portionUnit,
                         onSetPortion = onSetPortion,
                         entered = PortionParser.parse(state.portionText),
                     )
@@ -1529,6 +1562,8 @@ private val PORTION_FIELD_HEIGHT_COMPACT = 64.dp
 @Composable
 internal fun PackShortcuts(
     pack: BigDecimal,
+    /** The product's portion unit (`g` or `ml`), for the spoken description of each shortcut. */
+    unit: String,
     onSetPortion: (BigDecimal) -> Unit,
     /**
      * The portion the field holds, if it parses: the shortcut equal to it is marked selected. By
@@ -1538,10 +1573,21 @@ internal fun PackShortcuts(
 ) {
     // Scale 2 with HALF_UP: a 355 ml can quartered is 88.75 ml, and truncating to a whole number
     // would silently change the portion the user asked for.
+    //
+    // Each label is paired with its spoken form: on screen "¼ pack" sits beside the field it fills,
+    // but spoken alone it says neither that it sets a portion nor how much.
     val fractions = listOf(
-        R.string.product_quarter_pack to pack.divide(BigDecimal(4), 2, RoundingMode.HALF_UP),
-        R.string.product_half_pack to pack.divide(BigDecimal(2), 2, RoundingMode.HALF_UP),
-        R.string.product_full_pack to pack,
+        Triple(
+            R.string.product_quarter_pack,
+            R.string.product_quarter_pack_description,
+            pack.divide(BigDecimal(4), 2, RoundingMode.HALF_UP),
+        ),
+        Triple(
+            R.string.product_half_pack,
+            R.string.product_half_pack_description,
+            pack.divide(BigDecimal(2), 2, RoundingMode.HALF_UP),
+        ),
+        Triple(R.string.product_full_pack, R.string.product_full_pack_description, pack),
     )
 
     // THE LABELS WRAP RATHER THAN TRUNCATE, AND THE ROW ITSELF IS UNCHANGED.
@@ -1580,13 +1626,15 @@ internal fun PackShortcuts(
             .padding(vertical = Space.xs),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
-        fractions.forEach { (label, amount) ->
+        fractions.forEach { (label, spoken, amount) ->
             // Same treatment as the adjust row: these set a portion, they are not actions.
             JtcValueButton(
                 text = stringResource(label),
                 onClick = { onSetPortion(amount) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 selected = entered != null && amount.compareTo(entered) == 0,
+                // The exact amount the tap puts in the field, in the field's own unit.
+                contentDescription = stringResource(spoken, ResultFormatter.editable(amount), unit),
             )
         }
     }
@@ -1704,6 +1752,8 @@ private fun UsualPortionRow(
                     text = label,
                     onClick = { onSelect(usage) },
                     modifier = Modifier.weight(1f),
+                    // Spoken alone, a bare "65 g" does not say what the button does.
+                    contentDescription = stringResource(R.string.product_usual_description, label),
                     // The same amount of the same unit: "2 slices" is not 2 g. By value, so a typed
                     // `65.0` is the usual 65 g.
                     selected = usage.portionUnitId == enteredUnitId &&

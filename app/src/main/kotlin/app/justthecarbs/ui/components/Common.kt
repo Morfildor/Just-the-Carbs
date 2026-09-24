@@ -7,12 +7,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -49,6 +47,14 @@ import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 import java.math.BigDecimal
+import androidx.compose.runtime.remember
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 
 /**
  * The provenance badge (§23, §25).
@@ -303,7 +309,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
  * read together rather than the unit being defaulted: with no established basis there is no honest
  * way to fill the second half. The data source already drops the figure in that case; reading both
  * here means a hit built any other way degrades to "no value" instead of printing a unit nothing
- * supports. See [SearchNutritionColumn] for the trailing value/basis rendering itself.
+ * supports. See [SearchFigureLines] for the value/basis rendering itself.
  */
 @Composable
 fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -331,7 +337,17 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
     val spoken = listOfNotNull(hit.name, hit.brand, hit.packageQuantity, carbsText)
         .joinToString(". ")
 
-    BoxWithConstraints(
+    // Beside the text while the text column is wide enough to hold a word; beneath it otherwise.
+    // The figure column grows with the font scale, so at 2.0x on an ordinary 411dp phone it took
+    // enough width that "Chocomel" rendered as "Chocome" / "l".
+    //
+    // Measured in the name's own type size, so the switch tracks the text rather than a fixed
+    // width. Not a large sp constant: Android 14+ scales fonts non-linearly, and a 200sp figure
+    // barely grows at 2.0x, which left this switch never firing.
+    val nameEm = with(LocalDensity.current) { MaterialTheme.typography.titleMedium.fontSize.toDp() }
+    val figureBesideMinTextWidth = nameEm * FIGURE_BESIDE_MIN_NAME_EMS
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 76.dp)
@@ -340,81 +356,68 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
             .semantics { contentDescription = spoken },
         contentAlignment = Alignment.CenterStart,
     ) {
-        // Beside the text while the text column is wide enough to hold a word; beneath it otherwise.
-        // The figure column grows with the font scale, so at 2.0x on an ordinary 411dp phone it took
-        // enough width that "Chocomel" rendered as "Chocome" / "l".
-        //
-        // Measured in the name's own type size, so the switch tracks the text rather than a fixed
-        // width. Not a large sp constant: Android 14+ scales fonts non-linearly, and a 200sp figure
-        // barely grows at 2.0x, which left this switch never firing.
-        val textColumnWidth = maxWidth - Space.thumbnail - Space.m
-        val nameEm = with(LocalDensity.current) { MaterialTheme.typography.titleMedium.fontSize.toDp() }
-        val figureBelow = textColumnWidth < nameEm * FIGURE_BESIDE_MIN_NAME_EMS
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SearchThumbnail(imageUrl = hit.imageUrl, archiveImageUrl = hit.archiveImageUrl, name = hit.name)
-            Spacer(Modifier.width(Space.m))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = hit.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    // A cut name must look cut. Clipped silently at 1.8x, "Chocolade Hagelslag Puur" read
-                    // as "Chocolade Hagelslag" — a complete, and different, product name.
-                    overflow = TextOverflow.Ellipsis,
-                )
-                // Brand and printed quantity together are usually what separates two otherwise
-                // identical-looking cards on a shelf — a 390 g pack from a 600 g one.
-                //
-                // The quantity's own spaces are non-breaking: "1 l" once wrapped as "1" / "l", leaving
-                // a bare number at a line end. The spoken line above keeps the original text.
-                val quantity = hit.packageQuantity?.replace(' ', Typography.nbsp)
-                val subtitle = listOfNotNull(hit.brand, quantity).joinToString(" · ")
-                if (subtitle.isNotEmpty()) {
+        // One layout decides beside or beneath while it measures (2026-09-24). This was a
+        // `BoxWithConstraints`, which subcomposed every row of the list only to read a width that
+        // is the same for all of them. The figure is now composed once and only placed differently,
+        // so the decision no longer costs a composition. The geometry is the Row-and-Column
+        // arrangement it replaces, step for step: see [SearchRowMeasurePolicy].
+        Layout(
+            content = {
+                SearchThumbnail(imageUrl = hit.imageUrl, archiveImageUrl = hit.archiveImageUrl, name = hit.name)
+                Column {
                     Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        // Room to wrap. On one line a large font scale word-wraps and the second line is
-                        // never drawn: measured at 1.8x, "Albert Heijn · 400 g" showed as "Albert Heijn ·",
-                        // losing exactly the pack size this line exists to show.
-                        maxLines = 3,
+                        text = hit.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        // A cut name must look cut. Clipped silently at 1.8x, "Chocolade Hagelslag
+                        // Puur" read as "Chocolade Hagelslag" — a complete, and different, product name.
                         overflow = TextOverflow.Ellipsis,
                     )
+                    // Brand and printed quantity together are usually what separates two otherwise
+                    // identical-looking cards on a shelf — a 390 g pack from a 600 g one.
+                    //
+                    // The quantity's own spaces are non-breaking: "1 l" once wrapped as "1" / "l",
+                    // leaving a bare number at a line end. The spoken line above keeps the original.
+                    val quantity = hit.packageQuantity?.replace(' ', Typography.nbsp)
+                    val subtitle = listOfNotNull(hit.brand, quantity).joinToString(" · ")
+                    if (subtitle.isNotEmpty()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            // Room to wrap. On one line a large font scale word-wraps and the second
+                            // line is never drawn: measured at 1.8x, "Albert Heijn · 400 g" showed as
+                            // "Albert Heijn ·", losing exactly the pack size this line exists to show.
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    // The unavailable state is a SENTENCE, so it belongs in this flexible column where
+                    // a sentence fits — never squeezed into the numeric column beside it.
+                    //
+                    // That column is sized for "67.4 g" over "/ 100 g". Asked to carry
+                    // "No carbohydrate value — check the package" it truncated at the default font
+                    // scale and collapsed to "No carbohy…" at 1.8x, while still spending a third of
+                    // the row's width to say nothing. Measured on device: a 276x84px text node for a
+                    // 41-character string.
+                    if (!hasValue) {
+                        Text(
+                            text = carbsText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = Space.xs),
+                        )
+                    }
                 }
-                // The unavailable state is a SENTENCE, so it belongs in this flexible column where a
-                // sentence fits — never squeezed into the numeric column beside it.
-                //
-                // That column is sized for "67.4 g" over "/ 100 g". Asked to carry
-                // "No carbohydrate value — check the package" it truncated at the default font scale and
-                // collapsed to "No carbohy…" at 1.8x, while still spending a third of the row's width to
-                // say nothing. Measured on device: a 276x84px text node for a 41-character string.
-                if (!hasValue) {
-                    Text(
-                        text = carbsText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = Space.xs),
-                    )
-                }
-                if (figureBelow && carbs != null && basis != null) {
-                    SearchNutritionColumn(
-                        value = carbs,
-                        basis = basis,
-                        beneathText = true,
-                        modifier = Modifier.padding(top = Space.xs),
-                    )
-                }
-            }
-
-            // The trailing column exists only when there is a figure for it. Reserving it on a row with
-            // no value would leave a visible empty gutter beside every such card.
-            if (!figureBelow && carbs != null && basis != null) {
-                Spacer(Modifier.width(Space.s))
-                SearchNutritionColumn(value = carbs, basis = basis)
-            }
-        }
+                // The figure exists only when there is one. Reserving its column on a row with no
+                // value would leave a visible empty gutter beside every such card.
+                if (carbs != null && basis != null) SearchFigureLines(value = carbs, basis = basis)
+            },
+            measurePolicy = remember(figureBesideMinTextWidth) {
+                SearchRowMeasurePolicy(figureBesideMinTextWidth)
+            },
+        )
     }
 }
 
@@ -426,55 +429,116 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
 private const val FIGURE_BESIDE_MIN_NAME_EMS = 12f
 
 /**
- * The trailing carbohydrate summary in a search result row — a small value/basis pair in a
- * reserved-width column so rows compare cleanly down a list, the way a price column would.
+ * The narrowest the figure column beside the text may be. A floor with no ceiling: the floor keeps
+ * figures aligned down the list the way a price column is, and the column still grows for a long
+ * value or a large font scale instead of ellipsizing the number the user came for.
+ */
+private val FIGURE_COLUMN_MIN_WIDTH = 90.dp
+
+/**
+ * Places a search row: the thumbnail, the text column, then the figure's two lines when there is a
+ * figure.
  *
- * Deliberately its own composable rather than [ResultValue]: this is a *preview* figure attached
- * to an unselected search hit, never a confirmed calculated result, so it must never borrow
- * result-red (design system rule) even though the two-line value/basis shape looks similar.
+ * It reproduces the Row-and-Column arrangement the row used before, and so the geometry
+ * `SearchPresentationRegressionTest` pins: a [Space.m] gap after the thumbnail, the text column
+ * taking whatever the row leaves, each part centred vertically. Beside the text, the figure is a
+ * column at least [FIGURE_COLUMN_MIN_WIDTH] wide, [Space.s] from the text, its lines aligned to its
+ * end edge. Beneath it, the lines start at the text's own edge, [Space.xs] under the text, and count
+ * as part of the text column's height.
+ *
+ * Beneath is chosen when the text column would be narrower than [figureBesideMinTextWidth],
+ * reckoned as the row's width less [Space.thumbnail] and [Space.m]: the same test as before.
+ * Everything is placed relative to the layout direction, as a Row places its children.
+ */
+private class SearchRowMeasurePolicy(private val figureBesideMinTextWidth: Dp) : MeasurePolicy {
+    override fun MeasureScope.measure(measurables: List<Measurable>, constraints: Constraints): MeasureResult {
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val rowWidth = constraints.maxWidth
+        val thumbnail = measurables[0].measure(loose)
+        val lines = measurables.drop(2)
+        val textX = thumbnail.width + Space.m.roundToPx()
+        val figureBelow = lines.isNotEmpty() &&
+            rowWidth.toDp() - Space.thumbnail - Space.m < figureBesideMinTextWidth
+
+        if (figureBelow) {
+            val textWidth = (rowWidth - textX).coerceAtLeast(0)
+            val text = measurables[1].measure(loose.copy(minWidth = textWidth, maxWidth = textWidth))
+            val figure = lines.map { it.measure(loose.copy(maxWidth = textWidth)) }
+            val gap = Space.xs.roundToPx()
+            val columnHeight = text.height + gap + figure.sumOf { it.height }
+            val rowHeight = maxOf(thumbnail.height, columnHeight)
+            return layout(rowWidth, rowHeight.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+                thumbnail.placeRelative(0, Alignment.CenterVertically.align(thumbnail.height, rowHeight))
+                var y = Alignment.CenterVertically.align(columnHeight, rowHeight)
+                text.placeRelative(textX, y)
+                y += text.height + gap
+                figure.forEach {
+                    it.placeRelative(textX, y)
+                    y += it.height
+                }
+            }
+        }
+
+        val gap = if (lines.isEmpty()) 0 else Space.s.roundToPx()
+        val figureRoom = (rowWidth - textX - gap).coerceAtLeast(0)
+        val figure = lines.map { it.measure(loose.copy(maxWidth = figureRoom)) }
+        val figureWidth = if (figure.isEmpty()) {
+            0
+        } else {
+            maxOf(FIGURE_COLUMN_MIN_WIDTH.roundToPx(), figure.maxOf { it.width }).coerceAtMost(figureRoom)
+        }
+        val textWidth = (rowWidth - textX - gap - figureWidth).coerceAtLeast(0)
+        val text = measurables[1].measure(loose.copy(minWidth = textWidth, maxWidth = textWidth))
+        val figureHeight = figure.sumOf { it.height }
+        val rowHeight = maxOf(thumbnail.height, text.height, figureHeight)
+        return layout(rowWidth, rowHeight.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+            thumbnail.placeRelative(0, Alignment.CenterVertically.align(thumbnail.height, rowHeight))
+            text.placeRelative(textX, Alignment.CenterVertically.align(text.height, rowHeight))
+            val figureX = textX + textWidth + gap
+            var y = Alignment.CenterVertically.align(figureHeight, rowHeight)
+            figure.forEach {
+                it.placeRelative(figureX + figureWidth - it.width, y)
+                y += it.height
+            }
+        }
+    }
+}
+
+/**
+ * The carbohydrate figure in a search result row: the value over its basis, placed by
+ * [SearchRowMeasurePolicy] beside the text or beneath it.
+ *
+ * Deliberately not [ResultValue]: this is a *preview* figure attached to an unselected search hit,
+ * never a confirmed calculated result, so it must never borrow result-red (design system rule) even
+ * though the two-line value/basis shape looks similar.
  */
 @Composable
-private fun SearchNutritionColumn(
-    value: BigDecimal,
-    basis: NutritionBasis,
-    modifier: Modifier = Modifier,
-    beneathText: Boolean = false,
-) {
+private fun SearchFigureLines(value: BigDecimal, basis: NutritionBasis) {
     val carbsSuffix = stringResource(R.string.product_unit_carbs_suffix)
-    val textAlign = if (beneathText) TextAlign.Start else TextAlign.End
-    Column(
-        // A floor with no ceiling. The minimum is what keeps figures aligned down the list the way a
-        // price column is; dropping the old 105.dp maximum lets the column grow for a long value or
-        // a large font scale instead of ellipsizing the number the user came for. Beneath the text
-        // there is no column to align, so it reads from the text's own start edge instead.
-        modifier = if (beneathText) modifier else modifier.widthIn(min = 90.dp),
-        horizontalAlignment = if (beneathText) Alignment.Start else Alignment.End,
-    ) {
-        // Ink, not primary blue.
-        //
-        // A column of eight blue numbers down a list of search results read as eight links, and it
-        // competed with the only genuinely interactive blue on the screen. The figure is
-        // *information about* the row -- the whole row is the tap target, and the number is not
-        // separately tappable -- so it is set in ink like the name above it.
-        //
-        // This also restores the distinction the design system means to draw: tomato marks a
-        // confirmed carbohydrate RESULT (the dock, a meal row, a recent card's remembered figure),
-        // and this is a per-100 PREVIEW attached to a hit the user has not chosen yet. So it is
-        // neither blue nor red; it is ink, at `titleMedium` so it still reads as a figure.
-        Text(
-            text = "${ResultFormatter.quantity(value)} $carbsSuffix",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            textAlign = textAlign,
-        )
-        Text(
-            text = stringResource(R.string.search_carbs_basis, basis.unitLabel),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            textAlign = textAlign,
-        )
-    }
+    // Ink, not primary blue.
+    //
+    // A column of eight blue numbers down a list of search results read as eight links, and it
+    // competed with the only genuinely interactive blue on the screen. The figure is
+    // *information about* the row -- the whole row is the tap target, and the number is not
+    // separately tappable -- so it is set in ink like the name above it.
+    //
+    // This also restores the distinction the design system means to draw: tomato marks a
+    // confirmed carbohydrate RESULT (the dock, a meal row, a recent card's remembered figure),
+    // and this is a per-100 PREVIEW attached to a hit the user has not chosen yet. So it is
+    // neither blue nor red; it is ink, at `titleMedium` so it still reads as a figure.
+    //
+    // No text alignment of their own: each line is as wide as its text, and the layout aligns them.
+    Text(
+        text = "${ResultFormatter.quantity(value)} $carbsSuffix",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+    )
+    Text(
+        text = stringResource(R.string.search_carbs_basis, basis.unitLabel),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+    )
 }

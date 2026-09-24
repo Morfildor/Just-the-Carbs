@@ -1,5 +1,8 @@
 package app.justthecarbs.ui
 
+import app.justthecarbs.ui.meal.MealBar
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -648,5 +651,30 @@ class MealScreenTest {
         assert(widthDp >= 48f && heightDp >= 48f) {
             "copy control is ${widthDp}x${heightDp} dp, below the 48dp floor"
         }
+    }
+
+    /**
+     * The total is the figure the bar exists for, so it is set apart from the sentence around it.
+     * The node's text stays the whole sentence, which is what TalkBack and every text match read.
+     */
+    @Test
+    fun theMealBarSetsItsTotalApartFromTheSentence() {
+        compose.setContent {
+            JustTheCarbsTheme {
+                MealBar(
+                    itemCount = 3,
+                    total = CarbCalculator.calculate(BigDecimal("48.2"), BigDecimal("93.8"), NutritionBasis.PER_100_G),
+                    onClick = {},
+                )
+            }
+        }
+
+        val text = compose.onNode(hasText("Meal · 3 items · 45.2 g carbs"), useUnmergedTree = true)
+            .fetchSemanticsNode().config[SemanticsProperties.Text].single()
+        assertEquals("Meal · 3 items · 45.2 g carbs", text.text)
+        val emphasised = text.spanStyles
+            .filter { it.item.fontWeight == FontWeight.SemiBold }
+            .map { text.text.substring(it.start, it.end) }
+        assertEquals(listOf("45.2"), emphasised)
     }
 }
