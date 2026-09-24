@@ -9,6 +9,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
@@ -33,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -182,7 +185,7 @@ class ProductScreenTest {
         //
         // The result now renders as a split numeral + unit (ResultValue), so "31.3 g" no longer
         // exists as one text node — asserted on the merged accessible description instead.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
         compose.onNodeWithText("≈ 31 g whole grams").assertIsDisplayed()
     }
 
@@ -194,14 +197,14 @@ class ProductScreenTest {
         // §16: the result updates as you type. If a Calculate button ever appears, this fails.
         compose.onAllNodesWithText("Calculate", substring = true, ignoreCase = true)
             .assertCountEquals(0)
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
     }
 
     @Test
     fun clearingThePortionRemovesTheResultRatherThanShowingZero() {
         showCalculator()
         typePortion("65")
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
 
         compose.onNode(portionField()).performTextReplacement("")
 
@@ -209,6 +212,53 @@ class ProductScreenTest {
         // for. The prompt must come back instead.
         compose.onNodeWithText("Enter a portion").assertIsDisplayed()
         compose.onAllNodesWithText("0 g").assertCountEquals(0)
+    }
+
+    // ---- the result is announced (2026-09-24 UX polish) ---------------------------------------
+
+    /**
+     * TalkBack announces a polite live region when a property of an EXISTING node changes. The
+     * result used to carry its live region on a node created inside the dock's `AnimatedContent`,
+     * so every new figure (and the first answer, which also creates the dock's slot) arrived as a
+     * brand-new node and nothing guaranteed it was spoken. The live region now sits on one node
+     * that exists before the first answer and survives every change after it.
+     */
+    @Test
+    fun theResultIsAnnouncedFromOneLiveRegionThatOutlivesEveryChange() {
+        showCalculator()
+
+        val pending = compose.onNodeWithTag(PRODUCT_RESULT_TAG).fetchSemanticsNode()
+        assertEquals(LiveRegionMode.Polite, pending.config.getOrNull(SemanticsProperties.LiveRegion))
+        assertEquals(null, pending.config.getOrNull(SemanticsProperties.ContentDescription))
+
+        typePortion("65")
+        val answered = compose.onNodeWithTag(PRODUCT_RESULT_TAG).fetchSemanticsNode()
+        assertEquals(pending.id, answered.id)
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
+
+        compose.onNode(portionField()).performTextReplacement("80")
+        compose.waitForIdle()
+        assertEquals(pending.id, compose.onNodeWithTag(PRODUCT_RESULT_TAG).fetchSemanticsNode().id)
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("38.6 grams of carbs")
+    }
+
+    /**
+     * Only pending -> answer cross-fades; a new figure replaces the old one in place. Keyed on the
+     * numeral itself, typing `125` faded through ghosts of `1` and `12`: each keystroke built a
+     * new numeral node and faded the old one out over it. Same node before and after proves the
+     * digits changed in place.
+     */
+    @Test
+    fun aNewFigureReplacesTheOldOneInPlaceRatherThanCrossFading() {
+        showCalculator()
+        typePortion("65")
+        val before = compose.onNodeWithText("31.3", useUnmergedTree = true).fetchSemanticsNode()
+
+        compose.onNode(portionField()).performTextReplacement("80")
+        compose.waitForIdle()
+
+        val after = compose.onNodeWithText("38.6", useUnmergedTree = true).fetchSemanticsNode()
+        assertEquals(before.id, after.id)
     }
 
     // ---- the generic +/- adjust row is gone (2026-09-22 refinement) --------------------------
@@ -334,7 +384,7 @@ class ProductScreenTest {
         typePortion("250")
 
         // 9.4 x 250 / 100 = 23.5 — the same arithmetic as grams, because no density is applied.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("23.5 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("23.5 grams of carbs")
         compose.onNodeWithText("≈ 24 g whole grams").assertIsDisplayed()
     }
 
@@ -490,7 +540,7 @@ class ProductScreenTest {
         compose.onNodeWithTag(PRODUCT_HERO_TAG).assertIsDisplayed()
 
         typePortion("65")
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
     }
 
     private fun showGalleryWithControlledImage(data: GalleryTestImage) {
@@ -681,9 +731,9 @@ class ProductScreenTest {
         // that the whole value is rendered and reachable at this font scale.
         //
         // A truncated result would be a SHORTER string, so asserting the full value is itself a
-        // clipping check -- "125.3 grams" cannot be satisfied by a numeral cut down to "125".
+        // clipping check -- "125.3 grams of carbs" cannot be satisfied by a numeral cut down to "125".
         compose.onNodeWithText("125.3").assertExists()
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("125.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("125.3 grams of carbs")
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertIsDisplayed()
         // The portion field must still EXIST when the result is at its widest -- the regression
         // this screen's fixed-height result slot exists to prevent (a result that grows without
@@ -756,7 +806,7 @@ class ProductScreenTest {
             ),
         )
         typePortion("65")
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
 
         compose.onNodeWithContentDescription("View product images").performClick()
         compose.onNodeWithTag(PRODUCT_GALLERY_NEXT_TAG).performClick()
@@ -766,7 +816,7 @@ class ProductScreenTest {
         compose.onNodeWithText("Nutrition").assertIsDisplayed()
         compose.onNodeWithContentDescription("Close product images").performClick()
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
     }
 
     @Test
@@ -852,7 +902,7 @@ class ProductScreenTest {
 
         typePortion("65")
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
         compose.onNodeWithText("≈ 31 g whole grams").assertIsDisplayed()
     }
 
@@ -866,7 +916,7 @@ class ProductScreenTest {
         compose.waitForIdle()
 
         // 48.2 x 380 / 100 = 183.16
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("183.2 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("183.2 grams of carbs")
     }
 
     @Test
@@ -898,7 +948,7 @@ class ProductScreenTest {
         compose.waitForIdle()
 
         // 400 / 4 = 100 g; 48.2 x 100 / 100 = 48.2
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("48.2 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("48.2 grams of carbs")
     }
 
     @Test
@@ -909,7 +959,7 @@ class ProductScreenTest {
         compose.waitForIdle()
 
         // 400 / 2 = 200 g; 48.2 x 200 / 100 = 96.4
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("96.4 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("96.4 grams of carbs")
     }
 
     // ---- §43 result style --------------------------------------------------------------------
@@ -919,7 +969,7 @@ class ProductScreenTest {
         showCalculator(settings = AppSettings(resultStyle = ResultStyle.WHOLE_DOMINANT))
         typePortion("65")
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31 grams of carbs")
         compose.onNodeWithText("31.3 g calculated").assertIsDisplayed()
     }
 
@@ -933,7 +983,7 @@ class ProductScreenTest {
         showCalculator(product(carbs = "51.5"))
         typePortion("30")
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.5 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.5 grams of carbs")
         compose.onNodeWithText("≈ 15 g whole grams").assertIsDisplayed()
         compose.onAllNodesWithText("≈ 16 g whole grams").assertCountEquals(0)
     }
@@ -951,7 +1001,7 @@ class ProductScreenTest {
         typePortion("65")
 
         // The result is what matters; a long name must never displace it.
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
     }
 
     @Test
@@ -959,7 +1009,7 @@ class ProductScreenTest {
         showCalculator(product(carbs = "0", name = "Bronwater"))
         typePortion("500")
 
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("0.0 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("0.0 grams of carbs")
     }
 
     @Test
@@ -968,7 +1018,7 @@ class ProductScreenTest {
         typePortion("2500")
 
         // 48.2 x 2500 / 100 = 1205
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("1205.0 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("1205.0 grams of carbs")
     }
 
     @Test
@@ -977,10 +1027,10 @@ class ProductScreenTest {
 
         typePortion("32.5")
         // 48.2 x 32.5 / 100 = 15.665
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams of carbs")
 
         compose.onNode(portionField()).performTextReplacement("32,5")
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams of carbs")
     }
 
     // ---- Add-to-meal success confirmation ------------------------------------------------------
@@ -993,7 +1043,11 @@ class ProductScreenTest {
      * its own — so the write is simulated here with the same local-mutable-state pattern
      * [showCalculator] already uses for the portion field, rather than a fake repository.
      */
-    private fun showCalculatorWithControllableMealAdd(gate: CompletableDeferred<Unit>) {
+    private fun showCalculatorWithControllableMealAdd(
+        gate: CompletableDeferred<Unit>,
+        /** Called once per add the screen actually asks for, so a refused tap can be counted. */
+        onAddRequested: () -> Unit = {},
+    ) {
         compose.setContent {
             var portion by remember { mutableStateOf("65") }
             var addingToMeal by remember { mutableStateOf(false) }
@@ -1028,6 +1082,7 @@ class ProductScreenTest {
                     onEnterManually = {},
                     onRetry = {},
                     onAddToMeal = { _, _ ->
+                        onAddRequested()
                         addingToMeal = true
                         scope.launch {
                             gate.await()
@@ -1070,6 +1125,46 @@ class ProductScreenTest {
     }
 
     /**
+     * The "Added" label alone is silent to TalkBack: the button's text changes under a finger that
+     * has already moved on. The confirmation is a state description on the button itself, the
+     * same grammar Home's Quick Add uses, so a screen-reader user hears that the add landed.
+     */
+    @Test
+    fun addToMealTellsTalkBackThatTheItemWasAdded() {
+        val gate = CompletableDeferred<Unit>()
+        showCalculatorWithControllableMealAdd(gate)
+
+        compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
+        gate.complete(Unit)
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(MEAL_ADD_TAG)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Added to meal"))
+    }
+
+    /**
+     * While "Added" is held the button is still enabled-looking, so a second tap (a double tap, or
+     * a user unsure the first one worked) used to add the same portion twice. It is refused until
+     * the confirmation clears.
+     */
+    @Test
+    fun aSecondTapWhileAddedIsShownAddsNothing() {
+        val gate = CompletableDeferred<Unit>()
+        var adds = 0
+        showCalculatorWithControllableMealAdd(gate, onAddRequested = { adds++ })
+
+        compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
+        gate.complete(Unit)
+        compose.waitForIdle()
+        compose.onNodeWithText("Added").assertExists()
+
+        compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
+        compose.waitForIdle()
+
+        assertEquals(1, adds)
+    }
+
+    /**
      * Regression for the portion-field append defect (2026-09-24 UX review, seen on the emulator).
      *
      * A returning product arrives with its remembered portion pre-filled. A user who wants a
@@ -1089,7 +1184,7 @@ class ProductScreenTest {
         compose.onNode(portionField()).performTextInput("80")
 
         // 48.2 x 80 / 100 = 38.56 -> 38.6 g, not 6580 g (3171.6 g).
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("38.6 grams")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("38.6 grams of carbs")
     }
 
     /**
