@@ -236,8 +236,8 @@ class SettingsScreenTest {
     }
 
     /**
-     * No auto-attach, no auto-export: the body only ever *mentions* Scan Evidence as something the
-     * user can attach themselves. This pins that nothing beyond a mailto: URI is ever launched.
+     * No auto-attach, no auto-export: the body only ever *suggests* a photo of the label, which the
+     * user attaches themselves. This pins that nothing beyond a mailto: URI is ever launched.
      */
     @Test
     fun whenNoEmailAppCanHandleFeedbackTheAddressIsShownAsText() {

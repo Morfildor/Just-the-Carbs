@@ -322,7 +322,7 @@ class HomeScreenTest {
         show(recents = emptyList(), searchState = SearchUiState(query = "hagel"))
 
         // Search owns the whole middle region, so the starter content and the action cards yield.
-        compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
+        compose.onNodeWithText(stringOf(R.string.home_empty_headline)).assertDoesNotExist()
         compose.onNodeWithTag(HOME_SCAN_BARCODE_TAG).assertDoesNotExist()
     }
 
@@ -590,7 +590,7 @@ class HomeScreenTest {
         )
 
         compose.onNodeWithTag(HOME_SEARCH_PENDING_TAG).assertIsDisplayed()
-        compose.onNodeWithText("The product database is unavailable").assertDoesNotExist()
+        compose.onNodeWithText(stringOf(R.string.error_server_title)).assertDoesNotExist()
         compose.onNodeWithText("Try again").assertDoesNotExist()
     }
 
@@ -628,7 +628,7 @@ class HomeScreenTest {
     @Test
     fun theStarterHeroIsShownOnlyWhileThereAreNoRecents() {
         show(recents = emptyList())
-        compose.onNodeWithText("Scan. Portion. Carbs.").assertIsDisplayed()
+        compose.onNodeWithText(stringOf(R.string.home_empty_headline)).assertIsDisplayed()
     }
 
     @Test
@@ -637,7 +637,7 @@ class HomeScreenTest {
 
         val manualBottom = compose.onNodeWithText("Enter manually")
             .fetchSemanticsNode().boundsInRoot.bottom
-        val starterTop = compose.onNodeWithText("Scan. Portion. Carbs.")
+        val starterTop = compose.onNodeWithText(stringOf(R.string.home_empty_headline))
             .fetchSemanticsNode().boundsInRoot.top
         with(compose.density) {
             assertTrue(
@@ -650,7 +650,7 @@ class HomeScreenTest {
     @Test
     fun theStarterHeroDisappearsOnceRecentsExist() {
         show(recents = listOf(RecentEntry(product(), lastUnit = null)))
-        compose.onNodeWithText("Scan. Portion. Carbs.").assertDoesNotExist()
+        compose.onNodeWithText(stringOf(R.string.home_empty_headline)).assertDoesNotExist()
     }
 
     @Test

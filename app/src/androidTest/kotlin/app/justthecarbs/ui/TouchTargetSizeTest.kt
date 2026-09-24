@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.domain.CarbCalculator
@@ -348,14 +349,16 @@ class TouchTargetSizeTest {
 
         // The label itself, on one line. Read through the unmerged tree: the button's merged node
         // carries the text but not the layout action.
+        val inlineLabel = InstrumentationRegistry.getInstrumentation().targetContext
+            .getString(app.justthecarbs.R.string.product_verify_inline)
         val label = compose.onAllNodes(
             SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult),
             useUnmergedTree = true,
         ).fetchSemanticsNodes()
-            .firstOrNull { it.config.getOrNull(SemanticsProperties.Text)?.firstOrNull()?.text == "Verify" }
-            ?: throw AssertionError("No laid-out 'Verify' label found")
+            .firstOrNull { it.config.getOrNull(SemanticsProperties.Text)?.firstOrNull()?.text == inlineLabel }
+            ?: throw AssertionError("No laid-out '$inlineLabel' label found")
         val layouts = mutableListOf<TextLayoutResult>()
         label.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
-        assertEquals("'Verify' should lay out on one line", 1, layouts.single().lineCount)
+        assertEquals("'$inlineLabel' should lay out on one line", 1, layouts.single().lineCount)
     }
 }

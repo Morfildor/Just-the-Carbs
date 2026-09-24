@@ -22,8 +22,8 @@
     <string name="home_manual_button">Enter manually</string>
     <string name="home_recent_title">Recent</string>
     <string name="home_favorites_title">Favourites</string>
-    <string name="home_empty_headline">Scan. Portion. Carbs.</string>
-    <string name="home_empty_body">Scan the barcode, choose how much you\'re having, and get the carbs.</string>
+    <string name="home_empty_headline">Your products will appear here</string>
+    <string name="home_empty_body">Work out a portion once and it\'s one tap away next time.</string>
     <string name="home_empty_step_scan">Scan</string>
     <string name="home_empty_step_portion">Portion</string>
     <string name="home_empty_step_carbs">Carbs</string>
@@ -83,7 +83,7 @@
     -->
     <string name="scanner_hint_aim">Point the barcode inside the frame</string>
     <string name="scanner_hint_steady">Hold steady</string>
-    <string name="scanner_finding_product">Barcode found — finding product…</string>
+    <string name="scanner_finding_product">Barcode found. Finding product…</string>
     <string name="scanner_torch_on">Turn on flashlight</string>
     <string name="scanner_torch_off">Turn off flashlight</string>
     <string name="scanner_close">Close scanner</string>
@@ -144,9 +144,9 @@
     <string name="product_result_verified" tools:ignore="MissingTranslation">Checked against the package</string>
     <string name="product_source_verified">✓ Verified by you</string>
     <string name="product_source_manual">Entered by you</string>
-    <string name="product_source_ocr">Read from label by you</string>
+    <string name="product_source_ocr">Scanned from the label</string>
     <string name="remote_changed_title">Online value changed</string>
-    <string name="remote_changed_body">The database now reports %1$s g / 100 %2$s. Your current value is unchanged.</string>
+    <string name="remote_changed_body">Open Food Facts now lists %1$s g / 100 %2$s. Your current value is unchanged.</string>
     <string name="remote_changed_apply">Use new value</string>
     <!-- The portion group's own label on the calculator, replacing the centred question above.
          A noun, not a question: the field below it and its `0` placeholder already ask.
@@ -184,11 +184,11 @@
     <string name="product_copy">Copy value</string>
     <string name="product_copied">%1$s copied</string>
     <string name="product_more_actions">More actions</string>
-    <string name="product_verify">Verify label</string>
+    <string name="product_verify">Scan label to check</string>
     <!-- Inline verify action beside the per-100 figure, for an online value never checked against
-         the package. Shorter than the overflow menu's "Verify against package" — this sits right
+         the package. Shorter than the overflow menu's "Scan label to check": this sits right
          next to the number it is about. -->
-    <string name="product_verify_inline">Verify</string>
+    <string name="product_verify_inline">Check</string>
     <string name="product_reset_online">Reset to online value</string>
     <string name="product_scan_label">Scan nutrition label</string>
 
@@ -219,7 +219,7 @@
     <string name="product_one_unit_equals" tools:ignore="MissingTranslation">1 %1$s =</string>
     <string name="product_save_verified" tools:ignore="MissingTranslation">Save as verified</string>
     <string name="portion_changed_title" tools:ignore="MissingTranslation">Online portion changed</string>
-    <string name="portion_changed_body" tools:ignore="MissingTranslation">The database now reports %1$s %2$s per %3$s. Your current value is unchanged.</string>
+    <string name="portion_changed_body" tools:ignore="MissingTranslation">Open Food Facts now lists %1$s %2$s per %3$s. Your current value is unchanged.</string>
     <string name="portion_changed_apply" tools:ignore="MissingTranslation">Use new value</string>
     <!-- Direct-carb countable portions (spec §14/§15): a unit whose carbohydrate content is known
          but whose weight is not. No gram figure appears anywhere on this path. -->
@@ -229,7 +229,7 @@
     <string name="product_unit_carbs_suffix" tools:ignore="MissingTranslation">g carbs</string>
     <string name="product_portion_unit_contains" tools:ignore="MissingTranslation">1 %1$s contains</string>
     <string name="product_one_unit_contains" tools:ignore="MissingTranslation">1 %1$s contains</string>
-    <string name="portion_changed_carbs_body" tools:ignore="MissingTranslation">The database now reports %1$s g of carbohydrate per %2$s. Your current value is unchanged.</string>
+    <string name="portion_changed_carbs_body" tools:ignore="MissingTranslation">Open Food Facts now lists %1$s g carbs per %2$s. Your current value is unchanged.</string>
     <!-- e.g. "Save as a slice portion" — offered only when a still capture named a countable unit. -->
     <string name="label_save_as_portion_unit" tools:ignore="MissingTranslation">Save as a %1$s portion</string>
     <string name="label_portion_unit_saved" tools:ignore="MissingTranslation">✓ Portion saved</string>
@@ -363,7 +363,7 @@
     <string name="search_action" tools:ignore="MissingTranslation">Search by name</string>
     <string name="search_prompt" tools:ignore="MissingTranslation">Type a product name to search Open Food Facts.</string>
     <string name="search_no_matches" tools:ignore="MissingTranslation">No products found for “%1$s”. You can scan the label or enter it yourself.</string>
-    <string name="search_no_carbs" tools:ignore="MissingTranslation">No carbohydrate value — check the package</string>
+    <string name="search_no_carbs" tools:ignore="MissingTranslation">No carb value. Check the package.</string>
     <!-- Second line of the search-result nutrition column, e.g. "/ 100 g" under the value line. -->
     <string name="search_carbs_basis" tools:ignore="MissingTranslation">/ 100 %1$s</string>
     <string name="search_clear" tools:ignore="MissingTranslation">Clear search</string>
@@ -443,24 +443,24 @@
          than reworded in place, because Product's barcode failure legitimately still says the
          first thing. -->
     <string name="search_no_matches_title">No matches</string>
-    <string name="notfound_body">This barcode isn\'t in the product database. You can read the value from the package instead.</string>
+    <string name="notfound_body">Open Food Facts doesn\'t have this barcode. You can read the carbs from the package instead.</string>
     <string name="notfound_barcode">Barcode %1$s</string>
     <string name="notfound_scan_again">Scan barcode again</string>
 
     <!-- Unusable value (§13) -->
     <string name="unusable_title">Carbohydrate value unavailable</string>
-    <string name="unusable_body">The database entry for this product has no carbohydrate value that can be used safely.</string>
+    <string name="unusable_body">Open Food Facts has no usable carb value for this product. You can read it from the package instead.</string>
     <string name="unknown_basis_title">Grams or millilitres?</string>
-    <string name="unknown_basis_body">This product has a carbohydrate value, but the database does not say whether it is measured per 100 g or per 100 ml. Enter it yourself and pick the unit printed on the package — the app never guesses between the two.</string>
+    <string name="unknown_basis_body">Open Food Facts doesn\'t say whether this carb value is per 100 g or per 100 ml. Enter it yourself and choose the unit printed on the package.</string>
 
     <!-- Errors (§36) -->
     <string name="error_offline_title">No internet connection</string>
     <string name="error_offline_body">Saved products still work offline.</string>
     <string name="error_timeout_title">The lookup took too long</string>
     <string name="error_rate_limited_title">Too many lookups just now</string>
-    <string name="error_rate_limited_body">The product database limits how often it can be asked. Try again shortly.</string>
-    <string name="error_server_title">The product database is unavailable</string>
-    <string name="error_malformed_title">The response could not be read</string>
+    <string name="error_rate_limited_body">Open Food Facts limits how often it can be asked. Try again shortly.</string>
+    <string name="error_server_title">Open Food Facts isn\'t available right now</string>
+    <string name="error_malformed_title">Couldn\'t read the reply from Open Food Facts</string>
     <string name="error_generic_body">You can read the value from the package instead.</string>
     <string name="error_retry">Try again</string>
     <string name="error_invalid_barcode">That barcode doesn\'t look valid</string>
@@ -526,7 +526,7 @@
     -->
     <string name="ocr_looking">Point at the nutrition table</string>
     <!-- A live frame could read the table. Reports what the camera can see, not that the scan will succeed. -->
-    <string name="ocr_ready_to_capture">Table in view — tap to capture</string>
+    <string name="ocr_ready_to_capture">Table in view. Tap to capture.</string>
     <!--
       Names the goal, not just the direction (1.0.3 P3). Measured: the region the automatic pass
       reads spans the FULL WIDTH of the frame, because the 12% safety margin around an already
@@ -534,7 +534,7 @@
       excluded by aiming more carefully — only by moving closer until the table dominates. "Move
       closer" alone left the user adjusting aim, which cannot help.
     -->
-    <string name="ocr_move_closer">Move closer — fill the frame with the nutrition table</string>
+    <string name="ocr_move_closer">Move closer so the nutrition table fills the frame</string>
     <!--
       The package is sideways: the recognised words are taller than they are wide, so the table's
       rows run up and down the frame rather than across it (§32). Row reconstruction groups by
@@ -546,7 +546,7 @@
       value. It names the gesture rather than the cause, because "turn the package" is something the
       user can do and "the text orientation is 90 degrees off" is not.
     -->
-    <string name="ocr_turn_upright">Turn the package upright — the label is sideways</string>
+    <string name="ocr_turn_upright">The label is sideways. Turn the package upright.</string>
     <string name="ocr_capture_label">Capture label</string>
     <string name="ocr_capturing">Capturing label…</string>
     <string name="ocr_processing">Reading captured label…</string>
@@ -564,7 +564,7 @@
       plainly see.
     -->
     <string name="crop_title">Tighten the box around the table</string>
-    <string name="crop_body">Drag the corners so only the table is inside — keep the “per 100 g” heading and the carbohydrate row.</string>
+    <string name="crop_body">Drag the corners so only the table is inside. Keep the “per 100 g” heading and the carbohydrate row.</string>
     <!-- The same screen, reached after the app already tried this rectangle by itself and could
          not read it safely (1.0.3 P4). The title says an attempt was made, so the fallback reads as
          a hand-off rather than as a restart or a failure. Deliberately not an error: nothing has
@@ -618,7 +618,7 @@
       wrong, never what to replace it with: the app has no standing to guess where the decimal
       point belongs, and a wrong repair is invisible where a refusal is not.
     -->
-    <string name="assist_value_implausible">That can\'t be right — check the figure.</string>
+    <string name="assist_value_implausible">That can\'t be right. Check the figure.</string>
     <string name="assist_type_title">Type the value</string>
     <string name="assist_type_body">Read it off the photo above.</string>
     <string name="assist_type_label">Carbs per 100 g/ml</string>
@@ -678,9 +678,9 @@
     <!-- Evidence resolution (§8). A value one recognition pass found and nothing corroborated, and
          the case where two passes disagreed and the app must not choose between them. -->
     <string name="verify_found_title">Check this against the label</string>
-    <string name="verify_found_body">Read once, not confirmed. Compare it with the package before using it.</string>
+    <string name="verify_found_body">Compare it with the package before you use it.</string>
     <string name="verify_found_value">%1$s g per 100 %2$s</string>
-    <string name="verify_found_confirm">That\'s right — use it</string>
+    <string name="verify_found_confirm">That\'s right, use it</string>
     <string name="verify_found_reject">Not right</string>
     <!-- The nutrient row the value was read from, so the proposal states where on the label to
          look rather than only what it believes it found. -->
@@ -691,8 +691,8 @@
          reading's decimal scale is unresolved. Distinct wording from verify_found_* because the
          open question is different — the row is not in doubt here, only the digits' scale is. -->
     <string name="verify_scale_title">Check this matches the label</string>
-    <string name="verify_scale_body">The row and its unit are correct, but the exact figure needs your eyes. Compare it with the package before using it.</string>
-    <string name="verify_scale_confirm">Correct — calculate</string>
+    <string name="verify_scale_body">The row and its unit were found. Check the exact figure against the package before you use it.</string>
+    <string name="verify_scale_confirm">That\'s right, calculate</string>
     <!-- A declared-serving reading ("6 g per 18 g serving") normalizes to a per-100 figure for
          storage and calculation, but the LABEL prints the serving pair, not the normalized one — so
          confirmation must show what the user can actually compare against the package. %1$s is the
@@ -703,13 +703,13 @@
          primary claim, since it is not what is printed on the package. -->
     <string name="verify_scale_normalized_value">Equivalent to %1$s g per 100 %2$s</string>
     <string name="conflict_title">Two different readings</string>
-    <string name="conflict_body">The photo was read more than once and the results disagreed (%1$s), so nothing is being guessed. Point at the right figure instead.</string>
+    <string name="conflict_body">The label gave different numbers (%1$s), so none was picked. Point at the right figure, or retake the photo.</string>
     <string name="conflict_assist">Point at the figure</string>
 
-    <string name="ocr_not_found_title">Couldn’t confidently find carbohydrates.</string>
+    <string name="ocr_not_found_title">Couldn’t find the carbs on this label</string>
     <string name="ocr_not_found_body">Try a clear, straight photo of the full nutrition table, or enter the value yourself.</string>
     <string name="ocr_enter_manually">Enter manually</string>
-    <string name="ocr_scan_again">Scan live again</string>
+    <string name="ocr_scan_again">Scan again</string>
     <string name="ocr_try_again">Try again</string>
     <!-- The detected figure itself, e.g. "40.3 g / 100 g". Rendered large: checking this number
          against the package is the user's entire job on that card. -->
@@ -717,7 +717,7 @@
     <string name="ocr_detected_value_no_basis">%1$s g</string>
     <string name="ocr_basis_unknown_prompt">This number was read, but not what it\'s measured per. Check the package and enter it yourself.</string>
     <string name="ocr_basis_unknown_correct">Enter it myself</string>
-    <string name="label_handoff_failed">The scan result couldn\'t be read back. Nothing was compared — scan again if you\'d like to check the package.</string>
+    <string name="label_handoff_failed">The scan didn\'t come through. Scan the label again to compare.</string>
     <string name="ocr_confirm">Confirm</string>
     <string name="ocr_correct">Correct</string>
     <string name="ocr_use">Use %1$s</string>
@@ -773,7 +773,7 @@
     <string name="settings_privacy_policy_link_failed" tools:ignore="MissingTranslation">Could not open a browser. The privacy policy is at: %1$s</string>
     <string name="settings_feedback" tools:ignore="MissingTranslation">Send feedback / Report a problem</string>
     <string name="settings_feedback_subject" tools:ignore="MissingTranslation">JustTheCarbs feedback</string>
-    <string name="settings_feedback_body_prompt" tools:ignore="MissingTranslation">Please describe what happened.\n\nIf this concerns a nutrition-label scan, you can also attach an exported Scan Evidence ZIP.</string>
+    <string name="settings_feedback_body_prompt" tools:ignore="MissingTranslation">Please describe what happened.\n\nIf it was a label scan, a photo of the label helps.</string>
     <string name="settings_feedback_link_failed" tools:ignore="MissingTranslation">No email app found. You can reach us at %1$s.</string>
     <!-- `Rate on Google Play` rather than `Rate <app name>`: the row is one of a list of plain
          settings rows, and naming the app inside its own settings screen is the marketing register
@@ -805,11 +805,11 @@
     <string name="onboarding_step_2" tools:ignore="MissingTranslation">STEP 2</string>
     <string name="onboarding_step_3" tools:ignore="MissingTranslation">STEP 3</string>
     <string name="onboarding_title_1" tools:ignore="MissingTranslation">Scan it.</string>
-    <string name="onboarding_body_1" tools:ignore="MissingTranslation">Point your camera at any barcode. No searching, no typing a product name.</string>
+    <string name="onboarding_body_1" tools:ignore="MissingTranslation">Point your camera at the barcode. No barcode? Search by name or scan the label.</string>
     <string name="onboarding_title_2" tools:ignore="MissingTranslation">Size the portion.</string>
     <string name="onboarding_body_2" tools:ignore="MissingTranslation">Type it, or tap a preset. Grams, slices, whatever makes sense for the food.</string>
     <string name="onboarding_title_3" tools:ignore="MissingTranslation">Get the number.</string>
-    <string name="onboarding_body_3" tools:ignore="MissingTranslation">Just the carbs. Nothing else on screen competes with it.</string>
+    <string name="onboarding_body_3" tools:ignore="MissingTranslation">The carbs for your portion, to the decimal.</string>
     <string name="onboarding_next" tools:ignore="MissingTranslation">Next</string>
     <string name="onboarding_get_started" tools:ignore="MissingTranslation">Get started</string>
     <string name="onboarding_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>
@@ -829,7 +829,7 @@
     <!-- Accessible action labels only — TalkBack announces these as the double-tap action on the
          callout, since sighted users advance by tapping anywhere and see no button. -->
     <string name="tutorial_next" tools:ignore="MissingTranslation">Next</string>
-    <string name="tutorial_finish" tools:ignore="MissingTranslation">Got it — start using Just the Carbs</string>
+    <string name="tutorial_finish" tools:ignore="MissingTranslation">Finish tutorial</string>
     <!-- The restrained on-card affordance sighted users actually see, replacing a visible button. -->
     <string name="tutorial_tap_to_continue" tools:ignore="MissingTranslation">Tap anywhere</string>
     <string name="tutorial_tap_to_finish" tools:ignore="MissingTranslation">Tap to finish</string>
