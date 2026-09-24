@@ -1,6 +1,8 @@
 package app.justthecarbs.ui.scan
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -15,11 +17,16 @@ import org.junit.Test
  */
 class CameraPermissionStateTest {
 
+    private fun state(
+        granted: Boolean = false,
+        requestedThisVisit: Boolean = true,
+        canAskAgain: Boolean = false,
+        systemDialogSuppressed: Boolean = false,
+    ) = currentPermissionState(granted, requestedThisVisit, canAskAgain, systemDialogSuppressed)
+
     @Test
     fun `nothing requested yet is NotRequested`() {
-        val state = currentPermissionState(granted = false, requestedThisVisit = false, canAskAgain = false)
-
-        assertEquals(CameraPermissionState.NotRequested, state)
+        assertEquals(CameraPermissionState.NotRequested, state(requestedThisVisit = false))
     }
 
     @Test
@@ -27,13 +34,10 @@ class CameraPermissionStateTest {
         // A permission that is granted is granted — whether or not a request happened this visit,
         // and whether or not the platform would still show its own rationale dialog, neither matters
         // once the answer is yes.
+        assertEquals(CameraPermissionState.Granted, state(granted = true, requestedThisVisit = false))
         assertEquals(
             CameraPermissionState.Granted,
-            currentPermissionState(granted = true, requestedThisVisit = false, canAskAgain = false),
-        )
-        assertEquals(
-            CameraPermissionState.Granted,
-            currentPermissionState(granted = true, requestedThisVisit = true, canAskAgain = true),
+            state(granted = true, canAskAgain = true, systemDialogSuppressed = true),
         )
     }
 
@@ -41,16 +45,20 @@ class CameraPermissionStateTest {
     fun `a temporary denial where the system still offers its own dialog is DeniedCanAskAgain`() {
         // Android's own shouldShowRequestPermissionRationale() answering true is precisely a "not
         // this time" denial rather than a "never ask me again" one.
-        val state = currentPermissionState(granted = false, requestedThisVisit = true, canAskAgain = true)
-
-        assertEquals(CameraPermissionState.DeniedCanAskAgain, state)
+        assertEquals(CameraPermissionState.DeniedCanAskAgain, state(canAskAgain = true))
     }
 
     @Test
-    fun `a permanent denial where the system dialog is gone is PermanentlyDenied`() {
-        val state = currentPermissionState(granted = false, requestedThisVisit = true, canAskAgain = false)
+    fun `a denial the system answered without showing its dialog is PermanentlyDenied`() {
+        assertEquals(CameraPermissionState.PermanentlyDenied, state(systemDialogSuppressed = true))
+    }
 
-        assertEquals(CameraPermissionState.PermanentlyDenied, state)
+    @Test
+    fun `a dialog dismissed with Back is not a permanent denial`() {
+        // Android 11+: dismissing the system dialog with Back leaves the rationale flag false, which
+        // looks exactly like "never ask again". Without evidence that the system stopped showing its
+        // dialog, the screen must still offer Allow camera rather than send the user to Settings.
+        assertEquals(CameraPermissionState.DeniedCanAskAgain, state(canAskAgain = false))
     }
 
     @Test
@@ -60,29 +68,78 @@ class CameraPermissionStateTest {
         // returns. The recheck is what feeds a fresh `granted` value into this function — this test
         // pins that the function itself responds correctly to that transition, independent of how
         // the caller obtains the new value.
-        val before = currentPermissionState(granted = false, requestedThisVisit = true, canAskAgain = false)
-        assertEquals(CameraPermissionState.PermanentlyDenied, before)
-
-        val after = currentPermissionState(granted = true, requestedThisVisit = true, canAskAgain = false)
-
-        assertEquals(CameraPermissionState.Granted, after)
+        assertEquals(CameraPermissionState.PermanentlyDenied, state(systemDialogSuppressed = true))
+        assertEquals(CameraPermissionState.Granted, state(granted = true, systemDialogSuppressed = true))
     }
 
     @Test
-    fun `a denial never strands the scanner because Granted is the only terminal state`() {
-        // Every non-Granted state is reachable from every other non-Granted state via a fresh
-        // permission read (there is no state this function can return that has no path back to
-        // Granted) — the property that matters is that PermanentlyDenied, the worst case, still
-        // yields Granted the moment `granted` becomes true, checked above. This test additionally
-        // pins that neither denial state is ever confused with NotRequested, which would incorrectly
-        // suppress the "was this asked already" distinction and could re-show `permission_body`
-        // instead of `permission_settings_body`.
-        val temporary = currentPermissionState(granted = false, requestedThisVisit = true, canAskAgain = true)
-        val permanent = currentPermissionState(granted = false, requestedThisVisit = true, canAskAgain = false)
-        val notYetAsked = currentPermissionState(granted = false, requestedThisVisit = false, canAskAgain = false)
+    fun `a denial is never confused with NotRequested`() {
+        // Neither denial state may be confused with NotRequested, which would suppress the "was this
+        // asked already" distinction and could re-show `permission_body` instead of
+        // `permission_settings_body`.
+        assertEquals(CameraPermissionState.DeniedCanAskAgain, state(canAskAgain = true))
+        assertEquals(CameraPermissionState.PermanentlyDenied, state(systemDialogSuppressed = true))
+        assertEquals(CameraPermissionState.NotRequested, state(requestedThisVisit = false))
+    }
 
-        assertEquals(CameraPermissionState.DeniedCanAskAgain, temporary)
-        assertEquals(CameraPermissionState.PermanentlyDenied, permanent)
-        assertEquals(CameraPermissionState.NotRequested, notYetAsked)
+    // --- Was the system dialog shown at all? ---
+
+    @Test
+    fun `a request that returned almost at once with no rationale either side had no dialog`() {
+        assertTrue(
+            deniedWithoutADialog(
+                rationaleBefore = false,
+                rationaleAfter = false,
+                elapsedMs = 40,
+                previousRequestAlsoAmbiguous = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `a request answered at human speed was a dialog the user dismissed`() {
+        assertFalse(
+            deniedWithoutADialog(
+                rationaleBefore = false,
+                rationaleAfter = false,
+                elapsedMs = 1_800,
+                previousRequestAlsoAmbiguous = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `a rationale flag on either side means the system still shows its dialog`() {
+        assertFalse(
+            deniedWithoutADialog(
+                rationaleBefore = true,
+                rationaleAfter = false,
+                elapsedMs = 40,
+                previousRequestAlsoAmbiguous = true,
+            ),
+        )
+        assertFalse(
+            deniedWithoutADialog(
+                rationaleBefore = false,
+                rationaleAfter = true,
+                elapsedMs = 40,
+                previousRequestAlsoAmbiguous = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `a second ambiguous denial in a row stops offering a request that may do nothing`() {
+        // The timing is a heuristic; on a slow phone a suppressed request may return late. Allow
+        // camera must never become a button that silently does nothing twice, so the second
+        // ambiguous answer moves on to the Settings page, which works either way.
+        assertTrue(
+            deniedWithoutADialog(
+                rationaleBefore = false,
+                rationaleAfter = false,
+                elapsedMs = 1_800,
+                previousRequestAlsoAmbiguous = true,
+            ),
+        )
     }
 }

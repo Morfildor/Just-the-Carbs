@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
@@ -70,7 +72,28 @@ fun ManualEntryScreen(
     onPackageChanged: (String) -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit,
+    /**
+     * The screen was opened with a carbohydrate figure carried in from a scan.
+     *
+     * Read from the route rather than from [state], which is still blank on the first frame. Decides
+     * where the keyboard starts: a blank form opens on the name, the first thing to type; a carried
+     * figure leaves focus alone, so the user reads what arrived before anything claims the keyboard.
+     */
+    arrivedWithCarbs: Boolean,
 ) {
+    val focusManager = LocalFocusManager.current
+    val nameFocus = remember { FocusRequester() }
+    val carbsFocus = remember { FocusRequester() }
+    val packageFocus = remember { FocusRequester() }
+
+    // Once per visit, not per composition: saved so a rotation does not pull focus back to the name
+    // from whichever field the user had moved on to.
+    var openedFocus by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!arrivedWithCarbs && !openedFocus) nameFocus.requestFocus()
+        openedFocus = true
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
         // it sat behind the top bar's trailing controls, and decoration may not share a level with
@@ -134,13 +157,21 @@ fun ManualEntryScreen(
                     } else {
                         null
                     },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(onNext = { carbsFocus.requestFocus() }),
                     shape = RoundedCornerShape(Space.buttonRadius),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(nameFocus),
                 )
 
                 CarbsField(
                     value = state.carbsPer100,
                     onValueChange = onCarbsChanged,
+                    focusRequester = carbsFocus,
+                    // The package field always follows, so Next rather than Done.
+                    onNext = { packageFocus.requestFocus() },
                     // Names the unit the value is measured in, tracking the basis chips below — the
                     // same number means different things per 100 g and per 100 ml, and this is the
                     // one field where that ambiguity has a numeric consequence. A null basis (§5,
@@ -215,9 +246,15 @@ fun ManualEntryScreen(
                     } else {
                         null
                     },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    // Done is the Save button's own path and condition: it saves only what the button
+                    // would, and otherwise just puts the keyboard away. It never bypasses the rules
+                    // that keep Save disabled (an unresolved basis above all).
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = { if (state.canSave) onSave() else focusManager.clearFocus() },
+                    ),
                     shape = RoundedCornerShape(Space.buttonRadius),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(packageFocus),
                 )
 
                 // A step clear of the last field, so Save reads as the end of the form rather than
@@ -286,12 +323,12 @@ fun ManualEntryScreen(
 private fun CarbsField(
     value: String,
     onValueChange: (String) -> Unit,
+    focusRequester: FocusRequester,
+    onNext: () -> Unit,
     label: @Composable () -> Unit,
     isError: Boolean,
     supportingText: (@Composable () -> Unit)?,
 ) {
-    val focusManager = LocalFocusManager.current
-    val focusRequester = remember { FocusRequester() }
     val startedWithValue = remember { value.isNotBlank() }
     var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     if (fieldValue.text != value) {
@@ -311,8 +348,8 @@ private fun CarbsField(
         },
         label = label,
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+        keyboardActions = KeyboardActions(onNext = { onNext() }),
         isError = isError,
         supportingText = supportingText,
         shape = RoundedCornerShape(Space.buttonRadius),

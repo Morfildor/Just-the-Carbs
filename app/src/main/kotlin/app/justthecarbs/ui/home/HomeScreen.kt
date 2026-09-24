@@ -91,6 +91,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -267,7 +268,11 @@ fun HomeScreen(
     // than a cleanup-ordering hazard, but still a reason to leave these as ordinary handlers; see
     // docs/superpowers/specs/2026-09-14-interaction-polish-design.md.
     val searchFocusManager = LocalFocusManager.current
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    // Derived, so only the keyboard's arrival and departure recompose Home, not every frame of its
+    // slide (the inset changes each frame while the IME animates).
+    val imeInsets = WindowInsets.ime
+    val density = LocalDensity.current
+    val imeVisible by remember(imeInsets, density) { derivedStateOf { imeInsets.getBottom(density) > 0 } }
 
     // **There is deliberately NO handler for the keyboard-up case, and that is the fix.** The
     // platform already dismisses the IME on Back before the press reaches any app handler, so the
@@ -360,26 +365,35 @@ fun HomeScreen(
                 .fillMaxSize()
                 .statusBarsPadding(),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = Space.screenEdge, end = Space.s, top = Space.s, bottom = Space.s),
-                verticalAlignment = Alignment.CenterVertically,
+            // The wordmark gives its room to results while a query is typed: with it, a 1080x2400
+            // phone showed about two and a half results above the keyboard. Clearing the search
+            // brings it back. Settings goes with it and is one Back away.
+            AnimatedVisibility(
+                visible = searchState.query.isBlank(),
+                enter = expandVertically(tween(Motion.STANDARD_MS)) + fadeIn(tween(Motion.STANDARD_MS)),
+                exit = shrinkVertically(tween(Motion.STANDARD_MS)) + fadeOut(tween(Motion.QUICK_MS)),
             ) {
-                Text(
-                    text = BuildConfig.APP_NAME,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f).semantics { heading() },
-                )
-                val settingsLabel = stringResource(R.string.home_settings)
-                IconButton(
-                    onClick = onOpenSettings,
+                Row(
                     modifier = Modifier
-                        .size(Space.minTouchTarget)
-                        .semantics { contentDescription = settingsLabel },
+                        .fillMaxWidth()
+                        .padding(start = Space.screenEdge, end = Space.s, top = Space.s, bottom = Space.s),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.Settings, contentDescription = null)
+                    Text(
+                        text = BuildConfig.APP_NAME,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f).semantics { heading() },
+                    )
+                    val settingsLabel = stringResource(R.string.home_settings)
+                    IconButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier
+                            .size(Space.minTouchTarget)
+                            .semantics { contentDescription = settingsLabel },
+                    ) {
+                        Icon(Icons.Filled.Settings, contentDescription = null)
+                    }
                 }
             }
 

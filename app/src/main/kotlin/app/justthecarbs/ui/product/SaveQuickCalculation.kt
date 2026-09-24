@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -18,10 +20,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import app.justthecarbs.R
 import app.justthecarbs.ui.components.JtcDialogDefaults
@@ -93,6 +98,9 @@ fun SaveQuickCalculationDialog(
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
+    // One condition for both ways of confirming: the button and the keyboard's Done key.
+    val canSave = !saving && name.isNotBlank()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -118,6 +126,13 @@ fun SaveQuickCalculationDialog(
                     label = { Text(stringResource(R.string.manual_name)) },
                     singleLine = true,
                     isError = nameError,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { if (canSave) onSave(name) else focusManager.clearFocus() },
+                    ),
                     shape = RoundedCornerShape(Space.buttonRadius),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -136,7 +151,7 @@ fun SaveQuickCalculationDialog(
             // Deliberately not the same word as the action that opened this dialog. Two "Save
             // product" controls on one screen is ambiguous to a person and genuinely unresolvable
             // for an accessibility service or a test, which cannot tell which one was meant.
-            TextButton(onClick = { onSave(name) }, enabled = !saving && name.isNotBlank()) {
+            TextButton(onClick = { onSave(name) }, enabled = canSave) {
                 Text(stringResource(R.string.quick_save_confirm))
             }
         },

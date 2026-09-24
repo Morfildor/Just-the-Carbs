@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -69,8 +71,13 @@ sealed interface CameraPermissionState {
     data object DeniedCanAskAgain : CameraPermissionState
 
     /**
-     * Denied with the rationale flag now false after a request — Android's signal that it has
-     * stopped offering its own dialog. The only remaining path is the app's Settings page.
+     * Denied by a request the system answered without showing its dialog (see
+     * [deniedWithoutADialog]) — Android has stopped offering it. The only remaining path is the
+     * app's Settings page.
+     *
+     * Not simply "the rationale flag is false after a request": on Android 11+ dismissing the dialog
+     * with Back leaves it false too, and treating that as permanent sent the user to Settings after
+     * a single dismissal.
      */
     data object PermanentlyDenied : CameraPermissionState
 }
@@ -93,12 +100,46 @@ internal fun currentPermissionState(
     granted: Boolean,
     requestedThisVisit: Boolean,
     canAskAgain: Boolean,
+    systemDialogSuppressed: Boolean,
 ): CameraPermissionState = when {
     granted -> CameraPermissionState.Granted
     !requestedThisVisit -> CameraPermissionState.NotRequested
     canAskAgain -> CameraPermissionState.DeniedCanAskAgain
-    else -> CameraPermissionState.PermanentlyDenied
+    systemDialogSuppressed -> CameraPermissionState.PermanentlyDenied
+    // Denied with no rationale either side, but the dialog was shown: dismissed with Back, or a
+    // denial the system has not yet decided to stop asking about. Asking again is still possible.
+    else -> CameraPermissionState.DeniedCanAskAgain
 }
+
+/**
+ * Whether a denied request is evidence that the system no longer shows its own dialog.
+ *
+ * Android offers no API that says so. `shouldShowRequestPermissionRationale` false after a denial
+ * means either "never ask again" or, on Android 11+, a dialog dismissed with Back, and AndroidX
+ * documents no way to tell them apart. The evidence used here, in order:
+ *
+ * - A rationale flag true on either side means the system still shows its dialog: never suppressed.
+ * - Answered in under [SUPPRESSED_REQUEST_MS] with no rationale either side: the system returned
+ *   without anything for a person to read and dismiss.
+ * - A second such ambiguous answer in a row: the timing is a heuristic and a slow phone can return
+ *   a suppressed request late, so *Allow camera* must not be offered a third time as a button that
+ *   may silently do nothing. The Settings page works either way.
+ */
+internal fun deniedWithoutADialog(
+    rationaleBefore: Boolean,
+    rationaleAfter: Boolean,
+    elapsedMs: Long,
+    previousRequestAlsoAmbiguous: Boolean,
+): Boolean {
+    if (rationaleBefore || rationaleAfter) return false
+    return elapsedMs < SUPPRESSED_REQUEST_MS || previousRequestAlsoAmbiguous
+}
+
+/**
+ * Faster than a person can see the dialog animate in and dismiss it, slower than the system's own
+ * no-dialog round trip (it starts and finishes its permission activity without drawing anything).
+ */
+internal const val SUPPRESSED_REQUEST_MS = 300L
 
 /**
  * Holds the camera-permission state and the actions available from it.
@@ -144,18 +185,42 @@ fun rememberCameraPermissionController(): CameraPermissionController {
         )
     }
     var requestedThisVisit by remember { mutableStateOf(false) }
+    var systemDialogSuppressed by remember { mutableStateOf(false) }
+    // What the last request looked like as it went out, for [deniedWithoutADialog]. Plain fields,
+    // not state: nothing renders from them. Lost with the composition (a rotation mid-dialog), which
+    // reads as a slow, ambiguous answer — the safe side, since it keeps *Allow camera* on offer.
+    val request = remember { PendingCameraRequest() }
+
+    fun canAskAgain(): Boolean =
+        activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) ?: false
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { result ->
         granted = result
         requestedThisVisit = true
+        if (!result) {
+            val rationaleAfter = canAskAgain()
+            systemDialogSuppressed = deniedWithoutADialog(
+                rationaleBefore = request.rationaleBefore,
+                rationaleAfter = rationaleAfter,
+                elapsedMs = SystemClock.elapsedRealtime() - request.startedAtMs,
+                previousRequestAlsoAmbiguous = request.lastWasAmbiguous,
+            )
+            request.lastWasAmbiguous = !request.rationaleBefore && !rationaleAfter
+        }
+    }
+
+    fun launchRequest() {
+        request.rationaleBefore = canAskAgain()
+        request.startedAtMs = SystemClock.elapsedRealtime()
+        launcher.launch(Manifest.permission.CAMERA)
     }
 
     // Ask once, automatically, the moment the screen that needs the camera is actually shown —
     // unchanged from the pre-existing behaviour in both scanners.
     LaunchedEffect(Unit) {
-        if (!granted) launcher.launch(Manifest.permission.CAMERA)
+        if (!granted) launchRequest()
     }
 
     // Rechecking on ON_RESUME — not on every recomposition — is what makes "granted it in Settings,
@@ -178,11 +243,9 @@ fun rememberCameraPermissionController(): CameraPermissionController {
     return remember(activity) {
         CameraPermissionController(
             stateProvider = {
-                val canAskAgain = activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)
-                    ?: false
-                currentPermissionState(granted, requestedThisVisit, canAskAgain)
+                currentPermissionState(granted, requestedThisVisit, canAskAgain(), systemDialogSuppressed)
             },
-            requestAction = { launcher.launch(Manifest.permission.CAMERA) },
+            requestAction = { launchRequest() },
             openSettingsAction = {
                 context.startActivity(
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -192,6 +255,13 @@ fun rememberCameraPermissionController(): CameraPermissionController {
             },
         )
     }
+}
+
+/** The last camera request as it went out; see [rememberCameraPermissionController]. */
+private class PendingCameraRequest {
+    var rationaleBefore = false
+    var startedAtMs = 0L
+    var lastWasAmbiguous = false
 }
 
 /**
@@ -262,7 +332,9 @@ fun CameraPermissionRationale(
             CameraPermissionState.Granted -> Unit
         }
 
-        Button(
+        // Outlined, not filled: exactly one filled action per state, the camera path above. Two
+        // filled buttons stacked read as two equal answers to one question.
+        OutlinedButton(
             onClick = onEnterManually,
             modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight),
             shape = RoundedCornerShape(Space.buttonRadius),

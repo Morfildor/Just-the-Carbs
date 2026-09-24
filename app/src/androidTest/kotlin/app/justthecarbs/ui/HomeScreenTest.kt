@@ -1029,4 +1029,32 @@ class HomeScreenTest {
 
         compose.onNodeWithText("Recent 15").assertIsDisplayed()
     }
+
+    // --- The wordmark gives its room to results while searching (UX polish, wave 2). ---
+
+    /** Settings' description stands for the header row: the wordmark text is also the app's name. */
+    private val settingsLabel get() = stringOf(R.string.home_settings)
+
+    @Test
+    fun aNonBlankQueryCollapsesTheWordmarkHeader() {
+        showWithLiveSearch()
+        compose.onNodeWithText(app.justthecarbs.BuildConfig.APP_NAME).assertIsDisplayed()
+
+        compose.runOnIdle { liveSearch = SearchUiState(query = "choc", hits = listOf(searchHit())) }
+
+        compose.onNodeWithText(app.justthecarbs.BuildConfig.APP_NAME).assertDoesNotExist()
+        compose.onNodeWithContentDescription(settingsLabel).assertDoesNotExist()
+    }
+
+    @Test
+    fun clearingTheSearchRestoresTheWordmarkHeader() {
+        liveSearch = SearchUiState(query = "choc", hits = listOf(searchHit()))
+        showWithLiveSearch()
+        compose.onNodeWithText(app.justthecarbs.BuildConfig.APP_NAME).assertDoesNotExist()
+
+        compose.runOnIdle { liveSearch = SearchUiState() }
+
+        compose.onNodeWithText(app.justthecarbs.BuildConfig.APP_NAME).assertIsDisplayed()
+        compose.onNodeWithContentDescription(settingsLabel).assertIsDisplayed()
+    }
 }
