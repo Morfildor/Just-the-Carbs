@@ -2,6 +2,7 @@ package app.justthecarbs.data.remote
 
 import app.justthecarbs.BuildConfig
 import kotlinx.serialization.json.Json
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Interceptor
@@ -46,8 +47,8 @@ object NetworkModule {
         .build()
 
     /**
-     * Product photos: [shared] with timeouts a photo needs, keeping its User-Agent, connection pool
-     * and dispatcher.
+     * Product photos: [shared] with timeouts a photo needs, keeping its User-Agent and connection
+     * pool, and with its own dispatcher allowing [PHOTO_REQUESTS_PER_HOST] requests per host.
      *
      * Measured 2026-09-23: `images.openfoodfacts.org` took 8 to 34 s to complete a TLS handshake,
      * and sometimes a TCP connect was answered only on its retransmission at 15 s, while the
@@ -56,12 +57,20 @@ object NetworkModule {
      * kept showing the initials. Nothing waits for a photo, and leaving the screen cancels its
      * request, so a photo may take as long as the host needs; a product lookup still gives up
      * quickly.
+     *
+     * The own dispatcher (2026-09-23): a search page shows about eight rows, and with OkHttp's
+     * default of five requests per host the rows past the fifth waited for a free connection to a
+     * host that takes seconds to open one. Ten opened in parallel all finished in about the time one
+     * took. Product lookups keep the shared dispatcher and its default.
      */
     fun imageHttpClient(shared: OkHttpClient): OkHttpClient = shared.newBuilder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .callTimeout(60, TimeUnit.SECONDS)
+        .dispatcher(Dispatcher().apply { maxRequestsPerHost = PHOTO_REQUESTS_PER_HOST })
         .build()
+
+    private const val PHOTO_REQUESTS_PER_HOST = 10
 
     fun openFoodFactsApi(client: OkHttpClient = okHttpClient()): OpenFoodFactsApi = Retrofit.Builder()
         .baseUrl(OpenFoodFactsApi.BASE_URL)

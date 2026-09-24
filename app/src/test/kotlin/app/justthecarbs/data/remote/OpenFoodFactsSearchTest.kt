@@ -96,6 +96,31 @@ class OpenFoodFactsSearchTest {
         assertEquals(NutritionBasis.PER_100_G, first.basis)
     }
 
+    /**
+     * The fallback provider's rows use the 200 px picture too, and never an archive address: this
+     * endpoint is not asked for `images`, so there is nothing to build one from.
+     */
+    @Test
+    fun `a legacy hit prefers the 200 px front photo and has no archive address`() = runTest {
+        respond(
+            """
+            {"count":1,"products":[
+              {"code":"8710496979125","product_name":"Chocoladehagel puur","quantity":"390 g",
+               "image_front_url":"https://images.openfoodfacts.org/images/products/871/049/697/9125/front_nl.4.400.jpg",
+               "image_front_small_url":"https://images.openfoodfacts.org/images/products/871/049/697/9125/front_nl.4.200.jpg"}
+            ]}
+            """.trimIndent(),
+        )
+
+        val hit = hits(dataSource.search("hagelslag")).single()
+
+        assertEquals(
+            "https://images.openfoodfacts.org/images/products/871/049/697/9125/front_nl.4.200.jpg",
+            hit.imageUrl,
+        )
+        assertNull(hit.archiveImageUrl)
+    }
+
     // ---- release pass §4: search uses the same basis rule as a barcode lookup -------------------
     //
     // Search and lookup share `PackageBasisResolver`, and this block pins that they share its

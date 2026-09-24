@@ -32,6 +32,14 @@ data class ProductSearchHit(
      */
     val basis: NutritionBasis?,
     val imageUrl: String?,
+    /**
+     * The same front photo in Open Food Facts' S3 archive, or null. Set only when the photo Open
+     * Food Facts shows is the upload unmodified (no crop, rotation or recolouring), since the
+     * archive holds uploads. The search row tries it first and falls back to [imageUrl]: measured
+     * 2026-09-23, the archive answered in about 0.1 s where Open Food Facts' image host took 4 to
+     * 34 s to open a connection.
+     */
+    val archiveImageUrl: String? = null,
 )
 
 /** The outcome of a search. Mirrors [ProductFetchResult]'s shape so failures stay actionable. */

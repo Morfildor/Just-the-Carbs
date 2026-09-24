@@ -228,8 +228,15 @@ class SearchALiciousDataSource(
                 )
             },
             basis = basis,
-            imageUrl = imageFrontUrl?.takeIf { it.isNotBlank() }
-                ?: imageFrontSmallUrl?.takeIf { it.isNotBlank() },
+            // 200 px first: a result row's photo is 52 dp, about 137 px on a 420 dpi phone.
+            imageUrl = imageFrontSmallUrl?.takeIf { it.isNotBlank() }
+                ?: imageFrontUrl?.takeIf { it.isNotBlank() },
+            // The raw `code`, not the normalised barcode: it is the key the archive files photos under.
+            archiveImageUrl = OpenFoodFactsImageArchive.urlFor(
+                code = code,
+                frontUrl = imageFrontUrl?.takeIf { it.isNotBlank() } ?: imageFrontSmallUrl,
+                images = images,
+            ),
         )
     }
 

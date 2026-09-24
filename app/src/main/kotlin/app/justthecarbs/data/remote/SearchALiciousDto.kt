@@ -10,7 +10,9 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -48,6 +50,26 @@ internal object FirstOfStringOrArray : KSerializer<String?> {
 
     override fun serialize(encoder: Encoder, value: String?) {
         if (value == null) encoder.encodeNull() else encoder.encodeString(value)
+    }
+}
+
+/**
+ * Reads `images` as a JSON object, or as null when it arrives as anything else.
+ *
+ * The field only feeds a thumbnail's faster address (see [OpenFoodFactsImageArchive]), so a shape
+ * nobody has seen must degrade to "no archive address", never fail the whole search as malformed.
+ */
+internal object LooseJsonObject : KSerializer<JsonObject?> {
+    override val descriptor: SerialDescriptor = JsonObject.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): JsonObject? {
+        val json = decoder as? JsonDecoder ?: return null
+        return json.decodeJsonElement() as? JsonObject
+    }
+
+    override fun serialize(encoder: Encoder, value: JsonObject?) {
+        val json = encoder as? JsonEncoder ?: return encoder.encodeNull()
+        json.encodeJsonElement(value ?: JsonNull)
     }
 }
 
@@ -116,4 +138,11 @@ data class SearchALiciousHit(
     // malformed.
     @SerialName("countries_tags") val countriesTags: List<String?>? = null,
     @SerialName("unique_scans_n") val uniqueScans: Double? = null,
+    /**
+     * Every photo of the product: uploads by number, selected pictures by key (`front_nl`), each
+     * with its crop, rotation and filters. Read only to decide whether the front picture can come
+     * from the archive; see [OpenFoodFactsImageArchive].
+     */
+    @Serializable(with = LooseJsonObject::class)
+    val images: JsonObject? = null,
 )

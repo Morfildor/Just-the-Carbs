@@ -103,7 +103,8 @@ class SearchALiciousDataSourceTest {
         assertEquals("390 g", first.packageQuantity)
         assertEquals(0, BigDecimal("67").compareTo(first.carbsPer100))
         assertEquals(NutritionBasis.PER_100_G, first.basis)
-        assertTrue(first.imageUrl!!.endsWith("front_nl.4.400.jpg"))
+        // The 200 px picture: a result row's photo is 52 dp, about 137 px on a 420 dpi phone.
+        assertTrue(first.imageUrl!!.endsWith("front_nl.4.200.jpg"))
         // ml resolves as readily as g — the basis follows the printed unit, not a default.
         assertEquals(NutritionBasis.PER_100_ML, hits[1].basis)
     }
@@ -149,6 +150,99 @@ class SearchALiciousDataSourceTest {
         // No quantity text means no basis, and no basis means no number — never an assumed unit.
         assertNull(hit.basis)
         assertNull(hit.carbsPer100)
+    }
+
+    // ---- the archive address (2026-09-23): the fast copy of an unmodified front photo -----------
+
+    /**
+     * Eight live hits captured 2026-09-23 with the app's own field list, `images` trimmed to the
+     * front entry and that upload's own entry. One per case: an unmodified front photo on a 13-digit
+     * (8000500392935) and an 8-digit (80809180) barcode; a trim and a rotation the index does not
+     * record, visible only in the sizes (3017620429484, 8713938000357); a crop shown by its geometry;
+     * a 90° rotation; a normalised picture; no photo at all. Both archive addresses below answered
+     * 200 on the day and matched Open Food Facts' own pictures to within JPEG noise.
+     */
+    private fun capturedImagesResponse(): String =
+        javaClass.classLoader!!.getResourceAsStream("search/archive/searchalicious-images.json")!!
+            .readBytes().toString(Charsets.UTF_8)
+
+    /** Every captured hit, gathered over the searches that rank each one in. */
+    private suspend fun allCapturedHits(): List<ProductSearchHit> =
+        listOf("nutella", "gekleurde hagelslag", "machandel tomatensoep").flatMap { query ->
+            respond(capturedImagesResponse())
+            hits(dataSource.search(query))
+        }.distinctBy { it.barcode }
+
+    private fun List<ProductSearchHit>.byBarcode(barcode: String) = single { it.barcode == barcode }
+
+    @Test
+    fun `a captured reply gives an archive address only to unmodified front photos`() = runTest {
+        val hits = allCapturedHits()
+
+        assertEquals(8, hits.size)
+        assertEquals(
+            "https://openfoodfacts-images.s3.eu-west-3.amazonaws.com/data/800/050/039/2935/19.400.jpg",
+            hits.byBarcode("8000500392935").archiveImageUrl,
+        )
+        assertEquals(
+            "https://openfoodfacts-images.s3.eu-west-3.amazonaws.com/data/000/008/080/9180/14.400.jpg",
+            hits.byBarcode("80809180").archiveImageUrl,
+        )
+        assertNull("trimmed, sizes only", hits.byBarcode("3017620429484").archiveImageUrl)
+        assertNull("rotated, sizes only", hits.byBarcode("8713938000357").archiveImageUrl)
+        assertNull("cropped", hits.byBarcode("80051428").archiveImageUrl)
+        assertNull("rotated", hits.byBarcode("80177425").archiveImageUrl)
+        assertNull("normalised", hits.byBarcode("8710624223885").archiveImageUrl)
+        assertNull("no photo", hits.byBarcode("3017624047509").archiveImageUrl)
+        assertNull("no photo", hits.byBarcode("3017624047509").imageUrl)
+    }
+
+    /** Every hit keeps Open Food Facts' own address as the fallback, at the 200 px size. */
+    @Test
+    fun `every captured hit with a photo keeps its own 200 px address`() = runTest {
+        val hits = allCapturedHits()
+
+        hits.filter { it.barcode != "3017624047509" }.forEach { hit ->
+            val url = hit.imageUrl ?: error("${hit.barcode} lost its photo address")
+            assertTrue(url, url.startsWith("https://images.openfoodfacts.org/images/products/"))
+            assertTrue(url, url.endsWith(".200.jpg"))
+        }
+    }
+
+    @Test
+    fun `a hit with only the large front photo still has an address`() = runTest {
+        respond(
+            """{"count":1,"hits":[{"code":"8710496979125","product_name":"Hagel",
+            "image_front_url":"https://images.openfoodfacts.org/images/products/871/049/697/9125/front_nl.4.400.jpg"}]}""",
+        )
+
+        val hit = hits(dataSource.search("hagel")).single()
+
+        assertTrue(hit.imageUrl!!.endsWith("front_nl.4.400.jpg"))
+        // No images map, so no archive address: the row loads Open Food Facts' own picture.
+        assertNull(hit.archiveImageUrl)
+    }
+
+    /**
+     * `images` is decorative: whatever shape it arrives in, the search must not fail as malformed
+     * over it. Every other field of the hit is read as before.
+     */
+    @Test
+    fun `an images field of an unexpected shape never fails the search`() = runTest {
+        listOf("[]", "\"x\"", "12", "null", "{\"front_nl\":[1,2]}").forEach { shape ->
+            respond(
+                """{"count":1,"hits":[{"code":"8710496979125","product_name":"Hagel","quantity":"390 g",
+                "image_front_url":"https://images.openfoodfacts.org/images/products/871/049/697/9125/front_nl.4.400.jpg",
+                "images":$shape}]}""",
+            )
+
+            val hit = hits(dataSource.search("hagel")).single()
+
+            assertEquals(shape, "Hagel", hit.name)
+            assertEquals(shape, NutritionBasis.PER_100_G, hit.basis)
+            assertTrue(shape, hit.imageUrl!!.endsWith("front_nl.4.400.jpg"))
+            assertNull(shape, hit.archiveImageUrl)
+        }
     }
 
     @Test
@@ -483,6 +577,7 @@ class SearchALiciousDataSourceTest {
                 "image_front_url",
                 "countries_tags",
                 "unique_scans_n",
+                "images",
             ),
             fields,
         )
@@ -508,10 +603,11 @@ class SearchALiciousDataSourceTest {
             "brands" to "the card's subtitle",
             "quantity" to "the subtitle's package size, and the only basis evidence here",
             "nutriments" to "the carbohydrate figure",
-            "image_front_small_url" to "the thumbnail",
-            "image_front_url" to "the thumbnail, preferred",
+            "image_front_small_url" to "the thumbnail, preferred (200 px)",
+            "image_front_url" to "the thumbnail when no small one exists",
             "countries_tags" to "ordering: products sold in the device's country first",
             "unique_scans_n" to "ordering: the more widely scanned product first",
+            "images" to "the front photo's number and edits, for the thumbnail's archive address",
         )
         assertEquals(rendered.keys.toList(), SearchALiciousApi.SEARCH_FIELDS)
     }

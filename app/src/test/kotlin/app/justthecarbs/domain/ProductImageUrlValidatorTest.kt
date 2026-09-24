@@ -50,4 +50,61 @@ class ProductImageUrlValidatorTest {
         assertNull(ProductImageUrlValidator.validate("   "))
         assertNull(ProductImageUrlValidator.validate("not a url"))
     }
+
+    // ---- Open Food Facts' S3 archive: search thumbnails only, one exact shape ------------------
+
+    private val archiveUrl =
+        "https://openfoodfacts-images.s3.eu-west-3.amazonaws.com/data/301/762/042/9484/149.400.jpg"
+
+    @Test
+    fun `accepts an archive original in the data folder`() {
+        assertEquals(archiveUrl, ProductImageUrlValidator.validateArchive(archiveUrl))
+        val longCode = "https://openfoodfacts-images.s3.eu-west-3.amazonaws.com/data/520/266/716/46291/8.400.jpg"
+        assertEquals(longCode, ProductImageUrlValidator.validateArchive(longCode))
+    }
+
+    /** Products and Recents keep Open Food Facts' own picture; the archive is for search rows only. */
+    @Test
+    fun `the product image rule does not accept the archive`() {
+        assertNull(ProductImageUrlValidator.validate(archiveUrl))
+    }
+
+    @Test
+    fun `the archive rule does not accept Open Food Facts' own image host`() {
+        assertNull(
+            ProductImageUrlValidator.validateArchive(
+                "https://images.openfoodfacts.org/images/products/301/762/042/9484/front_fr.409.400.jpg",
+            ),
+        )
+    }
+
+    @Test
+    fun `rejects anything but the exact archive shape`() {
+        listOf(
+            archiveUrl.replace("https://", "http://"),
+            // Another bucket, another region, or the same bucket under S3's other host forms.
+            archiveUrl.replace("openfoodfacts-images.", "openfoodfacts-images2."),
+            archiveUrl.replace("eu-west-3", "us-east-1"),
+            archiveUrl.replace("openfoodfacts-images.s3.eu-west-3.amazonaws.com", "s3.eu-west-3.amazonaws.com/openfoodfacts-images"),
+            archiveUrl.replace(".amazonaws.com", ".amazonaws.com.evil.com"),
+            // Outside /data/, another size, the full upload, or a path that climbs out.
+            archiveUrl.replace("/data/", "/"),
+            archiveUrl.replace("/data/", "/other/"),
+            archiveUrl.replace(".400.jpg", ".jpg"),
+            archiveUrl.replace(".400.jpg", ".200.jpg"),
+            archiveUrl.replace(".400.jpg", ".400.json"),
+            archiveUrl.replace("/9484/", "/9484/../"),
+            archiveUrl.replace("/301/762/042/9484/", "/301/762/9484/"),
+            // Anything added to the request.
+            "$archiveUrl?x=1",
+            "$archiveUrl#x",
+            archiveUrl.replace("amazonaws.com/", "amazonaws.com:8443/"),
+            archiveUrl.replace("https://", "https://user@"),
+            null,
+            "",
+            "not a url",
+        ).forEach { url ->
+            assertNull(url, ProductImageUrlValidator.validateArchive(url))
+        }
+    }
 }

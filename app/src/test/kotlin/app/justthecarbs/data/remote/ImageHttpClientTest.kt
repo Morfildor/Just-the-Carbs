@@ -6,6 +6,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -65,6 +66,19 @@ class ImageHttpClientTest {
     @Test
     fun `photos and product lookups share one connection pool`() {
         assertSame(api.connectionPool, images.connectionPool)
+    }
+
+    /**
+     * A search page shows about eight rows. With OkHttp's default of five requests per host, the
+     * rows past the fifth waited for a free connection to Open Food Facts' image host, which takes
+     * seconds to open one (measured 2026-09-23: ten opened in parallel all finished in about the
+     * time one took).
+     */
+    @Test
+    fun `photos may use ten connections per host, product lookups keep the default`() {
+        assertEquals(10, images.dispatcher.maxRequestsPerHost)
+        assertEquals(5, api.dispatcher.maxRequestsPerHost)
+        assertNotSame(api.dispatcher, images.dispatcher)
     }
 
     private companion object {

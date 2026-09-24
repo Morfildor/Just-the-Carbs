@@ -159,6 +159,16 @@ live on Production and says the first update is ready. Work accumulates here unt
   so product names keep their width.
 - The meal bar on Home now slides in when a meal starts instead of pushing the list down in one
   frame.
+- **Search result photos load much faster.** Open Food Facts' image server was taking 4 to 34
+  seconds to open each connection, so the packaging photo that tells two similar products apart
+  often arrived long after the results, or not at all. When a result's photo is the picture as
+  uploaded (not cropped, rotated or recoloured, about four in five), the row now loads it from Open
+  Food Facts' own image archive on Amazon S3, which answered in about a tenth of a second. Any other
+  photo, and any photo the archive does not have yet (it is updated monthly), loads from Open Food
+  Facts' image server as before. Search rows also ask for the 200-pixel picture instead of the
+  400-pixel one, and photos (anywhere in the app) may download ten at a time instead of five.
+  Product screens and Home's Recent list still load their photos from Open Food Facts' image server.
+  The privacy policy names the archive and Amazon Web Services.
 
 ### Fixed
 
@@ -305,7 +315,19 @@ lint **0 errors, 29 warnings**. On the emulator with the photo cache cleared, co
 four runs, a fifth loading none in 87 s; the calculator's photo 18 s after tapping the product. The
 evidence that the old limits abandoned photos is the direct measurement against the server, not
 these runs.
-**Not yet seen on a physical device**: the calculator's new image sizes and compact dock, the Quick Add haptic, a live TalkBack pass, whether taps
+**Search photos from the archive (2026-09-23, branch `meal-search-patch-2026-09-23`, not merged):**
+JVM **2234/2234** (0 skipped, `--rerun-tasks`, 228 XML files); lint **0 errors, 30 warnings**;
+search, Home and image instrumented classes **131/131 at 1080x2400 and 131/131 at
+`wm size 320x640` / `wm density 160`**; 11 code negative controls and 1 instrumented one each fail
+their tests. Emulator benchmark, 10 queries alternating builds, photo cache cleared: median time
+from the result list to a row's photo **6.3 s → 1.6 s**, photos within 3 s **17 → 52 of 73 rows**,
+from pressing search **8.4 s → 4.0 s**; the slowest fifth did not improve (p90 10.0 → 8.7 s, max
+14.2 → 18.4 s), being the photos that still come from Open Food Facts' own server. The search
+request itself got slower: median **+0.24 s** (mean +0.35 s, up to +1.06 s), above the workstation
+estimate of 0.05 to 0.25 s. All 66 photo tiles in both builds' end screens show the same picture.
+The first benchmark, on a rule without the size check, showed Machandel tomatensoep sideways;
+that check is what fixed it. Method and figures in CLAUDE.md.
+**Not yet seen on a physical device**: the calculator's new image sizes and compact dock, the Quick Add haptic, search photos on a mobile network, a live TalkBack pass, whether taps
 meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
 text. Re-check all of this, and resolve the CI failures, before the release build.
 
@@ -315,7 +337,8 @@ text. Re-check all of this, and resolve the CI failures, before the release buil
 
 > Add a food you have had before in one tap: Home now shows a + beside your last portion. Long-press
 > a recent product to remove it from Recent, with Undo. The calculator shows a bigger product
-> picture and keeps the carbs answer clearly apart from the portion you type.
+> picture and keeps the carbs answer clearly apart from the portion you type. Product photos in
+> search results appear much faster.
 
 ## 1.0.7 (versionCode 8) — 2026-09-17 — uploaded to Google Play Production, replacing 1.0.6, under review
 

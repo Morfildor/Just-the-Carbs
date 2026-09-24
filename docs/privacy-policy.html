@@ -36,7 +36,7 @@
 <body>
 
 <h1>Privacy policy — Just the Carbs</h1>
-<p class="meta">Last updated: 17 September 2026 · Contact: albinogorillassupport@gmail.com</p>
+<p class="meta">Last updated: 23 September 2026 · Contact: albinogorillassupport@gmail.com</p>
 
 <div class="callout">
   <strong>In one paragraph.</strong> Just the Carbs has no account, no advertising, and no
@@ -45,8 +45,10 @@
   <em>not</em> true that no data leaves your device: when you scan a barcode the app has never seen,
   it sends that barcode to Open Food Facts to look up the product, and &mdash; when that product has
   a photo &mdash; requests the photo too. If you use <strong>Search by name</strong>, the words you
-  type are also sent to Open Food Facts, because that is how the search works. Those three requests
-  are the only ones Just the Carbs itself makes.
+  type are also sent to Open Food Facts, because that is how the search works, and the results&rsquo;
+  photos are requested too; some of those come from Open Food Facts&rsquo; image archive, which is
+  hosted on Amazon Web Services (Amazon S3). Those three kinds of request are the only ones Just the
+  Carbs itself makes.
 </div>
 
 <h2>What stays on your device</h2>
@@ -74,8 +76,8 @@
   search you typed.</strong>
 </p>
 <table>
-  <tr><th>Recipient</th><td>Open Food Facts, for product data (<code>world.openfoodfacts.org</code>), search (<code>search.openfoodfacts.org</code>, or <code>world.openfoodfacts.org</code> if that service does not answer) and product photos (<code>images.openfoodfacts.org</code> or <code>static.openfoodfacts.org</code>)</td></tr>
-  <tr><th>When</th><td>Product data: only when you scan or enter a barcode not already saved on your device. Photos: only when that lookup returns a product that has a photo, and only from Open Food Facts&rsquo; own image host &mdash; the app checks this and will not load an image from any other address. Search text: while you search by name &mdash; once you have typed at least three characters and paused for about a third of a second, or when you press the search action. Fewer than three characters are never sent</td></tr>
+  <tr><th>Recipient</th><td>Open Food Facts, for product data (<code>world.openfoodfacts.org</code>), search (<code>search.openfoodfacts.org</code>, or <code>world.openfoodfacts.org</code> if that service does not answer) and product photos (<code>images.openfoodfacts.org</code> or <code>static.openfoodfacts.org</code>; for search results, also Open Food Facts&rsquo; image archive at <code>openfoodfacts-images.s3.eu-west-3.amazonaws.com</code>, which runs on Amazon Web Services infrastructure, Amazon S3)</td></tr>
+  <tr><th>When</th><td>Product data: only when you scan or enter a barcode not already saved on your device. Photos: when that lookup returns a product that has a photo, and for each result shown while you search by name. Some search-result photos are served from Open Food Facts&rsquo; Amazon S3-hosted image archive: the app uses the archive only when it can tell the archived photo is the same, unedited picture, and otherwise &mdash; or when the archive does not have it &mdash; uses Open Food Facts&rsquo; own image host. The app checks every photo address and will not load an image from any other host. Search text: while you search by name &mdash; once you have typed at least three characters and paused for about a third of a second, or when you press the search action. Fewer than three characters are never sent</td></tr>
   <tr><th>What is sent</th><td>The barcode number and a User-Agent identifying the app and version (product lookup); a standard image request with no additional data attached (photo); the search words, plus the list of languages whose product names should be searched (search). That list starts with Turkish when your phone&rsquo;s language is Turkish, so it can reveal that setting. Your phone&rsquo;s region is used only on the device, to order the results, and is not sent</td></tr>
   <tr><th>What Just the Carbs does not attach</th><td>An account/user ID, advertising ID, your portions, results, history, or verified values. The recipient still receives normal network metadata such as IP address</td></tr>
   <tr><th>Transport</th><td>HTTPS only; cleartext traffic is disabled at the platform level</td></tr>
@@ -92,7 +94,10 @@
 <p>
   Open Food Facts is an independent organisation and will receive your IP address as an unavoidable
   part of any internet request; their handling of that is governed by their own privacy policy. A
-  cached product &mdash; and an already-loaded photo &mdash; is served with no network request at all.
+  search-result photo served from Open Food Facts&rsquo; image archive travels over Amazon Web
+  Services infrastructure, so Amazon Web Services, which operates that storage for Open Food Facts,
+  also receives that request&rsquo;s network metadata, such as your IP address. A cached product
+  &mdash; and an already-loaded photo &mdash; is served with no network request at all.
 </p>
 
 <h2>Camera</h2>

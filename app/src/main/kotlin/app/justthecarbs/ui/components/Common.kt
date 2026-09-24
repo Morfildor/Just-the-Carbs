@@ -351,7 +351,7 @@ fun SearchResultRow(hit: ProductSearchHit, onClick: () -> Unit, modifier: Modifi
         val nameEm = with(LocalDensity.current) { MaterialTheme.typography.titleMedium.fontSize.toDp() }
         val figureBelow = textColumnWidth < nameEm * FIGURE_BESIDE_MIN_NAME_EMS
         Row(verticalAlignment = Alignment.CenterVertically) {
-            SearchThumbnail(imageUrl = hit.imageUrl, name = hit.name)
+            SearchThumbnail(imageUrl = hit.imageUrl, archiveImageUrl = hit.archiveImageUrl, name = hit.name)
             Spacer(Modifier.width(Space.m))
 
             Column(modifier = Modifier.weight(1f)) {

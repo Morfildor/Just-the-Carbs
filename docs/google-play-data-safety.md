@@ -1,6 +1,6 @@
 # Google Play Data Safety — proposed answers
 
-**Draft for owner review; nothing submitted. Evidence date: 2026-08-14.**
+**Draft for owner review; nothing submitted. Evidence date: 2026-08-14; image archive added 2026-09-23.**
 
 Google defines collection as transmitting user data off-device, including transmission by an SDK.
 It explicitly says ephemeral processing must still be included in the form response. Its data-type
@@ -36,7 +36,7 @@ submission; Google notes that final categorization can depend on the developer's
 | App activity → App interactions | **Yes** | No | Required when ML Kit features are used | Analytics | ML Kit lists feature initialization, detection, model download, resource release, and other event types as collected for diagnostics and usage analytics. |
 | App info and performance → Diagnostics | **Yes** | No | Required when ML Kit features are used | Analytics | ML Kit lists device/app information, performance metrics, API configuration, input/output size, feature version, and error codes. |
 | Device or other IDs | **Yes** | No | Required when ML Kit features are used | Analytics | For bundled features, ML Kit lists per-installation identifiers not intended to uniquely identify a user or physical device. |
-| Approximate location | **Owner confirmation required; declare Yes conservatively if request IP is retained/used to infer location** | Proposed No under user action/service handling | Network features optional | App functionality / security | Open Food Facts and Google necessarily receive a network address, but no fetched primary Open Food Facts source established retention or location inference. Google says location inferred from IP belongs here. Record the service evidence used for the final answer. |
+| Approximate location | **Owner confirmation required; declare Yes conservatively if request IP is retained/used to infer location** | Proposed No under user action/service handling | Network features optional | App functionality / security | Open Food Facts and Google necessarily receive a network address (and, for search-result photos served from Open Food Facts' S3 image archive since 2026-09-23, Amazon Web Services, which operates that storage for Open Food Facts), but no fetched primary Open Food Facts source established retention or location inference. Google says location inferred from IP belongs here. Record the service evidence used for the final answer. |
 | Health info / fitness info | **No** | No | — | — | No health data is transmitted. Product carbohydrate facts and local portion calculations are not sent as a user health record. |
 | Photos and videos | **No** | No | — | — | Live camera frames are processed in memory. An explicit nutrition-label capture writes one temporary JPEG to the app's **private cache** for on-device OCR and deletes it immediately after processing (`LabelScannerScreen` capture path, `LabelAnalyzer` delete calls) — it is never uploaded, never retained, and never written anywhere another app or the gallery can see. The declaration stays **No** because nothing is *collected* (transmitted off-device) or *shared*, which is what this table asks; the note previously said "the app saves/uploads no camera image", which was accurate about uploading and wrong about saving. Product images are downloaded, not uploaded user photos. |
 | Name, email, user IDs | **No** | No | — | — | No account. The identifying User-Agent contains the developer support email, not a user's email. |
@@ -63,10 +63,13 @@ those results. The owner should preserve screenshots of that disclosure and the 
 | `https://world.openfoodfacts.org/api/v3/product/{barcode}` | Uncached barcode lookup | Barcode; app/version/developer-contact User-Agent; normal network metadata |
 | `https://search.openfoodfacts.org/search` (POST), falling back to `https://world.openfoodfacts.org/cgi/search.pl` | User searches by name; ≥3 characters, sent 350 ms after typing pauses or on the search action | Search words; the list of name languages to search (Turkish first on a Turkish-language phone, which can reveal that setting); User-Agent; normal network metadata. The phone's region orders results on the device and is not sent. Updated 2026-09-17 for `1.0.7`: no new Data Safety data type — the language list travels inside the already-declared search request |
 | `https://images.openfoodfacts.org/...` or `https://static.openfoodfacts.org/...` | A returned product has an allowlisted HTTPS image URL | Standard image request; User-Agent; normal network metadata |
+| `https://openfoodfacts-images.s3.eu-west-3.amazonaws.com/data/.../<n>.400.jpg` (Open Food Facts' image archive on Amazon S3, "Managed By Open Food Facts" on the AWS Open Data Registry) | A search result's front photo is the unedited upload (no crop, rotation or recolouring), added 2026-09-23 for speed; any failure falls back to the row above | Standard image request; User-Agent; normal network metadata, received by Amazon Web Services as the storage operator. No new Data Safety data type: nothing about the user is added to the request |
 | Google ML Kit endpoints | SDK diagnostics/maintenance behavior | Data types listed by Google's ML Kit disclosure; not camera input or recognized result |
 
-`ProductImageUrlValidator` permits only HTTPS and the two exact Open Food Facts image hosts. Retrofit
-and Coil use the same `OkHttpClient`. No developer endpoint, account server, analytics service, ad
+`ProductImageUrlValidator` permits only HTTPS and the two exact Open Food Facts image hosts, plus,
+for search-result thumbnails only, the archive host with a `/data/<folder>/<n>.400.jpg` path and
+nothing else (`validateArchive`). Coil's client is derived from Retrofit's `OkHttpClient` and shares
+its User-Agent and connection pool. No developer endpoint, account server, analytics service, ad
 network, or cloud sync exists.
 
 ## Permissions in the merged release manifest

@@ -106,8 +106,9 @@ interface SearchALiciousApi {
          *
          * The full hit carries ~40 keys including `ecoscore_data`, `nutriscore_data`,
          * `ingredients_tags` and an `images` map — measured at ~13 KB per hit, none of which a
-         * result card reads. Requesting only the nine fields the card uses is what keeps live search
-         * light enough to run on every settled keystroke.
+         * result card reads. Requesting only the fields the card uses is what keeps live search
+         * light enough to run on every settled keystroke. `images` was added back on 2026-09-23,
+         * for the thumbnail's archive address only (see the comment on it below).
          *
          * `product_quantity_unit` is deliberately **not** requested: it is not in this index, and
          * asking for it returns nothing rather than failing, so listing it would read as though the
@@ -138,6 +139,11 @@ interface SearchALiciousApi {
             // Ordering only, never shown: where the product is sold, and how many people scan it.
             "countries_tags",
             "unique_scans_n",
+            // The front photo's number and edits, for its address in Open Food Facts' S3 archive
+            // (OpenFoodFactsImageArchive). The service cannot return part of this object, so it
+            // costs 40 to 110 KB per 50-hit page (measured 2026-09-23); accepted because the
+            // archive answers in about 0.1 s where the image host took 4 to 34 s to connect.
+            "images",
         )
     }
 }
@@ -158,7 +164,7 @@ interface SearchALiciousApi {
  * would serialise to `{"q":"…"}` alone and the **server's** defaults would silently apply:
  * `page_size` 10 instead of 20, `langs` `["en"]` instead of `["nl","en"]` — which is what makes
  * `product_name_nl` appear at all, so Dutch recall would have collapsed — and no `fields` filter,
- * pulling ~13 KB per hit of `ecoscore_data`/`nutriscore_data`/`images` the app never reads.
+ * pulling ~13 KB per hit of `ecoscore_data`/`nutriscore_data` the app never reads.
  *
  * That failure is entirely invisible: every request still succeeds and still returns products. It
  * was caught by `the request asks for the measured fields and languages`, which asserts the body

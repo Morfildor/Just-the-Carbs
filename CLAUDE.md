@@ -51,7 +51,100 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
-## Meal staleness, meal-line edit, stored products in search (2026-09-23, latest) — still 1.0.8
+## Search photos from Open Food Facts' S3 archive (2026-09-23, latest) — still 1.0.8
+
+Same branch as the next section (`meal-search-patch-2026-09-23`), its own commit, pushed, **not merged**.
+Owner-approved: "photos are very important for search; packaging is the top deciding factor".
+Scope is **search rows only**; the calculator and Recents still load from Open Food Facts' own host.
+No schema, ranking, result-semantics or calculator change.
+
+- **Why.** `images.openfoodfacts.org` (one server, `ks1`, HTTP/1.1) took 4 to 34 s to open a
+  connection and 0.2 to 3.6 s per photo on an open one, while the product API answered in 0.15 s.
+  `static.` and `world.openfoodfacts.org/images/...` only redirect to it. Open Food Facts' own
+  archive on S3 answered in 0.12 s median, 0.17 s worst, and held every front photo of 100 results.
+- **The archive** (`openfoodfacts-images.s3.eu-west-3.amazonaws.com`, "Managed By Open Food Facts"
+  on the AWS Open Data Registry, CC BY-SA, synced **monthly**, "some recent images are likely
+  missing" per its docs) holds **uploads**: `data/<folder>/<imgid>.400.jpg`, never the selected
+  `front_xx.<rev>` pictures. So `OpenFoodFactsImageArchive.urlFor(code, frontUrl, images)` builds an
+  address only when the front picture is the upload unmodified: the `images` entry named by the
+  front URL's key, `rev` equal to the URL's, `angle` absent or 0, `geometry` absent or `0x0…`,
+  `x1..y2` absent, -1 or 0, `normalize` and `white_magic` off, **and the upload's own entry present
+  with the same `sizes.400`**. 483 of 622 fronts (78%) across 15 searches; 39 of 40 sampled pairs
+  matched to within JPEG noise (0.13 to 4.65 of 255), the 40th's own Open Food Facts URL a 404.
+- **The size check is the one that matters most, found by the benchmark, not by tests.** The first
+  rule trusted `angle` and `geometry`, and the emulator showed Machandel tomatensoep (8713938000357)
+  sideways: its 400x300 upload is shown by Open Food Facts as 300x400, with no `angle` field at all.
+  Measuring every accepted photo then found 23 of 508 whose shown size differed from the upload's,
+  including the fixture's own "eligible" Nutella 825 g (3017620429484: 400x400 trimmed to 372x400,
+  `geometry` `0x0--3--3`). **Do not drop the size comparison as redundant.** Residual risk: a 180°
+  rotation the index does not record keeps the size and cannot be detected; not seen in any sample.
+- **Folder trap.** The archive folder is Open Food Facts' raw `code` **padded to 13 digits**, split
+  3/3/3/rest. The image host uses the bare code for short barcodes (`80809180/front_en.96.400.jpg`)
+  and the archive 404s there, so the folder cannot be taken from the photo URL. Nor from the app's
+  normalised barcode, which adds or drops a leading zero (UPC-A, GTIN-14).
+- **Crop trap.** A cropped front can have every coordinate empty; only `geometry`
+  (`1405x2015-291-207`) shows it. Numbers arrive as strings or numbers (`"409"`, `49`, `90.0`).
+- **Cost, accepted by the owner:** `images` cannot be requested in part, so each 50-hit search reply
+  grows by 40 to 110 KB and 0.05 to 0.25 s (workstation estimate). **On the emulator it measured
+  more**: `JtcSearch` `primary start` → `primary OK` (request, transfer and parse), 10 queries
+  alternating builds, median 1.11 s → 1.35 s; paired difference median **+0.24 s**, mean +0.35 s,
+  range +0.04 to +1.06 s. Whether transfer or parsing the `JsonObject` dominates is not measured.
+- **Code:** `ProductSearchHit.archiveImageUrl` (default null; only Search-a-licious sets it, the
+  legacy provider is not asked for `images`). `ProductImageUrlValidator.validateArchive` accepts
+  exactly that host and `/data/\d{3}/\d{3}/\d{3}/\d{4,5}/\d+.400.jpg`, nothing added; `validate()`
+  never accepts the archive. `LooseJsonObject` reads `images` so an unexpected shape gives no
+  archive address instead of a malformed search. `SearchThumbnail` loads the archive first and, on
+  any error, Open Food Facts' own address once. Search rows (both providers) now prefer the 200 px
+  picture. `NetworkModule.imageHttpClient` has its own dispatcher at 10 requests per host, which
+  applies to every photo in the app; product lookups keep 5.
+- **Tests:** `OpenFoodFactsImageArchiveTest` (17), `ProductImageUrlValidatorTest` (+4),
+  `SearchALiciousDataSourceTest` (+4, a captured live reply in
+  `test/resources/search/archive/searchalicious-images.json` covering each case),
+  `OpenFoodFactsSearchTest` (+1), `ImageHttpClientTest` (+1), instrumented
+  `SearchThumbnailArchiveTest` (5: archive shown, fallback once, no archive, lookalike never asked,
+  both failing). Its tile is **centred** in the window: at top-left the system-bar scrim reads black
+  and every pixel wait timed out on the first run.
+- **Verified:** JVM **2234/2234** (0 skipped, `--rerun-tasks`, 228 XML files); lint **0 errors,
+  30 warnings** (unchanged); search/Home/image classes **131/131 at 1080x2400 and 131/131 at
+  `wm size 320x640` / `wm density 160`** (run before the size check, which is data-layer only; the
+  thumbnail code did not change after it). Negative controls, each restored and hash-checked: host
+  check, product rule accepting the archive, 400 px preference, strict `images` parsing and the shared
+  dispatcher, then on the final rule geometry, rotation, filter, size, revision and padding: 11 of 11
+  fail their tests; the fallback removed fails 2 instrumented tests.
+- **Benchmark (emulator, before vs after).** `before.apk` = the debug build without this change,
+  `after.apk` = this tree; each run installs, force-stops, deletes `cache/coil3_disk_cache`,
+  launches, types the query on Home, presses Back, then takes raw screenshots for 45 s (about one
+  frame per 0.6 s, so times are ±0.6 s) and times each tile from the first frame showing results to
+  the first frame it is no longer the initials plate. 10 queries (pindakaas, yoghurt, muesli, pasta,
+  chips, koffie, rijst, appelsap, ontbijtkoek, tomatensoep), build order alternating, 73 rows per
+  build. Final rule, 2026-09-23 around 23:40:
+
+  | | before | after |
+  |---|---|---|
+  | median, after the list appears | 6.3 s | **1.6 s** |
+  | p90 / max | 10.0 / 14.2 s | 8.7 / 18.4 s |
+  | photo within 3 s of the list | 17 of 73 | **52 of 73** |
+  | median from pressing search | 8.4 s | **4.0 s** |
+  | still initials at 45 s | 7 | 6 |
+
+  **The tail did not improve and cannot with this design**: 15 of 67 photos (22%) still took over
+  3 s, the same share as the fronts the rule refuses (78% eligible), and those load from the slow
+  host on a cold connection, since the rest no longer warm one. Six of the plates at 45 s are the
+  same rows in both builds (products with no front photo, e.g. Unox's `KT`); the old build's
+  seventh is a pindakaas photo that had not arrived. **The first two runs (same method, 20 runs)
+  used the rule without the size check** and looked better (p90 2.0 s against the old build's
+  9.7 s) because it sent more photos to the archive; the benchmark's end screenshot is what showed
+  Machandel tomatensoep sideways. On the final rule all 66 photo tiles present in both builds' end
+  screens show the same picture (pixel-compared; two ontbijtkoek tiles differ only in sharpness,
+  400 px source against 200 px). The host's speed moves the absolute figures a lot (the old build's
+  median was 2.9 s in the first runs, 6.3 s in the final one); only same-run comparisons count.
+  Scripts were throwaway (session scratchpad), not committed.
+- **Docs:** privacy policy `.md` and `.html` name the archive and Amazon Web Services (the live
+  page changes only when pushed, which is the owner's call); Data Safety draft network inventory;
+  CHANGELOG 1.0.8 *Changed* and the Play notes draft.
+- **Not verified:** a physical device, a mobile network, the release (R8) build.
+
+## Meal staleness, meal-line edit, stored products in search (2026-09-23) — still 1.0.8
 
 Branch `meal-search-patch-2026-09-23` off `c31818a`, committed and pushed, **not merged**. Roadmap and the corrections
 to it: `docs/plans/2026-09-23-ux-usefulness-review-and-plan.md` (Status section). No schema,

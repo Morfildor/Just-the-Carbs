@@ -1,0 +1,539 @@
+{
+ "count": 8,
+ "page": 1,
+ "page_size": 8,
+ "timed_out": false,
+ "hits": [
+  {
+   "code": "8000500392935",
+   "brands": [
+    "Nutella",
+    "Ferrero"
+   ],
+   "quantity": "172 g (2 x 86 g)",
+   "unique_scans_n": 9,
+   "images": {
+    "front_de": {
+     "angle": 0,
+     "coordinates_image_size": "full",
+     "geometry": "0x0--1--1",
+     "imgid": "19",
+     "normalize": null,
+     "rev": "74",
+     "sizes": {
+      "100": {
+       "h": 62,
+       "w": 100
+      },
+      "200": {
+       "h": 124,
+       "w": 200
+      },
+      "400": {
+       "h": 248,
+       "w": 400
+      },
+      "full": {
+       "h": 1906,
+       "w": 3072
+      }
+     },
+     "white_magic": null,
+     "x1": "-1",
+     "x2": "-1",
+     "y1": "-1",
+     "y2": "-1"
+    },
+    "19": {
+     "sizes": {
+      "100": {
+       "h": 62,
+       "w": 100
+      },
+      "400": {
+       "h": 248,
+       "w": 400
+      },
+      "full": {
+       "h": 1906,
+       "w": 3072
+      }
+     },
+     "uploaded_t": 1730775786,
+     "uploader": "professordoc"
+    }
+   },
+   "nutriments": {
+    "carbohydrates_100g": 51,
+    "energy-kcal_100g": 409,
+    "energy-kj_100g": 1710,
+    "fat_100g": 19.9,
+    "proteins_100g": 6.05,
+    "salt_100g": 0.596,
+    "saturated-fat_100g": 8.49,
+    "sodium_100g": 0.238,
+    "sugars_100g": 33.5
+   },
+   "product_name": "Nutella-Muffin",
+   "image_front_url": "https://images.openfoodfacts.org/images/products/800/050/039/2935/front_de.74.400.jpg",
+   "image_front_small_url": "https://images.openfoodfacts.org/images/products/800/050/039/2935/front_de.74.200.jpg"
+  },
+  {
+   "code": "80809180",
+   "brands": [
+    "Ferrero",
+    " Nutella",
+    " Ferrero Nutella",
+    " Ferrero Nutella Ferrero Nutella",
+    " Ferrero Nutella Ferrero Nutella Ferrero Nutella Ferrero Nutella"
+   ],
+   "quantity": "25g",
+   "unique_scans_n": 57,
+   "images": {
+    "front_en": {
+     "angle": 0,
+     "coordinates_image_size": "full",
+     "geometry": "0x0--1--1",
+     "imgid": "14",
+     "normalize": null,
+     "rev": "96",
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 55
+      },
+      "200": {
+       "h": 200,
+       "w": 110
+      },
+      "400": {
+       "h": 400,
+       "w": 220
+      },
+      "full": {
+       "h": 4080,
+       "w": 2240
+      }
+     },
+     "white_magic": null,
+     "x1": "-1",
+     "x2": "-1",
+     "y1": "-1",
+     "y2": "-1"
+    },
+    "14": {
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 55
+      },
+      "400": {
+       "h": 400,
+       "w": 220
+      },
+      "full": {
+       "h": 4080,
+       "w": 2240
+      }
+     },
+     "uploaded_t": 1692717709,
+     "uploader": "foodless"
+    }
+   },
+   "nutriments": {
+    "carbohydrates_100g": 57.5,
+    "energy-kcal_100g": 539,
+    "energy-kj_100g": 2252,
+    "fat_100g": 30.9,
+    "fiber_100g": 0,
+    "proteins_100g": 6.3,
+    "salt_100g": 0.11,
+    "saturated-fat_100g": 10.6,
+    "sodium_100g": 0.044,
+    "sugars_100g": 56.3
+   },
+   "product_name": "deko Nutella",
+   "image_front_url": "https://images.openfoodfacts.org/images/products/80809180/front_en.96.400.jpg",
+   "image_front_small_url": "https://images.openfoodfacts.org/images/products/80809180/front_en.96.200.jpg"
+  },
+  {
+   "code": "3017620429484",
+   "brands": [
+    "FerreroNutella"
+   ],
+   "quantity": "825 g",
+   "unique_scans_n": 464,
+   "images": {
+    "front_fr": {
+     "angle": 0,
+     "coordinates_image_size": "400",
+     "geometry": "0x0--3--3",
+     "imgid": "149",
+     "normalize": "false",
+     "rev": "409",
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 93
+      },
+      "200": {
+       "h": 200,
+       "w": 186
+      },
+      "400": {
+       "h": 400,
+       "w": 372
+      },
+      "full": {
+       "h": 1256,
+       "w": 1168
+      }
+     },
+     "white_magic": "false",
+     "x1": "-1",
+     "x2": "-1",
+     "y1": "-1",
+     "y2": "-1"
+    },
+    "149": {
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 100
+      },
+      "400": {
+       "h": 400,
+       "w": 400
+      },
+      "full": {
+       "h": 1500,
+       "w": 1500
+      }
+     },
+     "uploaded_t": 1730778362,
+     "uploader": "org-ferrero-france-commerciale"
+    }
+   },
+   "nutriments": {
+    "carbohydrates_100g": 57.5,
+    "energy-kcal_100g": 539,
+    "energy-kj_100g": 2252,
+    "fat_100g": 30.9,
+    "proteins_100g": 6.3,
+    "salt_100g": 0.107,
+    "saturated-fat_100g": 10.6,
+    "sodium_100g": 0.0428,
+    "sugars_100g": 56.3
+   },
+   "product_name": "Nutella",
+   "product_name_nl": "Nutella Hazelnootpasta",
+   "image_front_url": "https://images.openfoodfacts.org/images/products/301/762/042/9484/front_fr.409.400.jpg",
+   "image_front_small_url": "https://images.openfoodfacts.org/images/products/301/762/042/9484/front_fr.409.200.jpg"
+  },
+  {
+   "code": "8713938000357",
+   "brands": [
+    "Machandel"
+   ],
+   "quantity": "680 g",
+   "images": {
+    "front_nl": {
+     "geometry": "0x0-0-0",
+     "imgid": "2",
+     "normalize": "false",
+     "rev": "6",
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 75
+      },
+      "200": {
+       "h": 200,
+       "w": 150
+      },
+      "400": {
+       "h": 400,
+       "w": 300
+      },
+      "full": {
+       "h": 408,
+       "w": 306
+      }
+     },
+     "white_magic": "false"
+    },
+    "2": {
+     "sizes": {
+      "100": {
+       "h": 75,
+       "w": 100
+      },
+      "400": {
+       "h": 300,
+       "w": 400
+      },
+      "full": {
+       "h": 306,
+       "w": 408
+      }
+     },
+     "uploaded_t": "1464532673",
+     "uploader": "openfoodfacts-contributors"
+    }
+   },
+   "nutriments": {
+    "carbohydrates_100g": 10.5,
+    "energy-kj_100g": 201,
+    "fat_100g": 0.2,
+    "fiber_100g": 0.6,
+    "proteins_100g": 0.7,
+    "salt_100g": 0.7,
+    "saturated-fat_100g": 0,
+    "sodium_100g": 0.28,
+    "sugars_100g": 2.7
+   },
+   "product_name": "Machandel tomatensoep",
+   "product_name_nl": "Machandel tomatensoep",
+   "image_front_url": "https://images.openfoodfacts.org/images/products/871/393/800/0357/front_nl.6.400.jpg",
+   "image_front_small_url": "https://images.openfoodfacts.org/images/products/871/393/800/0357/front_nl.6.200.jpg"
+  },
+  {
+   "code": "80051428",
+   "brands": [
+    "Ferrero",
+    "Nutella"
+   ],
+   "quantity": "825 g",
+   "unique_scans_n": 2,
+   "images": {
+    "front": {
+     "geometry": "1405x2015-291-207",
+     "imgid": "1",
+     "normalize": null,
+     "rev": "10",
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 70
+      },
+      "200": {
+       "h": 200,
+       "w": 139
+      },
+      "400": {
+       "h": 400,
+       "w": 279
+      },
+      "full": {
+       "h": 2015,
+       "w": 1405
+      }
+     },
+     "white_magic": null
+    },
+    "1": {
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 75
+      },
+      "400": {
+       "h": 400,
+       "w": 299
+      },
+      "full": {
+       "h": 2592,
+       "w": 1936
+      }
+     },
+     "uploaded_t": 1366371604,
+     "uploader": "openfoodfacts-contributors"
+    }
+   },
+   "nutriments": {
+    "carbohydrates_100g": 57.3,
+    "energy-kcal_100g": 544,
+    "energy-kj_100g": 2278,
+    "fat_100g": 31.6,
+    "fiber_100g": 3.4,
+    "proteins_100g": 6,
+    "salt_100g": 0.09398,
+    "saturated-fat_100g": 10.9,
+    "sodium_100g": 0.037592,
+    "sugars_100g": 56.7
+   },
+   "product_name": "Nutella",
+   "image_front_url": "https://images.openfoodfacts.org/images/products/80051428/front.10.400.jpg",
+   "image_front_small_url": "https://images.openfoodfacts.org/images/products/80051428/front.10.200.jpg"
+  },
+  {
+   "code": "80177425",
+   "brands": [
+    "Ferrero"
+   ],
+   "quantity": "180g",
+   "unique_scans_n": 24,
+   "images": {
+    "front_en": {
+     "angle": 90.0,
+     "rev": 49,
+     "x1": null,
+     "coordinates_image_size": 400,
+     "x2": null,
+     "geometry": "0x0-0-0",
+     "y1": null,
+     "sizes": {
+      "200": {
+       "h": 200,
+       "w": 150
+      },
+      "100": {
+       "h": 100,
+       "w": 75
+      },
+      "400": {
+       "w": 300,
+       "h": 400
+      },
+      "full": {
+       "h": 2576,
+       "w": 1932
+      }
+     },
+     "imgid": "8",
+     "white_magic": null,
+     "normalize": null,
+     "y2": null
+    },
+    "8": {
+     "uploader": "waistline-app",
+     "sizes": {
+      "100": {
+       "w": 100,
+       "h": 75
+      },
+      "full": {
+       "h": 1932,
+       "w": 2576
+      },
+      "400": {
+       "h": 300,
+       "w": 400
+      }
+     },
+     "uploaded_t": 1699945633
+    }
+   },
+   "nutriments": {
+    "proteins_100g": 6.3,
+    "carbohydrates_100g": 57.5,
+    "salt_100g": 0.105,
+    "fiber_100g": 3,
+    "sugars_100g": 56.3,
+    "fat_100g": 30.9,
+    "sodium_100g": 0.042,
+    "saturated-fat_100g": 10.6,
+    "energy-kcal_100g": 533
+   },
+   "product_name": "Nutella",
+   "image_front_url": "https://images.openfoodfacts.org/images/products/80177425/front_en.49.400.jpg",
+   "image_front_small_url": "https://images.openfoodfacts.org/images/products/80177425/front_en.49.200.jpg"
+  },
+  {
+   "code": "8710624223885",
+   "brands": [
+    "Gwoon"
+   ],
+   "quantity": "400g",
+   "unique_scans_n": 1,
+   "images": {
+    "front_nl": {
+     "angle": "0",
+     "coordinates_image_size": "full",
+     "geometry": "0x0-0-0",
+     "imgid": "1",
+     "normalize": "true",
+     "rev": "9",
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 59
+      },
+      "200": {
+       "h": 200,
+       "w": 118
+      },
+      "400": {
+       "h": 400,
+       "w": 236
+      },
+      "full": {
+       "h": 3990,
+       "w": 2358
+      }
+     },
+     "white_magic": "false",
+     "x1": "0",
+     "x2": "0",
+     "y1": "0",
+     "y2": "0"
+    },
+    "1": {
+     "sizes": {
+      "100": {
+       "h": 100,
+       "w": 59
+      },
+      "400": {
+       "h": 400,
+       "w": 236
+      },
+      "full": {
+       "h": 3990,
+       "w": 2358
+      }
+     },
+     "uploaded_t": 1547985145,
+     "uploader": "openfoodfacts-contributors"
+    }
+   },
+   "nutriments": {
+    "carbohydrates_100g": 77,
+    "energy-kcal_100g": 477,
+    "fat_100g": 17,
+    "fiber_100g": 0.5,
+    "proteins_100g": 3.7,
+    "salt_100g": 0.15,
+    "saturated-fat_100g": 2,
+    "sodium_100g": 0.06,
+    "sugars_100g": 77
+   },
+   "product_name": "Gekleurde hagelslag met jammies",
+   "product_name_nl": "Gekleurde hagelslag met jammies",
+   "image_front_url": "https://images.openfoodfacts.org/images/products/871/062/422/3885/front_nl.9.400.jpg",
+   "image_front_small_url": "https://images.openfoodfacts.org/images/products/871/062/422/3885/front_nl.9.200.jpg"
+  },
+  {
+   "code": "3017624047509",
+   "brands": [
+    "Nutella",
+    "ferrero"
+   ],
+   "quantity": "750g",
+   "unique_scans_n": 2,
+   "images": {},
+   "nutriments": {
+    "fiber_100g": 4,
+    "fat_100g": 31,
+    "salt_100g": 0.03,
+    "saturated-fat_100g": 10,
+    "sodium_100g": 0.012,
+    "energy-kcal_100g": 530,
+    "proteins_100g": 6.8,
+    "carbohydrates_100g": 56,
+    "sugars_100g": 55
+   },
+   "product_name": "Nutella"
+  }
+ ]
+}

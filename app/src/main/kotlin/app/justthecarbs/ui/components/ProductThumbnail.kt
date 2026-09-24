@@ -114,17 +114,26 @@ fun ProductThumbnail(
  * The URL is validated by the identical [ProductImageUrlValidator] rule, not a relaxed one: a
  * search result is *more* untrusted than a cached product, not less, since nothing about it has
  * been through a lookup yet.
+ *
+ * [archiveImageUrl], when the result has one, is tried first: Open Food Facts' S3 archive answered
+ * in about 0.1 s where its image host took 4 to 34 s to open a connection (2026-09-23). If the
+ * archive fails for any reason (a photo newer than the archive, a network error) the tile loads
+ * [imageUrl] instead, once. The archive address passes its own, stricter rule.
  */
 @Composable
 fun SearchThumbnail(
     imageUrl: String?,
+    archiveImageUrl: String?,
     name: String,
     modifier: Modifier = Modifier,
     size: Dp = Space.thumbnail,
 ) {
     val shape = RoundedCornerShape(Space.cardRadius)
     val safeImageUrl = remember(imageUrl) { ProductImageUrlValidator.validate(imageUrl) }
-    var imageLoaded by remember(safeImageUrl) { mutableStateOf(false) }
+    val safeArchiveUrl = remember(archiveImageUrl) { ProductImageUrlValidator.validateArchive(archiveImageUrl) }
+    var archiveFailed by remember(safeArchiveUrl) { mutableStateOf(false) }
+    val photoUrl = safeArchiveUrl?.takeUnless { archiveFailed } ?: safeImageUrl
+    var imageLoaded by remember(photoUrl) { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -153,15 +162,16 @@ fun SearchThumbnail(
             }
         }
 
-        if (safeImageUrl != null) {
+        if (photoUrl != null) {
             AsyncImage(
                 model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                    .data(safeImageUrl)
+                    .data(photoUrl)
                     .crossfade(Motion.STANDARD_MS)
                     .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 onSuccess = { imageLoaded = true },
+                onError = { if (photoUrl == safeArchiveUrl) archiveFailed = true },
                 modifier = Modifier.size(size).clip(shape),
             )
         }
