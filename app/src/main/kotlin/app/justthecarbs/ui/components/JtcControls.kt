@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -123,6 +124,11 @@ fun JtcValueButton(
      * container", so the row says which one the field holds without a second indicator.
      */
     selected: Boolean? = null,
+    /**
+     * What TalkBack says in place of [text], for a label that is clear on screen but bare when
+     * spoken alone (`65 g`, `¼ pack`). Null speaks the label itself. The visible text is unchanged.
+     */
+    contentDescription: String? = null,
 ) {
     val shape = RoundedCornerShape(Space.buttonRadius)
     val isSelected = selected == true
@@ -173,6 +179,13 @@ fun JtcValueButton(
             // announced as a state of that button.
             .then(if (enabled) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .then(if (selected != null) Modifier.semantics { this.selected = selected } else Modifier)
+            .then(
+                if (contentDescription != null) {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                } else {
+                    Modifier
+                },
+            )
             .padding(horizontal = Space.s + Space.xs, vertical = Space.s),
         contentAlignment = Alignment.Center,
     ) {

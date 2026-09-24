@@ -69,6 +69,7 @@ import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
 import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
+import app.justthecarbs.ui.theme.Motion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -1308,6 +1309,53 @@ class ProductScreenTest {
     }
 
     private fun string(id: Int) = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
+
+    /**
+     * The calculator fades in over the loading screen instead of replacing it in one frame: a
+     * lookup that lands is a change of state the eye should see arrive, not a jump. Both are present
+     * part-way through, and the loading screen is gone once the transition ends.
+     */
+    @Test
+    fun theCalculatorFadesInOverTheLoadingScreenRatherThanCuttingToIt() {
+        var loaded by mutableStateOf(false)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            JustTheCarbsTheme {
+                ProductScreen(
+                    state = if (loaded) {
+                        ProductUiState(loading = false, product = product(), barcode = "8712100849060")
+                    } else {
+                        ProductUiState(loading = true, barcode = "8712100849060")
+                    },
+                    settings = AppSettings(),
+                    onPortionChanged = {},
+                    onSetPortion = {},
+                    onToggleFavorite = {},
+                    onBack = {},
+                    onVerify = {},
+                    onDismissVerify = {},
+                    onConfirmVerification = { _, _, _ -> },
+                    onResetOnline = {},
+                    onScanLabel = {},
+                    onEnterManually = {},
+                    onRetry = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText(string(R.string.product_finding)).assertExists()
+
+        loaded = true
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(Motion.QUICK_MS / 2L)
+        compose.onNodeWithText(string(R.string.product_finding)).assertExists()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertExists()
+
+        compose.mainClock.advanceTimeBy(Motion.STANDARD_MS.toLong())
+        compose.onNodeWithText(string(R.string.product_finding)).assertDoesNotExist()
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertExists()
+    }
+
 
     /**
      * Regression for the portion-field append defect (2026-09-24 UX review, seen on the emulator).

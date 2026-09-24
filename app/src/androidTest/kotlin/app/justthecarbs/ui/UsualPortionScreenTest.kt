@@ -284,4 +284,31 @@ class UsualPortionScreenTest {
         compose.onNodeWithText("45 g").assertIsDisplayed()
         compose.onNodeWithText("60 g").assertIsDisplayed()
     }
+
+    /**
+     * A bare "65 g" says nothing about what the button does. TalkBack hears that it is the usual
+     * portion to use; the visible label is unchanged.
+     */
+    @Test
+    fun aUsualShortcutTellsAScreenReaderWhatItIs() {
+        showWithUsual(listOf(usage("65")))
+
+        compose.onNodeWithText("65 g").assertContentDescriptionEquals(
+            InstrumentationRegistry.getInstrumentation().targetContext
+                .getString(app.justthecarbs.R.string.product_usual_description, "65 g"),
+        )
+    }
+
+    @Test
+    fun aCountableUsualShortcutSpeaksItsOwnWords() {
+        showWithUsual(
+            usuals = listOf(usage("2", mode = InputMode.PORTION_UNIT, unitId = 7)),
+            units = listOf(sliceUnit()),
+        )
+
+        compose.onNodeWithText("2 slices").assertContentDescriptionEquals(
+            InstrumentationRegistry.getInstrumentation().targetContext
+                .getString(app.justthecarbs.R.string.product_usual_description, "2 slices"),
+        )
+    }
 }

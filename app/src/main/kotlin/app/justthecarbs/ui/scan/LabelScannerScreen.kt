@@ -83,6 +83,7 @@ import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.domain.PortionConversion
 import app.justthecarbs.domain.PortionUnitKind
+import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ServingDescriptor
 import app.justthecarbs.ocr.CaptureEvidenceCoordinator
 import app.justthecarbs.ocr.CarbCandidate
@@ -133,6 +134,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
@@ -1635,6 +1637,7 @@ private fun LabelCamera(
                     )
                 },
                 onRetake = ::resumeLive,
+                onClose = onClose,
             )
 
             scaleProposal != null -> VerificationScreen(
@@ -1680,6 +1683,7 @@ private fun LabelCamera(
                     )
                 },
                 onRetake = ::resumeLive,
+                onClose = onClose,
             )
 
             conflict != null -> ConflictScreen(
@@ -1695,6 +1699,7 @@ private fun LabelCamera(
                     )
                 },
                 onRetake = ::resumeLive,
+                onClose = onClose,
             )
 
             else -> CropConfirmationScreen(
@@ -2283,6 +2288,16 @@ private fun DetectedValue(display: String, basisLabel: String?, nutrientLabel: S
     }
 }
 
+/**
+ * The figure a scanner candidate shows, which is exactly the figure Confirm or Correct will carry.
+ *
+ * [ResultFormatter.editable], not [ResultFormatter.quantity]: the user checks this against the
+ * package before confirming, so a digit rounded away (`2,09` shown as `2,1`) would hide the very
+ * misread the check exists to catch. Both follow the device's decimal separator.
+ */
+internal fun candidateFigure(value: BigDecimal, locale: Locale = Locale.getDefault()): String =
+    ResultFormatter.editable(value, locale)
+
 @Composable
 private fun CandidateChoice(
     candidate: CarbCandidate,
@@ -2304,7 +2319,7 @@ private fun CandidateChoice(
      */
     showCorrectPair: Boolean = true,
 ) {
-    val display = candidate.value.stripTrailingZeros().toPlainString()
+    val display = candidateFigure(candidate.value)
     val basis = candidate.basis
     if (basis != null) {
         DetectedValue(display, basis.unitLabel, candidate.label)
