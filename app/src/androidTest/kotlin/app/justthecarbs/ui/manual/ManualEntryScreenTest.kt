@@ -164,7 +164,8 @@ class ManualEntryScreenTest {
      */
     @Test
     fun aTapBackOntoAScannedFigureStillReplacesIt() {
-        var carbs by mutableStateOf("48")
+        // Blank on the first frame, as in the app: the route's `start` fills the figure a frame later.
+        var carbs by mutableStateOf("")
         compose.setContent {
             JustTheCarbsTheme {
                 ManualEntryScreen(
@@ -180,6 +181,7 @@ class ManualEntryScreenTest {
             }
         }
         compose.waitForIdle()
+        compose.runOnIdle { carbs = "48" }
         compose.onNodeWithText(nameLabel).performClick()
 
         // On the 4: the text starts after the field's 16dp inner padding.

@@ -170,6 +170,7 @@ fun ManualEntryScreen(
                 CarbsField(
                     value = state.carbsPer100,
                     onValueChange = onCarbsChanged,
+                    carriedIn = arrivedWithCarbs,
                     focusRequester = carbsFocus,
                     // The package field always follows, so Next rather than Done.
                     onNext = { packageFocus.requestFocus() },
@@ -329,8 +330,12 @@ private fun CarbsField(
     label: @Composable () -> Unit,
     isError: Boolean,
     supportingText: (@Composable () -> Unit)?,
+    carriedIn: Boolean,
 ) {
     val startedWithValue = remember { value.isNotBlank() }
+    // Whether a scanned figure came with the route. The state is still blank on the first frame, so
+    // `startedWithValue` alone never saw it and a tap on the figure appended to it (2026-09-25).
+    val selectsOnFocus = carriedIn || startedWithValue
     var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     if (fieldValue.text != value) {
         fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
@@ -365,7 +370,7 @@ private fun CarbsField(
                 // Only on the transition into focus, and only for a value that arrived pre-filled —
                 // ordinary manual entry starts blank, where select-all is meaningless. Re-selecting on
                 // every focused recomposition would fight the user's own caret placement mid-edit.
-                if (startedWithValue && focus.isFocused && !hasFocus) {
+                if (selectsOnFocus && focus.isFocused && !hasFocus) {
                     fieldValue = select.focusGained(fieldValue)
                 }
                 if (!focus.isFocused) select.focusLost()
