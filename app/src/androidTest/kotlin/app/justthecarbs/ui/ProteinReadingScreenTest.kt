@@ -225,6 +225,28 @@ class ProteinReadingScreenTest {
         proteinRow().assertContentDescriptionEquals("4 grams of protein")
     }
 
+    /** "1 grams" is wrong English; a bare 1 is singular, a shown "1.0" stays plural (2026-09-25 review). */
+    @Test
+    fun aWholeOneIsSpokenInTheSingular() {
+        show(
+            nutella(carbs = "10", protein = "10"),
+            settings = AppSettings(proteinEnabled = true, resultStyle = ResultStyle.WHOLE_DOMINANT),
+            portion = "10",
+        )
+
+        proteinRow().assertContentDescriptionEquals("1 gram of protein")
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG)
+            .assertContentDescriptionEquals("1 gram of carbs, 1 gram of protein")
+    }
+
+    @Test
+    fun aShownDecimalOneStaysPlural() {
+        show(nutella(carbs = "10", protein = "10"), portion = "10")
+
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG)
+            .assertContentDescriptionEquals("1.0 grams of carbs, 1.0 grams of protein")
+    }
+
     /** Traversal and reading order: numeral, provenance, protein, then the meal actions. */
     @Test
     fun theRowSitsAfterTheCarbBlockAndBeforeTheMealActions() {

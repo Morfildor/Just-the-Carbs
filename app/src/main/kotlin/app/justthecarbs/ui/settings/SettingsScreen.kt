@@ -70,6 +70,7 @@ import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.JtcTopBar
 import app.justthecarbs.ui.components.SectionLabel
 import app.justthecarbs.ui.components.jtcDialogOutline
+import app.justthecarbs.ui.components.rememberShownToggle
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.accent
@@ -198,16 +199,17 @@ fun SettingsScreen(
                 // shows. The haptics row's anatomy plus a supporting line, since the label alone
                 // does not say what changes. One node: the whole row toggles and the switch's own
                 // callback is null, so TalkBack meets a single switch named `Show protein`. The
-                // same persisted value as Home's chip.
+                // same persisted value as Home's chip, shown optimistically like it
+                // (rememberShownToggle), so two quick taps land where the user sees them.
+                var proteinShown by rememberShownToggle(settings.proteinEnabled)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = Space.minTouchTarget)
-                        .toggleable(
-                            value = settings.proteinEnabled,
-                            role = Role.Switch,
-                            onValueChange = onProteinChanged,
-                        )
+                        .toggleable(value = proteinShown, role = Role.Switch) {
+                            proteinShown = it
+                            onProteinChanged(it)
+                        }
                         .padding(vertical = Space.s)
                         .testTag(SETTINGS_PROTEIN_TAG),
                     verticalAlignment = Alignment.CenterVertically,
@@ -227,7 +229,7 @@ fun SettingsScreen(
                         )
                     }
                     Spacer(Modifier.width(Space.m))
-                    Switch(checked = settings.proteinEnabled, onCheckedChange = null)
+                    Switch(checked = proteinShown, onCheckedChange = null)
                 }
 
                 HorizontalDivider()

@@ -1006,9 +1006,9 @@ private fun HomeBody(
         // The same row closes the cluster with the `Show protein` chip at its trailing edge: the one
         // modifier of what these ways in will read (design spec 2026-09-24, section 2). The item
         // keeps its key, so tests that scroll to it by key still find it. A wrapping row, because
-        // at large text (and at the limit on a 320dp window) the two do not fit on one line; the
-        // chip then drops under *Enter manually*, start-aligned, and the footer grows by one chip
-        // row whether protein is on or off.
+        // at large text the two do not fit on one line; the chip then drops under *Enter
+        // manually*, start-aligned, and the footer grows by one chip row whether protein is on or
+        // off. At ordinary text they share one line down to a 320dp window (2026-09-25 review).
         item(key = "manual") {
             // Modifier order is load-bearing here, and getting it wrong is invisible. `.height()`
             // before `.padding()` applies the padding *inside* the 48dp box, so the button measured

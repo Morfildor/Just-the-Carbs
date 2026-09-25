@@ -23,6 +23,7 @@ import app.justthecarbs.ui.components.ProductGalleryDialog
 import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
 import app.justthecarbs.ui.components.rememberSettledText
+import app.justthecarbs.ui.components.spokenGramsQuantity
 import app.justthecarbs.ui.theme.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -89,6 +90,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -2608,12 +2610,20 @@ private fun ResultPanel(
         val spokenProteinFigure =
             (spokenProtein as? ProteinPresentation.Value)?.let { formattedReading(it.exact, settings.resultStyle) }
         val accessibleResult = dominantNumeral?.let {
+            val carbs = pluralStringResource(R.plurals.result_accessible_grams, spokenGramsQuantity(it), it)
             when {
-                spokenProteinFigure != null ->
-                    stringResource(R.string.result_accessible_grams_and_protein, it, spokenProteinFigure)
+                spokenProteinFigure != null -> stringResource(
+                    R.string.result_accessible_grams_and_protein,
+                    carbs,
+                    pluralStringResource(
+                        R.plurals.product_protein_accessible,
+                        spokenGramsQuantity(spokenProteinFigure),
+                        spokenProteinFigure,
+                    ),
+                )
                 spokenProtein is ProteinPresentation.NoOnlineValue ->
-                    stringResource(R.string.result_accessible_grams_protein_unavailable, it)
-                else -> stringResource(R.string.result_accessible_grams, it)
+                    stringResource(R.string.result_accessible_grams_protein_unavailable, carbs)
+                else -> carbs
             }
         }
         // While the keyboard is open the result changes on every keystroke; the live region speaks
@@ -2757,7 +2767,11 @@ private fun ResultPanel(
             val reading = if (proteinFigure != null) {
                 SecondaryReading.Value(
                     text = stringResource(R.string.product_protein_value, proteinFigure),
-                    spoken = stringResource(R.string.product_protein_accessible, proteinFigure),
+                    spoken = pluralStringResource(
+                        R.plurals.product_protein_accessible,
+                        spokenGramsQuantity(proteinFigure),
+                        proteinFigure,
+                    ),
                 )
             } else {
                 SecondaryReading.Unavailable(

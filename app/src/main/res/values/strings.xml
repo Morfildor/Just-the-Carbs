@@ -184,12 +184,19 @@
     <!-- Spoken form for TalkBack: reads the numeral and unit as one phrase, e.g. "31.2 grams of
          carbs". "of carbs" because a bare "31.2 grams" is indistinguishable from the portion the
          user just typed; this is the figure they act on, so it says what it measures. -->
-    <string name="result_accessible_grams">%1$s grams of carbs</string>
+    <!-- A plural so a whole-gram "1" reads "1 gram"; the count comes from spokenGramsQuantity,
+         which keeps a shown decimal ("1.0 grams") plural. -->
+    <plurals name="result_accessible_grams">
+        <item quantity="one">%1$s gram of carbs</item>
+        <item quantity="other">%1$s grams of carbs</item>
+    </plurals>
     <!-- The optional protein reading (design spec 2026-09-24). One polite announcement per portion
          change carries both facts, carbs first. Used only while the protein row is on screen; every
          other state keeps `result_accessible_grams` unchanged. -->
-    <string name="result_accessible_grams_and_protein">%1$s grams of carbs, %2$s grams of protein</string>
-    <string name="result_accessible_grams_protein_unavailable">%1$s grams of carbs, no online value for protein</string>
+    <!-- %1$s is `result_accessible_grams`, %2$s is `product_protein_accessible`: each phrase takes
+         its own plural. -->
+    <string name="result_accessible_grams_and_protein">%1$s, %2$s</string>
+    <string name="result_accessible_grams_protein_unavailable">%1$s, no online value for protein</string>
     <!-- A second reading, never a second answer: an eyebrow in the CARBS style (upper case from the
          string) and a figure in ink, one line, after the carb block. -->
     <string name="product_protein_label">PROTEIN</string>
@@ -197,7 +204,10 @@
     <!-- A fact about the online record, never a claim about the package (an EU package always
          prints protein). Never 0 g and never an estimate. -->
     <string name="product_protein_no_online_value">No online value</string>
-    <string name="product_protein_accessible">%1$s grams of protein</string>
+    <plurals name="product_protein_accessible">
+        <item quantity="one">%1$s gram of protein</item>
+        <item quantity="other">%1$s grams of protein</item>
+    </plurals>
     <string name="product_protein_no_online_value_accessible">Protein, no online value</string>
     <!-- The provenance line when the user verified the carbs against the package and the protein is
          still the online figure: the two sources differ, so the sentence names both. -->

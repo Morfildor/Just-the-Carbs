@@ -78,10 +78,10 @@ WHAT JUST THE CARBS DOES NOT DO
 • It does not read or interpret glucose
 • It does not connect to pumps or monitors
 • It is not a diet tracker: no calories, no food diary, no daily totals, no goals.
-  Protein for your portion can be shown as an option; it is never added up or recorded
+  The optional protein figure is never added up or recorded.
 
-Just the Carbs gives you the carbohydrate number for your portion, and, only if you switch it
-on, the protein, and nothing more.
+Just the Carbs gives you the carbohydrate grams for your portion. If you switch it on, it also
+shows the protein in that portion. Nothing more.
 
 Always check the package if a value looks wrong. Product recipes change, and
 public food databases can be out of date.

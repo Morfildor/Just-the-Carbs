@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,28 +64,31 @@ fun ProteinToggle(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Shows the latest tap before the stored value comes back, so two quick taps land where the
+    // user sees them (see rememberShownToggle).
+    var shown by rememberShownToggle(checked)
     val colors = MaterialTheme.colorScheme
     val darkPage = colors.background.luminance() < 0.5f
     val spec = tween<Color>(Motion.STANDARD_MS, easing = EaseOutQuart)
     val container by animateColorAsState(
-        if (checked) colors.secondaryContainer else colors.surfaceContainerLow,
+        if (shown) colors.secondaryContainer else colors.surfaceContainerLow,
         spec,
         label = "proteinToggleContainer",
     )
     val labelColor by animateColorAsState(
-        if (checked) colors.onSecondaryContainer else colors.onSurface,
+        if (shown) colors.onSecondaryContainer else colors.onSurface,
         spec,
         label = "proteinToggleLabel",
     )
     val glyphColor by animateColorAsState(
-        if (checked) colors.onSecondaryContainer else colors.onSurfaceVariant,
+        if (shown) colors.onSecondaryContainer else colors.onSurfaceVariant,
         spec,
         label = "proteinToggleGlyph",
     )
     val edge by animateColorAsState(
         when {
             darkPage -> colors.outline
-            checked -> Color.Transparent
+            shown -> Color.Transparent
             else -> colors.outlineVariant
         },
         spec,
@@ -98,14 +102,19 @@ fun ProteinToggle(
             .clip(shape)
             .background(container, shape)
             .border(1.dp, edge, shape)
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
-            .padding(start = GLYPH_INSET, end = Space.m, top = Space.xs, bottom = Space.xs),
+            .toggleable(value = shown, role = Role.Switch) {
+                shown = it
+                onCheckedChange(it)
+            }
+            // The end inset matches the glyph's: at 16dp the chip missed sharing a 320dp window's
+            // footer line with *Enter manually* by 2dp at ordinary text (2026-09-25 review).
+            .padding(start = GLYPH_INSET, end = GLYPH_INSET, top = Space.xs, bottom = Space.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
         // One beat with the colours, like the favourite star's outlined/filled swap.
         Crossfade(
-            targetState = checked,
+            targetState = shown,
             animationSpec = tween(Motion.STANDARD_MS, easing = EaseOutQuart),
             label = "proteinToggleGlyphShape",
         ) { on ->

@@ -1,5 +1,6 @@
 package app.justthecarbs.ui
 
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +26,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import app.justthecarbs.R
 import app.justthecarbs.domain.AppSettings
@@ -75,11 +77,15 @@ class ProteinControlsTest {
         recents: List<RecentEntry> = emptyList(),
         fontScale: Float? = null,
         writes: MutableList<Boolean> = mutableListOf(),
+        /** False models a store that has not answered yet: the write is recorded, not reflected. */
+        storeAnswers: Boolean = true,
+        width: androidx.compose.ui.unit.Dp? = null,
     ) {
         compose.setContent {
             var settings by remember { mutableStateOf(AppSettings(proteinEnabled = initiallyOn)) }
             val content = @androidx.compose.runtime.Composable {
                 JustTheCarbsTheme {
+                    val home = @androidx.compose.runtime.Composable {
                     HomeScreen(
                         recents = recents,
                         settings = settings,
@@ -90,9 +96,17 @@ class ProteinControlsTest {
                         onOpenSettings = {},
                         onProteinChanged = {
                             writes += it
-                            settings = settings.copy(proteinEnabled = it)
+                            if (storeAnswers) settings = settings.copy(proteinEnabled = it)
                         },
                     )
+                    }
+                    if (width != null) {
+                        androidx.compose.foundation.layout.Box(
+                            androidx.compose.ui.Modifier.requiredWidth(width),
+                        ) { home() }
+                    } else {
+                        home()
+                    }
                 }
             }
             if (fontScale != null) {
@@ -140,6 +154,43 @@ class ProteinControlsTest {
         chip().assertIsOff()
 
         assertEquals(listOf(true, false), writes)
+    }
+
+    /**
+     * Two quick taps before the stored setting comes back land on the state the user sees, not on
+     * the same value twice (2026-09-25 review).
+     */
+    @Test
+    fun twoQuickTapsOnTheChipEndWhereTheUserSeesIt() {
+        val writes = mutableListOf<Boolean>()
+        showHome(writes = writes, storeAnswers = false)
+        scrollToChip()
+
+        chip().performClick()
+        chip().assertIsOn()
+        chip().performClick()
+        compose.waitForIdle()
+
+        chip().assertIsOff()
+        assertEquals(listOf(true, false), writes)
+    }
+
+    /**
+     * At CI's 320dp window and ordinary text the footer is one line (2026-09-25 review).
+     * Discriminating at CI's 320x640/160 only: there the chip's former 16dp end inset wraps it,
+     * while at 1080x2400/420 the same box happens to fit either way (text width rounds differently).
+     */
+    @Test
+    fun theFooterFitsOneLineAtTheNarrowestWidth() {
+        showHome(width = 320.dp)
+        scrollToChip()
+
+        val manual = compose.onNodeWithTag(HOME_MANUAL_TAG).fetchSemanticsNode().boundsInRoot
+        val chip = chip().fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "Enter manually $manual and the chip $chip share one line",
+            kotlin.math.abs(manual.center.y - chip.center.y) < 1f && chip.left >= manual.right,
+        )
     }
 
     @Test
@@ -200,11 +251,16 @@ class ProteinControlsTest {
         compose.onAllNodesWithText(string(R.string.product_protein_label)).assertCountEquals(0)
         compose.onAllNodesWithText("grams of protein", substring = true).assertCountEquals(0)
         compose.onAllNodesWithText("4.1 g").assertCountEquals(0)
+        // Spoken too: a card's description could carry a figure no Text node shows.
+        compose.onAllNodes(hasContentDescription("grams of protein", substring = true), useUnmergedTree = true)
+            .assertCountEquals(0)
+        compose.onAllNodes(hasContentDescription("4.1", substring = true), useUnmergedTree = true)
+            .assertCountEquals(0)
     }
 
     // ---- Settings ------------------------------------------------------------------------------
 
-    private fun showSettings(initiallyOn: Boolean, writes: MutableList<Boolean>) {
+    private fun showSettings(initiallyOn: Boolean, writes: MutableList<Boolean>, storeAnswers: Boolean = true) {
         compose.setContent {
             var settings by remember { mutableStateOf(AppSettings(proteinEnabled = initiallyOn)) }
             JustTheCarbsTheme {
@@ -215,7 +271,7 @@ class ProteinControlsTest {
                     onHapticsChanged = {},
                     onProteinChanged = {
                         writes += it
-                        settings = settings.copy(proteinEnabled = it)
+                        if (storeAnswers) settings = settings.copy(proteinEnabled = it)
                     },
                     onClearRecents = {},
                     onClearProducts = {},
@@ -242,5 +298,21 @@ class ProteinControlsTest {
         compose.waitForIdle()
         row.assertIsOff()
         assertEquals(listOf(false), writes)
+    }
+
+    @Test
+    fun twoQuickTapsOnTheSettingsRowEndWhereTheUserSeesIt() {
+        val writes = mutableListOf<Boolean>()
+        showSettings(initiallyOn = false, writes = writes, storeAnswers = false)
+
+        val row = compose.onNodeWithTag(SETTINGS_PROTEIN_TAG)
+        row.performScrollTo()
+        row.performClick()
+        row.assertIsOn()
+        row.performClick()
+        compose.waitForIdle()
+
+        row.assertIsOff()
+        assertEquals(listOf(true, false), writes)
     }
 }

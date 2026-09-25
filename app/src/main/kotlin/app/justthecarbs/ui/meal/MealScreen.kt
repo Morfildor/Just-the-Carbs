@@ -49,6 +49,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
@@ -72,6 +73,7 @@ import app.justthecarbs.ui.components.PrimaryAction
 import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
 import app.justthecarbs.ui.components.jtcDialogOutline
+import app.justthecarbs.ui.components.spokenGramsQuantity
 import app.justthecarbs.ui.components.jtcTextFieldColors
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.NumberType
@@ -428,7 +430,11 @@ private fun MealTotalPanel(state: MealUiState, settings: AppSettings, onScanNext
                 ResultStyle.WHOLE_DOMINANT -> ResultFormatter.whole(total.wholeGrams)
             }
             val resultUnit = stringResource(R.string.result_unit_grams)
-            val accessibleResult = stringResource(R.string.result_accessible_grams, dominantNumeral)
+            val accessibleResult = pluralStringResource(
+                R.plurals.result_accessible_grams,
+                spokenGramsQuantity(dominantNumeral),
+                dominantNumeral,
+            )
 
             // The total and its copy button, on one row.
             //
