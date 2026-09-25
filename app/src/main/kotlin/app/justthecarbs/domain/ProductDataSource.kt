@@ -82,6 +82,21 @@ interface ProductDataSource {
 interface LocalProductDataSource : ProductDataSource {
     suspend fun save(product: Product)
 
+    /**
+     * Stores [product] only if no row exists for its barcode, and says whether it did.
+     *
+     * For a lookup's first save (2026-09-25 review): the network call can outlast the screen that
+     * started it, and the user may have saved the same barcode by hand in the meantime. That row is
+     * theirs and must not be replaced by the online record they were working around. The default is
+     * check-then-save, good enough for in-memory fakes; the Room store overrides it with one
+     * conflict-ignoring insert, so nothing can land between the check and the write.
+     */
+    suspend fun saveIfAbsent(product: Product): Boolean {
+        if (fetch(product.barcode) is ProductFetchResult.Found) return false
+        save(product)
+        return true
+    }
+
     /** Favourites first, then most recently used (§21, §22). */
     fun observeRecents(limit: Int): Flow<List<Product>>
 

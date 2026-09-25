@@ -605,9 +605,24 @@ fun JustTheCarbsNavHost(
                     // (no product loaded yet, so the reading should create one). Only `state.product`
                     // tells them apart — the barcode is non-empty in both cases (§12).
                     onScanLabel = {
-                        navController.navigate(Routes.labelScan(barcode, compare = state.product != null))
+                        val loaded = state.product != null
+                        navController.navigate(Routes.labelScan(barcode, compare = loaded)) {
+                            // With no product (still looking up, or not found) this screen is being
+                            // left for good: see onEnterManually.
+                            if (!loaded) popUpTo(Routes.PRODUCT) { inclusive = true }
+                        }
                     },
-                    onEnterManually = { navController.navigate(Routes.manual(barcode)) },
+                    // Reached while the lookup is still running (the stalled offer, 2026-09-24) or
+                    // after it failed. Either way no product is on screen and the user is leaving
+                    // this one, so it is popped (2026-09-25 review): that cancels a lookup still in
+                    // flight, and saving the typed product no longer leaves a stale duplicate of this
+                    // screen under the new one. The repository also refuses to let a late lookup
+                    // replace a row the user saved; this removes the lookup as well.
+                    onEnterManually = {
+                        navController.navigate(Routes.manual(barcode)) {
+                            if (state.product == null) popUpTo(Routes.PRODUCT) { inclusive = true }
+                        }
+                    },
                     onRetry = { viewModel.load(barcode) },
                     onSearch = { navController.navigate(Routes.SEARCH) },
                     // One tap from *Product not found* back to the camera (§5). The not-found product is

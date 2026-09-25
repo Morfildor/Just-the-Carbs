@@ -49,6 +49,7 @@ class SettingsClearFeedbackTest {
 
         override suspend fun findByBarcode(barcode: String): ProductEntity? = null
         override suspend fun upsert(product: ProductEntity) = Unit
+        override suspend fun insertIfAbsent(product: ProductEntity): Long = -1L
         override fun observeRecents(limit: Int): Flow<List<ProductEntity>> = flowOf(emptyList())
         override fun observeSearchable(): Flow<List<SearchableProductRow>> = flowOf(emptyList())
         override suspend fun clearProductUsageColumns() = write()

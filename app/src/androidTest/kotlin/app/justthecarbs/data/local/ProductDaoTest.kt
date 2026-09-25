@@ -68,6 +68,33 @@ class ProductDaoTest {
         favorite = favorite,
     )
 
+    /**
+     * A lookup's first save (2026-09-25 review) must never replace a row that exists: the user may
+     * have saved the barcode by hand while the network call was in flight.
+     */
+    @Test
+    fun insertIfAbsentNeverReplacesAnExistingRow() = runTest {
+        val typed = product("111", carbs = "61.9", usedSecondsAfterEpoch = 10, origin = ProductDataOrigin.MANUAL,
+            verification = VerificationStatus.USER_VERIFIED)
+        dao.upsert(typed.toEntity())
+
+        val inserted = dao.insertIfAbsent(product("111", carbs = "48.2").toEntity())
+
+        assertEquals(-1L, inserted)
+        val stored = dao.findByBarcode("111")!!.toDomain()
+        assertEquals(0, BigDecimal("61.9").compareTo(stored.carbsPer100))
+        assertEquals(ProductDataOrigin.MANUAL, stored.dataSource)
+        assertNotNull(stored.lastUsedAt)
+    }
+
+    @Test
+    fun insertIfAbsentStoresANewBarcode() = runTest {
+        val inserted = dao.insertIfAbsent(product("222").toEntity())
+
+        assertEquals(true, inserted != -1L)
+        assertNotNull(dao.findByBarcode("222"))
+    }
+
     @Test
     fun recentsAreOrderedByMostRecentlyUsed() = runTest {
         dao.upsert(product("111", usedSecondsAfterEpoch = 10).toEntity())

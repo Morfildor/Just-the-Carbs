@@ -56,6 +56,10 @@ abstract class ProductDao {
     @Upsert
     abstract suspend fun upsert(product: ProductEntity)
 
+    /** Inserts only when the barcode has no row; returns -1 when one already existed. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertIfAbsent(product: ProductEntity): Long
+
     /**
      * Recents for the home screen (§21), with favourites floated to the top (§22) rather than given
      * a tab of their own.

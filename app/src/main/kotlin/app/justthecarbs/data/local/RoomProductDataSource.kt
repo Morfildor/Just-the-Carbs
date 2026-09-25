@@ -27,6 +27,8 @@ class RoomProductDataSource(private val dao: ProductDao) : LocalProductDataSourc
 
     override suspend fun save(product: Product) = dao.upsert(product.toEntity())
 
+    override suspend fun saveIfAbsent(product: Product): Boolean = dao.insertIfAbsent(product.toEntity()) != -1L
+
     override fun observeRecents(limit: Int): Flow<List<Product>> =
         dao.observeRecents(limit).map { entities -> entities.map { it.toDomain() } }
 

@@ -87,7 +87,15 @@ class ProductRepository(
                 // `remoteUpdatedAt` cannot conclude "never synced" about a row this very call has
                 // just marked as synced.
                 val stamped = fetched.product.copy(remoteUpdatedAt = clock.instant())
-                local.save(stamped)
+                // Only if nothing was stored while the request was in flight (2026-09-25 review).
+                // The cache was empty when this lookup began, but the screen that started it offers
+                // *Enter manually* while it waits, and a product the user saved in the meantime is
+                // theirs: the online record must not replace it. The stored row is what the caller
+                // gets, and nothing else from this fetch is written.
+                if (!local.saveIfAbsent(stamped)) {
+                    return (local.fetch(barcode) as? ProductFetchResult.Found)
+                        ?: fetched.copy(product = stamped)
+                }
                 // First sighting of this product: a suggested countable unit becomes a stored one
                 // outright, since there is nothing local yet for it to conflict with (§7, §9).
                 fetched.portionUnitCandidate?.let { candidate ->
@@ -398,7 +406,7 @@ class ProductRepository(
      *
      * Delegates rather than composing the two writes here, because atomicity is the whole point: see
      * [LocalProductDataSource.forgetRecentUse]. Note the contrast with
-     * [clearUsageForBasisChange], which clears the same facts non-atomically — that one is a
+     * [dropBasisBoundFacts], which clears the same facts non-atomically — that one is a
      * consequence of a value the user has just changed, not a promise made to them about what has
      * been erased, and it has no Undo to be exact for.
      *

@@ -464,6 +464,64 @@ class ProductRepositoryTest {
     }
 
     /**
+     * 2026-09-25 review (P1). A slow lookup lets the user leave for *Enter manually* after 4 s. The
+     * lookup had already seen an empty cache, so when the network answered it saved the online
+     * record over the product the user had just typed from the package: their value replaced by the
+     * one they were working around, and the product gone from Recents. The stored row now wins.
+     */
+    @Test
+    fun `a lookup that lands after the user saved the product by hand never overwrites it`() = runTest {
+        val local = FakeLocal()
+        lateinit var repository: ProductRepository
+        val typed = product(MANUAL, "61.9", name = "Typed from the package")
+        val remote = SuspendingRemote(
+            result = ProductFetchResult.Found(product(PLAIN_OFF, "48.2", name = "Online record")),
+            delayMs = 100L,
+            onSuspended = { repository.saveUserAuthoredProduct(typed) },
+        )
+        repository = repositoryOf(local, remote)
+
+        val result = repository.lookup(barcode)
+
+        val stored = local.stored.getValue(barcode)
+        assertEquals(ProductDataOrigin.MANUAL, stored.dataSource)
+        assertEquals(0, BigDecimal("61.9").compareTo(stored.carbsPer100))
+        assertEquals("Typed from the package", stored.name)
+        assertTrue("the user's product stays in Recents", stored.lastUsedAt != null)
+        assertTrue(result is ProductFetchResult.Found)
+        assertEquals(
+            "the caller is handed the stored row, not the late online record",
+            "Typed from the package",
+            (result as ProductFetchResult.Found).product.name,
+        )
+    }
+
+    /** A late lookup saves no suggested portion unit for a product it did not create. */
+    @Test
+    fun `a late lookup adds no portion unit to a product it did not create`() = runTest {
+        val local = FakeLocal()
+        val units = FakePortionUnitStore()
+        lateinit var repository: ProductRepository
+        val remote = SuspendingRemote(
+            result = ProductFetchResult.Found(
+                product = product(PLAIN_OFF, "48.2"),
+                portionUnitCandidate = PortionUnitCandidate(
+                    kind = PortionUnitKind.SLICE,
+                    conversion = PortionConversion.WeightBased(BigDecimal("35"), NutritionBasis.PER_100_G),
+                    rawServingText = "1 slice (35 g)",
+                ),
+            ),
+            delayMs = 100L,
+            onSuspended = { repository.saveUserAuthoredProduct(product(MANUAL, "61.9")) },
+        )
+        repository = repositoryOf(local, remote, units = units)
+
+        repository.lookup(barcode)
+
+        assertTrue(units.findByBarcode(barcode).isEmpty())
+    }
+
+    /**
      * The classic lost-update shape: read, suspend, a concurrent write lands, then a merge based on
      * the pre-suspension read overwrites it. `refreshFromRemote` used to build its merged product
      * from `existing` — read *before* `remote.fetch` — so a favourite toggled while the network call
