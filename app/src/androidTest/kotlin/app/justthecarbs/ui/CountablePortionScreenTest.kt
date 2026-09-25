@@ -273,7 +273,7 @@ class CountablePortionScreenTest {
 
         // 42 x 72 / 100 = 30.24
         compose.onNodeWithText("2 slices × 36 g = 72 g").assertIsDisplayed()
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.2 grams of carbs")
+        assertSpokenResultOnceTheKeyboardCloses("30.2 grams of carbs")
     }
 
     /**
@@ -338,12 +338,12 @@ class CountablePortionScreenTest {
 
         compose.onNodeWithText("Slices").performClick()
         compose.onNode(countField()).performTextReplacement("2")
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.2 grams of carbs")
+        assertSpokenResultOnceTheKeyboardCloses("30.2 grams of carbs")
 
         compose.onNodeWithText("Grams").performClick()
 
         // Switching mode is immediate and does not clear or reset the result (§12).
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.2 grams of carbs")
+        assertSpokenResultOnceTheKeyboardCloses("30.2 grams of carbs")
     }
 
     @Test
@@ -414,7 +414,7 @@ class CountablePortionScreenTest {
 
         // 42 x 72 / 100 = 30.24 (3 x 24 g = 72 g, same resolved amount as the slice example)
         compose.onNodeWithText("3 Dumpling × 24 g = 72 g").assertIsDisplayed()
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.2 grams of carbs")
+        assertSpokenResultOnceTheKeyboardCloses("30.2 grams of carbs")
     }
 
     // ---- inline correction of a wrong remote weight (development-pass brief §3.3) --------------
@@ -430,7 +430,7 @@ class CountablePortionScreenTest {
         compose.onNodeWithText("Slices").performClick()
         compose.onNode(countField()).performTextReplacement("2")
         // 42 x (2 x 36) / 100 = 30.24
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.2 grams of carbs")
+        assertSpokenResultOnceTheKeyboardCloses("30.2 grams of carbs")
 
         // Typing the count left the soft keyboard open, and a control the keyboard covers is not
         // clickable even though performClick() does not throw (see the note at the top of this
@@ -458,7 +458,7 @@ class CountablePortionScreenTest {
 
         // 42 x (2 x 38) / 100 = 31.92, and the equation now reads 38 g per slice.
         compose.onNodeWithText("2 slices × 38 g = 76 g").assertIsDisplayed()
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.9 grams of carbs")
+        assertSpokenResultOnceTheKeyboardCloses("31.9 grams of carbs")
         // Exactly one countable unit still exists — a correction, not a competing second unit.
         compose.onAllNodesWithText("Slices").assertCountEquals(1)
     }

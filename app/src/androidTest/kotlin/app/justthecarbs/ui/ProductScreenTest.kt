@@ -1048,6 +1048,10 @@ class ProductScreenTest {
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams of carbs")
 
         compose.onNode(portionField()).performTextReplacement("32,5")
+        // Keyboard away first: while it is up the spoken figure waits for typing to settle.
+        compose.onNode(portionField()).performImeAction()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("15.7 grams of carbs")
     }
 
