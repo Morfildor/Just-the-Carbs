@@ -100,10 +100,13 @@ class ProteinReadingScreenTest {
         fontScale: Float? = null,
         width: androidx.compose.ui.unit.Dp? = null,
         height: androidx.compose.ui.unit.Dp? = null,
+        /** Runs inside the same theme and density as the screen, for measurements. */
+        probe: (@androidx.compose.runtime.Composable () -> Unit)? = null,
     ) {
         compose.setContent {
             val content = @androidx.compose.runtime.Composable {
                 JustTheCarbsTheme {
+                    probe?.invoke()
                     val screen = @androidx.compose.runtime.Composable {
                         ProductScreen(
                             state = stateFor(product, portion),
@@ -299,16 +302,23 @@ class ProteinReadingScreenTest {
      */
     @Test
     fun aVeryLargeFigureIsNeverCutAtTheNarrowestWidth() {
-        // 100 g per 100 g x 20000 g = 20000 g of protein: "20000.0 g".
+        // 100 g per 100 g x 20000000 g: "20000000.0 g", too wide to sit beside the eyebrow at 2.0x on
+        // 320dp, so the row must stack it rather than squeeze it.
+        var naturalWidth = 0
         show(
             nutella(protein = "100", carbs = "10"),
-            portion = "20000",
+            portion = "20000000",
             fontScale = 2.0f,
             width = 320.dp,
             height = 1400.dp,
+            probe = {
+                val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+                val style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+                naturalWidth = measurer.measure("20000000.0 g", style, softWrap = false, maxLines = 1).size.width
+            },
         )
 
-        val figure = compose.onNodeWithText("20000.0 g", useUnmergedTree = true).fetchSemanticsNode()
+        val figure = compose.onNodeWithText("20000000.0 g", useUnmergedTree = true).fetchSemanticsNode()
         val row = proteinRow().fetchSemanticsNode()
         val figureRight = figure.positionInRoot.x + figure.size.width
         val rowRight = row.positionInRoot.x + row.size.width
@@ -317,6 +327,17 @@ class ProteinReadingScreenTest {
             figureRight <= rowRight + 1f,
         )
         assertTrue("figure has no width", figure.size.width > 0)
+        // Every digit is laid out: the figure is at least as wide as the text measured on its own
+        // in the same style and density. A figure squeezed into the room beside the eyebrow (and
+        // clipped) passes the bounds check above but not this one (2026-09-25 review).
+        assertTrue(
+            "figure is ${figure.size.width}px wide, its text needs ${naturalWidth}px",
+            figure.size.width >= naturalWidth - 1,
+        )
+        assertTrue(
+            "the figure must have dropped under the eyebrow, starting at the row's edge",
+            kotlin.math.abs(figure.positionInRoot.x - row.positionInRoot.x) <= 1f,
+        )
     }
 
     /**

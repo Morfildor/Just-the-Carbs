@@ -728,11 +728,18 @@ private fun CalculatorBody(
         //    portion zone is already a 23dp band) a row costing 39dp would push the field off the
         //    screen, and nothing left on screen could bring it back. So the row is withheld at rest
         //    whenever the zone, without the row, would drop below a touch target once the row is
-        //    added. One measurement, never a feedback loop: the room is read as if the row were
-        //    absent (the zone's room plus the row's own measured height), and the cost is never
-        //    below the row's measured height, so hiding the row cannot re-enable it.
+        //    added. See ProteinRowGate for why that cannot oscillate: the room is read as if the
+        //    row were absent, and its cost is its last measured height, kept after it leaves.
         //    Deliberately not keyed on the short-window rule, which would take protein away from
         //    every large-text user on an ordinary phone.
+        //
+        // The room is reported on every layout, including every frame of the keyboard's slide and
+        // of the dock's size animation, so it is read only inside `derivedStateOf`: the calculator
+        // recomposes when the verdict flips, not when a pixel moves (2026-09-25 review).
+        //
+        // TalkBack hears the data, not the gates: the spoken result is built from `proteinData`,
+        // so the keyboard or the room hiding the row never changes what is announced for a carb
+        // figure that did not change (2026-09-25 review; the spec had tied it to the row).
         val proteinData = ProteinPresentation.of(
             enabled = settings.proteinEnabled,
             product = product,
@@ -740,14 +747,27 @@ private fun CalculatorBody(
             hasAnswer = state.exactCarbs != null,
             directCarbPortion = countableActive && selectedUnit?.conversion is PortionConversion.DirectCarbs,
         )
-        var zoneRoomPx by remember { mutableIntStateOf(ZONE_ROOM_UNMEASURED) }
-        var proteinRowPx by remember { mutableIntStateOf(0) }
+        val zoneRoomPx = remember { mutableIntStateOf(ProteinRowGate.UNMEASURED) }
+        val proteinRowPx = remember { mutableIntStateOf(0) }
+        val proteinRowLastPx = remember { mutableIntStateOf(0) }
         val proteinRowEstimatePx = with(density) {
             (MaterialTheme.typography.titleMedium.lineHeight.toPx() + Space.s.toPx()).roundToInt()
         }
         val fieldFloorPx = with(density) { Space.minTouchTarget.roundToPx() }
-        val proteinLeavesTheField = zoneRoomPx == ZONE_ROOM_UNMEASURED ||
-            zoneRoomPx + proteinRowPx - maxOf(proteinRowEstimatePx, proteinRowPx) >= fieldFloorPx
+        val proteinLeavesTheField by remember(proteinRowEstimatePx, fieldFloorPx) {
+            derivedStateOf {
+                ProteinRowGate.fits(
+                    zoneRoomPx = zoneRoomPx.intValue,
+                    occupyingPx = proteinRowPx.intValue,
+                    lastMeasuredPx = proteinRowLastPx.intValue,
+                    estimatePx = proteinRowEstimatePx,
+                    floorPx = fieldFloorPx,
+                )
+            }
+        }
+        val roomMeasured by remember {
+            derivedStateOf { zoneRoomPx.intValue != ProteinRowGate.UNMEASURED }
+        }
         val protein = if (imeVisible || !proteinLeavesTheField) ProteinPresentation.Hidden else proteinData
 
         // A short window with the keyboard up (2026-09-23 calculator refinement).
@@ -838,7 +858,7 @@ private fun CalculatorBody(
         // nothing even at a large font scale.
         CalculatorFrame(
             reserveIdentity = !imeVisible,
-            onZoneRoom = { zoneRoomPx = it },
+            onZoneRoom = { zoneRoomPx.intValue = it },
             modifier = Modifier.weight(1f),
             identity = {
                 ProductIdentityRow(
@@ -1128,7 +1148,14 @@ private fun CalculatorBody(
             equationUnit = selectedUnit.takeIf { countableActive },
             imeVisible = imeVisible,
             protein = protein,
-            onProteinRowHeight = { proteinRowPx = it },
+            spokenProtein = proteinData,
+            // The first layout decides whether a starved window withholds the row; that correction
+            // snaps rather than animating the dock shut on arrival.
+            animateSize = roomMeasured,
+            onProteinRowHeight = { height ->
+                proteinRowPx.intValue = height
+                if (height > 0) proteinRowLastPx.intValue = height
+            },
             onAddToMeal = { onAddToMeal(portionDescription, mealFallbackName) },
             onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription, mealFallbackName) },
             onScanNext = onScanNext,
@@ -2397,6 +2424,16 @@ private fun ResultPanel(
      * leaves this dock exactly as it was before protein existed.
      */
     protein: ProteinPresentation = ProteinPresentation.Hidden,
+    /**
+     * The protein reading as the data has it, before the caller's layout gates. The spoken result
+     * uses this, so a gate showing or hiding the row never changes what TalkBack announces.
+     */
+    spokenProtein: ProteinPresentation = protein,
+    /**
+     * False until the calculator's first layout has measured its room: the dock's size change in
+     * that frame (a starved window withholding the protein row) snaps instead of animating.
+     */
+    animateSize: Boolean = true,
     /** The protein row's height including its gap, or 0 once it leaves; feeds the caller's gate. */
     onProteinRowHeight: (Int) -> Unit = {},
     onAddToMeal: () -> Unit = {},
@@ -2487,7 +2524,13 @@ private fun ResultPanel(
             // Innermost, so the surface, its shadow and its padding follow the content's height
             // frame by frame: the dock grows into the answer and the meal actions, and shrinks back
             // to the compact prompt, over the standard 220ms with no overshoot.
-            .animateContentSize(tween(Motion.STANDARD_MS, easing = EaseOutQuart)),
+            .then(
+                if (animateSize) {
+                    Modifier.animateContentSize(tween(Motion.STANDARD_MS, easing = EaseOutQuart))
+                } else {
+                    Modifier
+                },
+            ),
         horizontalAlignment = Alignment.Start,
     ) {
         // The meal bar is deliberately NOT here any more -- it moved to the top of the screen,
@@ -2561,11 +2604,13 @@ private fun ResultPanel(
         // other state keeps the carbs-only sentence, so protein off changes nothing a user or a test
         // hears.
         val proteinFigure = (protein as? ProteinPresentation.Value)?.let { formattedReading(it.exact, settings.resultStyle) }
+        val spokenProteinFigure =
+            (spokenProtein as? ProteinPresentation.Value)?.let { formattedReading(it.exact, settings.resultStyle) }
         val accessibleResult = dominantNumeral?.let {
             when {
-                proteinFigure != null ->
-                    stringResource(R.string.result_accessible_grams_and_protein, it, proteinFigure)
-                protein is ProteinPresentation.NoOnlineValue ->
+                spokenProteinFigure != null ->
+                    stringResource(R.string.result_accessible_grams_and_protein, it, spokenProteinFigure)
+                spokenProtein is ProteinPresentation.NoOnlineValue ->
                     stringResource(R.string.result_accessible_grams_protein_unavailable, it)
                 else -> stringResource(R.string.result_accessible_grams, it)
             }
@@ -2800,8 +2845,6 @@ private val RESULT_SLOT_HEIGHT = 80.dp
  */
 private val RESULT_SLOT_HEIGHT_COMPACT = 60.dp
 
-/** The portion zone's room before the first measurement: the protein row is not withheld yet. */
-private const val ZONE_ROOM_UNMEASURED = -1
 
 /** The dock's optional protein row, for tests. */
 const val PRODUCT_PROTEIN_TAG = "product_protein"
