@@ -28,7 +28,7 @@ import kotlin.io.path.createTempDirectory
 
 /**
  * The confirmation after *Clear recent history* / *Clear saved products*: reported only once the
- * clear has actually finished, and never for a clear that failed.
+ * clear has actually finished, and a clear that failed is reported as failed.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsClearFeedbackTest {
@@ -87,7 +87,7 @@ class SettingsClearFeedbackTest {
         assertNull("nothing is reported before the clear has run", vm.cleared.value)
         advanceUntilIdle()
 
-        assertEquals(ClearedData.RECENT_HISTORY, vm.cleared.value)
+        assertEquals(ClearReport(ClearedData.RECENT_HISTORY), vm.cleared.value)
     }
 
     @Test
@@ -97,7 +97,7 @@ class SettingsClearFeedbackTest {
         vm.clearProducts()
         advanceUntilIdle()
 
-        assertEquals(ClearedData.SAVED_PRODUCTS, vm.cleared.value)
+        assertEquals(ClearReport(ClearedData.SAVED_PRODUCTS), vm.cleared.value)
     }
 
     @Test
@@ -111,20 +111,27 @@ class SettingsClearFeedbackTest {
         assertNull(vm.cleared.value)
     }
 
+    /**
+     * A failed clear is reported as failed (2026-09-25 review). It used to escape the ViewModel's
+     * scope uncaught, which on a device ends the app on a disk error.
+     */
     @Test
-    fun `a clear that fails is never reported as done`() {
+    fun `a clear that fails is reported as failed rather than thrown`() = runTest(dispatcher) {
         val vm = viewModel(Dao(fail = true))
 
-        // The failure itself still propagates exactly as it did before this change (runTest
-        // re-throws the uncaught exception); only the absence of a report is new.
-        val thrown = runCatching {
-            runTest(dispatcher) {
-                vm.clearProducts()
-                advanceUntilIdle()
-            }
-        }.exceptionOrNull()
+        vm.clearProducts()
+        advanceUntilIdle()
 
-        assertEquals("disk I/O error", thrown?.message)
-        assertNull(vm.cleared.value)
+        assertEquals(ClearReport(ClearedData.SAVED_PRODUCTS, failed = true), vm.cleared.value)
+    }
+
+    @Test
+    fun `a failed recent-history clear is reported the same way`() = runTest(dispatcher) {
+        val vm = viewModel(Dao(fail = true))
+
+        vm.clearRecents()
+        advanceUntilIdle()
+
+        assertEquals(ClearReport(ClearedData.RECENT_HISTORY, failed = true), vm.cleared.value)
     }
 }

@@ -16,6 +16,7 @@ import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isToggleable
 import androidx.test.platform.app.InstrumentationRegistry
 import app.justthecarbs.R
+import app.justthecarbs.ui.settings.ClearReport
 import app.justthecarbs.ui.settings.ClearedData
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
@@ -28,6 +29,7 @@ import app.justthecarbs.BuildConfig
 import app.justthecarbs.domain.AppSettings
 import app.justthecarbs.ui.settings.SettingsScreen
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -84,15 +86,15 @@ class SettingsScreenTest {
     private fun showStateful(initialHaptics: Boolean = true) {
         compose.setContent {
             var settings by remember { mutableStateOf(AppSettings(hapticsEnabled = initialHaptics)) }
-            var cleared by remember { mutableStateOf<ClearedData?>(null) }
+            var cleared by remember { mutableStateOf<ClearReport?>(null) }
             JustTheCarbsTheme {
                 SettingsScreen(
                     settings = settings,
                     onThemeChanged = {},
                     onResultStyleChanged = {},
                     onHapticsChanged = { settings = settings.copy(hapticsEnabled = it) },
-                    onClearRecents = { cleared = ClearedData.RECENT_HISTORY },
-                    onClearProducts = { cleared = ClearedData.SAVED_PRODUCTS },
+                    onClearRecents = { cleared = ClearReport(ClearedData.RECENT_HISTORY) },
+                    onClearProducts = { cleared = ClearReport(ClearedData.SAVED_PRODUCTS) },
                     cleared = cleared,
                     onClearedShown = { cleared = null },
                     onBack = {},
@@ -328,5 +330,43 @@ class SettingsScreenTest {
         compose.onNodeWithText("Rate on Google Play").performScrollTo().performClick()
 
         compose.onNodeWithText("Could not open the Play Store.").performScrollTo().assertIsDisplayed()
+    }
+
+    private fun showReport(report: ClearReport, onShown: () -> Unit = {}) {
+        compose.setContent {
+            JustTheCarbsTheme {
+                SettingsScreen(
+                    settings = AppSettings(),
+                    onThemeChanged = {},
+                    onResultStyleChanged = {},
+                    onHapticsChanged = {},
+                    onClearRecents = {},
+                    onClearProducts = {},
+                    cleared = report,
+                    onClearedShown = onShown,
+                    onBack = {},
+                )
+            }
+        }
+    }
+
+    /**
+     * The report is consumed when it is shown, not when the Snackbar goes away (2026-09-25
+     * review): consumed afterwards, leaving Settings within those seconds showed it again on return.
+     */
+    @Test
+    fun aClearReportIsConsumedWhileItsMessageIsStillShowing() {
+        var consumed = 0
+        showReport(ClearReport(ClearedData.RECENT_HISTORY), onShown = { consumed++ })
+
+        compose.onNodeWithText(string(R.string.settings_cleared_recents)).assertIsDisplayed()
+        assertEquals(1, consumed)
+    }
+
+    @Test
+    fun aFailedClearSaysItFailed() {
+        showReport(ClearReport(ClearedData.SAVED_PRODUCTS, failed = true))
+
+        compose.onNodeWithText(string(R.string.settings_clear_products_failed)).assertIsDisplayed()
     }
 }

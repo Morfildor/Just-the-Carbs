@@ -40,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
@@ -100,8 +101,8 @@ fun SettingsScreen(
     onReplayTutorial: () -> Unit = {},
     /** Writes the one persisted protein setting, the same one Home's chip writes. */
     onProteinChanged: (Boolean) -> Unit = {},
-    /** A clear that has just finished, to confirm in a Snackbar; null when there is none. */
-    cleared: ClearedData? = null,
+    /** A clear that has just finished, to report in a Snackbar; null when there is none. */
+    cleared: ClearReport? = null,
     onClearedShown: () -> Unit = {},
     onBack: () -> Unit,
 ) {
@@ -116,19 +117,29 @@ fun SettingsScreen(
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
 
-    // Confirms a clear once it has actually run (the ViewModel reports it only after the database
-    // has answered), then consumes the report. Keyed on it, so a second, different clear replaces
-    // the first message rather than queueing behind it.
+    // Reports a clear once it has actually run (the ViewModel reports it only after the database
+    // has answered). The report is consumed the moment it is shown, not when the Snackbar goes
+    // away: consumed afterwards, leaving the screen or rotating within those seconds showed it
+    // again on return (2026-09-25 review). The Snackbar therefore runs in the screen's own scope,
+    // not the effect's, which ends with the key; a newer report replaces it rather than queueing.
     val snackbarHostState = remember { SnackbarHostState() }
-    val clearedMessage = when (cleared) {
-        ClearedData.RECENT_HISTORY -> stringResource(R.string.settings_cleared_recents)
-        ClearedData.SAVED_PRODUCTS -> stringResource(R.string.settings_cleared_products)
-        null -> null
+    val snackbarScope = rememberCoroutineScope()
+    var reportShown by remember { mutableStateOf<Job?>(null) }
+    val clearedMessage = cleared?.let { report ->
+        stringResource(
+            when (report.data) {
+                ClearedData.RECENT_HISTORY ->
+                    if (report.failed) R.string.settings_clear_recents_failed else R.string.settings_cleared_recents
+                ClearedData.SAVED_PRODUCTS ->
+                    if (report.failed) R.string.settings_clear_products_failed else R.string.settings_cleared_products
+            },
+        )
     }
     LaunchedEffect(cleared) {
         if (clearedMessage == null) return@LaunchedEffect
-        snackbarHostState.showSnackbar(clearedMessage)
         onClearedShown()
+        reportShown?.cancel()
+        reportShown = snackbarScope.launch { snackbarHostState.showSnackbar(clearedMessage) }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {

@@ -809,6 +809,8 @@
     <!-- Shown once the clear has actually finished, never on the confirm tap itself. -->
     <string name="settings_cleared_recents">Recent history cleared</string>
     <string name="settings_cleared_products">Saved products deleted</string>
+    <string name="settings_clear_recents_failed">Couldn\'t clear recent history. Try again.</string>
+    <string name="settings_clear_products_failed">Couldn\'t delete saved products. Try again.</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Version %1$s</string>
     <string name="settings_privacy_policy" tools:ignore="MissingTranslation">Privacy Policy</string>

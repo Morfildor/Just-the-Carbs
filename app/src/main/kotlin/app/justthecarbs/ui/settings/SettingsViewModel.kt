@@ -6,6 +6,7 @@ import app.justthecarbs.data.local.RoomProductDataSource
 import app.justthecarbs.data.settings.SettingsRepository
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.ThemeChoice
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,18 +15,22 @@ import kotlinx.coroutines.launch
 /** Which of the two Data actions has just finished, for the screen's one-line confirmation. */
 enum class ClearedData { RECENT_HISTORY, SAVED_PRODUCTS }
 
+/** A clear that has finished: which one, and whether it failed. */
+data class ClearReport(val data: ClearedData, val failed: Boolean = false)
+
 class SettingsViewModel(
     private val settings: SettingsRepository,
     private val products: RoomProductDataSource,
 ) : ViewModel() {
 
-    private val _cleared = MutableStateFlow<ClearedData?>(null)
+    private val _cleared = MutableStateFlow<ClearReport?>(null)
 
     /**
      * Set only after a clear has **finished**, so the screen never confirms a deletion that has not
-     * happened; consumed by [onClearedShown] once the confirmation has been shown.
+     * happened, and reported as failed when the database refused it; consumed by [onClearedShown]
+     * as soon as the screen shows it.
      */
-    val cleared: StateFlow<ClearedData?> = _cleared.asStateFlow()
+    val cleared: StateFlow<ClearReport?> = _cleared.asStateFlow()
 
     fun onClearedShown() {
         _cleared.value = null
@@ -49,10 +54,7 @@ class SettingsViewModel(
      * The exact list of what "usage" means is in [app.justthecarbs.data.local.ProductDao], and it is
      * five columns plus the whole `portion_usage` table, not the two columns this used to clear.
      */
-    fun clearRecents() = viewModelScope.launch {
-        products.clearRecentHistory()
-        _cleared.value = ClearedData.RECENT_HISTORY
-    }.let {}
+    fun clearRecents() = clear(ClearedData.RECENT_HISTORY) { products.clearRecentHistory() }
 
     /**
      * Deletes every saved product and everything derived from one: portion units and usual-portion
@@ -61,8 +63,21 @@ class SettingsViewModel(
      * Settings and the in-progress meal are deliberately untouched — neither is saved product data.
      * `docs/privacy-policy.md` describes exactly this scope, and the two must be changed together.
      */
-    fun clearProducts() = viewModelScope.launch {
-        products.deleteAllProducts()
-        _cleared.value = ClearedData.SAVED_PRODUCTS
+    fun clearProducts() = clear(ClearedData.SAVED_PRODUCTS) { products.deleteAllProducts() }
+
+    /**
+     * Runs one clear and reports how it ended. A database error is reported, not thrown: uncaught
+     * in [viewModelScope] it ended the app (2026-09-25 review). Cancellation still propagates.
+     */
+    private fun clear(data: ClearedData, action: suspend () -> Unit) = viewModelScope.launch {
+        val failed = try {
+            action()
+            false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            true
+        }
+        _cleared.value = ClearReport(data, failed)
     }.let {}
 }
