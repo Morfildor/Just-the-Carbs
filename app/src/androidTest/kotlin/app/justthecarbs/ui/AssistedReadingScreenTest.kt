@@ -829,6 +829,12 @@ class AssistedReadingScreenTest {
         }
 
         rule.onNodeWithText("Two different readings").assertIsDisplayed()
+        // The disagreement is the app's reading of one photo, not the package's (2026-09-25 review:
+        // "The label gave different numbers" blamed a label that printed one).
+        rule.onNodeWithText(
+            "The photo gave different readings (2.09, 2), so no figure was picked. Point at the right " +
+                "figure, or retake the photo.",
+        ).assertIsDisplayed()
         // No "Use ..." action exists anywhere on this screen.
         rule.onNodeWithText("Use / 100 g").assertDoesNotExist()
         rule.onNodeWithText("Use / 100 ml").assertDoesNotExist()

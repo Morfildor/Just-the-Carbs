@@ -743,7 +743,7 @@
          primary claim, since it is not what is printed on the package. -->
     <string name="verify_scale_normalized_value">Equivalent to %1$s g per 100 %2$s</string>
     <string name="conflict_title">Two different readings</string>
-    <string name="conflict_body">The label gave different numbers (%1$s), so none was picked. Point at the right figure, or retake the photo.</string>
+    <string name="conflict_body">The photo gave different readings (%1$s), so no figure was picked. Point at the right figure, or retake the photo.</string>
     <string name="conflict_assist">Point at the figure</string>
 
     <string name="ocr_not_found_title">Couldn’t find the carbs on this label</string>
