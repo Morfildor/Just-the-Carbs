@@ -1,0 +1,556 @@
+<meta charset="utf-8">
+<title>Protein Layer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Roboto:wght@400;500&display=swap">
+<style>
+  /* ---------- page (document) tokens: follow the viewer's theme ---------- */
+  :root {
+    --doc-bg: #F3EFE7;
+    --doc-ink: #1C1D24;
+    --doc-muted: #63636E;
+    --doc-line: #D9D3C7;
+    --doc-card: #FBF9F4;
+    --doc-accent: #2856C5;
+    --doc-note: #FFE8CC;
+    --doc-note-ink: #6E420B;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --doc-bg: #14161B; --doc-ink: #EDEAE2; --doc-muted: #A9A49B; --doc-line: #33373F;
+      --doc-card: #1C1F26; --doc-accent: #8FAAFF; --doc-note: #3A2A17; --doc-note-ink: #FFC078;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --doc-bg: #14161B; --doc-ink: #EDEAE2; --doc-muted: #A9A49B; --doc-line: #33373F;
+    --doc-card: #1C1F26; --doc-accent: #8FAAFF; --doc-note: #3A2A17; --doc-note-ink: #FFC078;
+  }
+  body {
+    margin: 0; background: var(--doc-bg); color: var(--doc-ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; padding-block: 32px 64px; padding-inline: 20px; }
+  h1 { font: 700 34px/1.1 "Space Grotesk", "Segoe UI", sans-serif; letter-spacing: -0.8px; margin: 0 0 8px; text-wrap: balance; }
+  h2 { font: 700 22px/1.2 "Space Grotesk", "Segoe UI", sans-serif; letter-spacing: -0.3px; margin: 56px 0 6px; }
+  h3 { font: 600 16px/1.3 "Space Grotesk", "Segoe UI", sans-serif; margin: 28px 0 8px; }
+  p.lede { max-width: 68ch; color: var(--doc-muted); margin: 0 0 4px; }
+  p.note { max-width: 72ch; margin: 6px 0 14px; color: var(--doc-muted); }
+  .rule { font: 700 11px/16px "Space Grotesk", sans-serif; letter-spacing: 1.6px; text-transform: uppercase; color: var(--doc-muted); margin: 0 0 12px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px 24px; align-items: flex-start; }
+  .cap { font-size: 13px; color: var(--doc-muted); margin: 8px 2px 0; max-width: 412px; }
+  .cap b { color: var(--doc-ink); font-weight: 600; }
+  .callout { background: var(--doc-note); color: var(--doc-note-ink); border-radius: 12px; padding: 12px 16px; max-width: 70ch; font-size: 14px; }
+  table.spec { border-collapse: collapse; font-size: 13.5px; margin: 8px 0 0; }
+  table.spec th, table.spec td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--doc-line); vertical-align: top; }
+  table.spec th { font-weight: 600; }
+  code { font: 12.5px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--doc-card); padding: 1px 5px; border-radius: 4px; }
+
+  /* ---------- phone tokens (the app's own theme values, Theme.kt) ---------- */
+  .theme-light {
+    --bg: #F7F2E8; --on: #191B23; --muted: #61616C;
+    --primary: #2856C5; --tile: #2856C5; --on-tile: #FFFCF7;
+    --sec-c: #E6ECFF; --on-sec-c: #17336F;
+    --lowest: #FFFEFB; --low: #FBF8F1; --high: #E8E2D7; --highest: #DED7CB;
+    --outline: #75716A; --line: #DED8CB;
+    --coral: #BD492F; --orange-soft: #FFE8CC; --on-orange-soft: #90530A;
+    --dock: #FFFEFB; --teal: #0F766E; --media: #FFFFFF; --amber: #92400E;
+    --chip-border: transparent; --pchip-border: var(--line); --pchip-border-on: transparent;
+    --shadow: 0 6px 18px rgba(25, 27, 35, 0.14), 0 1px 3px rgba(25, 27, 35, 0.10);
+  }
+  .theme-dark {
+    --bg: #111318; --on: #F3F0E8; --muted: #B7B2A8;
+    --primary: #82A2FF; --tile: #2E4DB5; --on-tile: #F3F0E8;
+    --sec-c: #263454; --on-sec-c: #82A2FF;
+    --lowest: #0C0E12; --low: #171A20; --high: #272C35; --highest: #303641;
+    --outline: #848997; --line: #353943;
+    --coral: #FF8A75; --orange-soft: #49321E; --on-orange-soft: #FFC078;
+    --dock: #272C35; --teal: #43B1A6; --media: #E8E4DC; --amber: #D49425;
+    --chip-border: var(--outline); --pchip-border: var(--outline); --pchip-border-on: var(--outline);
+    --shadow: 0 8px 22px rgba(0,0,0,0.55), 0 1px 3px rgba(0,0,0,0.5);
+  }
+
+  .phone { --fs: 1; width: 412px; max-width: 100%; background: var(--bg); color: var(--on); border-radius: 22px;
+    overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.18); font-family: Roboto, "Segoe UI", system-ui, sans-serif; position: relative; }
+  .phone.narrow { width: 320px; }
+  .phone.crop { border-radius: 16px; }
+  .sysbar { height: 36px; background: #000; color: #fff; font: 500 13px/36px Roboto, sans-serif; padding: 0 22px; display: flex; justify-content: space-between; }
+  .navbar { height: 40px; background: #000; display: flex; justify-content: space-around; align-items: center; padding: 0 60px; }
+  .navbar i { display: block; width: 14px; height: 14px; background: #fff; border-radius: 50%; opacity: .9; }
+  .navbar i.tri { width: 0; height: 0; background: none; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-right: 13px solid #fff; border-radius: 0; }
+  .navbar i.sq { border-radius: 2px; }
+
+  /* type roles (dp = px, scaled by --fs for font-scale mocks) */
+  .sg { font-family: "Space Grotesk", "Segoe UI", sans-serif; }
+  .headlineMedium { font: 700 calc(32px * var(--fs)) / calc(36px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: -0.8px; }
+  .titleLarge { font: 700 calc(24px * var(--fs)) / calc(30px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: -0.3px; }
+  .titleMedium { font: 600 calc(18px * var(--fs)) / calc(24px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: .15px; }
+  .titleSmall { font: 600 calc(14px * var(--fs)) / calc(20px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: .1px; }
+  .bodyLarge { font: 400 calc(17px * var(--fs)) / calc(24px * var(--fs)) Roboto, sans-serif; letter-spacing: .5px; }
+  .bodyMedium { font: 400 calc(15px * var(--fs)) / calc(22px * var(--fs)) Roboto, sans-serif; letter-spacing: .25px; }
+  .bodySmall { font: 400 calc(12px * var(--fs)) / calc(16px * var(--fs)) Roboto, sans-serif; letter-spacing: .4px; }
+  .labelLarge { font: 600 calc(14px * var(--fs)) / calc(20px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: .2px; }
+  .labelMedium { font: 600 calc(12px * var(--fs)) / calc(16px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: .5px; }
+  .labelSmall { font: 700 calc(11px * var(--fs)) / calc(16px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: 1.6px; text-transform: uppercase; }
+  .supporting { font: 400 calc(15px * var(--fs)) / calc(20px * var(--fs)) Roboto, sans-serif; }
+  .muted { color: var(--muted); }
+
+  .ico { width: 24px; height: 24px; fill: currentColor; flex: none; }
+  .ico.s22 { width: 22px; height: 22px; }
+  .ico.s20 { width: 20px; height: 20px; }
+  .ico.s18 { width: 18px; height: 18px; }
+
+  /* ---------- Home ---------- */
+  .wordmark { display: flex; align-items: center; padding: 8px 8px 8px 20px; position: relative; }
+  .wordmark .name { flex: 1; }
+  .iconbtn { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 24px; color: var(--on); }
+  .bars { position: absolute; right: 78px; top: 0; height: 96px; display: flex; align-items: flex-end; gap: 8px; z-index: 0; }
+  .bars i { display: block; width: 12px; border-radius: 4px; background: var(--primary); opacity: .16; }
+  .theme-dark .bars i { opacity: .26; }
+  .bars i:nth-child(odd) { opacity: .115; } .theme-dark .bars i:nth-child(odd) { opacity: .19; }
+  .search { margin: 4px 20px; height: 56px; border-radius: 12px; background: var(--low); display: flex; align-items: center; padding: 0 4px 0 4px; color: var(--muted); }
+  .search .ph { margin-left: 4px; font: 400 calc(17px * var(--fs)) Roboto, sans-serif; letter-spacing: .5px; }
+  .mealbar { margin: 4px 20px 12px; min-height: 48px; border-radius: 16px; background: var(--sec-c); color: var(--on-sec-c); display: flex; align-items: center; padding: 8px 16px; gap: 8px; }
+  .mealbar .t { flex: 1; }
+  .body { padding: 4px 20px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .tile { display: flex; align-items: center; border-radius: 16px; padding: 20px 16px; gap: 16px; }
+  .tile.filled { background: var(--tile); color: var(--on-tile); }
+  .tile.outlined { background: var(--lowest); color: var(--on); border: 1px solid var(--line); }
+  .tile .plate { width: 48px; height: 48px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+  .tile.filled .plate { background: rgba(255,252,247,.16); }
+  .tile.outlined .plate { background: color-mix(in srgb, var(--teal) 12%, transparent); color: var(--teal); }
+  .tile .txt { flex: 1; min-width: 0; }
+  .tile .sub { margin-top: 2px; }
+  .tile.filled .sub { opacity: .88; }
+  .tile.outlined .sub { color: var(--muted); }
+  .tile .chev { flex: none; }
+  .tile.outlined .chev { color: var(--muted); }
+  .footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; row-gap: 8px; column-gap: 0; padding-top: 4px; min-height: 48px; }
+  .textbtn { min-height: 48px; display: inline-flex; align-items: center; padding: 0 12px; color: var(--primary); border-radius: 12px; }
+
+  /* the Protein toggle chip */
+  .pchip { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 16px 0 12px; border-radius: 999px;
+    background: var(--low); color: var(--on); border: 1px solid var(--pchip-border); cursor: pointer; user-select: none;
+    transition: background-color 220ms cubic-bezier(.25,1,.5,1), color 220ms cubic-bezier(.25,1,.5,1), border-color 220ms; position: relative; }
+  .pchip .egg { position: relative; width: 20px; height: 20px; color: var(--muted); transition: color 220ms cubic-bezier(.25,1,.5,1); }
+  .pchip .egg svg { position: absolute; inset: 0; width: 20px; height: 20px; fill: currentColor; transition: opacity 220ms cubic-bezier(.25,1,.5,1); }
+  .pchip .egg .f { opacity: 0; }
+  .pchip.on { background: var(--sec-c); color: var(--on-sec-c); border-color: var(--pchip-border-on); }
+  .pchip.on .egg { color: inherit; }
+  .pchip.on .egg .o { opacity: 0; } .pchip.on .egg .f { opacity: 1; }
+  .pchip:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .pchip.big { min-height: 72px; padding: 0 28px 0 24px; gap: 16px; border-radius: 999px; font-size: 28px; }
+  .pchip.big .egg, .pchip.big .egg svg { width: 30px; height: 30px; }
+
+  .section-h { padding: 16px 0 4px; }
+  .recent { display: flex; align-items: center; gap: 12px; border-radius: 16px; background: var(--lowest); border: 1px solid var(--line); padding: 10px 12px; }
+  .thumb { width: 52px; height: 52px; border-radius: 16px; background: var(--sec-c); color: var(--on-sec-c); display: grid; place-items: center; flex: none; }
+  .thumb.photo { background: var(--media); color: #A63A2E; }
+  .recent .col { flex: 1; min-width: 0; }
+  .recent .row1 { display: flex; align-items: baseline; gap: 8px; }
+  .recent .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent .carbs { display: flex; align-items: baseline; gap: 6px; padding: 0 4px 0 8px; }
+  .recent .carbs b { color: var(--coral); font: 600 18px/24px "Space Grotesk", sans-serif; }
+  .recent .row2 { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .recent .portion { flex: 1; }
+  .capsule { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .capsule span { width: 44px; height: 36px; display: grid; place-items: center; color: var(--primary); }
+  .capsule span + span { border-left: 1px solid var(--line); color: var(--muted); }
+
+  /* ---------- Product / calculator ---------- */
+  .topbar { display: flex; align-items: center; padding: 4px 8px; gap: 0; }
+  .topbar .name { flex: 1; padding: 0 4px; }
+  .identity { display: flex; gap: 16px; padding: 8px 20px 0; }
+  .plate-img { width: 144px; height: 144px; border-radius: 12px; background: var(--high); color: var(--muted); display: grid; place-items: center; flex: none; font: 600 40px "Space Grotesk", sans-serif; }
+  .plate-img.photo { background: var(--media); }
+  .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding-top: 2px; }
+  .facts .per100 { width: 100%; }
+  .badge { display: inline-block; border-radius: 999px; padding: 4px 12px; background: var(--orange-soft); color: var(--on-orange-soft); }
+  .badge.verified { background: var(--sec-c); color: var(--on-sec-c); }
+  .link { color: var(--primary); padding: 4px 8px; min-height: 48px; display: inline-flex; align-items: center; }
+  .zone { padding: 16px 20px 16px; display: flex; flex-direction: column; }
+  .zone .label-row { display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .chips { display: flex; gap: 4px; }
+  .fchip { height: 48px; display: inline-flex; align-items: center; padding: 0 20px; border-radius: 999px; background: var(--low); color: var(--muted); border: 1px solid var(--chip-border); }
+  .fchip.sel { background: var(--sec-c); color: var(--on-sec-c); border-color: transparent; }
+  .field { margin-top: 8px; min-height: 80px; border-radius: 12px; background: var(--low); border: 1px solid var(--outline); display: flex; align-items: baseline; gap: 8px; padding: 8px 16px; box-sizing: border-box; }
+  .field.focus { background: var(--lowest); border: 2px solid var(--primary); }
+  .field .num { font: 600 calc(48px * var(--fs)) / calc(52px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: -1px; }
+  .field .num.ph { color: color-mix(in srgb, var(--muted) 40%, transparent); }
+  .field .unit { color: var(--muted); }
+  .usual { display: flex; gap: 8px; padding: 4px 0; }
+  .vbtn { flex: 1; min-height: 40px; border-radius: 12px; background: var(--low); border: 1px solid var(--chip-border); display: grid; place-items: center; color: var(--on); }
+  .vbtn.sel { background: var(--sec-c); color: var(--on-sec-c); border-color: transparent; }
+  .addunit { color: var(--primary); min-height: 48px; display: flex; align-items: center; margin-top: 8px; }
+
+  .dock { background: var(--dock); border-radius: 24px 24px 0 0; box-shadow: var(--shadow); padding: 16px 20px 24px; display: flex; flex-direction: column; align-items: flex-start; position: relative; }
+  .dock.prov { padding-bottom: 16px; }
+  .dock .eyebrow { color: var(--muted); }
+  .dock .slot { height: 80px; width: 100%; display: flex; align-items: center; margin-top: 4px; }
+  .dock .slot.compact { height: 60px; }
+  .result { display: flex; align-items: baseline; gap: 4px; flex: 1; color: var(--coral); }
+  .result .n { font: 700 calc(72px * var(--fs)) / calc(72px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: -2px; }
+  .result .u { font: 700 calc(26px * var(--fs)) / calc(26px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: -.5px; }
+  .copybtn { width: 48px; height: 48px; display: grid; place-items: center; margin-left: 8px; color: var(--on); }
+  .dock .sup { color: var(--muted); }
+  .protein { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+  .protein .v { font: 600 calc(18px * var(--fs)) / calc(24px * var(--fs)) "Space Grotesk", sans-serif; letter-spacing: .15px; color: var(--on); }
+  .protein .nl { color: var(--muted); }
+  .dock .provline { color: var(--muted); margin-top: 4px; }
+  .actions { display: flex; gap: 8px; width: 100%; margin-top: 16px; }
+  .actions .b { flex: 1; min-height: 56px; border-radius: 12px; display: grid; place-items: center; }
+  .actions .outl { color: var(--primary); border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent); }
+  .actions .fill { background: var(--tile); color: var(--on-tile); }
+  .pending-hint { color: var(--muted); margin-top: 4px; }
+  .kbd { background: #E9EAF2; color: #1c1d24; height: 150px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 10px 12px; }
+  .kbd i { display: block; background: #fff; border-radius: 999px; }
+  .kbd i.k { background: #DDE2F4; }
+
+  /* ---------- Settings ---------- */
+  .settings { padding: 0 20px; display: flex; flex-direction: column; gap: 16px; }
+  .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--low); border: 1px solid var(--line); }
+  .seg span { flex: 1; min-height: 56px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); text-align: center; padding: 8px; box-sizing: border-box; }
+  .seg span.sel { background: var(--sec-c); color: var(--on-sec-c); }
+  .srow { display: flex; align-items: center; gap: 16px; min-height: 48px; }
+  .srow .t { flex: 1; }
+  .srow .sub { color: var(--muted); margin-top: 2px; }
+  .switch { width: 52px; height: 32px; border-radius: 999px; background: var(--highest); border: 2px solid var(--outline); position: relative; box-sizing: border-box; flex: none; }
+  .switch::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: var(--outline); left: 6px; top: 6px; }
+  .switch.on { background: var(--primary); border-color: var(--primary); }
+  .switch.on::after { width: 24px; height: 24px; left: 24px; top: 2px; background: var(--on-tile); }
+  .theme-dark .switch.on::after { background: #0B1730; }
+  .divider { height: 1px; background: var(--line); }
+
+  /* annotation helpers */
+  .anno { position: relative; }
+  .measure { position: absolute; font: 600 11px/1 ui-monospace, monospace; color: var(--doc-accent); background: var(--doc-card); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--doc-line); }
+  .swatches { display: flex; flex-wrap: wrap; gap: 12px; }
+  .sw { width: 168px; border-radius: 12px; padding: 12px; border: 1px solid var(--doc-line); background: var(--doc-card); font-size: 13px; }
+  .sw i { display: block; height: 40px; border-radius: 8px; margin-bottom: 8px; border: 1px solid rgba(0,0,0,.08); }
+  @media (prefers-reduced-motion: reduce) { .pchip, .pchip .egg svg { transition: none; } }
+</style>
+
+<!-- The egg glyph, exactly as Icons.Outlined.Egg / Icons.Filled.Egg (material-icons-extended 1.7.8) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <path id="egg-o" d="M12 3C8.5 3 5 9.33 5 14c0 3.87 3.13 7 7 7c3.87 0 7-3.13 7-7C19 9.33 15.5 3 12 3ZM12 19c-2.76 0-5-2.24-5-5c0-4.09 3.07-9 5-9s5 4.91 5 9C17 16.76 14.76 19 12 19ZM13 16c-.58 0-3-.08-3-3c0-.55-.45-1-1-1s-1 .45-1 1c0 3 1.99 5 5 5c.55 0 1-.45 1-1S13.55 16 13 16Z"/>
+    <path id="egg-f" d="M12 3C8.5 3 5 9.33 5 14c0 3.87 3.13 7 7 7s7-3.13 7-7C19 9.33 15.5 3 12 3ZM13 18c-3 0-5-1.99-5-5c0-.55.45-1 1-1s1 .45 1 1c0 2.92 2.42 3 3 3c.55 0 1 .45 1 1S13.55 18 13 18Z"/>
+    <!-- the fallback, Icons.Outlined.EggAlt / Icons.Filled.EggAlt, same artifact -->
+    <path id="eggalt-o" d="M19 9C17 7 15.99 2 9.97 2C4.95 2 1.94 6 2 11.52C2.06 17.04 6.96 19 9.97 19c2.01 0 2.01 3 6.02 3C19 22 22 19 22 15.02C22 12 21.01 11 19 9ZM15.99 20c-1.49 0-1.96-.5-2.68-1.26C12.66 18.05 11.66 17 9.97 17C8.33 17 4.05 16.01 4 11.5C3.97 8.99 4.68 6.88 5.99 5.55C7.01 4.52 8.35 4 9.97 4c3.34 0 4.51 1.86 5.86 4.02c.55.88 1.07 1.71 1.76 2.39c1.9 1.89 2.41 2.4 2.41 4.61C20 17.87 17.88 20 15.99 20ZM12 12m-3.5 0a3.5 3.5 0 1 1 7 0a3.5 3.5 0 1 1-7 0"/>
+    <path id="eggalt-f" d="M19 9C17 7 15.99 2 9.97 2C4.95 2 1.94 6 2 11.52C2.06 17.04 6.96 19 9.97 19c2.01 0 2.01 3 6.02 3C19 22 22 19 22 15.02C22 12 21.01 11 19 9ZM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5s3.5 1.57 3.5 3.5S13.93 15.5 12 15.5Z"/>
+    <path id="qr" d="M9.5 6.5v3h-3v-3H9.5M11 5H5v6h6V5L11 5ZM9.5 14.5v3h-3v-3H9.5M11 13H5v6h6V13L11 13ZM17.5 6.5v3h-3v-3H17.5M19 5h-6v6h6V5L19 5ZM13 13h1.5v1.5H13V13ZM14.5 14.5H16V16h-1.5V14.5ZM16 13h1.5v1.5H16V13ZM13 16h1.5v1.5H13V16ZM14.5 17.5H16V19h-1.5V17.5ZM16 16h1.5v1.5H16V16ZM17.5 14.5H19V16h-1.5V14.5ZM17.5 17.5H19V19h-1.5V17.5ZM22 7h-2V4h-3V2h5V7ZM22 22v-5h-2v3h-3v2H22ZM2 22h5v-2H4v-3H2V22ZM2 2v5h2V4h3V2H2Z"/>
+    <path id="doc" d="M7 3H4v3H2V1h5V3ZM22 6V1h-5v2h3v3H22ZM7 21H4v-3H2v5h5V21ZM20 18v3h-3v2h5v-5H20ZM19 18c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2V18ZM15 8H9v2h6V8ZM15 11H9v2h6V11ZM15 14H9v2h6V14Z"/>
+    <path id="gear" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+    <path id="search" d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+    <path id="chev" d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+    <path id="back" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+    <path id="plus" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+    <path id="more" d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+    <path id="star" d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24ZM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4Z"/>
+    <path id="copy" d="M16 1L4 1c-1.1 0-2 .9-2 2v14h2L4 3h12L16 1ZM19 5L8 5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2L21 7c0-1.1-.9-2-2-2ZM19 21L8 21L8 7h11v14Z"/>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <h1>Protein as a second reading, never a second answer</h1>
+  <p class="lede">Mockups for the optional Protein layer in Just the Carbs. Every surface, size and colour below is the app's own token (Theme.kt), so what you see is what the implementation renders. Tap any <b>Show protein</b> chip on the Home mocks to flip it.</p>
+  <p class="note">Companion to <code>docs/superpowers/specs/2026-09-24-protein-design.md</code>. Photos are stand-ins (initials plates); the real screens load Open Food Facts photography into the same box.</p>
+
+  <!-- ============================ HOME ============================ -->
+  <h2>1 · Home: the Protein chip closes the entry cluster</h2>
+  <p class="note">The two scan tiles and <b>Enter manually</b> are the three ways in. The chip sits on that last row, trailing edge, as the one modifier of what those ways in will read. Off, it is a quiet pill in ink with a hairline edge and an outlined egg. On, it takes the paired container the app already uses for a selected state, the egg fills, and the primary tile's subtitle says what the next scan will read.</p>
+  <div class="grid">
+    <div>
+      <div class="phone theme-light" data-home>
+        <div class="sysbar"><span>17:10</span><span>▲ ▮</span></div>
+        <div class="wordmark"><div class="bars"><i style="height:40px"></i><i style="height:72px"></i><i style="height:56px"></i><i style="height:88px"></i><i style="height:64px"></i></div><div class="name headlineMedium">Just the Carbs</div><div class="iconbtn"><svg class="ico"><use href="#gear"/></svg></div></div>
+        <div class="search"><div class="iconbtn"><svg class="ico"><use href="#search"/></svg></div><span class="ph">Search products</span></div>
+        <div class="body">
+          <div class="tile filled"><div class="plate"><svg class="ico s22"><use href="#qr"/></svg></div><div class="txt"><div class="titleMedium">Scan barcode</div><div class="sub bodySmall" data-sub>Fastest way to find a packaged product</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="tile outlined"><div class="plate"><svg class="ico s22"><use href="#doc"/></svg></div><div class="txt"><div class="titleMedium">Scan nutrition label</div><div class="sub bodySmall">Read carbs straight from the package</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="footer"><span class="textbtn labelLarge">Enter manually</span><button class="pchip labelLarge" role="switch" aria-checked="false" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button></div>
+          <div class="section-h titleSmall">Recent</div>
+          <div class="recent"><div class="thumb photo sg" style="font-weight:700">N</div><div class="col"><div class="row1"><div class="name titleMedium">Nutella</div><div class="carbs"><span class="labelSmall muted">Carbs</span><b>37.4 g</b></div></div><div class="row2"><div class="portion bodyMedium muted">65 g</div><div class="capsule"><span><svg class="ico s20"><use href="#plus"/></svg></span><span><svg class="ico s20"><use href="#star"/></svg></span></div></div></div></div>
+          <div class="recent"><div class="thumb sg">BV</div><div class="col"><div class="row1"><div class="name titleMedium">Biologische volkoren meergranen</div><div class="carbs"><span class="labelSmall muted">Carbs</span><b>34.8 g</b></div></div><div class="row2"><div class="portion bodyMedium muted">80 g</div><div class="capsule"><span><svg class="ico s20"><use href="#plus"/></svg></span><span><svg class="ico s20"><use href="#star"/></svg></span></div></div></div></div>
+        </div>
+        <div class="navbar"><i class="tri"></i><i></i><i class="sq"></i></div>
+      </div>
+      <div class="cap"><b>Light · Protein off.</b> Nothing else on Home changes. The chip is the only new object; at 1.0x it costs no vertical space, because it shares the row Enter manually already had.</div>
+    </div>
+    <div>
+      <div class="phone theme-light" data-home>
+        <div class="sysbar"><span>17:10</span><span>▲ ▮</span></div>
+        <div class="wordmark"><div class="bars"><i style="height:40px"></i><i style="height:72px"></i><i style="height:56px"></i><i style="height:88px"></i><i style="height:64px"></i></div><div class="name headlineMedium">Just the Carbs</div><div class="iconbtn"><svg class="ico"><use href="#gear"/></svg></div></div>
+        <div class="search"><div class="iconbtn"><svg class="ico"><use href="#search"/></svg></div><span class="ph">Search products</span></div>
+        <div class="mealbar"><span class="t titleSmall">Meal · 2 items · <b>43.8 g</b> carbs</span><svg class="ico"><use href="#chev"/></svg></div>
+        <div class="body">
+          <div class="tile filled"><div class="plate"><svg class="ico s22"><use href="#qr"/></svg></div><div class="txt"><div class="titleMedium">Scan next item</div><div class="sub bodySmall" data-sub data-midmeal>Add another item to your meal</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="tile outlined"><div class="plate"><svg class="ico s22"><use href="#doc"/></svg></div><div class="txt"><div class="titleMedium">Scan nutrition label</div><div class="sub bodySmall">Read carbs straight from the package</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="footer"><span class="textbtn labelLarge">Enter manually</span><button class="pchip labelLarge on" role="switch" aria-checked="true" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button></div>
+          <div class="section-h titleSmall">Recent</div>
+          <div class="recent"><div class="thumb photo sg" style="font-weight:700">N</div><div class="col"><div class="row1"><div class="name titleMedium">Nutella</div><div class="carbs"><span class="labelSmall muted">Carbs</span><b>37.4 g</b></div></div><div class="row2"><div class="portion bodyMedium muted">65 g</div><div class="capsule"><span><svg class="ico s20"><use href="#plus"/></svg></span><span><svg class="ico s20"><use href="#star"/></svg></span></div></div></div></div>
+          <div class="recent"><div class="thumb sg">CC</div><div class="col"><div class="row1"><div class="name titleMedium">Coca-Cola</div><div class="carbs"><span class="labelSmall muted">Carbs</span><b>26.5 g</b></div></div><div class="row2"><div class="portion bodyMedium muted">250 ml</div><div class="capsule"><span><svg class="ico s20"><use href="#plus"/></svg></span><span><svg class="ico s20"><use href="#star"/></svg></span></div></div></div></div>
+        </div>
+        <div class="navbar"><i class="tri"></i><i></i><i class="sq"></i></div>
+      </div>
+      <div class="cap"><b>Light · Protein on, mid-meal.</b> The chip takes the paired container (the meal bar's own tint) and the egg fills. Mid-meal the tile keeps its meal copy; the chip alone states the mode. Recents stay carbs-only.</div>
+    </div>
+    <div>
+      <div class="phone theme-dark" data-home>
+        <div class="sysbar"><span>17:11</span><span>▲ ▮</span></div>
+        <div class="wordmark"><div class="bars"><i style="height:40px"></i><i style="height:72px"></i><i style="height:56px"></i><i style="height:88px"></i><i style="height:64px"></i></div><div class="name headlineMedium">Just the Carbs</div><div class="iconbtn"><svg class="ico"><use href="#gear"/></svg></div></div>
+        <div class="search"><div class="iconbtn"><svg class="ico"><use href="#search"/></svg></div><span class="ph">Search products</span></div>
+        <div class="body">
+          <div class="tile filled"><div class="plate"><svg class="ico s22"><use href="#qr"/></svg></div><div class="txt"><div class="titleMedium">Scan barcode</div><div class="sub bodySmall" data-sub>Fastest way to find a packaged product</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="tile outlined"><div class="plate"><svg class="ico s22"><use href="#doc"/></svg></div><div class="txt"><div class="titleMedium">Scan nutrition label</div><div class="sub bodySmall">Read carbs straight from the package</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="footer"><span class="textbtn labelLarge">Enter manually</span><button class="pchip labelLarge" role="switch" aria-checked="false" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button></div>
+          <div class="section-h titleSmall">Recent</div>
+          <div class="recent"><div class="thumb photo sg" style="font-weight:700">N</div><div class="col"><div class="row1"><div class="name titleMedium">Nutella</div><div class="carbs"><span class="labelSmall muted">Carbs</span><b>37.4 g</b></div></div><div class="row2"><div class="portion bodyMedium muted">65 g</div><div class="capsule"><span><svg class="ico s20"><use href="#plus"/></svg></span><span><svg class="ico s20"><use href="#star"/></svg></span></div></div></div></div>
+        </div>
+        <div class="navbar"><i class="tri"></i><i></i><i class="sq"></i></div>
+      </div>
+      <div class="cap"><b>Dark · Protein off.</b> In Dark the quiet fill is 1.07:1 against the page, so the off chip carries the same 1dp <code>outline</code> hairline the value buttons already use there. Nothing is colour-only.</div>
+    </div>
+    <div>
+      <div class="phone theme-dark" data-home>
+        <div class="sysbar"><span>17:11</span><span>▲ ▮</span></div>
+        <div class="wordmark"><div class="bars"><i style="height:40px"></i><i style="height:72px"></i><i style="height:56px"></i><i style="height:88px"></i><i style="height:64px"></i></div><div class="name headlineMedium">Just the Carbs</div><div class="iconbtn"><svg class="ico"><use href="#gear"/></svg></div></div>
+        <div class="search"><div class="iconbtn"><svg class="ico"><use href="#search"/></svg></div><span class="ph">Search products</span></div>
+        <div class="body">
+          <div class="tile filled"><div class="plate"><svg class="ico s22"><use href="#qr"/></svg></div><div class="txt"><div class="titleMedium">Scan barcode</div><div class="sub bodySmall" data-sub>Carbs, and protein when listed</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="tile outlined"><div class="plate"><svg class="ico s22"><use href="#doc"/></svg></div><div class="txt"><div class="titleMedium">Scan nutrition label</div><div class="sub bodySmall">Read carbs straight from the package</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="footer"><span class="textbtn labelLarge">Enter manually</span><button class="pchip labelLarge on" role="switch" aria-checked="true" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button></div>
+          <div class="section-h titleSmall">Recent</div>
+          <div class="recent"><div class="thumb photo sg" style="font-weight:700">N</div><div class="col"><div class="row1"><div class="name titleMedium">Nutella</div><div class="carbs"><span class="labelSmall muted">Carbs</span><b>37.4 g</b></div></div><div class="row2"><div class="portion bodyMedium muted">65 g</div><div class="capsule"><span><svg class="ico s20"><use href="#plus"/></svg></span><span><svg class="ico s20"><use href="#star"/></svg></span></div></div></div></div>
+        </div>
+        <div class="navbar"><i class="tri"></i><i></i><i class="sq"></i></div>
+      </div>
+      <div class="cap"><b>Dark · Protein on.</b> The primary tile's subtitle acknowledges the mode: <i>Carbs, and protein when listed</i>. The label tile keeps its copy, because label scanning does not read protein in this patch.</div>
+    </div>
+  </div>
+
+  <h3>The chip, close up</h3>
+  <div class="grid">
+    <div class="theme-light" style="background:var(--bg);padding:28px;border-radius:16px;display:flex;gap:24px;align-items:center;flex-wrap:wrap"><button class="pchip big labelLarge" role="switch" aria-checked="false" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button><button class="pchip big labelLarge on" role="switch" aria-checked="true" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button></div>
+    <div class="theme-dark" style="background:var(--bg);padding:28px;border-radius:16px;display:flex;gap:24px;align-items:center;flex-wrap:wrap"><button class="pchip big labelLarge" role="switch" aria-checked="false" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button><button class="pchip big labelLarge on" role="switch" aria-checked="true" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button></div>
+  </div>
+  <table class="spec">
+    <tr><th>Anatomy</th><td>48dp pill (the app's own chip height, so no extra touch padding), 12dp leading inset, 20dp egg, 8dp gap, <code>labelLarge</code> SemiBold label <i>Show protein</i>, 16dp trailing inset. Role: switch; the platform speaks On / Off.</td></tr>
+    <tr><th>Off</th><td>Fill <code>surfaceContainerLow</code>, label in <code>onSurface</code>, outlined egg in <code>onSurfaceVariant</code>, and a 1dp hairline: <code>outlineVariant</code> in Light (the recent cards' own edge), <code>outline</code> in Dark (the page-luminance rule of <code>JtcValueButton</code>). A control that stands alone needs an edge; a 1.05:1 fill cannot bound it.</td></tr>
+    <tr><th>On</th><td>Fill <code>secondaryContainer</code>, label and filled egg in <code>onSecondaryContainer</code>. No border in Light; in Dark the <code>outline</code> hairline stays (3.5:1 against the fill), because the rule keys on the page, not on the state. No check mark, no second colour.</td></tr>
+    <tr><th>Motion</th><td>Container, content and glyph cross in one beat, 220ms ease-out-quart. No scale, no bounce, no haptic: the app's haptics belong to scan outcomes.</td></tr>
+  </table>
+
+  <!-- ============================ ICON ============================ -->
+  <h2>2 · The mark: an egg, outlined off and filled on</h2>
+  <p class="note">The app's icons are Material Filled glyphs; its one existing on/off icon is the favourite star, outlined until set. Protein follows exactly that grammar with <code>Icons.Outlined.Egg</code> and <code>Icons.Filled.Egg</code>, which ship in the icon library the app already bundles (resolved through the Compose BOM to 1.7.8, verified in the Gradle cache). The chip draws it at 20dp. If a device screenshot read at arm's length shows a water drop rather than an egg, the fallback is <code>Icons.Outlined.EggAlt</code> / <code>Icons.Filled.EggAlt</code> from the same artifact (the yolk makes it unambiguous), shown as <i>alt</i> below. An egg is the one protein symbol that is neither a meat cut nor a gym weight, and it stays legible at 18dp.</p>
+  <div class="grid">
+    <div class="theme-light" style="background:var(--bg);padding:24px 28px;border-radius:16px;display:flex;gap:28px;align-items:end;color:var(--muted)">
+      <div style="text-align:center"><svg width="20" height="20" fill="currentColor"><use href="#egg-o"/></svg><div class="labelSmall" style="margin-top:6px">20 off</div></div>
+      <div style="text-align:center;color:var(--on-sec-c)"><svg width="20" height="20" fill="currentColor"><use href="#egg-f"/></svg><div class="labelSmall" style="margin-top:6px">20 on</div></div>
+      <div style="text-align:center"><svg width="24" height="24" fill="currentColor"><use href="#egg-o"/></svg><div class="labelSmall" style="margin-top:6px">24</div></div>
+      <div style="text-align:center;color:var(--on)"><svg width="48" height="48" fill="currentColor"><use href="#egg-o"/></svg><div class="labelSmall" style="margin-top:6px">48</div></div>
+      <div style="text-align:center;color:var(--on)"><svg width="48" height="48" fill="currentColor"><use href="#egg-f"/></svg><div class="labelSmall" style="margin-top:6px">48 filled</div></div><div style="text-align:center;color:var(--muted)"><svg width="20" height="20" fill="currentColor"><use href="#eggalt-o"/></svg><div class="labelSmall" style="margin-top:6px">alt 20 off</div></div><div style="text-align:center;color:var(--on-sec-c)"><svg width="20" height="20" fill="currentColor"><use href="#eggalt-f"/></svg><div class="labelSmall" style="margin-top:6px">alt 20 on</div></div>
+    </div>
+    <div class="theme-dark" style="background:var(--bg);padding:24px 28px;border-radius:16px;display:flex;gap:28px;align-items:end;color:var(--muted)">
+      <div style="text-align:center"><svg width="20" height="20" fill="currentColor"><use href="#egg-o"/></svg><div class="labelSmall" style="margin-top:6px">20 off</div></div>
+      <div style="text-align:center;color:var(--on-sec-c)"><svg width="20" height="20" fill="currentColor"><use href="#egg-f"/></svg><div class="labelSmall" style="margin-top:6px">20 on</div></div>
+      <div style="text-align:center"><svg width="24" height="24" fill="currentColor"><use href="#egg-o"/></svg><div class="labelSmall" style="margin-top:6px">24</div></div>
+      <div style="text-align:center;color:var(--on)"><svg width="48" height="48" fill="currentColor"><use href="#egg-o"/></svg><div class="labelSmall" style="margin-top:6px">48</div></div>
+      <div style="text-align:center;color:var(--on)"><svg width="48" height="48" fill="currentColor"><use href="#egg-f"/></svg><div class="labelSmall" style="margin-top:6px">48 filled</div></div><div style="text-align:center;color:var(--muted)"><svg width="20" height="20" fill="currentColor"><use href="#eggalt-o"/></svg><div class="labelSmall" style="margin-top:6px">alt 20 off</div></div><div style="text-align:center;color:var(--on-sec-c)"><svg width="20" height="20" fill="currentColor"><use href="#eggalt-f"/></svg><div class="labelSmall" style="margin-top:6px">alt 20 on</div></div>
+    </div>
+  </div>
+
+  <!-- ============================ CALCULATOR ============================ -->
+  <h2>3 · Calculator: the reading lives in the dock, under the answer</h2>
+  <p class="note">One new row inside the result dock: the <b>PROTEIN</b> eyebrow with its figure beside it, in ink, at <code>titleMedium</code>. Carbs keep their stacked 72sp coral block; protein is an inline pair four times smaller, in a different colour, on a different line. Both derive from the one portion in the field above.</p>
+  <div class="grid">
+    <div>
+      <div class="phone theme-light">
+        <div class="sysbar"><span>17:10</span><span>▲ ▮</span></div>
+        <div class="topbar"><div class="iconbtn"><svg class="ico"><use href="#back"/></svg></div><div class="name titleMedium">Nutella</div><div class="iconbtn muted"><svg class="ico"><use href="#star"/></svg></div><div class="iconbtn"><svg class="ico"><use href="#more"/></svg></div></div>
+        <div class="mealbar"><span class="t titleSmall">Meal · 2 items · <b>43.8 g</b> carbs</span><svg class="ico"><use href="#chev"/></svg></div>
+        <div class="identity"><div class="plate-img photo" style="color:#A63A2E;font-weight:700">N</div><div class="facts"><div class="per100 titleMedium">57.5 g carbs / 100 g</div><span class="badge labelMedium">Online value</span><span class="link labelLarge">Check</span></div></div>
+        <div class="zone">
+          <div class="label-row"><span class="labelSmall muted">Portion</span><div class="chips"><span class="fchip sel labelLarge">Grams</span><span class="fchip labelLarge">Spoon</span></div></div>
+          <div class="field"><span class="num">65</span><span class="unit titleMedium">g</span></div>
+          <div class="labelSmall muted" style="margin-top:12px">Usual</div>
+          <div class="usual"><span class="vbtn sel labelLarge">65 g</span><span class="vbtn labelLarge">15 g</span><span class="vbtn labelLarge">1 spoon</span></div>
+          <div class="addunit bodyMedium">Add portion unit</div>
+        </div>
+        <div class="dock prov">
+          <div class="eyebrow labelSmall">Carbs</div>
+          <div class="slot"><div class="result"><span class="n">37.4</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div>
+          <div class="sup supporting">≈ 37 g whole grams</div>
+          <div class="provline bodySmall">Online value, not checked against your package</div>
+          <div class="protein"><span class="labelSmall muted">Protein</span><span class="v">4.1 g</span></div>
+          <div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div>
+        </div>
+        <div class="navbar"><i class="tri"></i><i></i><i class="sq"></i></div>
+      </div>
+      <div class="cap"><b>Light · Protein on · 65 g of Nutella.</b> 6.3 g protein per 100 g scaled by the same 65 g: <b>4.1 g</b>. The row comes after the carb block (numeral, whole-gram line, provenance), 8dp below it, so the provenance sentence stays the caption of the answer. It is 24dp tall at 1.0x; the dock's animated size absorbs it. Everything above the dock is unchanged.</div>
+    </div>
+    <div>
+      <div class="phone theme-dark">
+        <div class="sysbar"><span>17:11</span><span>▲ ▮</span></div>
+        <div class="topbar"><div class="iconbtn"><svg class="ico"><use href="#back"/></svg></div><div class="name titleMedium">Nutella</div><div class="iconbtn muted"><svg class="ico"><use href="#star"/></svg></div><div class="iconbtn"><svg class="ico"><use href="#more"/></svg></div></div>
+        <div class="mealbar"><span class="t titleSmall">Meal · 2 items · <b>43.8 g</b> carbs</span><svg class="ico"><use href="#chev"/></svg></div>
+        <div class="identity"><div class="plate-img photo" style="color:#A63A2E;font-weight:700">N</div><div class="facts"><div class="per100 titleMedium">57.5 g carbs / 100 g</div><span class="badge labelMedium">Online value</span><span class="link labelLarge">Check</span></div></div>
+        <div class="zone">
+          <div class="label-row"><span class="labelSmall muted">Portion</span><div class="chips"><span class="fchip sel labelLarge">Grams</span><span class="fchip labelLarge">Spoon</span></div></div>
+          <div class="field"><span class="num">65</span><span class="unit titleMedium">g</span></div>
+          <div class="labelSmall muted" style="margin-top:12px">Usual</div>
+          <div class="usual"><span class="vbtn sel labelLarge">65 g</span><span class="vbtn labelLarge">15 g</span><span class="vbtn labelLarge">1 spoon</span></div>
+          <div class="addunit bodyMedium">Add portion unit</div>
+        </div>
+        <div class="dock prov">
+          <div class="eyebrow labelSmall">Carbs</div>
+          <div class="slot"><div class="result"><span class="n">37.4</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div>
+          <div class="sup supporting">≈ 37 g whole grams</div>
+          <div class="provline bodySmall">Online value, not checked against your package</div>
+          <div class="protein"><span class="labelSmall muted">Protein</span><span class="v">4.1 g</span></div>
+          <div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div>
+        </div>
+        <div class="navbar"><i class="tri"></i><i></i><i class="sq"></i></div>
+      </div>
+      <div class="cap"><b>Dark · same state.</b> The raised graphite dock, coral answer, chalk protein figure. Protein never borrows the result colour, in either theme.</div>
+    </div>
+  </div>
+
+  <h3>Dock states</h3>
+  <p class="note">Cropped to the dock so the states compare side by side. Widths are the phone's 412dp.</p>
+  <div class="grid">
+    <div><div class="phone crop theme-light"><div class="dock prov"><div class="eyebrow labelSmall">Carbs</div><div class="slot"><div class="result"><span class="n">37.4</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">≈ 37 g whole grams</div><div class="provline bodySmall">Online value, not checked against your package</div><div class="protein"><span class="labelSmall muted">Protein</span><span class="v">4.1 g</span></div><div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div></div></div><div class="cap"><b>A · Value.</b> Protein on, a value is listed, portion entered. Spoken as one announcement: “37.4 grams of carbs, 4.1 grams of protein”.</div></div>
+    <div><div class="phone crop theme-light"><div class="dock prov"><div class="eyebrow labelSmall">Carbs</div><div class="slot"><div class="result"><span class="n">26.5</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">≈ 27 g whole grams</div><div class="provline bodySmall">Online value, not checked against your package</div><div class="protein"><span class="labelSmall muted">Protein</span><span class="nl bodyMedium">No online value</span></div><div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div></div></div><div class="cap"><b>B · No online value.</b> Protein on, the Open Food Facts record has no protein value. The same row, the same place, in supporting ink. A fact about the data, never a warning, never 0 g.</div></div>
+    <div><div class="phone crop theme-light"><div class="dock"><div class="eyebrow labelSmall">Carbs</div><div class="slot"><div class="result"><span class="n">37.4</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">≈ 37 g whole grams</div><div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div></div></div><div class="cap"><b>C · Protein off.</b> Today's dock, byte for byte. No placeholder, no reserved height.</div></div>
+    <div><div class="phone crop theme-light"><div class="dock"><div class="eyebrow labelSmall">Carbs</div><div class="pending-hint supporting">Enter a portion</div></div></div><div class="cap"><b>D · No portion yet.</b> Protein on or off, the resting dock is the label and the prompt. Protein appears with the answer, not before it.</div></div>
+    <div><div class="phone crop theme-light"><div class="dock"><div class="eyebrow labelSmall">Carbs</div><div class="slot compact"><div class="result" style="--fs:.8"><span class="n">37.4</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">≈ 37 g whole grams</div></div><div class="kbd"><i class="k"></i><i></i><i></i><i class="k"></i><i></i><i></i><i></i><i class="k"></i><i></i><i></i><i></i><i class="k"></i></div></div><div class="cap"><b>E · Keyboard open.</b> The protein row steps aside with the provenance line and the meal actions, so the dock keeps one height while typing. It returns the instant the keyboard closes.</div></div>
+    <div><div class="phone crop theme-light"><div class="dock prov"><div class="eyebrow labelSmall">Carbs</div><div class="slot"><div class="result"><span class="n">37</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">37.4 g calculated</div><div class="provline bodySmall">Carbs checked against the package. Protein is an online value.</div><div class="protein"><span class="labelSmall muted">Protein</span><span class="v">4 g</span></div><div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div></div></div><div class="cap"><b>F · Whole-gram style, verified product.</b> The protein figure follows the same result style (whole here). The user verified the carbs, not the protein, and the provenance line says so.</div></div>
+  </div>
+
+  <h3>Dark dock states</h3>
+  <div class="grid">
+    <div><div class="phone crop theme-dark"><div class="dock prov"><div class="eyebrow labelSmall">Carbs</div><div class="slot"><div class="result"><span class="n">37.4</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">≈ 37 g whole grams</div><div class="provline bodySmall">Online value, not checked against your package</div><div class="protein"><span class="labelSmall muted">Protein</span><span class="v">4.1 g</span></div><div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div></div></div><div class="cap"><b>A · Value.</b></div></div>
+    <div><div class="phone crop theme-dark"><div class="dock prov"><div class="eyebrow labelSmall">Carbs</div><div class="slot"><div class="result"><span class="n">26.5</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">≈ 27 g whole grams</div><div class="provline bodySmall">Online value, not checked against your package</div><div class="protein"><span class="labelSmall muted">Protein</span><span class="nl bodyMedium">No online value</span></div><div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div></div></div><div class="cap"><b>B · No online value.</b></div></div>
+    <div><div class="phone crop theme-dark"><div class="dock"><div class="eyebrow labelSmall">Carbs</div><div class="pending-hint supporting">Enter a portion</div></div></div><div class="cap"><b>D · No portion yet.</b></div></div>
+  </div>
+
+  <!-- ============================ SETTINGS ============================ -->
+  <h2>4 · Settings: the same state, as a row</h2>
+  <p class="note">One persisted setting. The Home chip and this row read it from the one settings flow and write it through the one repository method, so they cannot disagree. It sits under <b>Results</b>, because it is about what the result shows, and it carries a supporting line because its label alone does not say what changes.</p>
+  <div class="grid">
+    <div>
+      <div class="phone theme-light">
+        <div class="sysbar"><span>17:10</span><span>▲ ▮</span></div>
+        <div class="topbar" style="min-height:64px;padding-bottom:8px"><div class="iconbtn"><svg class="ico"><use href="#back"/></svg></div><svg width="16" height="24" style="margin:0 8px 0 0" viewBox="0 0 16 24"><rect x="0" y="8.6" width="3.2" height="15.4" fill="#61616C"/><rect x="6.4" y="3" width="3.2" height="21" fill="#61616C"/><rect x="12.8" y="0" width="3.2" height="24" fill="#61616C"/></svg><div class="name titleLarge">Settings</div></div>
+        <div class="settings">
+          <div class="labelSmall muted" style="letter-spacing:1.6px;text-transform:none">Appearance</div>
+          <div class="seg labelLarge"><span>System</span><span class="sel">Light</span><span>Dark</span></div>
+          <div class="divider"></div>
+          <div class="labelSmall muted" style="text-transform:none">Results</div>
+          <div class="seg labelLarge"><span class="sel">Decimal value, whole gram beneath</span><span>Whole gram, decimal beneath</span></div>
+          <div class="srow"><div class="t"><div class="bodyLarge">Show protein</div><div class="sub bodySmall">Shows the protein in your portion under the carbs when Open Food Facts lists it. Carbs are unchanged.</div></div><span class="switch on"></span></div>
+          <div class="divider"></div>
+          <div class="labelSmall muted" style="text-transform:none">Interaction</div>
+          <div class="srow"><div class="t bodyLarge">Haptic feedback</div><span class="switch on"></span></div>
+          <div class="srow"><div class="t"><div class="bodyLarge">Replay tutorial</div><div class="sub bodySmall">See how scanning, portions, and meals work.</div></div></div>
+          <div class="divider"></div>
+          <div class="labelSmall muted" style="text-transform:none">Data</div>
+          <div class="srow"><div class="t bodyLarge">Clear recent history</div></div>
+          <div style="height:12px"></div>
+        </div>
+        <div class="navbar"><i class="tri"></i><i></i><i class="sq"></i></div>
+      </div>
+      <div class="cap"><b>Light.</b> The row is the haptics row's anatomy plus a supporting line: the whole row toggles, TalkBack meets one switch named Show protein, the same name as the chip on Home.</div>
+    </div>
+    <div>
+      <div class="phone theme-dark">
+        <div class="sysbar"><span>17:11</span><span>▲ ▮</span></div>
+        <div class="topbar" style="min-height:64px;padding-bottom:8px"><div class="iconbtn"><svg class="ico"><use href="#back"/></svg></div><svg width="16" height="24" style="margin:0 8px 0 0" viewBox="0 0 16 24"><rect x="0" y="8.6" width="3.2" height="15.4" fill="#B7B2A8"/><rect x="6.4" y="3" width="3.2" height="21" fill="#B7B2A8"/><rect x="12.8" y="0" width="3.2" height="24" fill="#B7B2A8"/></svg><div class="name titleLarge">Settings</div></div>
+        <div class="settings">
+          <div class="labelSmall muted" style="text-transform:none">Appearance</div>
+          <div class="seg labelLarge"><span>System</span><span>Light</span><span class="sel">Dark</span></div>
+          <div class="divider"></div>
+          <div class="labelSmall muted" style="text-transform:none">Results</div>
+          <div class="seg labelLarge"><span class="sel">Decimal value, whole gram beneath</span><span>Whole gram, decimal beneath</span></div>
+          <div class="srow"><div class="t"><div class="bodyLarge">Show protein</div><div class="sub bodySmall">Shows the protein in your portion under the carbs when Open Food Facts lists it. Carbs are unchanged.</div></div><span class="switch"></span></div>
+          <div class="divider"></div>
+          <div class="labelSmall muted" style="text-transform:none">Interaction</div>
+          <div class="srow"><div class="t bodyLarge">Haptic feedback</div><span class="switch on"></span></div>
+          <div class="srow"><div class="t"><div class="bodyLarge">Replay tutorial</div><div class="sub bodySmall">See how scanning, portions, and meals work.</div></div></div>
+          <div class="divider"></div>
+          <div class="labelSmall muted" style="text-transform:none">Data</div>
+          <div class="srow"><div class="t bodyLarge">Clear recent history</div></div>
+          <div style="height:12px"></div>
+        </div>
+        <div class="navbar"><i class="tri"></i><i></i><i class="sq"></i></div>
+      </div>
+      <div class="cap"><b>Dark · off.</b> The unchecked switch is the platform's own; nothing new to draw.</div>
+    </div>
+  </div>
+
+  <!-- ============================ RESPONSIVE ============================ -->
+  <h2>5 · Narrow and large text</h2>
+  <p class="note">320dp is the app's documented floor (the CI emulator) and 1.8x its largest text scale. The footer row wraps as a flow row when the two do not fit; the protein row never wraps, because its two words are short.</p>
+  <div class="grid">
+    <div>
+      <div class="phone narrow theme-light">
+        <div class="body" style="padding-top:12px">
+          <div class="tile filled"><div class="plate"><svg class="ico s22"><use href="#qr"/></svg></div><div class="txt"><div class="titleMedium">Scan barcode</div><div class="sub bodySmall">Carbs, and protein when listed</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="tile outlined"><div class="plate"><svg class="ico s22"><use href="#doc"/></svg></div><div class="txt"><div class="titleMedium">Scan nutrition label</div><div class="sub bodySmall">Read carbs straight from the package</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="footer"><span class="textbtn labelLarge">Enter manually</span><button class="pchip labelLarge on" role="switch" aria-checked="true" data-chip><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button></div>
+          <div class="section-h titleSmall">Recent</div>
+        </div>
+      </div>
+      <div class="cap"><b>320dp · 1.0x.</b> At the limit: about 127dp + 150dp of a 280dp row. Space-between adds no minimum gap, so they share one line here; slightly wider device text metrics would wrap the chip as in the 1.8x frame, which is equally correct.</div>
+    </div>
+    <div>
+      <div class="phone narrow theme-light" style="--fs:1.8">
+        <div class="body" style="padding-top:12px">
+          <div class="tile filled"><div class="plate"><svg class="ico s22"><use href="#qr"/></svg></div><div class="txt"><div class="titleMedium">Scan barcode</div><div class="sub bodySmall">Carbs, and protein when listed</div></div><svg class="ico chev"><use href="#chev"/></svg></div>
+          <div class="footer"><span class="textbtn labelLarge">Enter manually</span><button class="pchip labelLarge on" role="switch" aria-checked="true" data-chip style="min-height:48px;padding-block:8px"><span class="egg"><svg class="o"><use href="#egg-o"/></svg><svg class="f"><use href="#egg-f"/></svg></span>Show protein</button></div>
+          <div class="section-h titleSmall">Recent</div>
+        </div>
+      </div>
+      <div class="cap"><b>320dp · 1.8x.</b> The chip drops to its own line under Enter manually and grows with its text; the footer costs one extra line here, and on a 411dp phone at 1.8x as well.</div>
+    </div>
+    <div>
+      <div class="phone narrow crop theme-light" style="--fs:1.3">
+        <div class="dock prov"><div class="eyebrow labelSmall">Carbs</div><div class="slot"><div class="result"><span class="n">125.3</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">≈ 125 g whole grams</div><div class="provline bodySmall">Online value, not checked against your package</div><div class="protein"><span class="labelSmall muted">Protein</span><span class="v">28.6 g</span></div><div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div></div>
+      </div>
+      <div class="cap"><b>320dp · 1.3x · a three-digit answer.</b> The numeral auto-sizes as it does today; the protein pair stays on one line. The row adds one line of text to the dock. On the 320x640dp window at 1.3x the portion zone above is already a 23dp band with a result, so there the row is withheld at rest: the field always wins over the row. On every window the row hides the moment the keyboard opens.</div>
+    </div>
+    <div>
+      <div class="phone narrow crop theme-dark" style="--fs:1.8">
+        <div class="dock prov"><div class="eyebrow labelSmall">Carbs</div><div class="slot"><div class="result" style="--fs:1.3"><span class="n">37.4</span><span class="u">g</span></div><div class="copybtn"><svg class="ico"><use href="#copy"/></svg></div></div><div class="sup supporting">≈ 37 g whole grams</div><div class="provline bodySmall">Online value, not checked against your package</div><div class="protein"><span class="labelSmall muted">Protein</span><span class="v">4.1 g</span></div><div class="actions"><span class="b outl labelLarge">Add to meal</span><span class="b fill labelLarge">Add &amp; scan next</span></div></div>
+      </div>
+      <div class="cap"><b>320dp · 1.8x · Dark.</b> Provenance wraps to two lines as it already does; the numeral is drawn at its compact autosize (the 1.3 factor on the figure emulates that). The protein pair still fits one line here; a very large portion that made it too wide would drop the figure under its eyebrow rather than shrink or ellipsise it.</div>
+    </div>
+  </div>
+
+  <!-- ============================ HIERARCHY ============================ -->
+  <h2>6 · Why it reads as one answer and one reading</h2>
+  <div class="swatches">
+    <div class="sw"><i style="background:#BD492F"></i><b>Carbs figure</b><br>72sp Bold, coral, stacked under its eyebrow. The only coloured number.</div>
+    <div class="sw"><i style="background:#191B23"></i><b>Protein figure</b><br>18sp SemiBold, ink, beside its eyebrow, after the carb block. One quarter the size, no colour, one line.</div>
+    <div class="sw"><i style="background:#61616C"></i><b>No online value</b><br>15sp Regular, supporting ink. Names the source, so it is a fact about the record and not about the package, and it never reads as a figure.</div>
+    <div class="sw"><i style="background:#E6ECFF;border-color:#c9d3f2"></i><b>Chip on</b><br>The paired container every selected control already uses. A state, not a brand colour.</div>
+  </div>
+  <p class="note" style="margin-top:16px">Four separations at once: scale (72 against 18), weight (Bold against SemiBold), hue (coral against ink) and layout (stacked against inline). Any one of them survives on its own, which is what keeps the hierarchy legible in monochrome, at 1.8x, and in Dark.</p>
+</div>
+
+<script>
+  document.querySelectorAll('[data-chip]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var on = !chip.classList.contains('on');
+      chip.classList.toggle('on', on);
+      chip.setAttribute('aria-checked', on ? 'true' : 'false');
+      var home = chip.closest('[data-home]');
+      if (home) {
+        var sub = home.querySelector('[data-sub]');
+        if (sub && !sub.hasAttribute('data-midmeal')) {
+          sub.textContent = on ? 'Carbs, and protein when listed' : 'Fastest way to find a packaged product';
+        }
+      }
+    });
+  });
+</script>

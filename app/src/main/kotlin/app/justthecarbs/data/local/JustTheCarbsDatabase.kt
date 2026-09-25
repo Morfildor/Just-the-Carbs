@@ -28,7 +28,7 @@ import androidx.sqlite.execSQL
         MealItemEntity::class,
         PortionUsageEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class JustTheCarbsDatabase : RoomDatabase() {
@@ -367,6 +367,23 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v8 → v9: the optional protein reading. Two nullable TEXT columns on `products`, guarded
+         * like [MIGRATION_3_4] so a re-invoked migration is a no-op. Existing rows get no protein
+         * (null) and gain it on their next wholesale reload from Open Food Facts; nothing is
+         * inferred. `current_meal_items` is deliberately untouched: the meal carries carbs only.
+         */
+        internal val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(connection: SQLiteConnection) {
+                if (!connection.hasColumn("products", "proteinPer100")) {
+                    connection.execSQL("ALTER TABLE products ADD COLUMN proteinPer100 TEXT")
+                }
+                if (!connection.hasColumn("products", "proteinOrigin")) {
+                    connection.execSQL("ALTER TABLE products ADD COLUMN proteinOrigin TEXT")
+                }
+            }
+        }
+
         fun build(context: Context): JustTheCarbsDatabase =
             Room.databaseBuilder(context.applicationContext, JustTheCarbsDatabase::class.java, NAME)
                 .addMigrations(
@@ -377,6 +394,7 @@ abstract class JustTheCarbsDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
+                    MIGRATION_8_9,
                 )
                 .build()
     }

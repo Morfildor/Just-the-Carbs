@@ -13,7 +13,8 @@ holding food in their other hand. The tool should disappear into the task.
 ## Product purpose
 
 Scan a food barcode (or read a nutrition label, or search by name) → enter a portion → read the
-carbohydrate grams. That is the entire product.
+carbohydrate grams (and, if switched on, the protein for the same portion). That is the entire
+product.
 
 > Open app → find food → choose amount → see carbs → done.
 
@@ -43,7 +44,10 @@ Document/regulatory language must never be dressed up as consumer UI.
 ## Vocabulary
 
 One consistent set: Scan barcode · Scan nutrition label · Search products · Portion · Serving ·
-Slices · Pieces · **Carbs** · Add to meal · Enter manually.
+Slices · Pieces · **Carbs** · Protein · Add to meal · Enter manually.
+
+Never "macros", "macro" or "nutrients" in consumer copy. Protein is an optional second
+reading (MASTER-PROMPT §2 amendment, 2026-09-25); no further nutrient joins it.
 
 Prefer **Carbs** in consumer UI where brevity fits; use *Total carbohydrate* only where clarity
 genuinely requires it (OCR interpretation, where it names a specific row on a printed label).

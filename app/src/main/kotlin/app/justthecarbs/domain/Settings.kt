@@ -4,7 +4,7 @@ package app.justthecarbs.domain
 enum class ThemeChoice { SYSTEM, LIGHT, DARK }
 
 /**
- * The whole of the app's settings (§43). Intentionally four values: anything that does not make
+ * The whole of the app's settings (§43). Intentionally few: anything that does not make
  * scan → portion → carbs faster, safer or clearer does not belong here (§74).
  */
 data class AppSettings(
@@ -36,4 +36,10 @@ data class AppSettings(
      * longer appear. Zero means "not yet counted", which that rule treats as a first launch.
      */
     val launchCount: Int = 0,
+    /**
+     * The optional protein reading on the calculator, off by default (MASTER-PROMPT §2 amendment,
+     * 2026-09-25). One persisted value read by both controls, Home's chip and the Settings row, so
+     * the two cannot disagree. There is no session mode.
+     */
+    val proteinEnabled: Boolean = false,
 )

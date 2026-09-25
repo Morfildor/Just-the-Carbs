@@ -157,7 +157,7 @@ data class OffSelectedImage(
 @Serializable
 data class OffNutriments(
     /**
-     * TOTAL carbohydrate per 100 g/ml. This is the only nutrient the app reads.
+     * TOTAL carbohydrate per 100 g/ml. The answer the app exists to give.
      *
      * It is never substituted with sugars, fibre, net carbs, energy or protein (§12) — those are
      * different quantities, and quietly standing in for a missing total would produce a confident
@@ -171,4 +171,15 @@ data class OffNutriments(
      * it is never a substitute for [carbohydrates100g] and never feeds the per-100 calculation.
      */
     @SerialName("carbohydrates_serving") val carbohydratesServing: Double? = null,
+    /**
+     * Protein per 100 g/ml, shown only when the user switches the optional protein reading on.
+     *
+     * Read through [LooseNumericText], never as a strict number: Open Food Facts types numeric
+     * fields inconsistently, and one malformed protein value must never turn a product lookup or a
+     * search page into a malformed response. Anything that is not a plain number ends up null or
+     * refused by the validator, so protein can never block the carbohydrate answer. Never a
+     * substitute for, or combined with, [carbohydrates100g].
+     */
+    @Serializable(with = LooseNumericText::class)
+    @SerialName("proteins_100g") val proteins100g: String? = null,
 )

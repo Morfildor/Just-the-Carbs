@@ -149,6 +149,16 @@ class HomeQuickAddScreenTest {
         }
     }
 
+    /**
+     * Brings the first card's controls into view. Home's list is lazy, and on CI's 320x640 window
+     * the card sits below the fold once the entry cluster's footer wraps (the *Show protein* chip
+     * drops under *Enter manually* there, 2026-09-25). A tap on an item nobody scrolled to presses
+     * nothing, so every test that taps a card control scrolls to it first, as a thumb would.
+     */
+    private fun reveal(contentDescription: String) {
+        compose.onNodeWithTag(HOME_BODY_TAG).performScrollToNode(hasContentDescription(contentDescription))
+    }
+
     private fun stringOf(id: Int, vararg args: Any): String =
         InstrumentationRegistry.getInstrumentation().targetContext.getString(id, *args)
 
@@ -160,6 +170,7 @@ class HomeQuickAddScreenTest {
     @Test
     fun quickAddAnnouncesTheProductAndThePortionItAdds() {
         show(recents = listOf(RecentEntry(product(), null)))
+        reveal(quickAddLabel)
 
         compose.onNodeWithContentDescription(quickAddLabel)
             .assertIsDisplayed()
@@ -252,6 +263,7 @@ class HomeQuickAddScreenTest {
             onQuickAdd = { entry, description -> added += entry.product.barcode to description },
             onOpenProduct = { opened = it },
         )
+        reveal(quickAddLabel)
 
         compose.onNodeWithContentDescription(quickAddLabel).performClick()
 
@@ -315,6 +327,7 @@ class HomeQuickAddScreenTest {
             onQuickAdd = { _, _ -> adds++ },
             onOpenProduct = { opened = it },
         )
+        reveal(quickAddLabel)
 
         val node = compose.onNodeWithTag(HOME_QUICK_ADD_TAG, useUnmergedTree = true).fetchSemanticsNode()
         val density = compose.density
@@ -342,6 +355,7 @@ class HomeQuickAddScreenTest {
             onQuickAdd = { _, _ -> adds++ },
         )
 
+        reveal(stringOf(R.string.favorite_add))
         compose.onNodeWithContentDescription(stringOf(R.string.favorite_add)).performClick()
 
         assertEquals(listOf("1"), toggled)
@@ -444,6 +458,7 @@ class HomeQuickAddScreenTest {
             compose.onAllNodes(hasTestTag(HOME_QUICK_ADD_TAG), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         compose.onAllNodes(hasTestTag(MEAL_BAR_TAG)).assertCountEquals(0)
+        reveal(quickAddLabel)
 
         compose.onNodeWithContentDescription(quickAddLabel).performClick()
 
@@ -467,6 +482,7 @@ class HomeQuickAddScreenTest {
         compose.waitUntil(5_000) {
             compose.onAllNodes(hasTestTag(HOME_QUICK_ADD_TAG), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
+        reveal(quickAddLabel)
 
         compose.onNodeWithTag(HOME_QUICK_ADD_TAG, useUnmergedTree = true).performTouchInput {
             click()

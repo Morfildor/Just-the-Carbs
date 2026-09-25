@@ -190,4 +190,26 @@ class SettingsRepositoryTest {
 
         assertEquals("a retired reminder has nothing left to count", 3, repo.settings.first().launchCount)
     }
+
+    /** The protein reading is off on a fresh install, in both places the default lives. */
+    @Test
+    fun `protein is off when nothing is stored`() = runTest {
+        assertEquals(false, AppSettings().proteinEnabled)
+        assertEquals(false, SettingsRepository.forTesting(tempDataStore()).settings.first().proteinEnabled)
+    }
+
+    /** One write per test: the Windows DataStore rename trap recorded in CLAUDE.md. */
+    @Test
+    fun `switching protein on is persisted`() = runTest {
+        val repo = SettingsRepository.forTesting(tempDataStore())
+        repo.setProteinEnabled(true)
+        assertEquals(true, repo.settings.first().proteinEnabled)
+    }
+
+    @Test
+    fun `protein is stored under its own key`() = runTest {
+        val store = tempDataStore()
+        store.edit { it[androidx.datastore.preferences.core.booleanPreferencesKey("protein_enabled")] = true }
+        assertEquals(true, SettingsRepository.forTesting(store).settings.first().proteinEnabled)
+    }
 }

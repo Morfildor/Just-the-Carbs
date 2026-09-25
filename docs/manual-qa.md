@@ -2668,3 +2668,37 @@ pack prints, or no figure at all — never sugars, fibre, a percentage, a portio
 **Device/API:** ____________________ **Phone language:** ______________
 
 **Result:** ____________________ **Date:** ____________
+
+## §45 — Optional protein reading (1.0.8, 2026-09-25)
+
+Design: `docs/superpowers/specs/2026-09-24-protein-design.md`. Seen so far only on the `carbscan`
+emulator (1080x2400 Light and Dark at 1.0x; instrumented at 1080x2400/420 and 320x640/160).
+
+- [ ] 45.1 Fresh install: Home shows *Show protein* off; the calculator shows no protein row.
+- [ ] 45.2 The chip at arm's length in Light and Dark, and in a greyscale screenshot: off and on are
+      told apart by the egg (outline with a solid yolk off, solid with an open yolk on), and the egg
+      reads as an egg, not a drop.
+- [ ] 45.3 Chip on, then Settings → Results: *Show protein* is on. Switch it off there; Home's chip is
+      off. No haptic, no snackbar from either control.
+- [ ] 45.4 Chip on, no meal in progress: the barcode tile reads *Carbs, and protein when listed*.
+      With a meal in progress it keeps *Add another item to your meal*.
+- [ ] 45.5 A product whose Open Food Facts record lists protein (Nutella lists 6.3 g per 100 g): enter 65 g;
+      `PROTEIN 4.1 g` appears under the provenance line, carbs unchanged, and changes with the
+      portion.
+- [ ] 45.6 A product whose record lists no protein: `PROTEIN No online value`, never 0 g.
+- [ ] 45.7 A product verified against the package: the provenance line reads *Carbs checked against
+      the package. Protein is an online value.*
+- [ ] 45.8 A product typed in by hand, and a quick calculation from a label: no protein row.
+- [ ] 45.9 Keyboard open: the row steps aside with the provenance line and returns on Done.
+- [ ] 45.10 Copy: the clipboard holds the carb figure only. Add to meal: the meal line and total are
+      carbs only. Home recents and search results show no protein anywhere.
+- [ ] 45.11 A 320dp-wide phone (or `wm size 320x640` / `wm density 160`) at 1.3x with an answer: the
+      portion field is no smaller than with protein off (the row is withheld there).
+- [ ] 45.12 A product saved before this update: the first visit may say *No online value*; the next
+      visit shows the figure if the record lists one.
+- [ ] 45.13 The two theme overrides (app Light on a dark phone, app Dark on a light phone): the chip's
+      hairline follows the app theme.
+- [ ] 45.14 TalkBack: the chip and the Settings row are each one switch named *Show protein* with an
+      on/off state; the result announces "N grams of carbs, M grams of protein".
+
+**Device/API:** ____________________ **Result:** ____________________ **Date:** ____________

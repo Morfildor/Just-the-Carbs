@@ -30,6 +30,15 @@ calculator. **This application itself must NOT calculate medication or insulin.*
 fat/protein/sugar tracking, exercise, food diary, meal plans, daily totals, weekly charts, streaks,
 achievements, social features, recipes, wellness scores, or AI dietary advice.
 
+> **Amendment (owner, 2026-09-25).** The exclusion above stands. "Tracking" means any nutrient figure
+> that is stored per use, summed across portions, shown outside the open calculator, or compared
+> with a target. An optional protein reading for the portion on screen, off by default, is permitted
+> on the calculator's result surface only; it is never totalled, remembered, listed on Home, in
+> search, in the meal or in the clipboard, and is never a substitute for or combined with the
+> carbohydrate figure. Any further nutrient is excluded. Design:
+> `docs/superpowers/specs/2026-09-24-protein-design.md`. Recorded when the owner asked for that
+> design to be implemented ("implement it", 2026-09-25).
+
 **NOT an insulin calculator.** No insulin dose, insulin-to-carb ratio, correction factor, glucose
 entry, glucose targets, insulin-on-board, active insulin, pump communication, CGM communication,
 CamAPS API integration, treatment recommendations, medication recommendations, or automatic bolus

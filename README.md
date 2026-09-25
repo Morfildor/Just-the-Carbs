@@ -4,7 +4,7 @@ Scan a food barcode, enter your portion, read the carbohydrate grams. That is th
 
 **Just the Carbs does not calculate insulin.** It is not a diet tracker, not a food diary, and it does not
 communicate with pumps or CGMs. It produces one number, clearly, so you can use it wherever you need
-it next.
+it next. As an option that is off by default, it can also show the protein for the same portion.
 
 > **Naming.** "Just the Carbs" is the app's public name. Branding is
 > centralised in [`branding.gradle.kts`](branding.gradle.kts) — app name, application id, namespace

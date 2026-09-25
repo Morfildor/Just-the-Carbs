@@ -86,7 +86,8 @@ Connect permission is requested.
 
 ## Data stored only on-device
 
-- Barcodes, product names, carbohydrate values, basis, package size, source and verification state
+- Barcodes, product names, carbohydrate values and, for Open Food Facts products, protein values,
+  basis, package size, source and verification state
 - Portion units, remembered portions, favourites, and settings
 - Per-product usual portions
 - Items in the single current meal; no past meal or diary exists

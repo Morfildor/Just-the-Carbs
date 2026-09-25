@@ -38,6 +38,13 @@
          contextual copy only (2026-09-14 interaction pass, item 7). -->
     <string name="home_scan_next_button">Scan next item</string>
     <string name="home_action_barcode_subtitle_mid_meal">Add another item to your meal</string>
+    <!-- The barcode tile's subtitle while the protein reading is on and no meal is in progress. It
+         claims only what the tile delivers: carbs always, protein when the record lists it. -->
+    <string name="home_action_barcode_subtitle_protein">Carbs, and protein when listed</string>
+    <!-- The one label for the one protein setting, on Home's chip and on the Settings row, so the
+         user meets one name for one thing. A verb phrase: a bare "Protein" above the recents reads
+         as a filter on them. The platform speaks the on/off state of the switch. -->
+    <string name="protein_toggle">Show protein</string>
     <!-- Spoken as one announcement per card: "<title>. <subtitle>". -->
     <string name="home_action_description">%1$s. %2$s</string>
 
@@ -178,6 +185,23 @@
          carbs". "of carbs" because a bare "31.2 grams" is indistinguishable from the portion the
          user just typed; this is the figure they act on, so it says what it measures. -->
     <string name="result_accessible_grams">%1$s grams of carbs</string>
+    <!-- The optional protein reading (design spec 2026-09-24). One polite announcement per portion
+         change carries both facts, carbs first. Used only while the protein row is on screen; every
+         other state keeps `result_accessible_grams` unchanged. -->
+    <string name="result_accessible_grams_and_protein">%1$s grams of carbs, %2$s grams of protein</string>
+    <string name="result_accessible_grams_protein_unavailable">%1$s grams of carbs, no online value for protein</string>
+    <!-- A second reading, never a second answer: an eyebrow in the CARBS style (upper case from the
+         string) and a figure in ink, one line, after the carb block. -->
+    <string name="product_protein_label">PROTEIN</string>
+    <string name="product_protein_value">%1$s g</string>
+    <!-- A fact about the online record, never a claim about the package (an EU package always
+         prints protein). Never 0 g and never an estimate. -->
+    <string name="product_protein_no_online_value">No online value</string>
+    <string name="product_protein_accessible">%1$s grams of protein</string>
+    <string name="product_protein_no_online_value_accessible">Protein, no online value</string>
+    <!-- The provenance line when the user verified the carbs against the package and the protein is
+         still the online figure: the two sources differ, so the sentence names both. -->
+    <string name="product_result_verified_protein_online">Carbs checked against the package. Protein is an online value.</string>
     <string name="product_quarter_pack">¼ pack</string>
     <string name="product_half_pack">½ pack</string>
     <string name="product_full_pack">Full pack</string>
@@ -760,6 +784,8 @@
     <string name="settings_results_whole_first">Whole gram, decimal beneath</string>
     <string name="settings_interaction">Interaction</string>
     <string name="settings_haptics">Haptic feedback</string>
+    <!-- Names the source the user is consenting to, and the promise that carbs do not change. -->
+    <string name="settings_protein_body">Shows the protein in your portion under the carbs when Open Food Facts lists it. Carbs are unchanged.</string>
     <string name="settings_data">Data</string>
     <string name="settings_clear_recents">Clear recent history</string>
     <string name="settings_clear_products">Clear saved products</string>
@@ -797,7 +823,7 @@
     <string name="settings_attribution_images" tools:ignore="MissingTranslation">Product photos from Open Food Facts (openfoodfacts.org), used under the Creative Commons Attribution-ShareAlike 3.0 licence (CC BY-SA 3.0). A photo may also show packaging artwork owned by its manufacturer.</string>
     <string name="settings_safety_title">Important</string>
     <!-- §45: describes only what the software does. No efficacy or approval claim. -->
-    <string name="settings_safety_body">This app calculates the carbohydrate content of a portion. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
+    <string name="settings_safety_body">This app calculates the carbohydrate content of a portion and, if you turn it on, shows the protein. It does not calculate insulin or any other medication, and it does not replace the information printed on the package. Always check the package if a value looks wrong.</string>
 
     <!--
       The welcome carousel: three full-screen slides shown once, on the first launch only.

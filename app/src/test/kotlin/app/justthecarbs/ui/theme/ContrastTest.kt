@@ -428,4 +428,36 @@ class ContrastTest {
             uiComponent,
         )
     }
+
+    // --- The Show protein chip (design spec 2026-09-24, sections 2 and 7) ----------------------
+
+    private val onBlueSoft = 0x17336F       // onSecondaryContainer, Light
+    private val blueSoftDark = 0x263454      // secondaryContainer, Dark
+    private val inkMutedDark = 0xB7B2A8      // onSurfaceVariant, Dark
+
+    /** The chip's on state: label and filled egg on the paired container, both schemes. */
+    @Test
+    fun `the protein chip's on state is readable in both schemes`() {
+        assertContrast("chip on, Light", onBlueSoft, blueSoft)
+        assertContrast("chip on, Dark", blueDark, blueSoftDark)
+    }
+
+    /** The off state's glyph is the state cue, so it must clear the text floor on the quiet fill. */
+    @Test
+    fun `the protein chip's off glyph is readable on its quiet fill`() {
+        assertContrast("chip off glyph, Light", inkMuted, surfaceContainerLow)
+        assertContrast("chip off glyph, Dark", inkMutedDark, darkSurfaceContainerLow)
+        assertContrast("chip off label, Light", ink, surfaceContainerLow)
+        assertContrast("chip off label, Dark", chalk, darkSurfaceContainerLow)
+    }
+
+    /**
+     * In Dark the on fill sits at about 1.5:1 against the page, so the chip keeps its `outline`
+     * hairline in both states; that edge must clear the 3:1 non-text floor on the fill it bounds.
+     */
+    @Test
+    fun `the protein chip's dark hairline bounds its on fill`() {
+        assertContrast("chip hairline on the on fill, Dark", darkOutline, blueSoftDark, minimum = 3.0)
+        assertContrast("chip hairline on the page, Dark", darkOutline, night, minimum = 3.0)
+    }
 }

@@ -51,6 +51,63 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Optional protein reading (2026-09-25) — still 1.0.8, READ FIRST
+
+Owner: "implement it" for `docs/superpowers/specs/2026-09-24-protein-design.md` (spec, mockups and an
+eight-lens review). Same branch (`ux-polish-2026-09-24`), **not committed** when this was written.
+**Scope amendment:** `docs/MASTER-PROMPT.md` §2 now carries a dated block: protein for the portion
+on screen, off by default, calculator only; never totalled, remembered, listed on Home, in search,
+in the meal or the clipboard; any further nutrient excluded. Do not add a third nutrient as a
+"variant" of this work.
+
+- **Data.** `OffNutriments.proteins100g: String?` through `LooseNumericText` (an object, array or
+  garbage in that field must never make a lookup or search page malformed; a strict `Double?` does,
+  pinned by `ProteinParsingTest`). `NutritionValueValidator.validateProteinPer100` shares the carb
+  per-100 rule (one private `validatePer100`). `Product.proteinPer100` + `proteinOrigin`, an `init`
+  makes one without the other unconstructible. Room **v9** (`MIGRATION_8_9`, guarded, `9.json`
+  committed); `ProductEntity.toDomain` drops an unreadable pair rather than failing the row.
+- **Protein travels with the record, never alone.** `lookup` stores it; `refreshFromRemote`'s
+  refreshable branch replaces it with the fetched record, the non-refreshable branch never touches
+  it; `saveUserAuthoredProduct` clears it (in this version only Open Food Facts products carry
+  protein); `dropBasisBoundFacts` (renamed from `clearUsageForBasisChange`) nulls it on a basis
+  change. A protein-only difference is `RefreshOutcome.Unchanged`. Consequence, documented: a
+  product cached before v9 shows *No online value* on its first visit, the figure from the next.
+- **Calculation.** `ProductUiState.exactProtein`, written on every `recalculate()` exit with
+  `CarbCalculator.calculate(proteinPer100, portion, basis).exact`; null for `DirectCarbs` (no
+  weight, no protein). `domain/ProteinPresentation.of(...)` is the data half of the spec's state
+  table (Hidden / Value / NoOnlineValue).
+- **Dock row** (`ProductScreen.kt`, private `SecondaryReadingRow`, tag `PRODUCT_PROTEIN_TAG`): after
+  the provenance line, eyebrow + `titleMedium` ink on one baseline, figure never ellipsised (drops
+  under the eyebrow instead). Hidden while the IME is open. **The field wins:** `CalculatorFrame`
+  reports the zone's room (`onZoneRoom`); the row is withheld when room + row height − max(estimate,
+  row height) < 48dp. No feedback loop because the cost is never below the measured row. Negative
+  control: without the gate, `switchingProteinOnNeverTakesTheFieldAwayAtLargeText` fails at
+  320x640/160 (field 59px → 22px visible). The live region says "N grams of carbs, M grams of
+  protein" / "…, no online value for protein" only while the row is shown; every other state keeps
+  "N grams of carbs", so the existing test literals are untouched.
+- **Controls.** `ui/components/ProteinToggle` (48dp, `toggleable(Role.Switch)`, hairline rule, no
+  haptic) in Home's `manual` item, now a `FlowRow(SpaceBetween)` with *Enter manually*; Settings row
+  under Results; both write `SettingsRepository.setProteinEnabled` (key `protein_enabled`). The
+  barcode tile subtitle becomes *Carbs, and protein when listed* when on and no meal is in progress.
+- **Glyph is `EggAlt`, not `Egg`:** the plain egg read as a water drop at 20dp on the emulator
+  screenshot (the spec's own gate).
+- **At 320dp the footer wraps at 1.0x** (measured: *Enter manually* 131dp + chip 151dp in 280dp).
+  That moved Home's first card below the fold on CI's window; `HomeQuickAddScreenTest` now scrolls
+  to each control before tapping (`reveal`), and `theStarterFollows…` measures from the footer's
+  lower item. Test methodology, not a production change.
+
+**Verified:** JVM **2328/2328** (0 skipped, `--rerun-tasks`); lint 0 errors, 31 warnings (none in a
+changed file). Instrumented: 19 screen classes **334/334 at 320x640/160** and the same plus
+migration and DAO classes **376/376 at 1080x2400/420**; the protein and Home classes re-run 84/84 at
+both after the last edit. JVM negative controls (strict field, basis change keeping protein,
+user-authored shown) each fail their tests; files restored byte-identically. Emulator by hand:
+Home off/on, Settings, calculator with a real Open Food Facts record (Nutella 65 g: 37.4 g carbs,
+4.1 g protein), Light and Dark. **Not verified:** physical device, TalkBack live, the IME-open
+state (no instrumented IME inset), and whether the owner adopts the listing/README/privacy wording.
+**Owner actions still open:** the regulatory assessment addendum and §7.2 row, the Health Apps
+declaration re-decision, adopting the store listing text in Play Console, pushing the privacy HTML.
+QA gate: `docs/manual-qa.md` §45.
+
 ## UX polish pass (2026-09-24) — still 1.0.8, READ FIRST
 
 Branch `ux-polish-2026-09-24`, on top of `meal-search-patch-2026-09-23` (both unmerged, not

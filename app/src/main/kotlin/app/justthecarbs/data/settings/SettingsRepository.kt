@@ -18,7 +18,7 @@ import java.io.IOException
 
 private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-/** The four user preferences of §43. Local only — no account, no sync (§34). */
+/** The user preferences of §43. Local only — no account, no sync (§34). */
 class SettingsRepository private constructor(private val store: DataStore<Preferences>) {
 
     constructor(context: Context) : this(context.settingsStore)
@@ -40,6 +40,7 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
                 // read as "not yet counted" — which shows a new user the reminder — instead of
                 // becoming a number that could silently suppress it.
                 launchCount = (prefs[LAUNCH_COUNT] ?: 0).coerceAtLeast(0),
+                proteinEnabled = prefs[PROTEIN_ENABLED] ?: false,
             )
         }
 
@@ -51,6 +52,10 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
 
     suspend fun setHapticsEnabled(enabled: Boolean) =
         store.edit { it[HAPTICS] = enabled }.let {}
+
+    /** The one write path for the protein reading; Home's chip and the Settings row both use it. */
+    suspend fun setProteinEnabled(enabled: Boolean) =
+        store.edit { it[PROTEIN_ENABLED] = enabled }.let {}
 
     suspend fun setHasSeenOnboarding(seen: Boolean) =
         store.edit { it[HAS_SEEN_ONBOARDING] = seen }.let {}
@@ -93,5 +98,6 @@ class SettingsRepository private constructor(private val store: DataStore<Prefer
         private val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
         private val HAS_SEEN_TUTORIAL = booleanPreferencesKey("has_seen_tutorial")
         private val LAUNCH_COUNT = intPreferencesKey("launch_count")
+        private val PROTEIN_ENABLED = booleanPreferencesKey("protein_enabled")
     }
 }

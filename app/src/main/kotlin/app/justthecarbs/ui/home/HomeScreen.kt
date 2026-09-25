@@ -29,6 +29,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import app.justthecarbs.ui.components.ProteinToggle
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -170,6 +172,9 @@ const val HOME_BACKDROP_TAG = "home_backdrop"
 const val HOME_SEARCH_FIELD_TAG = "home_search_field"
 const val HOME_SEARCH_SUBMIT_TAG = "home_search_submit"
 const val HOME_MANUAL_TAG = "home_manual_entry"
+
+/** Home's `Show protein` chip, beside *Enter manually*. */
+const val HOME_PROTEIN_TAG = "home_protein_toggle"
 const val HOME_BODY_TAG = "home_body"
 const val HOME_SEARCH_RESULTS_TAG = "home_search_results"
 const val HOME_SEARCH_REFRESH_ERROR_TAG = "home_search_refresh_error"
@@ -233,6 +238,8 @@ fun HomeScreen(
     staleMeal: StaleMeal? = null,
     onResolveStaleMeal: (Boolean) -> Unit = {},
     onDismissStaleMeal: () -> Unit = {},
+    /** Writes the one persisted protein setting, the same one the Settings row writes. */
+    onProteinChanged: (Boolean) -> Unit = {},
 ) {
     staleMeal?.let {
         StaleMealDialog(
@@ -516,6 +523,7 @@ fun HomeScreen(
                     onStartTutorial = onStartTutorial,
                     onDismissTutorialReminder = onDismissTutorialReminder,
                     mealInProgress = mealItems.isNotEmpty(),
+                    onProteinChanged = onProteinChanged,
                     modifier = Modifier.weight(1f).navigationBarsPadding(),
                 )
             }
@@ -932,6 +940,7 @@ private fun HomeBody(
     onDismissTutorialReminder: () -> Unit,
     mealInProgress: Boolean,
     modifier: Modifier = Modifier,
+    onProteinChanged: (Boolean) -> Unit = {},
 ) {
     LazyColumn(
         state = listState,
@@ -962,11 +971,14 @@ private fun HomeBody(
                 title = stringResource(
                     if (mealInProgress) R.string.home_scan_next_button else R.string.home_scan_button,
                 ),
+                // With the protein reading on, the primary way in says what it will now read. Mid-meal
+                // the meal copy wins and the chip alone states the mode. The label tile never
+                // changes: label scanning does not read protein in this version.
                 subtitle = stringResource(
-                    if (mealInProgress) {
-                        R.string.home_action_barcode_subtitle_mid_meal
-                    } else {
-                        R.string.home_action_barcode_subtitle
+                    when {
+                        mealInProgress -> R.string.home_action_barcode_subtitle_mid_meal
+                        settings.proteinEnabled -> R.string.home_action_barcode_subtitle_protein
+                        else -> R.string.home_action_barcode_subtitle
                     },
                 ),
                 accent = MaterialTheme.colorScheme.primary,
@@ -990,21 +1002,40 @@ private fun HomeBody(
         // Ordering it after the hero put it beyond the composed window at 1.8x font scale, where a
         // LazyColumn simply never composes it — the action was not merely below the fold, it did not
         // exist. The hero is reassurance; this is a function, and functions come first.
+        //
+        // The same row closes the cluster with the `Show protein` chip at its trailing edge: the one
+        // modifier of what these ways in will read (design spec 2026-09-24, section 2). The item
+        // keeps its key, so tests that scroll to it by key still find it. A wrapping row, because
+        // at large text (and at the limit on a 320dp window) the two do not fit on one line; the
+        // chip then drops under *Enter manually*, start-aligned, and the footer grows by one chip
+        // row whether protein is on or off.
         item(key = "manual") {
             // Modifier order is load-bearing here, and getting it wrong is invisible. `.height()`
             // before `.padding()` applies the padding *inside* the 48dp box, so the button measured
             // 44dp — the explicit minimum was being silently eaten by the very line meant to space
-            // it. Padding first, then a minimum height on the button itself; `heightIn` rather than
-            // `height` so the row still grows with the text at a large font scale.
-            TextButton(
-                onClick = onManualEntry,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = Space.xs)
-                    .heightIn(min = Space.minTouchTarget)
-                    .testTag(HOME_MANUAL_TAG),
+            // it. Padding first (now on the row), then a minimum height on the button itself;
+            // `heightIn` rather than `height` so the row still grows with the text at a large font
+            // scale. No `fillMaxWidth` on the button: in a wrapping row a full-width child takes the
+            // whole first line and would push the chip under it every time.
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(top = Space.xs),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(Space.s),
+                itemVerticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(stringResource(R.string.home_manual_button))
+                TextButton(
+                    onClick = onManualEntry,
+                    modifier = Modifier
+                        .heightIn(min = Space.minTouchTarget)
+                        .testTag(HOME_MANUAL_TAG),
+                ) {
+                    Text(stringResource(R.string.home_manual_button))
+                }
+                ProteinToggle(
+                    checked = settings.proteinEnabled,
+                    onCheckedChange = onProteinChanged,
+                    modifier = Modifier.testTag(HOME_PROTEIN_TAG),
+                )
             }
         }
 

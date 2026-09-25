@@ -72,6 +72,13 @@ data class ProductUiState(
      * knew a weight. At most one of the two is non-null at any time.
      */
     val directCarbResult: BigDecimal? = null,
+    /**
+     * Protein in the same portion, exact and unrounded, or null when there is none to show: no
+     * product, no resolved gram portion (a direct-carb unit knows no weight, so no protein figure can
+     * exist), or no protein value on the product. Written in the same state update as [result] on
+     * every exit of the recalculation, so the two figures always describe one portion.
+     */
+    val exactProtein: BigDecimal? = null,
     val failure: Failure? = null,
     val barcode: String = "",
     /** True for a quick calculation that has not been saved as a product (§28). */
@@ -626,7 +633,7 @@ class ProductViewModel(
         savedState[KEY_MODE] = InputMode.GRAMS.name
         savedState.remove<Long>(KEY_SELECTED_UNIT)
         _state.update {
-            it.copy(inputMode = InputMode.GRAMS, selectedPortionUnitId = null, directCarbResult = null)
+            it.copy(inputMode = InputMode.GRAMS, selectedPortionUnitId = null, directCarbResult = null, exactProtein = null)
         }
         recalculate()
     }
@@ -944,7 +951,7 @@ class ProductViewModel(
         val state = _state.value
         val product = state.product
         if (product == null) {
-            _state.update { it.copy(result = null, directCarbResult = null) }
+            _state.update { it.copy(result = null, directCarbResult = null, exactProtein = null) }
             return
         }
         var portion = PortionParser.parse(state.portionText)
@@ -953,12 +960,12 @@ class ProductViewModel(
             val conversion = state.selectedPortionUnit?.conversion
             if (count == null || conversion == null ||
                 (conversion is PortionConversion.WeightBased && conversion.basis != product.basis)) {
-                _state.update { it.copy(result = null, directCarbResult = null) }
+                _state.update { it.copy(result = null, directCarbResult = null, exactProtein = null) }
                 return
             }
             when (conversion) {
                 is PortionConversion.DirectCarbs -> {
-                    _state.update { it.copy(result = null,
+                    _state.update { it.copy(result = null, exactProtein = null,
                         directCarbResult = DirectCarbCalculator.exactCarbs(count, conversion.carbsPerUnit)) }
                     return
                 }
@@ -971,7 +978,12 @@ class ProductViewModel(
             }
         }
         val result = portion?.let { CarbCalculator.calculate(product.carbsPer100, it, product.basis) }
-        _state.update { it.copy(result = result, directCarbResult = null) }
+        // The one formula in the app, applied to a second input: protein per 100 scaled by the same
+        // portion under the same basis. Agreement with the carb arithmetic is structural.
+        val protein = portion?.let { amount ->
+            product.proteinPer100?.let { CarbCalculator.calculate(it, amount, product.basis).exact }
+        }
+        _state.update { it.copy(result = result, directCarbResult = null, exactProtein = protein) }
     }
 
     private fun prepareForProductUpdate(product: Product) {
@@ -982,7 +994,8 @@ class ProductViewModel(
             savedState.remove<String>(KEY_MODE)
             savedState.remove<Long>(KEY_SELECTED_UNIT)
             _state.update { it.copy(portionText = "", countText = "", inputMode = InputMode.GRAMS,
-                selectedPortionUnitId = null, result = null, directCarbResult = null, usualPortions = emptyList()) }
+                selectedPortionUnitId = null, result = null, directCarbResult = null, exactProtein = null,
+                usualPortions = emptyList()) }
         }
         savedState[KEY_BASIS] = product.basis.name
     }

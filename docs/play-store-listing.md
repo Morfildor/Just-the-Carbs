@@ -20,10 +20,12 @@ Just the Carbs
 ## Short description
 
 ```
-Scan a barcode, enter your portion, read the carbohydrate grams. Nothing else.
+Scan a barcode, enter your portion, read the carbohydrate grams.
 ```
 
-*(78 characters as counted from the exact code block on 2026-08-14; 80-character limit.)*
+*(64 characters; 80-character limit. "Nothing else." dropped 2026-09-25 because the optional
+protein reading made it untrue; see `docs/superpowers/specs/2026-09-24-protein-design.md` §12.
+The owner adopts listing wording in Play Console; this file is the proposed draft.)*
 
 ## Full description
 
@@ -75,9 +77,11 @@ WHAT JUST THE CARBS DOES NOT DO
 • It does not calculate insulin or any other medication
 • It does not read or interpret glucose
 • It does not connect to pumps or monitors
-• It is not a diet tracker: no calories, no macros, no food diary, no daily totals
+• It is not a diet tracker: no calories, no food diary, no daily totals, no goals.
+  Protein for your portion can be shown as an option; it is never added up or recorded
 
-Just the Carbs gives you a carbohydrate number and nothing more.
+Just the Carbs gives you the carbohydrate number for your portion, and, only if you switch it
+on, the protein, and nothing more.
 
 Always check the package if a value looks wrong. Product recipes change, and
 public food databases can be out of date.

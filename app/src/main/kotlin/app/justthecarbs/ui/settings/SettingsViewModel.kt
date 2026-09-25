@@ -39,6 +39,9 @@ class SettingsViewModel(
     fun setHaptics(enabled: Boolean) =
         viewModelScope.launch { settings.setHapticsEnabled(enabled) }.let {}
 
+    fun setProtein(enabled: Boolean) =
+        viewModelScope.launch { settings.setProteinEnabled(enabled) }.let {}
+
     /**
      * Forgets usage history — for every product, favourites included — and keeps the products
      * themselves, their verified values and the favourite flag (§43, §23).

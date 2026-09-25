@@ -72,7 +72,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -107,6 +109,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.style.TextOverflow
@@ -130,6 +133,7 @@ import app.justthecarbs.domain.PortionUnitKind
 import app.justthecarbs.domain.Product
 import app.justthecarbs.domain.ProductImageSelector
 import app.justthecarbs.domain.ProductDataOrigin
+import app.justthecarbs.domain.ProteinPresentation
 import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.domain.ResultStyle
 import app.justthecarbs.domain.VerificationStatus
@@ -716,6 +720,36 @@ private fun CalculatorBody(
         val countableActive = state.inputMode == InputMode.PORTION_UNIT && selectedUnit != null
         val portionScroll = rememberScrollState()
 
+        // The optional protein reading (design spec 2026-09-24, section 4). The data decides what
+        // the row would say; two layout gates then decide whether it is on screen at all.
+        //
+        // 1. The keyboard: everything below the numeral steps aside while typing.
+        // 2. The field wins over the row. On a starved window (320x640dp at 1.3x with an answer the
+        //    portion zone is already a 23dp band) a row costing 39dp would push the field off the
+        //    screen, and nothing left on screen could bring it back. So the row is withheld at rest
+        //    whenever the zone, without the row, would drop below a touch target once the row is
+        //    added. One measurement, never a feedback loop: the room is read as if the row were
+        //    absent (the zone's room plus the row's own measured height), and the cost is never
+        //    below the row's measured height, so hiding the row cannot re-enable it.
+        //    Deliberately not keyed on the short-window rule, which would take protein away from
+        //    every large-text user on an ordinary phone.
+        val proteinData = ProteinPresentation.of(
+            enabled = settings.proteinEnabled,
+            product = product,
+            exactProtein = state.exactProtein,
+            hasAnswer = state.exactCarbs != null,
+            directCarbPortion = countableActive && selectedUnit?.conversion is PortionConversion.DirectCarbs,
+        )
+        var zoneRoomPx by remember { mutableIntStateOf(ZONE_ROOM_UNMEASURED) }
+        var proteinRowPx by remember { mutableIntStateOf(0) }
+        val proteinRowEstimatePx = with(density) {
+            (MaterialTheme.typography.titleMedium.lineHeight.toPx() + Space.s.toPx()).roundToInt()
+        }
+        val fieldFloorPx = with(density) { Space.minTouchTarget.roundToPx() }
+        val proteinLeavesTheField = zoneRoomPx == ZONE_ROOM_UNMEASURED ||
+            zoneRoomPx + proteinRowPx - maxOf(proteinRowEstimatePx, proteinRowPx) >= fieldFloorPx
+        val protein = if (imeVisible || !proteinLeavesTheField) ProteinPresentation.Hidden else proteinData
+
         // A short window with the keyboard up (2026-09-23 calculator refinement).
         //
         // Measured at 360x600dp: the keyboard, the top bar, the meal bar and the dock with its meal
@@ -804,6 +838,7 @@ private fun CalculatorBody(
         // nothing even at a large font scale.
         CalculatorFrame(
             reserveIdentity = !imeVisible,
+            onZoneRoom = { zoneRoomPx = it },
             modifier = Modifier.weight(1f),
             identity = {
                 ProductIdentityRow(
@@ -1092,6 +1127,8 @@ private fun CalculatorBody(
             settings = settings,
             equationUnit = selectedUnit.takeIf { countableActive },
             imeVisible = imeVisible,
+            protein = protein,
+            onProteinRowHeight = { proteinRowPx = it },
             onAddToMeal = { onAddToMeal(portionDescription, mealFallbackName) },
             onAddToMealAndScanNext = { onAddToMealAndScanNext(portionDescription, mealFallbackName) },
             onScanNext = onScanNext,
@@ -1124,6 +1161,11 @@ private fun CalculatorFrame(
     reserveIdentity: Boolean,
     identity: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The height the portion zone may take, in px, reported on every measurement: the room less
+     * the identity's floor. Read by the protein row's field-first gate; see `CalculatorBody`.
+     */
+    onZoneRoom: (Int) -> Unit = {},
     zone: @Composable () -> Unit,
 ) {
     Layout(contents = listOf(identity, zone), modifier = modifier) { (identityMeasurables, zoneMeasurables), constraints ->
@@ -1135,8 +1177,10 @@ private fun CalculatorFrame(
         } else {
             0
         }
+        val zoneRoom = (height - reserved).coerceAtLeast(0)
+        onZoneRoom(zoneRoom)
         val zonePlaceable = zoneMeasurables.single().measure(
-            Constraints(minWidth = width, maxWidth = width, maxHeight = (height - reserved).coerceAtLeast(0)),
+            Constraints(minWidth = width, maxWidth = width, maxHeight = zoneRoom),
         )
         val identityPlaceable = identityMeasurable?.measure(
             Constraints(minWidth = width, maxWidth = width, maxHeight = (height - zonePlaceable.height).coerceAtLeast(0)),
@@ -2348,6 +2392,13 @@ private fun ResultPanel(
      * budget is exceeded.
      */
     imeVisible: Boolean = false,
+    /**
+     * The optional protein reading, already gated by the caller (keyboard, starved window). Hidden
+     * leaves this dock exactly as it was before protein existed.
+     */
+    protein: ProteinPresentation = ProteinPresentation.Hidden,
+    /** The protein row's height including its gap, or 0 once it leaves; feeds the caller's gate. */
+    onProteinRowHeight: (Int) -> Unit = {},
     onAddToMeal: () -> Unit = {},
     onAddToMealAndScanNext: () -> Unit = {},
     onScanNext: () -> Unit = {},
@@ -2506,8 +2557,18 @@ private fun ResultPanel(
         // reliably announced. The Box exists in every state; its description appears with the
         // first answer and changes with each one after. Its merged text still carries the numeral
         // and the pending preview; the copy button stays its own node.
+        // With the protein row on screen, one announcement carries both facts, carbs first. Every
+        // other state keeps the carbs-only sentence, so protein off changes nothing a user or a test
+        // hears.
+        val proteinFigure = (protein as? ProteinPresentation.Value)?.let { formattedReading(it.exact, settings.resultStyle) }
         val accessibleResult = dominantNumeral?.let {
-            stringResource(R.string.result_accessible_grams, it)
+            when {
+                proteinFigure != null ->
+                    stringResource(R.string.result_accessible_grams_and_protein, it, proteinFigure)
+                protein is ProteinPresentation.NoOnlineValue ->
+                    stringResource(R.string.result_accessible_grams_protein_unavailable, it)
+                else -> stringResource(R.string.result_accessible_grams, it)
+            }
         }
         Box(
             modifier = Modifier
@@ -2626,15 +2687,43 @@ private fun ResultPanel(
             Spacer(Modifier.height(Space.xs))
             Text(
                 text = stringResource(
-                    if (state.product.isUserVerified) {
-                        R.string.product_result_verified
-                    } else {
-                        R.string.product_result_unverified
+                    when {
+                        // The user checked the carbs, not the protein, and the sentence says so.
+                        state.product.isUserVerified && proteinFigure != null ->
+                            R.string.product_result_verified_protein_online
+                        state.product.isUserVerified -> R.string.product_result_verified
+                        else -> R.string.product_result_unverified
                     },
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Start,
+            )
+        }
+
+        // The protein reading: after the carb block, so the answer and its caption stay one block
+        // and protein reads as a second one. No animation of its own; the dock's size animation
+        // carries it, and its digits change in place like the numeral's.
+        if (protein !is ProteinPresentation.Hidden) {
+            val reading = if (proteinFigure != null) {
+                SecondaryReading.Value(
+                    text = stringResource(R.string.product_protein_value, proteinFigure),
+                    spoken = stringResource(R.string.product_protein_accessible, proteinFigure),
+                )
+            } else {
+                SecondaryReading.Unavailable(
+                    text = stringResource(R.string.product_protein_no_online_value),
+                    spoken = stringResource(R.string.product_protein_no_online_value_accessible),
+                )
+            }
+            DisposableEffect(Unit) { onDispose { onProteinRowHeight(0) } }
+            SecondaryReadingRow(
+                label = stringResource(R.string.product_protein_label),
+                reading = reading,
+                modifier = Modifier
+                    .testTag(PRODUCT_PROTEIN_TAG)
+                    .onSizeChanged { onProteinRowHeight(it.height) }
+                    .padding(top = Space.s),
             )
         }
 
@@ -2710,6 +2799,111 @@ private val RESULT_SLOT_HEIGHT = 80.dp
  * rests on.
  */
 private val RESULT_SLOT_HEIGHT_COMPACT = 60.dp
+
+/** The portion zone's room before the first measurement: the protein row is not withheld yet. */
+private const val ZONE_ROOM_UNMEASURED = -1
+
+/** The dock's optional protein row, for tests. */
+const val PRODUCT_PROTEIN_TAG = "product_protein"
+
+/** A figure in the user's chosen result style, from the exact value, never from another rounding. */
+private fun formattedReading(exact: BigDecimal, style: ResultStyle): String = when (style) {
+    ResultStyle.DECIMAL_DOMINANT -> ResultFormatter.decimal(exact)
+    ResultStyle.WHOLE_DOMINANT -> ResultFormatter.whole(ResultFormatter.wholeGrams(exact))
+}
+
+/** What a second reading shows: a figure, or a worded state for a figure the source lacks. */
+private sealed interface SecondaryReading {
+    val text: String
+    val spoken: String
+
+    data class Value(override val text: String, override val spoken: String) : SecondaryReading
+
+    data class Unavailable(override val text: String, override val spoken: String) : SecondaryReading
+}
+
+/**
+ * A second reading under the answer: an eyebrow and a figure on one baseline, in ink.
+ *
+ * Protein is the only second reading. Adding a further nutrient is a scope change that needs an
+ * owner decision under MASTER-PROMPT section 2 and a review against the regulatory assessment's
+ * section 7.2 before any design; this row is not a slot for one. Rules (design spec 2026-09-24,
+ * section 8): never larger than `titleMedium`, never the answer's colour, never a card, never
+ * clickable.
+ *
+ * Fitting: the figure is one line and never ellipsised, because a figure that silently loses digits
+ * is the failure the numeral's autosize exists to prevent. If the width cannot hold eyebrow and
+ * figure side by side, the figure drops under the eyebrow instead of shrinking. The worded state
+ * may wrap beside the eyebrow.
+ *
+ * One node for explore-by-touch, with a spoken form, so the figure is read as grams of protein
+ * rather than letter by letter. No live region of its own: the dock's result announcement already
+ * carries it.
+ */
+@Composable
+private fun SecondaryReadingRow(
+    label: String,
+    reading: SecondaryReading,
+    modifier: Modifier = Modifier,
+) {
+    Layout(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { contentDescription = reading.spoken },
+        content = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+            )
+            when (reading) {
+                is SecondaryReading.Value -> Text(
+                    text = reading.text,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                is SecondaryReading.Unavailable -> Text(
+                    text = reading.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        val free = constraints.copy(minWidth = 0, minHeight = 0)
+        val labelPlaceable = measurables[0].measure(free.copy(maxWidth = Constraints.Infinity))
+        val gapPx = Space.s.roundToPx()
+        val besideWidth = (constraints.maxWidth - labelPlaceable.width - gapPx).coerceAtLeast(0)
+        val figure = when (reading) {
+            // A figure is measured at its natural width, so one too wide to sit beside the eyebrow
+            // is detected rather than squeezed.
+            is SecondaryReading.Value -> measurables[1].measure(free.copy(maxWidth = Constraints.Infinity))
+            is SecondaryReading.Unavailable -> measurables[1].measure(free.copy(maxWidth = besideWidth))
+        }
+        if (figure.width <= besideWidth) {
+            val labelBaseline = labelPlaceable[FirstBaseline]
+            val figureBaseline = figure[FirstBaseline]
+            val baseline = maxOf(labelBaseline, figureBaseline)
+            val height = maxOf(
+                baseline - labelBaseline + labelPlaceable.height,
+                baseline - figureBaseline + figure.height,
+            )
+            layout(constraints.maxWidth, height) {
+                labelPlaceable.place(0, baseline - labelBaseline)
+                figure.place(labelPlaceable.width + gapPx, baseline - figureBaseline)
+            }
+        } else {
+            layout(constraints.maxWidth, labelPlaceable.height + figure.height) {
+                labelPlaceable.place(0, 0)
+                figure.place(0, labelPlaceable.height)
+            }
+        }
+    }
+}
 
 // PrimaryAction / SecondaryAction moved to ui.components alongside RecoveryPanel, which they are
 // only ever used inside -- the search screen needs the same pair for the same panel.

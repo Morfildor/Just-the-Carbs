@@ -440,6 +440,25 @@ class JustTheCarbsDatabaseMigrationTest {
         }
     }
 
+    /** v8 to v9 adds the protein pair; existing rows keep every figure and gain no protein. */
+    @Test
+    fun migratingFromV8AddsProteinWithoutInventingAny() {
+        val db = helper.createDatabase(TEST_DB, 8)
+        db.execSQL("""
+            INSERT INTO products (barcode, name, carbsPer100, basis, dataSource, verificationStatus, favorite)
+            VALUES ('nutella', 'Nutella', '57.5', 'PER_100_G', 'OPEN_FOOD_FACTS', 'UNVERIFIED', 1)
+        """.trimIndent())
+        db.close()
+        val migrated = helper.runMigrationsAndValidate(TEST_DB, 9, true, JustTheCarbsDatabase.MIGRATION_8_9)
+        migrated.query("SELECT carbsPer100, favorite, proteinPer100, proteinOrigin FROM products WHERE barcode = 'nutella'").use {
+            assertTrue(it.moveToFirst())
+            assertEquals("57.5", it.getString(0))
+            assertEquals(1, it.getInt(1))
+            assertTrue("no protein may be inferred for an existing row", it.isNull(2))
+            assertTrue(it.isNull(3))
+        }
+    }
+
     // A unique name per test instance (JUnit creates a fresh instance per @Test method): reusing a
     // fixed name let one test's already-migrated v3 file leak into the next test's "fresh" v2
     // database, since MigrationTestHelper.createDatabase() does not itself guarantee a clean file.

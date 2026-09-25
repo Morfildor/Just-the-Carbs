@@ -195,6 +195,7 @@ class OpenFoodFactsDataSource(
             ?: return ProductFetchResult.Unusable(barcode, UnusableReason.NO_CARB_VALUE)
 
         val servingSize = portionUnitCandidate(remote, basis)
+        val protein = NutritionValueValidator.validateProteinPer100(remote.nutriments?.proteins100g, basis)
 
         return ProductFetchResult.Found(
             product = Product(
@@ -209,6 +210,10 @@ class OpenFoodFactsDataSource(
                 imageUrl = remote.imageFrontSmallUrl?.takeIf { it.isNotBlank() },
                 largeImageUrl = remote.imageFrontUrl?.takeIf { it.isNotBlank() },
                 images = remote.selectedProductImages(),
+                // Validated under the product's own basis; an unusable figure is simply absent.
+                // Protein never makes a product unusable.
+                proteinPer100 = protein,
+                proteinOrigin = protein?.let { ProductDataOrigin.OPEN_FOOD_FACTS },
             ),
             portionUnitCandidate = servingSize,
         )

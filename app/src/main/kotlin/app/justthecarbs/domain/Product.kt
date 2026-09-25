@@ -111,7 +111,31 @@ data class Product(
     val lastSelectedPortionUnitId: Long? = null,
     /** The last countable count entered, e.g. `2` for "2 slices" (§11). */
     val lastCount: BigDecimal? = null,
+    /**
+     * Protein per 100 g/ml, valid only under this product's own [basis]. Null when the source
+     * lists none, and always null for user-authored products in this version.
+     *
+     * An optional second reading, never an answer: it is never totalled, stored per use, or shown
+     * outside the open calculator (MASTER-PROMPT §2 amendment, 2026-09-25). It travels with the
+     * nutrient record and is never written on its own, so the stored carbohydrate and protein
+     * figures always come from one fetched record.
+     */
+    val proteinPer100: BigDecimal? = null,
+    /**
+     * Where [proteinPer100] came from. Its own field for the same reason [dataSource] and
+     * [verificationStatus] are separate: the label-scanning patch will write [ProductDataOrigin.OCR]
+     * here on a product whose carbs may have another source. Only ever
+     * [ProductDataOrigin.OPEN_FOOD_FACTS] in this version.
+     */
+    val proteinOrigin: ProductDataOrigin? = null,
 ) {
+    init {
+        // A figure without a source, or a source without a figure, is unconstructible.
+        require((proteinPer100 == null) == (proteinOrigin == null)) {
+            "proteinPer100 and proteinOrigin must be set together"
+        }
+    }
+
     /** The unit the portion field is locked to. Never converted (§17, design decision 3.1). */
     val portionUnit: String get() = basis.unitLabel
 

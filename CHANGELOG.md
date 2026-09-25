@@ -89,6 +89,16 @@ live on Production and says the first update is ready. Work accumulates here unt
 
 ### Added
 
+- **Protein, as an option.** Settings → Results → *Show protein*, or the *Show protein* chip on
+  Home, shows the protein in your portion under the carbs when Open Food Facts lists a value for the
+  product. Off unless you switch it on. It appears only on the calculator: nothing is added to the
+  meal, Recents, search results or the clipboard, and no total exists. Carbs are calculated exactly
+  as before. When the record lists no protein the row says *No online value*, never 0 g. Products
+  you typed in or read from a label show no protein in this version. Design:
+  `docs/superpowers/specs/2026-09-24-protein-design.md`; scope amendment to MASTER-PROMPT §2
+  (2026-09-25). Database version 9 adds two nullable columns to `products`; existing products gain
+  protein on their next refresh from Open Food Facts, so a product saved before this version shows
+  *No online value* on its first visit and the figure from the next one.
 - **A hint when a portion is more than the whole pack.** When the pack size is known and the typed
   portion is larger ("More than the whole pack (400 g)"), a quiet line says so under the field. It
   changes no number and blocks nothing; a portion can legitimately span two packs.
@@ -391,6 +401,8 @@ text. Re-check all of this, and resolve the CI failures, before the release buil
 > a recent product to remove it from Recent, with Undo. The calculator shows a bigger product
 > picture and keeps the carbs answer clearly apart from the portion you type. Product photos in
 > search results appear much faster.
+> Optional: show the protein in your portion under the carbs, from Home or Settings. Off unless you
+> turn it on; never added up or kept.
 
 ## 1.0.7 (versionCode 8) — 2026-09-17 — uploaded to Google Play Production, replacing 1.0.6, under review
 

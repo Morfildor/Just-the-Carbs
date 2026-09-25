@@ -635,8 +635,13 @@ class HomeScreenTest {
     fun theStarterFollowsTheEntryPointsWithoutAViewportSizedBlankGap() {
         show(recents = emptyList())
 
-        val manualBottom = compose.onNodeWithText("Enter manually")
-            .fetchSemanticsNode().boundsInRoot.bottom
+        // Measured from the entry cluster's last item. Enter manually shares its row with the
+        // Show protein chip, which drops under it on a narrow window (320dp: 131dp + 151dp in a
+        // 280dp row), so the footer's lower edge is whichever of the two ends lower.
+        val manualBottom = maxOf(
+            compose.onNodeWithText("Enter manually").fetchSemanticsNode().boundsInRoot.bottom,
+            compose.onNodeWithTag(app.justthecarbs.ui.home.HOME_PROTEIN_TAG).fetchSemanticsNode().boundsInRoot.bottom,
+        )
         val starterTop = compose.onNodeWithText(stringOf(R.string.home_empty_headline))
             .fetchSemanticsNode().boundsInRoot.top
         with(compose.density) {

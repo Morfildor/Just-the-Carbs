@@ -1,6 +1,6 @@
 # Privacy policy — Just the Carbs
 
-**Last updated:** 2026-09-23
+**Last updated:** 2026-09-25
 **Contact:** albinogorillassupport@gmail.com
 
 This describes what the app actually does, verified against the source code (§48).
@@ -23,7 +23,8 @@ the only ones Just the Carbs itself makes.
 Stored locally in an app-private database, readable by no other app:
 
 - Barcodes and product names you have scanned or entered
-- Carbohydrate values, measurement basis, package sizes
+- Carbohydrate values and, for Open Food Facts products, protein values; measurement basis,
+  package sizes
 - Your verified values, and the online value they replaced
 - Countable portion units (e.g. "1 slice = 36 g"), whether suggested by Open Food Facts or
   entered by you, and whether you have checked them against the package

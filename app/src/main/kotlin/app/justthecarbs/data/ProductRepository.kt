@@ -171,7 +171,7 @@ class ProductRepository(
         // ("2 slices"), and omitting them let an ordinary background refresh silently erase it,
         // since `fetched` — a value straight off the wire — carries `Product`'s defaults (null) for
         // all three.
-        val usageCompatible = clearUsageForBasisChange(latest, fetched.basis)
+        val usageCompatible = dropBasisBoundFacts(latest, fetched.basis)
         local.save(
             fetched.copy(
                 favorite = latest.favorite,
@@ -188,6 +188,9 @@ class ProductRepository(
                 latestRemoteCarbs = remoteCarbs,
                     latestRemoteBasis = fetched.basis,
                 remoteUpdatedAt = clock.instant(),
+                // Protein arrives with `fetched` itself: it travels with the nutrient record, so the
+                // stored carbs and protein always come from one fetch. The branch above (verified or
+                // user-authored) never touches protein, and a protein-only difference is not news.
             ),
         )
         return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs, fetched.basis) else RefreshOutcome.Unchanged
@@ -218,7 +221,7 @@ class ProductRepository(
             existing.dataSource.isUserAuthored -> null
             else -> existing.originalRemoteCarbs ?: existing.carbsPer100
         }
-        val compatible = clearUsageForBasisChange(existing, basis)
+        val compatible = dropBasisBoundFacts(existing, basis)
         val originalBasis = when {
             existing.dataSource.isUserAuthored -> null
             existing.originalRemoteCarbs != null -> existing.originalRemoteBasis
@@ -251,7 +254,7 @@ class ProductRepository(
         val existing = requireExisting(barcode)
         val latest = existing.latestRemoteCarbs ?: return
         val basis = existing.latestRemoteBasis ?: return
-        val compatible = clearUsageForBasisChange(existing, basis)
+        val compatible = dropBasisBoundFacts(existing, basis)
         local.save(
             compatible.copy(
                 basis = basis,
@@ -272,7 +275,7 @@ class ProductRepository(
         val existing = requireExisting(barcode)
         val online = existing.originalRemoteCarbs ?: return
         val basis = existing.originalRemoteBasis ?: return
-        val compatible = clearUsageForBasisChange(existing, basis)
+        val compatible = dropBasisBoundFacts(existing, basis)
         local.save(
             compatible.copy(
                 basis = basis,
@@ -301,6 +304,11 @@ class ProductRepository(
         local.save(
             product.copy(
                 dataSource = origin,
+                // In this version protein exists only on Open Food Facts records, so a product the
+                // user authored carries none. The label-scanning patch will write an OCR-origin
+                // figure here deliberately; nothing may carry an online figure in by accident.
+                proteinPer100 = null,
+                proteinOrigin = null,
                 verificationStatus = VerificationStatus.USER_VERIFIED,
                 verifiedAt = timestamp,
                 // Authoring a product counts as using it. Recents are keyed on lastUsedAt, and
@@ -363,11 +371,18 @@ class ProductRepository(
         }
     }
 
-    private suspend fun clearUsageForBasisChange(product: Product, basis: NutritionBasis): Product {
+    /**
+     * Everything measured in the old basis unit stops meaning anything when the basis changes: the
+     * remembered portion and its usage, the pack sizes, and the protein figure (a per-100 g protein
+     * value has no meaning under a millilitre portion). The protein comes back only with a
+     * wholesale reload of the record, never by conversion.
+     */
+    private suspend fun dropBasisBoundFacts(product: Product, basis: NutritionBasis): Product {
         if (product.basis == basis) return product
         portionUsage.findByBarcode(product.barcode).forEach { portionUsage.delete(it) }
         return product.copy(packageAmount = null, servingAmount = null, lastPortion = null,
-            lastInputMode = null, lastSelectedPortionUnitId = null, lastCount = null)
+            lastInputMode = null, lastSelectedPortionUnitId = null, lastCount = null,
+            proteinPer100 = null, proteinOrigin = null)
     }
 
     suspend fun setFavorite(barcode: String, favorite: Boolean) {

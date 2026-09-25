@@ -78,6 +78,9 @@ import app.justthecarbs.ui.theme.extendedColors
 /** Stable handle for instrumented tests. */
 const val SETTINGS_REPLAY_TUTORIAL_TAG = "settings_replay_tutorial"
 
+/** The `Show protein` row under Results. */
+const val SETTINGS_PROTEIN_TAG = "settings_protein"
+
 /**
  * Settings (§43). Four sections, deliberately small.
  *
@@ -94,6 +97,8 @@ fun SettingsScreen(
     onClearRecents: () -> Unit,
     onClearProducts: () -> Unit,
     onReplayTutorial: () -> Unit = {},
+    /** Writes the one persisted protein setting, the same one Home's chip writes. */
+    onProteinChanged: (Boolean) -> Unit = {},
     /** A clear that has just finished, to confirm in a Snackbar; null when there is none. */
     cleared: ClearedData? = null,
     onClearedShown: () -> Unit = {},
@@ -188,6 +193,42 @@ fun SettingsScreen(
                     selectedIndex = ResultStyle.entries.indexOf(settings.resultStyle),
                     onSelected = { onResultStyleChanged(ResultStyle.entries[it]) },
                 )
+
+                // The optional protein reading, under Results because it changes what the result
+                // shows. The haptics row's anatomy plus a supporting line, since the label alone
+                // does not say what changes. One node: the whole row toggles and the switch's own
+                // callback is null, so TalkBack meets a single switch named `Show protein`. The
+                // same persisted value as Home's chip.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = Space.minTouchTarget)
+                        .toggleable(
+                            value = settings.proteinEnabled,
+                            role = Role.Switch,
+                            onValueChange = onProteinChanged,
+                        )
+                        .padding(vertical = Space.s)
+                        .testTag(SETTINGS_PROTEIN_TAG),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.protein_toggle),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_protein_body),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(Space.m))
+                    Switch(checked = settings.proteinEnabled, onCheckedChange = null)
+                }
 
                 HorizontalDivider()
 

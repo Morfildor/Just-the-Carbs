@@ -56,6 +56,10 @@ data class ProductEntity(
     val galleryImagesJson: String? = null,
     val originalRemoteBasis: String? = null,
     val latestRemoteBasis: String? = null,
+    /** Protein per 100 g/ml as plain decimal TEXT, like [carbsPer100]. Added in v9; null before. */
+    val proteinPer100: String? = null,
+    /** [ProductDataOrigin] name of [proteinPer100]. Set exactly when [proteinPer100] is. */
+    val proteinOrigin: String? = null,
 )
 
 fun Product.toEntity(): ProductEntity = ProductEntity(
@@ -83,6 +87,8 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
     galleryImagesJson = ProductImageCacheCodec.encode(images),
     originalRemoteBasis = originalRemoteBasis?.name,
     latestRemoteBasis = latestRemoteBasis?.name,
+    proteinPer100 = proteinPer100?.toPlainString(),
+    proteinOrigin = proteinOrigin?.name,
 )
 
 fun ProductEntity.toDomain(): Product = Product(
@@ -110,4 +116,14 @@ fun ProductEntity.toDomain(): Product = Product(
     images = ProductImageCacheCodec.decode(galleryImagesJson),
     originalRemoteBasis = originalRemoteBasis?.let(NutritionBasis::valueOf),
     latestRemoteBasis = latestRemoteBasis?.let(NutritionBasis::valueOf),
-)
+).withStoredProtein(proteinPer100, proteinOrigin)
+
+/**
+ * Protein is optional, so a stored pair that cannot be read (a missing half, an unknown origin, a
+ * figure that is not a number) leaves the product without protein rather than failing the whole row.
+ */
+private fun Product.withStoredProtein(figure: String?, origin: String?): Product {
+    val value = figure?.toBigDecimalOrNull() ?: return this
+    val source = ProductDataOrigin.entries.firstOrNull { it.name == origin } ?: return this
+    return copy(proteinPer100 = value, proteinOrigin = source)
+}

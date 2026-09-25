@@ -22,7 +22,21 @@ object NutritionValueValidator {
      */
     private const val MAX_PER_100_ML = 200.0
 
-    fun validateCarbsPer100(raw: Double?, basis: NutritionBasis): BigDecimal? {
+    fun validateCarbsPer100(raw: Double?, basis: NutritionBasis): BigDecimal? = validatePer100(raw, basis)
+
+    /**
+     * Protein per 100 g/ml, under exactly the carbohydrate rules and ceilings: the same arithmetic
+     * (100 g cannot hold more than 100 g of anything) and the same density bound for millilitres.
+     *
+     * Takes the raw text because the field is read tolerantly (see `OffNutriments.proteins100g`).
+     * Anything unparsable is null, never an unusable product: protein is optional and must never
+     * block the carbohydrate answer.
+     */
+    fun validateProteinPer100(raw: String?, basis: NutritionBasis): BigDecimal? =
+        validatePer100(raw?.trim()?.toDoubleOrNull(), basis)
+
+    /** The one per-100 rule, shared by every nutrient the app reads so the two cannot drift. */
+    private fun validatePer100(raw: Double?, basis: NutritionBasis): BigDecimal? {
         if (raw == null) return null
         if (raw.isNaN() || raw.isInfinite()) return null
         if (raw < 0.0) return null

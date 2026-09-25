@@ -75,6 +75,17 @@ not currently expose tabular figures, so digits in this shape may shift width sl
 cross-fade; that is a font limitation to revisit if a tabular-figure build becomes available, not a
 missed design requirement.
 
+**A second reading is an inline labelled pair in ink, never a second answer** (protein, 2026-09-25).
+It sits after the answer's own block (numeral, whole-gram restatement, provenance sentence), as an
+eyebrow in `labelSmall` beside a figure in `titleMedium` on one baseline: never larger than
+`titleMedium`, never the result colour, never a card, never tappable. Scale (72 against 18), weight,
+hue (coral against ink) and layout (stacked against inline) all separate it from the answer, so the
+hierarchy survives monochrome, 1.8x text and Dark. A figure the source lacks is a worded state in
+supporting ink in the same slot (`No online value`), never 0 and never a dash. Like everything below
+the numeral it steps aside while the keyboard is open, and it is withheld when showing it would take
+the portion field below a touch target: the field wins. Protein is the only second reading; another
+nutrient is a scope change under MASTER-PROMPT §2, not a variant of this rule.
+
 ## Spacing, shape, and surfaces
 
 Spacing uses the 4/8/16/24/32/48dp scale. Screens use a 20dp horizontal edge. Touch targets are at
@@ -148,6 +159,12 @@ which is the same motif at top-bar scale and is identity rather than decoration.
   on the right; the full row is the touch target. Its figure is ordinary ink, not the result colour
   — a search hit is a candidate, and nothing about it has been calculated yet.
 - `SourceBadge`: compact worded provenance, never colour-only.
+- `ProteinToggle`: Home's `Show protein` chip, a 48dp pill with switch semantics and an egg glyph
+  (`EggAlt`: outlined off, filled on; the plain egg read as a water drop at 20dp). Selected takes the
+  paired container. It stands alone, so unlike the calculator's mode chips it carries a hairline:
+  `outlineVariant` in Light while off, `outline` in Dark in both states (the `JtcValueButton`
+  page-luminance rule). This is the second instance of the number-entry frame's exception to "a
+  field at rest has no border": a quiet fill at 1.05:1 cannot bound a control that stands alone.
 - Settings segment: full-width radio semantics, equal options, clear selected container; it replaces
   a loose collection of oversized filter pills.
 - `RecoveryPanel`: every failure state provides plain language and at least one next action.

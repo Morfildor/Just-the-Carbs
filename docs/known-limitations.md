@@ -25,7 +25,13 @@ package.
 
 **Only total carbohydrate is used.** Sugars, fibre, starch, polyols and net carbs are never
 substituted for a missing total. If the total is absent, the app reports the value as unavailable
-rather than deriving one.
+rather than deriving one. Protein, when shown, is a separate figure from the same source and is
+never combined with or substituted for the carbohydrate figure.
+
+**Protein comes from Open Food Facts only.** Products you typed in or read from a label show no
+protein in this version. A product saved before 1.0.8 shows *No online value* on its first visit
+after the update, while the background refresh fetches the record; the next visit shows the
+figure if the record lists one.
 
 ## Measurement basis
 
@@ -148,7 +154,9 @@ regression-tested.
 
 - **It does not calculate insulin**, an insulin-to-carb ratio, a correction factor, or any dose.
 - It does not interpret glucose, and does not communicate with pumps or CGMs.
-- It is not a food diary: no daily totals, history beyond recents, calories, or macros.
+- It is not a food diary: no daily totals, no history beyond recents, no calories. Protein for the
+  portion on screen can be shown as an option; it is never totalled, stored per use, or listed
+  anywhere else.
 - It does not replace the information printed on the package.
 
 ## Data durability

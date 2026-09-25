@@ -477,6 +477,11 @@ fun JustTheCarbsNavHost(
                     onDismissTutorialReminder = {
                         homeScope.launch { container.settingsRepository.setHasSeenTutorial(true) }
                     },
+                    // The protein chip writes the one persisted setting the Settings row writes, by
+                    // the same route and for the same reason as the reminder dismissal above.
+                    onProteinChanged = { enabled ->
+                        homeScope.launch { container.settingsRepository.setProteinEnabled(enabled) }
+                    },
                     mealItems = mealItems,
                     mealTotal = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems),
                     onOpenMeal = { navController.navigate(Routes.MEAL) },
@@ -1084,6 +1089,7 @@ fun JustTheCarbsNavHost(
                     onThemeChanged = viewModel::setTheme,
                     onResultStyleChanged = viewModel::setResultStyle,
                     onHapticsChanged = viewModel::setHaptics,
+                    onProteinChanged = viewModel::setProtein,
                     onClearRecents = viewModel::clearRecents,
                     onClearProducts = viewModel::clearProducts,
                     cleared = viewModel.cleared.collectAsStateWithLifecycle().value,
