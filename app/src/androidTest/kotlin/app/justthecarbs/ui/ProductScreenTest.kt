@@ -250,6 +250,11 @@ class ProductScreenTest {
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("31.3 grams of carbs")
 
         compose.onNode(portionField()).performTextReplacement("80")
+        // Done, as after the first portion: while the keyboard is up the spoken description waits
+        // for typing to settle (`rememberSettledText`), so reading it mid-typing races that wait
+        // whenever the IME inset reaches this composition (it did in the 320x640 gate run).
+        compose.onNode(portionField()).performImeAction()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
         compose.waitForIdle()
         assertEquals(pending.id, compose.onNodeWithTag(PRODUCT_RESULT_TAG).fetchSemanticsNode().id)
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("38.6 grams of carbs")
