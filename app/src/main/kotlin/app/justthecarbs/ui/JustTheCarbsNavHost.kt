@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -513,7 +514,10 @@ fun JustTheCarbsNavHost(
                             popUpTo(Routes.SCAN) { inclusive = true }
                         }
                     },
-                    onClose = { navController.popBackStack() },
+                    // Every tap-driven Close and Back pops through dropUnlessResumed: the first tap
+                    // moves this entry off RESUMED, so a quick second tap cannot also pop the screen
+                    // behind it (2026-09-25 review; NavHostBackTapTest).
+                    onClose = dropUnlessResumed { navController.popBackStack() },
                     onEnterManually = {
                         navController.navigate(Routes.manual()) {
                             popUpTo(Routes.SCAN) { inclusive = true }
@@ -767,7 +771,7 @@ fun JustTheCarbsNavHost(
                     onPortionChanged = viewModel::onPortionChanged,
                     onSetPortion = viewModel::setPortion,
                     onToggleFavorite = {},
-                    onBack = { navController.popBackStack() },
+                    onBack = dropUnlessResumed { navController.popBackStack() },
                     onVerify = {},
                     onDismissVerify = {},
                     onConfirmVerification = { _, _, _ -> },
@@ -848,7 +852,7 @@ fun JustTheCarbsNavHost(
                         }
                     },
                     onRetry = viewModel::retry,
-                    onBack = { navController.popBackStack() },
+                    onBack = dropUnlessResumed { navController.popBackStack() },
                 )
             }
         }
@@ -863,7 +867,7 @@ fun JustTheCarbsNavHost(
                 MealScreen(
                     state = state,
                     settings = settings,
-                    onBack = { navController.popBackStack() },
+                    onBack = dropUnlessResumed { navController.popBackStack() },
                     onRemoveItem = viewModel::removeItem,
                     onClear = viewModel::clear,
                     onShowClearConfirmation = viewModel::showClearConfirmation,
@@ -933,7 +937,7 @@ fun JustTheCarbsNavHost(
                     onBasisChanged = viewModel::onBasisChanged,
                     onPackageChanged = viewModel::onPackageChanged,
                     onSave = viewModel::save,
-                    onBack = { navController.popBackStack() },
+                    onBack = dropUnlessResumed { navController.popBackStack() },
                     // Read from the route, not from the state: the state is still blank on the
                     // first frame, because `start` above runs only after it.
                     arrivedWithCarbs = carbs.isNotBlank(),
@@ -1034,7 +1038,7 @@ fun JustTheCarbsNavHost(
                     // is wrong, and a comparison of a value they have already rejected is not what they
                     // asked for — they asked to type the right one.
                     onCorrectValue = ::openManualEntryWith,
-                    onClose = { navController.popBackStack() },
+                    onClose = dropUnlessResumed { navController.popBackStack() },
                     // Two genuinely different situations, decided by whether the product row actually
                     // exists rather than by whether the barcode string is non-empty (correction §2).
                     // A not-found product screen has a real barcode and no product row, and that is
@@ -1113,7 +1117,7 @@ fun JustTheCarbsNavHost(
                     // this screen. Replay mode writes nothing, so watching it again cannot alter
                     // onboarding state.
                     onReplayTutorial = { navController.navigate(Routes.onboarding(replay = true)) },
-                    onBack = { navController.popBackStack() },
+                    onBack = dropUnlessResumed { navController.popBackStack() },
                 )
             }
         }

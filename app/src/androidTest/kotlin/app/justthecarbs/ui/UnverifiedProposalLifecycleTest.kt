@@ -167,7 +167,8 @@ class UnverifiedProposalLifecycleTest {
         }
 
         rule.onNodeWithText("12 g per 100 g").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Check this against the label").performScrollTo().assertIsDisplayed()
+        // The title sits in the pinned header, on screen without scrolling.
+        rule.onNodeWithText("Check this against the label").assertIsDisplayed()
         rule.onNodeWithText("From: Hidratos de carbono 12g").performScrollTo().assertIsDisplayed()
     }
 

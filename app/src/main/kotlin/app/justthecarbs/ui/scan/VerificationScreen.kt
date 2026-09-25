@@ -210,9 +210,10 @@ fun VerificationScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState()),
+            .navigationBarsPadding(),
     ) {
+        // The header, with Close, stays put while the rest scrolls: on a short window reaching
+        // Retake used to scroll the only way out off screen (2026-09-25 review).
         PhotoScreenHeader(onClose = onClose) {
             Text(
                 text = stringResource(
@@ -236,139 +237,141 @@ fun VerificationScreen(
             )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-
-        // The row the figure was read from, enlarged. This is the part a user can actually check a
-        // decimal point in; the full photograph below it is for locating that row on the package.
-        val closeUpDescription = stringResource(R.string.verify_found_zoom_description)
-        RowCloseUp(
-            bitmap = bitmap,
-            row = rowInSourceSpace,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.m)
-                .height(CLOSE_UP_HEIGHT)
-                .background(Color.Black)
-                // A Canvas carries no contentDescription of its own, so the label is applied through
-                // semantics — without it TalkBack announces nothing for the one element that shows
-                // the user what the app actually read.
-                .semantics { contentDescription = closeUpDescription }
-                .testTag(VERIFY_ZOOM_TAG),
-        )
-
-        // The photograph stays: it is the only place the proposal can actually be checked.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(PHOTO_HEIGHT)
-                .padding(top = Space.s)
-                .background(Color.Black)
-                .testTag(VERIFY_PHOTO_TAG),
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
         ) {
-            var viewSize by remember { mutableStateOf(IntSize.Zero) }
-            androidx.compose.foundation.Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.verify_found_photo_description),
-                modifier = Modifier.fillMaxSize().onSizeChanged { viewSize = it },
-                contentScale = ContentScale.Fit,
+            // The row the figure was read from, enlarged. This is the part a user can actually check a
+            // decimal point in; the full photograph below it is for locating that row on the package.
+            val closeUpDescription = stringResource(R.string.verify_found_zoom_description)
+            RowCloseUp(
+                bitmap = bitmap,
+                row = rowInSourceSpace,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.m)
+                    .height(CLOSE_UP_HEIGHT)
+                    .background(Color.Black)
+                    // A Canvas carries no contentDescription of its own, so the label is applied through
+                    // semantics — without it TalkBack announces nothing for the one element that shows
+                    // the user what the app actually read.
+                    .semantics { contentDescription = closeUpDescription }
+                    .testTag(VERIFY_ZOOM_TAG),
             )
-            // The same tested mapping the crop and assisted screens use, so the outline cannot drift
-            // into a different coordinate space than the one the candidate was measured in.
-            val displayed = CropSelectionGeometry.displayedImageBounds(
-                imageWidth = bitmap.width,
-                imageHeight = bitmap.height,
-                viewWidth = viewSize.width.toFloat(),
-                viewHeight = viewSize.height.toFloat(),
-            )
-            if (displayed.width > 0f && displayed.height > 0f) {
-                val scale = displayed.width / bitmap.width
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val topLeft = Offset(
-                        displayed.left + rowInSourceSpace.left * scale,
-                        displayed.top + rowInSourceSpace.top * scale,
-                    )
-                    val size = Size(
-                        rowInSourceSpace.width * scale,
-                        rowInSourceSpace.height * scale,
-                    )
-                    drawRect(scannerColors.darkEdge, topLeft, size, style = Stroke(width = 8f))
-                    drawRect(scannerColors.selection, topLeft, size, style = Stroke(width = 4f))
+
+            // The photograph stays: it is the only place the proposal can actually be checked.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(PHOTO_HEIGHT)
+                    .padding(top = Space.s)
+                    .background(Color.Black)
+                    .testTag(VERIFY_PHOTO_TAG),
+            ) {
+                var viewSize by remember { mutableStateOf(IntSize.Zero) }
+                androidx.compose.foundation.Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = stringResource(R.string.verify_found_photo_description),
+                    modifier = Modifier.fillMaxSize().onSizeChanged { viewSize = it },
+                    contentScale = ContentScale.Fit,
+                )
+                // The same tested mapping the crop and assisted screens use, so the outline cannot drift
+                // into a different coordinate space than the one the candidate was measured in.
+                val displayed = CropSelectionGeometry.displayedImageBounds(
+                    imageWidth = bitmap.width,
+                    imageHeight = bitmap.height,
+                    viewWidth = viewSize.width.toFloat(),
+                    viewHeight = viewSize.height.toFloat(),
+                )
+                if (displayed.width > 0f && displayed.height > 0f) {
+                    val scale = displayed.width / bitmap.width
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val topLeft = Offset(
+                            displayed.left + rowInSourceSpace.left * scale,
+                            displayed.top + rowInSourceSpace.top * scale,
+                        )
+                        val size = Size(
+                            rowInSourceSpace.width * scale,
+                            rowInSourceSpace.height * scale,
+                        )
+                        drawRect(scannerColors.darkEdge, topLeft, size, style = Stroke(width = 8f))
+                        drawRect(scannerColors.selection, topLeft, size, style = Stroke(width = 4f))
+                    }
                 }
             }
-        }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(Space.m),
-            verticalArrangement = Arrangement.spacedBy(Space.s),
-        ) {
-            // A declared-serving reading: the PRINTED pair is what the user can compare against the
-            // package, so it is the primary line. The stored/calculated value is per-100 and appears
-            // only as clearly-labelled secondary context beneath it — never presented as though the
-            // package itself printed a per-100 figure. See [printedAmount]'s own KDoc.
-            if (printedAmount != null && printedBasisLabel != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(Space.m),
+                verticalArrangement = Arrangement.spacedBy(Space.s),
+            ) {
+                // A declared-serving reading: the PRINTED pair is what the user can compare against the
+                // package, so it is the primary line. The stored/calculated value is per-100 and appears
+                // only as clearly-labelled secondary context beneath it — never presented as though the
+                // package itself printed a per-100 figure. See [printedAmount]'s own KDoc.
+                if (printedAmount != null && printedBasisLabel != null) {
+                    Text(
+                        text = stringResource(
+                            R.string.verify_scale_printed_value,
+                            candidateFigure(printedAmount),
+                            printedBasisLabel,
+                        ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.verify_scale_normalized_value,
+                            // Derived by division, so shown as the calculator will show it.
+                            ResultFormatter.quantity(value),
+                            basis.unitLabel,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        text = stringResource(
+                            R.string.verify_found_value,
+                            candidateFigure(value),
+                            basis.unitLabel,
+                        ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                // Where on the label this came from. States the app's claim in the label's own words.
                 Text(
-                    text = stringResource(
-                        R.string.verify_scale_printed_value,
-                        candidateFigure(printedAmount),
-                        printedBasisLabel,
-                    ),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(
-                        R.string.verify_scale_normalized_value,
-                        // Derived by division, so shown as the calculator will show it.
-                        ResultFormatter.quantity(value),
-                        basis.unitLabel,
-                    ),
+                    text = stringResource(R.string.verify_found_row, rowText.trim()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
-                Text(
-                    text = stringResource(
-                        R.string.verify_found_value,
-                        candidateFigure(value),
-                        basis.unitLabel,
-                    ),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
+                Button(
+                    onClick = { onConfirm(value, basis) },
+                    shape = RoundedCornerShape(Space.buttonRadius),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight).testTag(VERIFY_CONFIRM_TAG),
+                ) {
+                    Text(
+                        stringResource(
+                            when (mode) {
+                                VerificationScreenMode.OcrProposal -> R.string.verify_found_confirm
+                                VerificationScreenMode.ScaleUnresolved -> R.string.verify_scale_confirm
+                            },
+                        ),
+                    )
+                }
+                JtcOutlinedButton(
+                    text = stringResource(R.string.verify_found_reject),
+                    onClick = onReject,
+                    modifier = Modifier.fillMaxWidth().testTag(VERIFY_REJECT_TAG),
                 )
-            }
-            // Where on the label this came from. States the app's claim in the label's own words.
-            Text(
-                text = stringResource(R.string.verify_found_row, rowText.trim()),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = { onConfirm(value, basis) },
-                shape = RoundedCornerShape(Space.buttonRadius),
-                modifier = Modifier.fillMaxWidth().heightIn(min = Space.primaryButtonHeight).testTag(VERIFY_CONFIRM_TAG),
-            ) {
-                Text(
-                    stringResource(
-                        when (mode) {
-                            VerificationScreenMode.OcrProposal -> R.string.verify_found_confirm
-                            VerificationScreenMode.ScaleUnresolved -> R.string.verify_scale_confirm
-                        },
-                    ),
-                )
-            }
-            JtcOutlinedButton(
-                text = stringResource(R.string.verify_found_reject),
-                onClick = onReject,
-                modifier = Modifier.fillMaxWidth().testTag(VERIFY_REJECT_TAG),
-            )
-            TextButton(
-                onClick = onRetake,
-                modifier = Modifier.fillMaxWidth().testTag(VERIFY_RETAKE_TAG),
-            ) {
-                Text(stringResource(R.string.crop_retake))
+                TextButton(
+                    onClick = onRetake,
+                    modifier = Modifier.fillMaxWidth().testTag(VERIFY_RETAKE_TAG),
+                ) {
+                    Text(stringResource(R.string.crop_retake))
+                }
             }
         }
     }

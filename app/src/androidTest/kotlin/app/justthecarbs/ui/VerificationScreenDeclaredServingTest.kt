@@ -1,6 +1,15 @@
 package app.justthecarbs.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import app.justthecarbs.R
+import app.justthecarbs.ui.scan.VERIFY_RETAKE_TAG
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -127,5 +136,36 @@ class VerificationScreenDeclaredServingTest {
         showScreen(value = BigDecimal("2.09"), printedAmount = null, printedBasisLabel = null)
 
         rule.onNodeWithText("2.09 g per 100 g").performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * Close stays reachable however far the screen is scrolled (2026-09-25 review): it sat in the
+     * scrolling column, so on a short window reaching Retake scrolled the only way out off screen.
+     */
+    @Test
+    fun closeStaysOnScreenWhenTheContentIsScrolled() {
+        rule.setContent {
+            JustTheCarbsTheme {
+                Box(Modifier.requiredHeight(420.dp)) {
+                    VerificationScreen(
+                        bitmap = bitmap(),
+                        value = BigDecimal("33.3"),
+                        basis = NutritionBasis.PER_100_G,
+                        rowText = "Total Carb. 6 g",
+                        rowInSourceSpace = OcrBox(0, 0, 100, 40),
+                        mode = VerificationScreenMode.ScaleUnresolved,
+                        onConfirm = { _, _ -> },
+                        onReject = {},
+                        onRetake = {},
+                        onClose = {},
+                    )
+                }
+            }
+        }
+
+        rule.onNodeWithTag(VERIFY_RETAKE_TAG).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription(
+            InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.scanner_close),
+        ).assertIsDisplayed()
     }
 }
