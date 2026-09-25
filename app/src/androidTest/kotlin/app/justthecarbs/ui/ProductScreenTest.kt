@@ -1438,6 +1438,25 @@ class ProductScreenTest {
         compose.onNodeWithText("More than the whole pack (400 g)").assertExists()
     }
 
+    /**
+     * The hint's line is held while a pack size is known (2026-09-25 review): the portion group
+     * rests on the dock, so a line appearing under the field pushed the field up as the typed
+     * amount crossed the pack size.
+     */
+    @Test
+    fun theFieldDoesNotMoveWhenThePackHintAppears() {
+        showCalculator(product(packageAmount = "400"))
+        typePortion("300")
+        val before = compose.onNode(portionField()).fetchSemanticsNode().boundsInRoot
+
+        typePortion("500")
+        compose.onNodeWithText("More than the whole pack (400 g)").assertExists()
+        val after = compose.onNode(portionField()).fetchSemanticsNode().boundsInRoot
+
+        assertEquals(before.top, after.top, 1f)
+        assertEquals(before.bottom, after.bottom, 1f)
+    }
+
     @Test
     fun aPortionOfExactlyTheWholePackHasNoHint() {
         showCalculator(product(packageAmount = "400"))

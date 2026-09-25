@@ -1349,13 +1349,23 @@ private fun ProductSummary(
  * pack shortcuts are built from -- so an unknown size never produces it. Ordinary supporting ink,
  * not the result colour and not an error colour: it is a prompt to glance, not a warning. Polite
  * live region, so TalkBack users hear it when it appears.
+ *
+ * Its line is held, empty, whenever a pack size is known (2026-09-25 review). The portion group
+ * rests on the dock, so a line appearing under the field pushed the field up just as the typed
+ * amount crossed the pack size. Holding one node also lets the live region announce a change of
+ * its own text, which is what polite regions report.
  */
 @Composable
 private fun MoreThanThePackHint(portionText: String, pack: BigDecimal?, unit: String) {
+    if (pack == null) return
     val portion = PortionParser.parse(portionText)
-    if (pack == null || portion == null || portion <= pack) return
+    val over = portion != null && portion > pack
     Text(
-        text = stringResource(R.string.product_more_than_pack, ResultFormatter.quantity(pack), unit),
+        text = if (over) {
+            stringResource(R.string.product_more_than_pack, ResultFormatter.quantity(pack), unit)
+        } else {
+            ""
+        },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
