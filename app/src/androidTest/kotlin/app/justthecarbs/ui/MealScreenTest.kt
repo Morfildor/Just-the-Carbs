@@ -3,6 +3,7 @@ package app.justthecarbs.ui
 import app.justthecarbs.ui.meal.MealBar
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -659,8 +660,10 @@ class MealScreenTest {
      */
     @Test
     fun theMealBarSetsItsTotalApartFromTheSentence() {
+        var baseWeight: FontWeight? = null
         compose.setContent {
             JustTheCarbsTheme {
+                baseWeight = MaterialTheme.typography.titleSmall.fontWeight
                 MealBar(
                     itemCount = 3,
                     total = CarbCalculator.calculate(BigDecimal("48.2"), BigDecimal("93.8"), NutritionBasis.PER_100_G),
@@ -672,8 +675,11 @@ class MealScreenTest {
         val text = compose.onNode(hasText("Meal · 3 items · 45.2 g carbs"), useUnmergedTree = true)
             .fetchSemanticsNode().config[SemanticsProperties.Text].single()
         assertEquals("Meal · 3 items · 45.2 g carbs", text.text)
+        // Heavier than the bar's own style, not merely styled: a span in the style's own weight
+        // (SemiBold in a SemiBold sentence) draws nothing a user can see.
+        val base = requireNotNull(baseWeight).weight
         val emphasised = text.spanStyles
-            .filter { it.item.fontWeight == FontWeight.SemiBold }
+            .filter { (it.item.fontWeight?.weight ?: 0) > base }
             .map { text.text.substring(it.start, it.end) }
         assertEquals(listOf("45.2"), emphasised)
     }

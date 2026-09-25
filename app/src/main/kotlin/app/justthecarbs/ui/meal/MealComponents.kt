@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -230,17 +231,17 @@ fun MealBar(
     compact: Boolean = false,
 ) {
     val itemsLabel = pluralStringResource(R.plurals.meal_item_count, itemCount, itemCount)
-    // The total is the figure the bar exists for, so it is set SemiBold within the sentence. The
-    // sentence is built around a marker rather than by searching it for the figure, which could
-    // also match inside the item count ("45 items"). The node's text is still the whole sentence.
-    val figure = ResultFormatter.decimal(total.exact)
+    // The total is the figure the bar exists for, so it is set Bold within the sentence, one step
+    // heavier than the SemiBold the bar's own styles already use. The sentence is built around a
+    // marker rather than by searching it for the figure, which could also match inside the item
+    // count ("45 items"). The node's text is still the whole sentence.
     val template = stringResource(R.string.meal_bar_summary, itemsLabel, FIGURE_MARKER)
-    val at = template.indexOf(FIGURE_MARKER)
-    val styledSummary = buildAnnotatedString {
-        append(template.substring(0, at))
-        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(figure) }
-        append(template.substring(at + FIGURE_MARKER.length))
-    }
+    val styledSummary = sentenceWithFigure(
+        template,
+        FIGURE_MARKER,
+        ResultFormatter.decimal(total.exact),
+        SpanStyle(fontWeight = FontWeight.Bold),
+    )
     val summary = styledSummary.text
     val openLabel = stringResource(R.string.meal_open)
 
@@ -297,6 +298,25 @@ fun MealBar(
 
 /** Holds the total's place while [MealBar] builds its sentence: a private-use character. */
 private const val FIGURE_MARKER = "\uE000"
+
+/**
+ * [template] with [marker] replaced by [figure] set in [style]. A template without the marker is
+ * returned as it is: a sentence without its emphasis is better than a screen that fails to draw.
+ */
+internal fun sentenceWithFigure(
+    template: String,
+    marker: String,
+    figure: String,
+    style: SpanStyle,
+): AnnotatedString {
+    val at = template.indexOf(marker)
+    if (at < 0) return AnnotatedString(template)
+    return buildAnnotatedString {
+        append(template.substring(0, at))
+        withStyle(style) { append(figure) }
+        append(template.substring(at + marker.length))
+    }
+}
 
 /** Reserves nothing when the meal is empty — see [MealBar]'s comment on why that matters. */
 @Composable
