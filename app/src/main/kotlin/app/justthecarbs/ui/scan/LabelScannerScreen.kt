@@ -1287,6 +1287,10 @@ private fun LabelCamera(
                         // The photograph now exists on disk. Show it instead of the live preview
                         // for the rest of the wait — see `capturedPreview`.
                         capturedPreview = file
+                        // The torch lit the capture; with the photo frozen it lights nothing the
+                        // user is looking at, and would keep burning through the crop and review
+                        // screens (2026-09-25 review). Not before this point: the still needs it.
+                        camera?.cameraControl?.enableTorch(false)
                     }
                     // Recognition starts immediately and runs while the user is looking at the frozen
                     // photo and adjusting the rectangle, so the "Read table" tap costs only a
