@@ -22,6 +22,7 @@ import app.justthecarbs.ui.components.ProductIdentityRow
 import app.justthecarbs.ui.components.ProductGalleryDialog
 import app.justthecarbs.ui.components.CopyResultButton
 import app.justthecarbs.ui.components.ResultValue
+import app.justthecarbs.ui.components.rememberSettledText
 import app.justthecarbs.ui.theme.Motion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -2615,13 +2616,16 @@ private fun ResultPanel(
                 else -> stringResource(R.string.result_accessible_grams, it)
             }
         }
+        // While the keyboard is open the result changes on every keystroke; the live region speaks
+        // it only once the typing settles, and at once when the keyboard closes (2026-09-25 review).
+        val spokenResult = rememberSettledText(accessibleResult, settling = imeVisible)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag(PRODUCT_RESULT_TAG)
                 .semantics(mergeDescendants = true) {
                     liveRegion = LiveRegionMode.Polite
-                    accessibleResult?.let { contentDescription = it }
+                    spokenResult?.let { contentDescription = it }
                 },
         ) {
             if (showsSlot) {

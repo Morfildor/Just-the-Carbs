@@ -20,6 +20,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onAllNodesWithText
@@ -1407,8 +1409,16 @@ class ProductScreenTest {
 
         compose.onNode(portionField()).performClick()
         compose.onNode(portionField()).performTextInput("80")
+        // Done, as a user does: while the keyboard is open the spoken result waits for typing to
+        // settle (rememberSettledText), and closing it speaks the figure at once.
+        compose.onNode(portionField()).performImeAction()
 
-        // 48.2 x 80 / 100 = 38.56 -> 38.6 g, not 6580 g (3171.6 g).
+        // 48.2 x 80 / 100 = 38.56 -> 38.6 g, not 6580 g (3171.6 g). Waited for, not read at once:
+        // the keyboard's inset animates away over several frames.
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag(PRODUCT_RESULT_TAG) and hasContentDescription("38.6 grams of carbs"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("38.6 grams of carbs")
     }
 

@@ -296,7 +296,7 @@ class CountablePortionScreenTest {
 
         // 2 slices, not 12. 42 x 72 / 100 = 30.24 -> 30.2 g
         compose.onNodeWithText("2 slices × 36 g = 72 g").assertIsDisplayed()
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.2 grams of carbs")
+        assertSpokenResultOnceTheKeyboardCloses("30.2 grams of carbs")
         // And the 12-slice reading (42 x 432 / 100 = 181.44) must not be anywhere on screen.
         compose.onAllNodesWithText("181.4 g").assertCountEquals(0)
     }
@@ -357,7 +357,7 @@ class CountablePortionScreenTest {
 
         compose.onNode(countField()).performTextReplacement("2")
         compose.onNodeWithText("2 slices × 36 g = 72 g").assertIsDisplayed()
-        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("30.2 grams of carbs")
+        assertSpokenResultOnceTheKeyboardCloses("30.2 grams of carbs")
     }
 
     @Test
@@ -535,6 +535,22 @@ class CountablePortionScreenTest {
                 )
             }
         }
+    }
+
+    /**
+     * While the keyboard is open the spoken result waits for typing to settle
+     * (rememberSettledText); closing it speaks the figure at once. Waited for, because the
+     * keyboard's inset animates away over several frames.
+     */
+    private fun assertSpokenResultOnceTheKeyboardCloses(description: String) {
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(
+                androidx.compose.ui.test.hasTestTag(PRODUCT_RESULT_TAG) and
+                    androidx.compose.ui.test.hasContentDescription(description),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals(description)
     }
 
     private fun countField() = androidx.compose.ui.test.hasSetTextAction()
