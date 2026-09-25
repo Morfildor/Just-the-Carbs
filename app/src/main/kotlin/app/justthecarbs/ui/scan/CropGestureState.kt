@@ -65,9 +65,9 @@ internal class CropGestureState(initial: NormalizedRegion) {
      * Reads and writes [selection], so consecutive events compose: the second event operates on the
      * result of the first, which is precisely what the captured-composition-value form could not do.
      */
-    fun onDrag(dragAmount: Offset, displayed: ViewRect): NormalizedRegion? {
+    fun onDrag(dragAmount: Offset, displayed: ViewRect, minSide: Float): NormalizedRegion? {
         val current = CropSelectionGeometry.toViewRect(selection, displayed)
-        val moved = applyDrag(current, activeHandle, dragAmount, displayed)
+        val moved = applyDrag(current, activeHandle, dragAmount, displayed, minSide)
         val next = CropSelectionGeometry.toNormalizedRegion(moved, displayed) ?: return null
         selection = next
         return next
@@ -100,9 +100,15 @@ private fun nearestHandle(point: Offset, rect: ViewRect, radius: Float): CropHan
         CropHandle.BOTTOM_RIGHT to Offset(rect.right, rect.bottom),
     )
     val closest = corners.minByOrNull { (_, corner) -> (corner - point).getDistance() }
+    // Inside the box a corner claims at most the quarter of the shorter side nearest to it. A box
+    // smaller than the grab radius otherwise lay wholly inside its corners' reach, so every touch
+    // resized it and it could never be moved (2026-09-25 review). Outside the box the full radius
+    // applies, so a small box's corners are still grabbed from just beyond them.
+    val inside = point.x in rect.left..rect.right && point.y in rect.top..rect.bottom
+    val reach = if (inside) minOf(radius, minOf(rect.width, rect.height) / 4f) else radius
     // Falling back to BODY rather than the nearest corner matters: a drag starting in the middle of
     // a large selection is a reposition, and snapping it to a distant corner would resize instead.
-    return closest?.takeIf { (it.value - point).getDistance() <= radius }?.key ?: CropHandle.BODY
+    return closest?.takeIf { (it.value - point).getDistance() <= reach }?.key ?: CropHandle.BODY
 }
 
 /** Applies a drag to the rectangle, keeping it inside the displayed image and above a minimum size. */
@@ -111,8 +117,8 @@ private fun applyDrag(
     handle: CropHandle?,
     drag: Offset,
     displayed: ViewRect,
+    minSide: Float,
 ): ViewRect {
-    val minSide = CROP_MIN_SIDE_PX
     return when (handle) {
         CropHandle.TOP_LEFT -> rect.copyRect(
             left = (rect.left + drag.x).coerceIn(displayed.left, rect.right - minSide),
@@ -149,4 +155,9 @@ private fun ViewRect.copyRect(
 
 /** Generous enough for a thumb, small enough that two corners are separately grabbable. */
 internal const val CROP_HANDLE_TOUCH_DP = 40
-internal const val CROP_MIN_SIDE_PX = 80f
+/**
+ * The smallest side a resize leaves, in dp like the grab radius so it means the same on every
+ * screen (it was 80 px: 30 dp on a 420 dpi phone). A touch target's worth, so a box at its minimum
+ * can still be moved with a thumb.
+ */
+internal const val CROP_MIN_SIDE_DP = 48

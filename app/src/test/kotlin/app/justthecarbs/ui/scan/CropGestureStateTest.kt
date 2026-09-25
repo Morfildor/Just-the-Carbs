@@ -41,7 +41,7 @@ class CropGestureStateTest {
         // Centre of the rectangle: far from every corner, so this is a reposition.
         state.onDragStart(Offset(400f, 400f), displayed, handleRadius = 40f)
 
-        repeat(10) { state.onDrag(Offset(10f, 5f), displayed) }
+        repeat(10) { state.onDrag(Offset(10f, 5f), displayed, minSide = 80f) }
         state.onDragFinished()
 
         val rect = state.viewRect()
@@ -78,7 +78,7 @@ class CropGestureStateTest {
         cases.forEach { case ->
             val state = CropGestureState(region(200f, 200f, 600f, 600f))
             state.onDragStart(case.grab, displayed, handleRadius = 40f)
-            repeat(5) { state.onDrag(Offset(10f, 10f), displayed) }
+            repeat(5) { state.onDrag(Offset(10f, 10f), displayed, minSide = 80f) }
             state.onDragFinished()
             case.expect(state.viewRect())
         }
@@ -96,13 +96,13 @@ class CropGestureStateTest {
         val state = CropGestureState(region(200f, 200f, 600f, 600f))
 
         state.onDragStart(Offset(400f, 400f), displayed, handleRadius = 40f)
-        repeat(5) { state.onDrag(Offset(20f, 0f), displayed) }
+        repeat(5) { state.onDrag(Offset(20f, 0f), displayed, minSide = 80f) }
         state.onDragFinished()
         val afterFirst = state.viewRect()
         assertEquals(300f, afterFirst.left, 0.5f)
 
         state.onDragStart(Offset(500f, 400f), displayed, handleRadius = 40f)
-        repeat(5) { state.onDrag(Offset(20f, 0f), displayed) }
+        repeat(5) { state.onDrag(Offset(20f, 0f), displayed, minSide = 80f) }
         state.onDragFinished()
 
         assertEquals("the second gesture restarted from the original rectangle", 400f, state.viewRect().left, 0.5f)
@@ -124,12 +124,12 @@ class CropGestureStateTest {
 
         // Grab a corner and abandon the gesture without ever ending it.
         state.onDragStart(Offset(200f, 200f), displayed, handleRadius = 40f)
-        state.onDrag(Offset(10f, 10f), displayed)
+        state.onDrag(Offset(10f, 10f), displayed, minSide = 80f)
 
         // A new gesture, starting in the middle: unambiguously a reposition.
         state.onDragStart(Offset(400f, 400f), displayed, handleRadius = 40f)
         val before = state.viewRect()
-        state.onDrag(Offset(30f, 30f), displayed)
+        state.onDrag(Offset(30f, 30f), displayed, minSide = 80f)
         val after = state.viewRect()
 
         assertEquals("width changed, so the drag resized instead of moving", before.width, after.width, 0.5f)
@@ -148,7 +148,7 @@ class CropGestureStateTest {
     fun `a new instance starts from its own initial selection`() {
         val first = CropGestureState(region(200f, 200f, 600f, 600f))
         first.onDragStart(Offset(400f, 400f), displayed, handleRadius = 40f)
-        repeat(5) { first.onDrag(Offset(40f, 40f), displayed) }
+        repeat(5) { first.onDrag(Offset(40f, 40f), displayed, minSide = 80f) }
         // Deliberately not finished: the interrupted-navigation case.
 
         val second = CropGestureState(region(100f, 100f, 500f, 500f))
@@ -164,7 +164,7 @@ class CropGestureStateTest {
     fun `dragging the body cannot push the rectangle off the image`() {
         val state = CropGestureState(region(200f, 200f, 600f, 600f))
         state.onDragStart(Offset(400f, 400f), displayed, handleRadius = 40f)
-        repeat(20) { state.onDrag(Offset(100f, 100f), displayed) }
+        repeat(20) { state.onDrag(Offset(100f, 100f), displayed, minSide = 80f) }
         state.onDragFinished()
 
         val rect = state.viewRect()
@@ -177,12 +177,12 @@ class CropGestureStateTest {
     fun `resizing cannot collapse the rectangle below the minimum side`() {
         val state = CropGestureState(region(200f, 200f, 600f, 600f))
         state.onDragStart(Offset(200f, 200f), displayed, handleRadius = 40f)
-        repeat(20) { state.onDrag(Offset(50f, 50f), displayed) }
+        repeat(20) { state.onDrag(Offset(50f, 50f), displayed, minSide = 80f) }
         state.onDragFinished()
 
         val rect = state.viewRect()
-        assertTrue("width fell below the minimum", rect.width >= CROP_MIN_SIDE_PX - 0.5f)
-        assertTrue("height fell below the minimum", rect.height >= CROP_MIN_SIDE_PX - 0.5f)
+        assertTrue("width fell below the minimum", rect.width >= 80f - 0.5f)
+        assertTrue("height fell below the minimum", rect.height >= 80f - 0.5f)
     }
 
     /**
@@ -199,7 +199,7 @@ class CropGestureStateTest {
         assertEquals(0f, state.viewRect().left, 0.5f)
 
         state.onDragStart(Offset(150f, 150f), displayed, handleRadius = 40f)
-        state.onDrag(Offset(10f, 10f), displayed)
+        state.onDrag(Offset(10f, 10f), displayed, minSide = 80f)
         val duringDrag = state.viewRect()
         state.syncFromCaller(region(500f, 500f, 900f, 900f))
 
@@ -209,5 +209,62 @@ class CropGestureStateTest {
             state.viewRect().left,
             0.5f,
         )
+    }
+
+    // --- a small box (2026-09-25 review) -------------------------------------------------------
+
+    /**
+     * At its minimum size a box sat wholly inside its corners' grab radius, so every touch resized
+     * it and it could never be moved. Inside the box a corner now claims only the quarter of the
+     * shorter side nearest to it; the middle moves the box.
+     */
+    @Test
+    fun `a touch in the middle of a small box moves it`() {
+        val state = CropGestureState(region(400f, 400f, 460f, 460f))
+        state.onDragStart(Offset(430f, 430f), displayed, handleRadius = 105f)
+        state.onDrag(Offset(100f, 50f), displayed, minSide = 60f)
+        state.onDragFinished()
+
+        val rect = state.viewRect()
+        assertEquals(500f, rect.left, 0.5f)
+        assertEquals(450f, rect.top, 0.5f)
+        assertEquals(60f, rect.width, 0.5f)
+        assertEquals(60f, rect.height, 0.5f)
+    }
+
+    @Test
+    fun `a corner of a small box is still grabbed from just outside it`() {
+        val state = CropGestureState(region(400f, 400f, 460f, 460f))
+        state.onDragStart(Offset(380f, 380f), displayed, handleRadius = 105f)
+        state.onDrag(Offset(-50f, -50f), displayed, minSide = 60f)
+        state.onDragFinished()
+
+        val rect = state.viewRect()
+        assertEquals(350f, rect.left, 0.5f)
+        assertEquals(350f, rect.top, 0.5f)
+        assertEquals(460f, rect.right, 0.5f)
+        assertEquals(460f, rect.bottom, 0.5f)
+    }
+
+    @Test
+    fun `a large box keeps the full grab radius inside its corners`() {
+        val state = CropGestureState(region(200f, 200f, 800f, 800f))
+        state.onDragStart(Offset(260f, 260f), displayed, handleRadius = 105f)
+        state.onDrag(Offset(-20f, -20f), displayed, minSide = 60f)
+        state.onDragFinished()
+
+        val rect = state.viewRect()
+        assertEquals(180f, rect.left, 0.5f)
+        assertEquals(800f, rect.right, 0.5f)
+    }
+
+    @Test
+    fun `the minimum side is the one the caller measured`() {
+        val state = CropGestureState(region(200f, 200f, 600f, 600f))
+        state.onDragStart(Offset(200f, 200f), displayed, handleRadius = 40f)
+        repeat(20) { state.onDrag(Offset(50f, 50f), displayed, minSide = 126f) }
+        state.onDragFinished()
+
+        assertEquals(126f, state.viewRect().width, 0.5f)
     }
 }

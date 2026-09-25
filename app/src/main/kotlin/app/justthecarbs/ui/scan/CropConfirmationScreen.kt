@@ -276,6 +276,7 @@ private fun CropOverlay(
     val rect = CropSelectionGeometry.toViewRect(selection, displayed)
     val density = androidx.compose.ui.platform.LocalDensity.current
     val handleRadius = with(density) { CROP_HANDLE_TOUCH_DP.dp.toPx() }
+    val minSide = with(density) { CROP_MIN_SIDE_DP.dp.toPx() }
     // What is drawn, in dp like the touch target above; see [CropHandleStyle].
     val drawn = remember(density) { CropHandleStyle.inPx(density) }
     val selectionLabel = stringResource(R.string.crop_selection)
@@ -319,7 +320,7 @@ private fun CropOverlay(
                     onDragCancel = { gesture.onDragFinished() },
                 ) { change, dragAmount ->
                     change.consume()
-                    gesture.onDrag(dragAmount, displayed)?.let(onSelectionChange)
+                    gesture.onDrag(dragAmount, displayed, minSide)?.let(onSelectionChange)
                 }
             },
     ) {
