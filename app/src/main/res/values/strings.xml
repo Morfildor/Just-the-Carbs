@@ -215,10 +215,10 @@
     <string name="product_quarter_pack">¼ pack</string>
     <string name="product_half_pack">½ pack</string>
     <string name="product_full_pack">Full pack</string>
-    <!-- Spoken for the pack shortcuts, whose visible label names only the fraction. %1$s is the amount it sets, %2$s its unit. -->
-    <string name="product_quarter_pack_description">Use a quarter pack, %1$s %2$s</string>
-    <string name="product_half_pack_description">Use half a pack, %1$s %2$s</string>
-    <string name="product_full_pack_description">Use the full pack, %1$s %2$s</string>
+    <!-- Spoken for the pack shortcuts, whose visible label names only the fraction. %1$s is that
+         visible label, first so voice control can match what is on screen; %2$s is the amount it
+         sets, %3$s its unit. -->
+    <string name="product_pack_description">%1$s, %2$s %3$s</string>
     <string name="product_copy">Copy value</string>
     <string name="product_copied">%1$s copied</string>
     <string name="product_more_actions">More actions</string>
@@ -388,7 +388,7 @@
     <string name="product_usual_grams" tools:ignore="MissingTranslation">%1$s %2$s</string>
     <string name="product_usual_count" tools:ignore="MissingTranslation">%1$s %2$s</string>
     <!-- Spoken for a Usual shortcut, whose visible label is only the portion ("65 g", "2 slices"). -->
-    <string name="product_usual_description" tools:ignore="MissingTranslation">Use usual portion, %1$s</string>
+    <string name="product_usual_description" tools:ignore="MissingTranslation">%1$s, usual portion</string>
 
     <!--
       Product search (spec §9). English only, as above.

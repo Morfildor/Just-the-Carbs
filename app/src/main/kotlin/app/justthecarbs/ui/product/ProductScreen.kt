@@ -1648,20 +1648,12 @@ internal fun PackShortcuts(
     // Scale 2 with HALF_UP: a 355 ml can quartered is 88.75 ml, and truncating to a whole number
     // would silently change the portion the user asked for.
     //
-    // Each label is paired with its spoken form: on screen "¼ pack" sits beside the field it fills,
-    // but spoken alone it says neither that it sets a portion nor how much.
+    // On screen "¼ pack" sits beside the field it fills; spoken alone it does not say how much, so
+    // the spoken name adds the amount after the visible label (see the button below).
     val fractions = listOf(
-        Triple(
-            R.string.product_quarter_pack,
-            R.string.product_quarter_pack_description,
-            pack.divide(BigDecimal(4), 2, RoundingMode.HALF_UP),
-        ),
-        Triple(
-            R.string.product_half_pack,
-            R.string.product_half_pack_description,
-            pack.divide(BigDecimal(2), 2, RoundingMode.HALF_UP),
-        ),
-        Triple(R.string.product_full_pack, R.string.product_full_pack_description, pack),
+        R.string.product_quarter_pack to pack.divide(BigDecimal(4), 2, RoundingMode.HALF_UP),
+        R.string.product_half_pack to pack.divide(BigDecimal(2), 2, RoundingMode.HALF_UP),
+        R.string.product_full_pack to pack,
     )
 
     // THE LABELS WRAP RATHER THAN TRUNCATE, AND THE ROW ITSELF IS UNCHANGED.
@@ -1700,15 +1692,23 @@ internal fun PackShortcuts(
             .padding(vertical = Space.xs),
         horizontalArrangement = Arrangement.spacedBy(Space.s),
     ) {
-        fractions.forEach { (label, spoken, amount) ->
+        fractions.forEach { (labelRes, amount) ->
+            val label = stringResource(labelRes)
             // Same treatment as the adjust row: these set a portion, they are not actions.
             JtcValueButton(
-                text = stringResource(label),
+                text = label,
                 onClick = { onSetPortion(amount) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
-                selected = entered != null && amount.compareTo(entered) == 0,
-                // The exact amount the tap puts in the field, in the field's own unit.
-                contentDescription = stringResource(spoken, ResultFormatter.editable(amount), unit),
+                // No state while the field is empty: "not selected" three times says nothing.
+                selected = entered?.let { amount.compareTo(it) == 0 },
+                // The visible label first, so a voice-control user can say what they see, then the
+                // exact amount the tap puts in the field, in the field's own unit.
+                contentDescription = stringResource(
+                    R.string.product_pack_description,
+                    label,
+                    ResultFormatter.editable(amount),
+                    unit,
+                ),
             )
         }
     }
@@ -1829,9 +1829,10 @@ private fun UsualPortionRow(
                     // Spoken alone, a bare "65 g" does not say what the button does.
                     contentDescription = stringResource(R.string.product_usual_description, label),
                     // The same amount of the same unit: "2 slices" is not 2 g. By value, so a typed
-                    // `65.0` is the usual 65 g.
-                    selected = usage.portionUnitId == enteredUnitId &&
-                        entered != null && usage.amount.compareTo(entered) == 0,
+                    // `65.0` is the usual 65 g. No state while the field is empty.
+                    selected = entered?.let {
+                        usage.portionUnitId == enteredUnitId && usage.amount.compareTo(it) == 0
+                    },
                 )
             }
             repeat(slots - usages.size) { Spacer(Modifier.weight(1f)) }

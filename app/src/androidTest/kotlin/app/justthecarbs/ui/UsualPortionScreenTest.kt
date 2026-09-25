@@ -37,6 +37,7 @@ import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.product.PRODUCT_RESULT_TAG
 import app.justthecarbs.ui.product.USUAL_PORTION_ROW_TAG
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.math.BigDecimal
@@ -310,5 +311,27 @@ class UsualPortionScreenTest {
             InstrumentationRegistry.getInstrumentation().targetContext
                 .getString(app.justthecarbs.R.string.product_usual_description, "2 slices"),
         )
+    }
+
+    /** The spoken name starts with the words on the button (2026-09-25 review), for voice control. */
+    @Test
+    fun aUsualShortcutsSpokenNameStartsWithItsLabel() {
+        showWithUsual(listOf(usage("65")))
+
+        val spoken = compose.onNodeWithText("65 g").fetchSemanticsNode()
+            .config[SemanticsProperties.ContentDescription].single()
+        assertTrue("'$spoken' does not start with '65 g'", spoken.startsWith("65 g"))
+    }
+
+    /** "Not selected" only once there is a typed portion for it to differ from. */
+    @Test
+    fun aUsualShortcutReportsASelectionOnlyOnceTheFieldHoldsAPortion() {
+        showWithUsual(listOf(usage("65"), usage("30")))
+
+        compose.onNodeWithText("65 g").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
+        compose.onNodeWithText("65 g").performClick()
+
+        compose.onNodeWithText("65 g").assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+        compose.onNodeWithText("30 g").assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, false))
     }
 }

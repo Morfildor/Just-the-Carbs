@@ -9,6 +9,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
@@ -173,13 +176,37 @@ class PackShortcutsResponsiveTest {
         showAt(widthDp = 411, fontScale = 1.0f)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         compose.onNodeWithText("¼ pack").assertContentDescriptionEquals(
-            context.getString(R.string.product_quarter_pack_description, "125", "g"),
+            context.getString(R.string.product_pack_description, "¼ pack", "125", "g"),
         )
         compose.onNodeWithText("½ pack").assertContentDescriptionEquals(
-            context.getString(R.string.product_half_pack_description, "250", "g"),
+            context.getString(R.string.product_pack_description, "½ pack", "250", "g"),
         )
         compose.onNodeWithText("Full pack").assertContentDescriptionEquals(
-            context.getString(R.string.product_full_pack_description, "500", "g"),
+            context.getString(R.string.product_pack_description, "Full pack", "500", "g"),
         )
+    }
+
+    /**
+     * Each spoken name starts with the words on the button (2026-09-25 review), so a voice-control
+     * user who says what they see ("tap half pack") reaches it, and TalkBack's first words match
+     * the screen.
+     */
+    @Test
+    fun eachSpokenNameStartsWithTheVisibleLabel() {
+        showAt(widthDp = 411, fontScale = 1.0f)
+        listOf("¼ pack", "½ pack", "Full pack").forEach { label ->
+            val spoken = compose.onNodeWithText(label).fetchSemanticsNode()
+                .config[SemanticsProperties.ContentDescription].single()
+            assertTrue("'$spoken' does not start with '$label'", spoken.startsWith(label))
+        }
+    }
+
+    /** With nothing typed there is no choice to report, so no shortcut says "not selected". */
+    @Test
+    fun noShortcutReportsASelectionWhileTheFieldIsEmpty() {
+        showAt(widthDp = 411, fontScale = 1.0f)
+        listOf("¼ pack", "½ pack", "Full pack").forEach { label ->
+            compose.onNodeWithText(label).assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
+        }
     }
 }
