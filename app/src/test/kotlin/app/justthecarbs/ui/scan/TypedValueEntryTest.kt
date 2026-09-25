@@ -49,6 +49,25 @@ class TypedValueEntryTest {
     }
 
     @Test
+    fun `an unfinished start of a number is still being typed`() {
+        listOf("-", ".", "-,").forEach {
+            assertEquals(it, TypedValueEntry.Actions.Pending(both), TypedValueEntry.actions(it, both))
+        }
+    }
+
+    /**
+     * Text that can never become a number gets the sentence an impossible figure gets, not a silent
+     * disabled action (2026-09-25 review): the correction field already said so for the same text.
+     */
+    @Test
+    fun `text that is not a number is refused with a reason rather than left pending`() {
+        listOf("1.2.3", "1,,2", "12a").forEach {
+            assertEquals(it, TypedValueEntry.Actions.Implausible, TypedValueEntry.actions(it, both))
+        }
+        assertEquals(null, TypedValueEntry.imeSubmission("1.2.3", listOf(PER_100_G)))
+    }
+
+    @Test
     fun `an impossible value is refused rather than offered or left pending`() {
         assertEquals(TypedValueEntry.Actions.Implausible, TypedValueEntry.actions("790", both))
         assertEquals(TypedValueEntry.Actions.Implausible, TypedValueEntry.actions("790", listOf(PER_100_G)))

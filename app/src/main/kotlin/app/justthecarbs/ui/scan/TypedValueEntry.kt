@@ -35,7 +35,10 @@ internal object TypedValueEntry {
         /** [value] may be accepted under each of [bases], which is never empty. */
         data class Offered(val value: BigDecimal, val bases: List<NutritionBasis>) : Actions
 
-        /** Typed, but impossible under every candidate basis. No accept action exists. */
+        /**
+         * Typed, but impossible under every candidate basis, or not a number at all. No accept
+         * action exists; the screen says why.
+         */
         data object Implausible : Actions
     }
 
@@ -43,11 +46,20 @@ internal object TypedValueEntry {
     fun parse(typed: String): BigDecimal? = typed.replace(',', '.').toBigDecimalOrNull()
 
     fun actions(typed: String, candidateBases: List<NutritionBasis>): Actions {
-        val value = parse(typed) ?: return Actions.Pending(candidateBases)
+        // Text that can still become a number is being typed; anything else that does not parse
+        // (`1.2.3`) gets the same reason an impossible figure gets, not a silent disabled action.
+        val value = parse(typed) ?: return if (typed.isBlank() || UNFINISHED.matches(typed)) {
+            Actions.Pending(candidateBases)
+        } else {
+            Actions.Implausible
+        }
         // Asked per basis, not once: 150 is impossible per 100 g and legitimate per 100 ml.
         val offered = candidateBases.filter { CarbPlausibility.isPlausiblePer100(value, it) }
         return if (offered.isEmpty()) Actions.Implausible else Actions.Offered(value, offered)
     }
+
+    /** The start of a number that does not parse yet: a sign, a separator, or both. */
+    private val UNFINISHED = Regex("""-?[.,]?""")
 
     fun imeSubmission(typed: String, candidateBases: List<NutritionBasis>): Pair<BigDecimal, NutritionBasis>? {
         val basis = candidateBases.singleOrNull() ?: return null
