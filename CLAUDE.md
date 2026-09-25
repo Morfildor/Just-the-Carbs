@@ -51,10 +51,77 @@ private repo on a free account. This reverses the earlier "stays private" decisi
 in the repo as publicly readable. Nothing signed and no keystore is committed, and
 `keystore.properties` is git-ignored — re-check that before any release work.
 
+## Review fixes (2026-09-25) — still 1.0.8, READ FIRST
+
+A deep review of this branch (the UX polish pass and the protein reading), then every finding fixed
+test-first, one commit each, on `ux-polish-2026-09-24` (`701d454`..`5dda239`, plus the docs
+commit). Plan: `docs/superpowers/plans/2026-09-25-review-fixes.md`. **No change to
+`CarbCalculator`, `DirectCarbCalculator`, `PortionResolver`, rounding, any OCR recognition rule or
+the §10 lookup priority.** Not pushed, not built for release, the owner's hold unchanged. The
+CHANGELOG 1.0.8 *Review fixes* block lists every user-visible change; QA gate `docs/manual-qa.md` §46.
+
+**The ones that made a total wrong, and are worth knowing before touching these files:**
+
+- **"Added" outlived its portion** (`701d454`). After *Add to meal*, changing the amount kept the
+  dock saying *Added* and the buttons refusing, so the new portion never reached the meal.
+  `ProductUiState.mealAddConfirmedAt` is non-null only while the calculator shows exactly what was
+  written (`AddedPortion`: mode, unit, amount by value, carbs), captured at the tap;
+  `rememberSuccessPulseSince` measures the hold from the add, so re-entering composition does not
+  restart it.
+- **A late lookup overwrote a hand-saved product** (`e753f50`). Since the stalled-lookup offer the
+  user can leave a slow lookup for *Enter manually*; the network answer then upserted over the saved
+  row. `LocalProductDataSource.saveIfAbsent` (Room `@Insert(IGNORE)`), and the NavHost pops the
+  product route when leaving it with no product loaded, cancelling the lookup.
+- **Appends into a number field.** Two separate mechanisms, two helpers in `ui/components`:
+  `FieldSync` (`06b2f03`) tells the field's own late echo from an outside change (a shortcut tapped
+  while typing: 65, *Full pack*, 5 read 4005) and selects an outside value while focused;
+  `SelectOnFocus` (`7135987`) keeps select-on-focus alive against the caret of the very tap that
+  focused the field (a tap *on the digits* of 65 then 80 read 8065; the old test tapped the middle
+  of the frame, beside the digits, where no caret is placed, which is why it passed). **A test of
+  select-on-focus must tap on the glyph**, `click(Offset(24.dp.toPx(), centerY))` for the 48sp
+  numeral. Manual entry's carbs field now keys select-on-focus on the route's `arrivedWithCarbs`
+  (`2bc1276`): the state is blank on the first frame, so `remember { value.isNotBlank() }` never saw
+  a scanned figure (48 then 5 read 548). **Left alone deliberately:** that field's autofocus still
+  keys on the first-frame value, so it does not fire on a scan arrival; changing it would change
+  what has focus on arrival.
+- **Scanner figures rounded before commit** (`0b3f5e7`). A rejected `2.09` pre-filled the correction
+  field as "2.1", which slipped past the edit guard as a different value. Every figure the user
+  commits (correction pre-fill, focused-entry buttons, recovery choices, the "From" line,
+  verification) goes through `candidateFigure`; derived normalized values use
+  `ResultFormatter.quantity`.
+
+**Others:** protein row gate and speech (see the protein section, corrected in place); TalkBack
+waits for typing to settle (`rememberSettledText`); camera permission `dialogNoLongerOffered`
+treats rationale true-before/false-after as permanent; search scrolls to the top on new result
+keys (`rememberSearchResultsListState(shownResultKeys)`), not on keystrokes; `dropUnlessResumed` on
+all seven NavHost Close/Back handlers (`NavHostBackTapTest` is a JVM source guard); crop minimum
+48dp and an inside-quarter grab radius; the pack hint reserves its line; unparseable typed text is
+`Implausible` (with a reason) unless it is an unfinished start (`-`, `.`, `,`); Settings
+`ClearReport` consumed on show, failures reported instead of crashing; torch off at `onImageSaved`
+(**device only**, no flash on the emulator; manual-qa 46.1); welcome pane title; conflict wording.
+
+**Verified:** JVM **2368/2368** (0 skipped, `--rerun-tasks`, 244 XML files); lint **0 errors, 31
+warnings** (unchanged baseline). Release-gate set (`notAnnotation=ExploratoryExperiment`)
+**636/637 at 1080x2400/420 and 636/637 at 320x640/160**. The large run's failure is the known
+local IME-inset case (`theFirstBackDismissesTheKeyboardAndKeepsTheSearch`). The small run's was
+`theResultIsAnnouncedFromOneLiveRegionThatOutlivesEveryChange`, which read the spoken result while
+the keyboard was up and raced `rememberSettledText`. A scan of every spoken-result assert then
+found seven more of that shape, and all now close the keyboard first (`4e45e86`, `5dda239`;
+CountablePortionScreenTest + ProductScreenTest 71/71 at both). **A test that reads the result's
+content description after typing must close the keyboard first**; the class helper is
+`assertSpokenResultOnceTheKeyboardCloses`. By hand on the emulator, with `adb shell input` key
+events (not soft-keyboard commits): a tap on the digits of a remembered 65 then a `1234` burst read
+1234; backspace/type bursts with no pauses (`31415`, del, `2`, `7182818`) landed every keystroke
+in order; with the field focused, a Usual tap then `7` read 7. Every behavioural fix has a test
+that failed before it; negative controls are recorded in each commit message.
+**Not verified:** physical device (torch, typing through a real soft keyboard, TalkBack live),
+the IME-open states (no instrumented IME inset).
+
 ## Optional protein reading (2026-09-25) — still 1.0.8, READ FIRST
 
 Owner: "implement it" for `docs/superpowers/specs/2026-09-24-protein-design.md` (spec, mockups and an
-eight-lens review). Same branch (`ux-polish-2026-09-24`), **not committed** when this was written.
+eight-lens review). Same branch (`ux-polish-2026-09-24`), committed as `6546c2e`; the review fixes
+below (2026-09-25) changed four statements here, now corrected in place.
 **Scope amendment:** `docs/MASTER-PROMPT.md` §2 now carries a dated block: protein for the portion
 on screen, off by default, calculator only; never totalled, remembered, listed on Home, in search,
 in the meal or the clipboard; any further nutrient excluded. Do not add a third nutrient as a
@@ -67,8 +134,10 @@ in the meal or the clipboard; any further nutrient excluded. Do not add a third 
   makes one without the other unconstructible. Room **v9** (`MIGRATION_8_9`, guarded, `9.json`
   committed); `ProductEntity.toDomain` drops an unreadable pair rather than failing the row.
 - **Protein travels with the record, never alone.** `lookup` stores it; `refreshFromRemote`'s
-  refreshable branch replaces it with the fetched record, the non-refreshable branch never touches
-  it; `saveUserAuthoredProduct` clears it (in this version only Open Food Facts products carry
+  refreshable branch replaces it with the fetched record; the non-refreshable branch (a verified
+  product) stores the fetched protein pair only when the stored row is `OPEN_FOOD_FACTS` and the
+  fetched basis equals the stored one, since the verify dialog checks carbs, never protein
+  (`5828784`); `saveUserAuthoredProduct` clears it (in this version only Open Food Facts products carry
   protein); `dropBasisBoundFacts` (renamed from `clearUsageForBasisChange`) nulls it on a basis
   change. A protein-only difference is `RefreshOutcome.Unchanged`. Consequence, documented: a
   product cached before v9 shows *No online value* on its first visit, the figure from the next.
@@ -79,22 +148,28 @@ in the meal or the clipboard; any further nutrient excluded. Do not add a third 
 - **Dock row** (`ProductScreen.kt`, private `SecondaryReadingRow`, tag `PRODUCT_PROTEIN_TAG`): after
   the provenance line, eyebrow + `titleMedium` ink on one baseline, figure never ellipsised (drops
   under the eyebrow instead). Hidden while the IME is open. **The field wins:** `CalculatorFrame`
-  reports the zone's room (`onZoneRoom`); the row is withheld when room + row height − max(estimate,
-  row height) < 48dp. No feedback loop because the cost is never below the measured row. Negative
-  control: without the gate, `switchingProteinOnNeverTakesTheFieldAwayAtLargeText` fails at
-  320x640/160 (field 59px → 22px visible). The live region says "N grams of carbs, M grams of
-  protein" / "…, no online value for protein" only while the row is shown; every other state keeps
-  "N grams of carbs", so the existing test literals are untouched.
+  reports the zone's room (`onZoneRoom`); the pure `ProteinRowGate` withholds the row when the room
+  it would leave is under 48dp, costing a hidden row at its **last measured height** (costing it at
+  the smaller estimate made a tall row show and hide every frame; `64edbb8`). The room is read
+  through `derivedStateOf`, so layout frames do not recompose the calculator. Negative control:
+  without the gate, `switchingProteinOnNeverTakesTheFieldAwayAtLargeText` fails at 320x640/160
+  (field 59px → 22px visible). **Speech comes from the data, not the row:** with protein on and a
+  figure (or none) listed, the result says "N grams of carbs, M grams of protein" / "…, no online
+  value for protein" whether or not the keyboard or the gate hides the row (a deliberate change
+  from the spec). Plurals: "1 gram" for a bare whole 1. While the IME is open the spoken
+  description waits for 600 ms of stillness (`rememberSettledText`, `1604964`).
 - **Controls.** `ui/components/ProteinToggle` (48dp, `toggleable(Role.Switch)`, hairline rule, no
   haptic) in Home's `manual` item, now a `FlowRow(SpaceBetween)` with *Enter manually*; Settings row
   under Results; both write `SettingsRepository.setProteinEnabled` (key `protein_enabled`). The
   barcode tile subtitle becomes *Carbs, and protein when listed* when on and no meal is in progress.
 - **Glyph is `EggAlt`, not `Egg`:** the plain egg read as a water drop at 20dp on the emulator
   screenshot (the spec's own gate).
-- **At 320dp the footer wraps at 1.0x** (measured: *Enter manually* 131dp + chip 151dp in 280dp).
-  That moved Home's first card below the fold on CI's window; `HomeQuickAddScreenTest` now scrolls
-  to each control before tapping (`reveal`), and `theStarterFollows…` measures from the footer's
-  lower item. Test methodology, not a production change.
+- **At 320dp the footer fits one line at 1.0x** since `4f65485` (chip end inset 12dp: *Enter
+  manually* 131dp + chip 147dp in 280dp). It wrapped before, which moved Home's first card below the
+  fold on CI's window; `HomeQuickAddScreenTest` still scrolls to each control before tapping
+  (`reveal`), and `theStarterFollows…` measures from the footer's lower item, which keeps both
+  correct at larger text where it still wraps. Both toggles show the latest tap before the stored
+  value returns.
 
 **Verified:** JVM **2328/2328** (0 skipped, `--rerun-tasks`); lint 0 errors, 31 warnings (none in a
 changed file). Instrumented: 19 screen classes **334/334 at 320x640/160** and the same plus

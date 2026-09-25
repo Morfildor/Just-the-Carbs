@@ -2702,3 +2702,39 @@ emulator (1080x2400 Light and Dark at 1.0x; instrumented at 1080x2400/420 and 32
       on/off state; the result announces "N grams of carbs, M grams of protein".
 
 **Device/API:** ____________________ **Result:** ____________________ **Date:** ____________
+
+## §46 — Review fixes before release (1.0.8, 2026-09-25)
+
+Plan: `docs/superpowers/plans/2026-09-25-review-fixes.md`. Seen so far only on the `carbscan`
+emulator (instrumented at 1080x2400/420 and 320x640/160). Rows marked **device only** cannot be
+checked on the emulator at all.
+
+- [ ] 46.1 **Device only.** Label scanner in a dim room: switch the torch on, take the photo. The
+      torch goes out when the photo freezes, and the torch icon reads off. Retake: the torch stays
+      off until switched on again.
+- [ ] 46.2 A saved product with a remembered portion (65): tap directly on the digits, type 80. The
+      field reads 80, never 8065 or 6580. Tap once more inside the field: the cursor moves there.
+- [ ] 46.3 A countable product, *Slices*: tap on the pre-filled 1, type 2: two slices, never 12.
+- [ ] 46.4 Label scan → *Correct* into manual entry with a figure: tap the name field, then tap back
+      on the figure's digits and type: the figure is replaced, never inserted into.
+- [ ] 46.5 Type fast in the portion field (e.g. 1234 as quickly as possible, then backspace twice):
+      every keystroke lands, in order, and the field never jumps to a selected state mid-typing.
+- [ ] 46.6 While typing, tap *Full pack*, then type 5: the field reads 5, not 4005.
+- [ ] 46.7 *Add to meal*, then change the portion: *Added* disappears, *Add to meal* works again, and
+      the meal total includes both portions.
+- [ ] 46.8 A slow lookup (airplane mode on, then off after *Still looking…* appears): tap *Enter
+      manually*, save a product; when the network answers, the saved product keeps your values and
+      stays in Recents.
+- [ ] 46.9 Camera permission: *Don't allow* twice. The second answer shows *Open Settings* with
+      "Android won't ask for camera access again"; granting it there and returning opens the camera.
+- [ ] 46.10 Double-tap Close or Back quickly on each screen that has one (calculator, meal, search,
+      manual entry, scanners): exactly one screen is left.
+- [ ] 46.11 TalkBack on the calculator: type a portion; the result is announced once after you pause,
+      not per digit. A Usual button reads "65 g, usual portion"; with the field empty, no shortcut
+      is announced as selected.
+- [ ] 46.12 Crop screen on a high-density phone: a small crop box can be dragged from inside, and no
+      box can be shrunk below a fingertip.
+- [ ] 46.13 Settings → clear recent history, then clear saved products: each confirmation shows
+      once; rotating the phone does not show it again.
+
+**Device/API:** ____________________ **Result:** ____________________ **Date:** ____________

@@ -144,8 +144,9 @@ live on Production and says the first update is ready. Work accumulates here unt
     and the photo plate eases in instead of snapping;
   - meal rows, search results and Home's favourite cards animate when they move, appear or go;
   - tapping an empty part of the calculator puts the keyboard away;
-  - search results return to the top when the query changes; Home keeps its scroll position after
-    a search is cleared, and its wordmark folds away while a query is typed;
+  - search results return to the top when a new set of results arrives (including results that
+    arrive after you have typed on); Home keeps its scroll position after a search is cleared, and
+    its wordmark folds away while a query is typed;
   - forms move through their fields with the keyboard's Next and Done keys, and the carbs field of
     manual entry flags an impossible figure as you type (same limits as before);
   - the label scanner's crop handles are sized in dp, *Read table* shows its progress in the
@@ -154,8 +155,10 @@ live on Production and says the first update is ready. Work accumulates here unt
     opened until you scan);
   - plainer wording throughout: no em dashes, Open Food Facts named instead of "the database",
     no internal terms, and a welcome carousel that no longer promises "no searching";
-  - the calculator fades in from its loading state; the meal bar sets its total in a heavier
-    weight; TalkBack reads Usual and pack shortcuts as "Use usual portion, 65 g";
+  - the calculator fades in from its loading state; the meal bar sets its total in bold, visibly
+    heavier than the sentence around it; TalkBack reads Usual and pack shortcuts by their visible
+    label first ("65 g, usual portion", "Full pack, 400 g"), and marks one as selected only once a
+    portion is typed;
   - the label scanner's proposal and conflict screens have a Close button like its other screens.
 
 - **The calculator reads as one column: portion in, carbs out.** On a saved product the remembered
@@ -217,22 +220,55 @@ live on Production and says the first update is ready. Work accumulates here unt
 
 - **Typing over a remembered portion appended to it.** Tapping a pre-filled "65" and typing 80 read
   6580 g (3783.5 g of carbs, seen on the emulator). The grams field now selects its contents on
-  focus, as the count field already did.
+  focus, as the count field already did. A tap that lands on the digits themselves no longer undoes
+  that selection (it read 8065); the same holds for the count field and for a scanned figure in
+  manual entry. A second tap places the cursor as usual.
 - **The launch splash was effectively invisible:** a white mark on cream. It now shows the
   launcher icon's own coral mark.
 - **System Back on a frozen label photo threw the photo away.** Back now steps back (an assisted
   sub-step returns to its choices; otherwise it behaves as *Retake*). The live camera is unchanged.
 - **One Back on the camera permission prompt sent you to Settings.** The app now offers *Allow
-  camera* again, and sends you to Settings only when Android no longer shows the prompt.
+  camera* again, and sends you to Settings only when Android no longer shows the prompt. Choosing
+  *Don't allow* a second time (Android's "don't ask again") is recognised on that answer, and the
+  Settings explanation says Android won't ask again.
 - **Add & scan next could add the same portion twice** right after *Add to meal*; during the
   *Added* confirmation it reads *Scan next item* and only opens the scanner. *Add to meal* ignores a
   second tap during the same confirmation.
-- The torch icon now follows the camera's real torch state after a retake or a return to the app.
+- The torch icon now follows the camera's real torch state after a retake or a return to the app,
+  and the torch switches off once the label photo is taken.
 - The Settings haptics switch can be toggled from its label, and reads as one control.
 - A meal line's edit dialog saves from the keyboard's Done key.
 - The label scanner's candidate figure follows the device's decimal separator ("7,2" on a Dutch
   phone), with every digit kept so a misread is visible.
 - Home's decorative nutrition bars no longer poke out under the search field while searching.
+- **Review fixes (2026-09-25), before release:**
+  - *Added* no longer stays on the calculator after the portion is changed. Typing a new amount
+    after *Add to meal* left the confirmation showing and the buttons refusing, so the new portion
+    never reached the meal and the total came out short.
+  - A slow lookup left for *Enter manually* can no longer overwrite the product you typed when the
+    network answers later; the product stays yours and stays in Recents.
+  - A digit typed straight after tapping a shortcut replaces the shortcut's amount instead of being
+    added to it (65, *Full pack*, 5 read 4005).
+  - The protein row no longer flickers on and off when it is taller than expected, and the
+    calculator no longer redraws itself on every frame of the keyboard animation.
+  - A verified Open Food Facts product now shows protein too (it follows the online record's
+    protein when that record uses the product's own basis).
+  - TalkBack reads the result once you pause typing rather than on every digit, says "1 gram" for
+    one gram, and reads the same result whether or not the protein row fits on screen.
+  - Home's *Show protein* chip and the Settings switch follow quick taps; the Home footer fits on
+    one line on a small screen.
+  - The scanner shows the figures you are about to use exactly as they will be used (a read of
+    2.09 was pre-filled as "2.1").
+  - Assisted typing says why text that is not a number cannot be used, instead of leaving the
+    buttons disabled without a reason.
+  - A quick second tap on Close or Back no longer skips a screen; the verification screen keeps
+    Close on screen while its photo scrolls.
+  - The *More than the whole pack* hint no longer moves the portion field when it appears.
+  - The label crop box keeps a usable minimum size on any screen density, and a finger inside a
+    small box moves it rather than grabbing a corner.
+  - Settings reports a clear that failed instead of crashing, and shows each confirmation once.
+  - TalkBack names the welcome carousel. The conflict screen says the photo gave different
+    readings, rather than blaming the label.
 
 - Portion history now records deliberate completed actions only: typing and remembered pre-fills
   no longer inflate *Usual*, and leaving after an unchanged successful meal add does not count it
@@ -389,6 +425,13 @@ request itself got slower: median **+0.24 s** (mean +0.35 s, up to +1.06 s), abo
 estimate of 0.05 to 0.25 s. All 66 photo tiles in both builds' end screens show the same picture.
 The first benchmark, on a rule without the size check, showed Machandel tomatensoep sideways;
 that check is what fixed it. Method and figures in CLAUDE.md.
+**Review fixes (2026-09-25, branch `ux-polish-2026-09-24`, not pushed):** JVM **2368/2368** (0
+skipped, `--rerun-tasks`, 244 XML files); lint **0 errors, 31 warnings**; non-exploratory
+instrumented suite **636/637 at 1080x2400/420 and 636/637 at 320x640/160**. The first failure is the
+local-only IME-inset Home case; the second was a test reading the spoken result while the keyboard
+was up, corrected with seven more of the same shape (71/71 at both geometries after). Every fix was
+test-first. Torch-off and typing through a real soft keyboard are device-only (`docs/manual-qa.md`
+§46).
 **Not yet seen on a physical device**: the calculator's new image sizes and compact dock, the Quick Add haptic, search photos on a mobile network, a live TalkBack pass, whether taps
 meant to open a product land on the **+** by accident, and the wrapped pack-shortcut row at large
 text. Re-check all of this, and resolve the CI failures, before the release build.
