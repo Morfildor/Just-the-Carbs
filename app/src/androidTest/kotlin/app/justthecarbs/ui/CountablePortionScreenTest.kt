@@ -4,6 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -299,6 +302,24 @@ class CountablePortionScreenTest {
         assertSpokenResultOnceTheKeyboardCloses("30.2 grams of carbs")
         // And the 12-slice reading (42 x 432 / 100 = 181.44) must not be anywhere on screen.
         compose.onAllNodesWithText("181.4 g").assertCountEquals(0)
+    }
+
+    /**
+     * The same, with the tap on the digit itself rather than the middle of the frame. A tap on the
+     * text also places a caret, after the focus selected everything, so it read 12 (2026-09-25).
+     */
+    @Test
+    fun aTapOnThePrefilledDigitStillReplacesIt() {
+        showCalculator(product())
+
+        compose.onNodeWithText("Slices").performClick()
+        // On the 1: the numeral starts after the frame's 12dp inset and is 48sp tall.
+        compose.onNode(countField()).performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(24.dp.toPx(), centerY))
+        }
+        compose.onNode(countField()).performTextInput("2")
+
+        compose.onNodeWithText("2 slices × 36 g = 72 g").assertIsDisplayed()
     }
 
     @Test

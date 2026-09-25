@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
 import app.justthecarbs.ui.components.JtcTopBar
+import app.justthecarbs.ui.components.SelectOnFocus
 import app.justthecarbs.ui.theme.Destination
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.accent
@@ -335,6 +336,7 @@ private fun CarbsField(
         fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
     }
     var hasFocus by remember { mutableStateOf(false) }
+    val select = remember { SelectOnFocus() }
 
     if (startedWithValue) {
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -343,8 +345,11 @@ private fun CarbsField(
     OutlinedTextField(
         value = fieldValue,
         onValueChange = {
-            fieldValue = it
-            onValueChange(it.text)
+            val kept = select.edited(fieldValue, it)
+            if (kept != fieldValue) {
+                fieldValue = kept
+                onValueChange(kept.text)
+            }
         },
         label = label,
         singleLine = true,
@@ -361,8 +366,9 @@ private fun CarbsField(
                 // ordinary manual entry starts blank, where select-all is meaningless. Re-selecting on
                 // every focused recomposition would fight the user's own caret placement mid-edit.
                 if (startedWithValue && focus.isFocused && !hasFocus) {
-                    fieldValue = fieldValue.copy(selection = TextRange(0, fieldValue.text.length))
+                    fieldValue = select.focusGained(fieldValue)
                 }
+                if (!focus.isFocused) select.focusLost()
                 hasFocus = focus.isFocused
             },
     )

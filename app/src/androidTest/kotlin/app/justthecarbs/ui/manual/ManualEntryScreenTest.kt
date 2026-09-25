@@ -1,5 +1,13 @@
 package app.justthecarbs.ui.manual
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsFocused
@@ -147,5 +155,39 @@ class ManualEntryScreenTest {
 
         compose.runOnIdle { assertEquals("Done must not bypass the disabled Save", 0, saves) }
         compose.onNodeWithText(packageLabel).assertIsNotFocused()
+    }
+
+    /**
+     * A scanned figure is selected when its field gains focus, including when a tap on its digits
+     * brings the user back to it: that tap also places a caret, which used to undo the selection so
+     * the next digit was inserted into the figure (2026-09-25 review).
+     */
+    @Test
+    fun aTapBackOntoAScannedFigureStillReplacesIt() {
+        var carbs by mutableStateOf("48")
+        compose.setContent {
+            JustTheCarbsTheme {
+                ManualEntryScreen(
+                    state = ManualEntryUiState(carbsPer100 = carbs),
+                    onNameChanged = {},
+                    onCarbsChanged = { carbs = it },
+                    onBasisChanged = {},
+                    onPackageChanged = {},
+                    onSave = {},
+                    onBack = {},
+                    arrivedWithCarbs = true,
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText(nameLabel).performClick()
+
+        // On the 4: the text starts after the field's 16dp inner padding.
+        compose.onNode(hasSetTextAction() and hasText(carbsLabel)).performTouchInput {
+            click(Offset(20.dp.toPx(), centerY))
+        }
+        compose.onNode(hasSetTextAction() and hasText(carbsLabel)).performTextInput("5")
+
+        compose.runOnIdle { assertEquals("5", carbs) }
     }
 }

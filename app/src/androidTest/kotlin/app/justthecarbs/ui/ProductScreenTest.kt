@@ -19,6 +19,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
@@ -1421,6 +1423,28 @@ class ProductScreenTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithTag(PRODUCT_RESULT_TAG).assertContentDescriptionEquals("38.6 grams of carbs")
+    }
+
+    /**
+     * The same, with the finger on the digits themselves (2026-09-25 review). The test above taps
+     * the field's centre, past the end of the left-aligned `65`, where the caret lands at the end
+     * whatever the field does; a tap on the text is where a tap-placed caret could undo the
+     * select-on-focus and bring the append back.
+     */
+    @Test
+    fun aTapOnTheRememberedDigitsStillReplacesThem() {
+        showCalculator(initialPortion = "65")
+
+        // On the 6: the numeral starts after the frame's 12dp inset and is 48sp tall, so 24dp in
+        // from the field's left edge is on the glyph, not beside it.
+        compose.onNode(portionField()).performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(24.dp.toPx(), centerY))
+        }
+        compose.onNode(portionField()).performTextInput("80")
+
+        compose.onNode(portionField()).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("80")),
+        )
     }
 
     /**

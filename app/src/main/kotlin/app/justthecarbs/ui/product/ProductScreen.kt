@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.SolidColor
 import app.justthecarbs.ui.components.FieldSync
+import app.justthecarbs.ui.components.SelectOnFocus
 import app.justthecarbs.ui.components.JtcFilterChip
 import app.justthecarbs.ui.components.JtcValueButton
 import app.justthecarbs.ui.components.ProductIdentityRow
@@ -1408,6 +1409,7 @@ private fun PortionField(
     // A value from outside (a shortcut tapped while typing) is selected while focused, so the next
     // digit replaces it; a late echo of the field's own keystroke is not mistaken for one.
     val sync = remember { FieldSync() }
+    val select = remember { SelectOnFocus() }
     val reconciled = sync.reconcile(fieldValue, value, hasFocus)
     if (reconciled != fieldValue) fieldValue = reconciled
 
@@ -1422,9 +1424,12 @@ private fun PortionField(
     BasicTextField(
         value = fieldValue,
         onValueChange = {
-            fieldValue = it
-            sync.typed(it.text)
-            onValueChange(it.text)
+            val kept = select.edited(fieldValue, it)
+            if (kept != fieldValue) {
+                fieldValue = kept
+                sync.typed(kept.text)
+                onValueChange(kept.text)
+            }
         },
         textStyle = NumberType.portion.copy(color = MaterialTheme.colorScheme.onSurface),
         singleLine = true,
@@ -1453,9 +1458,8 @@ private fun PortionField(
             .onFocusChanged { focus ->
                 // Only on the transition into focus, as the count field does: re-selecting on
                 // every focused recomposition would fight the user's own caret placement.
-                if (focus.isFocused && !hasFocus) {
-                    fieldValue = fieldValue.copy(selection = TextRange(0, fieldValue.text.length))
-                }
+                if (focus.isFocused && !hasFocus) fieldValue = select.focusGained(fieldValue)
+                if (!focus.isFocused) select.focusLost()
                 hasFocus = focus.isFocused
             }
             // A real label, not an empty one. This field has no visible `label`, so
@@ -1933,6 +1937,7 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
     // A value from outside (a shortcut tapped while typing) is selected while focused, so the next
     // digit replaces it; a late echo of the field's own keystroke is not mistaken for one.
     val sync = remember { FieldSync() }
+    val select = remember { SelectOnFocus() }
     val reconciled = sync.reconcile(fieldValue, value, hasFocus)
     if (reconciled != fieldValue) fieldValue = reconciled
     val interactionSource = remember { MutableInteractionSource() }
@@ -1941,9 +1946,12 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
     BasicTextField(
         value = fieldValue,
         onValueChange = {
-            fieldValue = it
-            sync.typed(it.text)
-            onValueChange(it.text)
+            val kept = select.edited(fieldValue, it)
+            if (kept != fieldValue) {
+                fieldValue = kept
+                sync.typed(kept.text)
+                onValueChange(kept.text)
+            }
         },
         textStyle = NumberType.portion.copy(color = MaterialTheme.colorScheme.onSurface),
         singleLine = true,
@@ -1979,9 +1987,8 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
             .onFocusChanged { focus ->
                 // Only on the transition into focus. Re-selecting on every focused recomposition
                 // would fight the user's own caret placement mid-edit.
-                if (focus.isFocused && !hasFocus) {
-                    fieldValue = fieldValue.copy(selection = TextRange(0, fieldValue.text.length))
-                }
+                if (focus.isFocused && !hasFocus) fieldValue = select.focusGained(fieldValue)
+                if (!focus.isFocused) select.focusLost()
                 hasFocus = focus.isFocused
             }
             // Named for the same reason as the portion field, and with the unit's own word so the
