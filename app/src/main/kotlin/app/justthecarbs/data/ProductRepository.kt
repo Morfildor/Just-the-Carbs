@@ -153,8 +153,18 @@ class ProductRepository(
         // *recorded* so the app can mention that the product may have been reformulated (§24), but
         // the value in use is never replaced.
         if (!latest.isRemoteRefreshable) {
+            // Protein is never checked by the user (the verify dialog asks about carbs), so on an
+            // Open Food Facts product it follows the online record, the pair replaced together,
+            // but only when the record states it per the basis the product is kept in. A product
+            // the user authored never gains an online figure. This is also what lets a verified
+            // product cached before protein existed show the figure, and what keeps an accepted
+            // newer carb value paired with the same record's protein (2026-09-25 review).
+            val followsOnlineProtein =
+                latest.dataSource == ProductDataOrigin.OPEN_FOOD_FACTS && fetched.basis == latest.basis
             local.save(
                 latest.copy(
+                    proteinPer100 = if (followsOnlineProtein) fetched.proteinPer100 else latest.proteinPer100,
+                    proteinOrigin = if (followsOnlineProtein) fetched.proteinOrigin else latest.proteinOrigin,
                     latestRemoteCarbs = remoteCarbs,
                     latestRemoteBasis = fetched.basis,
                     remoteUpdatedAt = clock.instant(),
@@ -197,8 +207,9 @@ class ProductRepository(
                     latestRemoteBasis = fetched.basis,
                 remoteUpdatedAt = clock.instant(),
                 // Protein arrives with `fetched` itself: it travels with the nutrient record, so the
-                // stored carbs and protein always come from one fetch. The branch above (verified or
-                // user-authored) never touches protein, and a protein-only difference is not news.
+                // stored carbs and protein always come from one fetch. The branch above follows the
+                // record's protein only for Open Food Facts data on the same basis, and a
+                // protein-only difference is not news.
             ),
         )
         return if (differs) RefreshOutcome.RemoteDiffers(remoteCarbs, fetched.basis) else RefreshOutcome.Unchanged

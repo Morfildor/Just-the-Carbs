@@ -147,13 +147,61 @@ class ProteinRepositoryTest {
         assertNull(local.stored!!.proteinOrigin)
     }
 
-    @Test
-    fun `a refresh never touches the protein of a verified product`() = runTest {
-        val local = FakeLocal(product(protein = "6.3", status = VerificationStatus.USER_VERIFIED))
+    // A verified product keeps the carbohydrate figure the user checked, but protein is never
+    // checked (the verify dialog asks about carbs), so it follows the online record as long as the
+    // record states it per the same basis (2026-09-25 review).
 
-        repository(local, product(protein = "9.9")).refreshFromRemote(barcode)
+    @Test
+    fun `a verified product cached before protein existed gains it on refresh`() = runTest {
+        val local = FakeLocal(product(protein = null, status = VerificationStatus.USER_VERIFIED))
+
+        repository(local, product(protein = "6.3")).refreshFromRemote(barcode)
 
         assertEquals(0, BigDecimal("6.3").compareTo(local.stored!!.proteinPer100))
+        assertEquals(ProductDataOrigin.OPEN_FOOD_FACTS, local.stored!!.proteinOrigin)
+        assertEquals(0, BigDecimal("57.5").compareTo(local.stored!!.carbsPer100))
+    }
+
+    @Test
+    fun `a verified product follows the record's protein, including its absence`() = runTest {
+        val local = FakeLocal(product(protein = "6.3", status = VerificationStatus.USER_VERIFIED))
+
+        repository(local, product(protein = null)).refreshFromRemote(barcode)
+
+        assertNull(local.stored!!.proteinPer100)
+        assertNull(local.stored!!.proteinOrigin)
+    }
+
+    @Test
+    fun `a verified product keeps its protein when the record states another basis`() = runTest {
+        val local = FakeLocal(product(protein = "6.3", status = VerificationStatus.USER_VERIFIED))
+
+        repository(local, product(protein = "9.9", basis = NutritionBasis.PER_100_ML)).refreshFromRemote(barcode)
+
+        assertEquals(0, BigDecimal("6.3").compareTo(local.stored!!.proteinPer100))
+        assertEquals(NutritionBasis.PER_100_G, local.stored!!.basis)
+    }
+
+    @Test
+    fun `accepting a newer online value pairs it with the same record's protein`() = runTest {
+        val local = FakeLocal(product(carbs = "57.5", protein = "6.3", status = VerificationStatus.USER_VERIFIED))
+        val repository = repository(local, product(carbs = "60", protein = "7.0"))
+
+        val outcome = repository.refreshFromRemote(barcode)
+        repository.applyLatestRemoteValue(barcode)
+
+        assertEquals(RefreshOutcome.RemoteDiffers(BigDecimal("60"), NutritionBasis.PER_100_G), outcome)
+        assertEquals(0, BigDecimal("60").compareTo(local.stored!!.carbsPer100))
+        assertEquals(0, BigDecimal("7.0").compareTo(local.stored!!.proteinPer100))
+    }
+
+    @Test
+    fun `a protein-only difference on a verified product is not news`() = runTest {
+        val local = FakeLocal(product(protein = "6.3", status = VerificationStatus.USER_VERIFIED))
+
+        val outcome = repository(local, product(protein = "7.0")).refreshFromRemote(barcode)
+
+        assertEquals(RefreshOutcome.Unchanged, outcome)
     }
 
     @Test
