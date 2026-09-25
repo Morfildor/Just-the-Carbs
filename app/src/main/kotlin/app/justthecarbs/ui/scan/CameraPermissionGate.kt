@@ -71,9 +71,9 @@ sealed interface CameraPermissionState {
     data object DeniedCanAskAgain : CameraPermissionState
 
     /**
-     * Denied by a request the system answered without showing its dialog (see
-     * [deniedWithoutADialog]) — Android has stopped offering it. The only remaining path is the
-     * app's Settings page.
+     * Denied by a request after which the system no longer shows its dialog (see
+     * [dialogNoLongerOffered]): answered without one, or the user chose not to be asked again. The
+     * only remaining path is the app's Settings page.
      *
      * Not simply "the rationale flag is false after a request": on Android 11+ dismissing the dialog
      * with Back leaves it false too, and treating that as permanent sent the user to Settings after
@@ -118,20 +118,24 @@ internal fun currentPermissionState(
  * means either "never ask again" or, on Android 11+, a dialog dismissed with Back, and AndroidX
  * documents no way to tell them apart. The evidence used here, in order:
  *
- * - A rationale flag true on either side means the system still shows its dialog: never suppressed.
+ * - A rationale flag true before the request and false after it: the user was shown the dialog
+ *   and chose not to be asked again. This is Android's own signal for that choice (2026-09-25
+ *   review); treating it as "can ask again" left *Allow camera* as a button that did nothing.
+ * - A rationale flag true after the request means the system still shows its dialog.
  * - Answered in under [SUPPRESSED_REQUEST_MS] with no rationale either side: the system returned
  *   without anything for a person to read and dismiss.
  * - A second such ambiguous answer in a row: the timing is a heuristic and a slow phone can return
  *   a suppressed request late, so *Allow camera* must not be offered a third time as a button that
  *   may silently do nothing. The Settings page works either way.
  */
-internal fun deniedWithoutADialog(
+internal fun dialogNoLongerOffered(
     rationaleBefore: Boolean,
     rationaleAfter: Boolean,
     elapsedMs: Long,
     previousRequestAlsoAmbiguous: Boolean,
 ): Boolean {
-    if (rationaleBefore || rationaleAfter) return false
+    if (rationaleBefore && !rationaleAfter) return true
+    if (rationaleAfter) return false
     return elapsedMs < SUPPRESSED_REQUEST_MS || previousRequestAlsoAmbiguous
 }
 
@@ -186,7 +190,7 @@ fun rememberCameraPermissionController(): CameraPermissionController {
     }
     var requestedThisVisit by remember { mutableStateOf(false) }
     var systemDialogSuppressed by remember { mutableStateOf(false) }
-    // What the last request looked like as it went out, for [deniedWithoutADialog]. Plain fields,
+    // What the last request looked like as it went out, for [dialogNoLongerOffered]. Plain fields,
     // not state: nothing renders from them. Lost with the composition (a rotation mid-dialog), which
     // reads as a slow, ambiguous answer — the safe side, since it keeps *Allow camera* on offer.
     val request = remember { PendingCameraRequest() }
@@ -201,7 +205,7 @@ fun rememberCameraPermissionController(): CameraPermissionController {
         requestedThisVisit = true
         if (!result) {
             val rationaleAfter = canAskAgain()
-            systemDialogSuppressed = deniedWithoutADialog(
+            systemDialogSuppressed = dialogNoLongerOffered(
                 rationaleBefore = request.rationaleBefore,
                 rationaleAfter = rationaleAfter,
                 elapsedMs = SystemClock.elapsedRealtime() - request.startedAtMs,

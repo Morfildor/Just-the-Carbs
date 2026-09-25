@@ -82,12 +82,12 @@ class CameraPermissionStateTest {
         assertEquals(CameraPermissionState.NotRequested, state(requestedThisVisit = false))
     }
 
-    // --- Was the system dialog shown at all? ---
+    // --- Does the system still offer its dialog? ---
 
     @Test
     fun `a request that returned almost at once with no rationale either side had no dialog`() {
         assertTrue(
-            deniedWithoutADialog(
+            dialogNoLongerOffered(
                 rationaleBefore = false,
                 rationaleAfter = false,
                 elapsedMs = 40,
@@ -99,7 +99,7 @@ class CameraPermissionStateTest {
     @Test
     fun `a request answered at human speed was a dialog the user dismissed`() {
         assertFalse(
-            deniedWithoutADialog(
+            dialogNoLongerOffered(
                 rationaleBefore = false,
                 rationaleAfter = false,
                 elapsedMs = 1_800,
@@ -109,21 +109,38 @@ class CameraPermissionStateTest {
     }
 
     @Test
-    fun `a rationale flag on either side means the system still shows its dialog`() {
+    fun `a rationale shown after the request means the system still shows its dialog`() {
         assertFalse(
-            deniedWithoutADialog(
-                rationaleBefore = true,
-                rationaleAfter = false,
+            dialogNoLongerOffered(
+                rationaleBefore = false,
+                rationaleAfter = true,
                 elapsedMs = 40,
                 previousRequestAlsoAmbiguous = true,
             ),
         )
         assertFalse(
-            deniedWithoutADialog(
-                rationaleBefore = false,
+            dialogNoLongerOffered(
+                rationaleBefore = true,
                 rationaleAfter = true,
                 elapsedMs = 40,
                 previousRequestAlsoAmbiguous = true,
+            ),
+        )
+    }
+
+    /**
+     * Android's documented signal for "don't ask again" (2026-09-25 review): the rationale was
+     * offered before the request and is withdrawn after it. The dialog was shown, and read, and it
+     * will not be shown again, so *Allow camera* would be a button that does nothing.
+     */
+    @Test
+    fun `a rationale withdrawn by the request is the user choosing not to be asked again`() {
+        assertTrue(
+            dialogNoLongerOffered(
+                rationaleBefore = true,
+                rationaleAfter = false,
+                elapsedMs = 1_800,
+                previousRequestAlsoAmbiguous = false,
             ),
         )
     }
@@ -134,7 +151,7 @@ class CameraPermissionStateTest {
         // camera must never become a button that silently does nothing twice, so the second
         // ambiguous answer moves on to the Settings page, which works either way.
         assertTrue(
-            deniedWithoutADialog(
+            dialogNoLongerOffered(
                 rationaleBefore = false,
                 rationaleAfter = false,
                 elapsedMs = 1_800,

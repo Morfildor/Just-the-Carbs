@@ -120,7 +120,7 @@
     <!-- Shown only once Android has stopped offering its own permission dialog (§6,
          startup-hardening pass) — the app's own Settings page is the only remaining path, and this
          says so rather than repeating permission_body underneath a button that would do nothing. -->
-    <string name="permission_settings_body">Camera access was turned off. You can turn it back on in Settings.</string>
+    <string name="permission_settings_body">Android won\'t ask for camera access again. You can allow it in this app\'s settings.</string>
     <string name="permission_allow">Allow camera</string>
     <string name="permission_open_settings">Open Settings</string>
     <string name="permission_manual">Enter manually</string>
