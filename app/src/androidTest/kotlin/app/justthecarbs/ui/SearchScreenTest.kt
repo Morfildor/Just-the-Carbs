@@ -780,4 +780,39 @@ class SearchScreenTest {
 
         compose.onNodeWithText("Product 2").assertIsDisplayed()
     }
+
+    /**
+     * Results land after the typing that asked for them (2026-09-25 review). Resetting on the typed
+     * text moved the OLD list to its top; when the new list then arrived with that old first row
+     * further down, the lazy list kept it in view and the new list showed from the middle.
+     */
+    @Test
+    fun resultsThatArriveAfterTheQueryChangedAlsoStartFromTheTop() {
+        val hits = (0 until 30).map { hit(barcode = "10000$it", name = "Product $it") }
+        liveState = SearchUiState(query = "prod", hits = hits)
+        compose.setContent {
+            JustTheCarbsTheme {
+                SearchScreen(
+                    state = liveState,
+                    onQueryChanged = {},
+                    onSearchSubmit = {},
+                    onSelect = {},
+                    onScanLabel = {},
+                    onEnterManually = {},
+                    onRetry = {},
+                    onBack = {},
+                )
+            }
+        }
+        compose.onNodeWithTag(SEARCH_RESULTS_TAG).performScrollToIndex(hits.lastIndex)
+
+        // Typed: the old results stay on screen while the new ones are fetched.
+        compose.runOnIdle { liveState = SearchUiState(query = "produ", hits = hits) }
+        compose.waitForIdle()
+        // Arrived: a re-ranked list with the old first row twenty places down.
+        val reranked = (0 until 20).map { hit(barcode = "20000$it", name = "Other $it") } + hits
+        compose.runOnIdle { liveState = SearchUiState(query = "produ", hits = reranked) }
+
+        compose.onNodeWithText("Other 0").assertIsDisplayed()
+    }
 }

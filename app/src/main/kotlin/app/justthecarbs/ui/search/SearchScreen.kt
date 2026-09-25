@@ -155,7 +155,7 @@ fun SearchScreen(
     }
 
     // Above the state `when`, so it outlives the searching line a refinement passes through.
-    val resultsListState = rememberSearchResultsListState(state.query)
+    val resultsListState = rememberSearchResultsListState(state.shownResultKeys)
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // No backdrop motif here. It lives on Home only (2026-09-22 visual pass): on this screen
@@ -533,24 +533,35 @@ internal fun SearchResultsNotice(
 }
 
 /**
- * The results list's scroll position, starting again from the top whenever the query changes.
+ * The results list's scroll position, starting again from the top whenever the results shown change.
  *
  * A lazy list keeps its first visible row by key, so a refined query whose results still contained
- * that row stayed scrolled deep into the new list. Only a *change* resets it: coming back to the
- * screen with the same query (from a product, say) keeps the reader where they were.
+ * that row stayed scrolled deep into the new list. Keyed on the results, not the typed text
+ * (2026-09-25 review): results land after the typing that asked for them, and a reset at the
+ * keystroke moved the old list to its top, whose first row the new list then kept in view from
+ * wherever it had been ranked. Only a *change* resets it: coming back to the screen with the same
+ * results (from a product, say) keeps the reader where they were.
  */
 @Composable
-internal fun rememberSearchResultsListState(query: String): LazyListState {
+internal fun rememberSearchResultsListState(resultKeys: List<String>): LazyListState {
     val listState = rememberLazyListState()
-    var positionedFor by remember { mutableStateOf(query) }
-    LaunchedEffect(query) {
-        if (query != positionedFor) {
-            positionedFor = query
+    var positionedFor by remember { mutableStateOf(resultKeys) }
+    LaunchedEffect(resultKeys) {
+        if (resultKeys != positionedFor) {
+            positionedFor = resultKeys
             listState.scrollToItem(0)
         }
     }
     return listState
 }
+
+/** The rows [searchResultItems] shows, in order, by the key each row carries. */
+internal val SearchUiState.shownResultKeys: List<String>
+    get() = if (savedHits.isEmpty()) {
+        hits.map { it.barcode }
+    } else {
+        savedHits.map { it.barcode } + onlineHits.map { it.barcode }
+    }
 
 /**
  * The result rows, shared by Home's inline search and this screen so the two cannot drift.

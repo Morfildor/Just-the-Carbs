@@ -153,6 +153,7 @@ import app.justthecarbs.ui.product.unitLabel
 import app.justthecarbs.ui.search.SearchInformationalState
 import app.justthecarbs.ui.search.SearchResultsNotice
 import app.justthecarbs.ui.search.rememberSearchResultsListState
+import app.justthecarbs.ui.search.shownResultKeys
 import app.justthecarbs.ui.search.SearchProgressLine
 import app.justthecarbs.ui.search.SearchingLine
 import app.justthecarbs.ui.search.SearchViewModel
@@ -782,7 +783,7 @@ private fun HomeSearchResults(
     modifier: Modifier = Modifier,
 ) {
     // Above the state `when`, so it outlives the searching line a refinement passes through.
-    val resultsListState = rememberSearchResultsListState(state.query)
+    val resultsListState = rememberSearchResultsListState(state.shownResultKeys)
 
     Column(modifier = modifier.fillMaxWidth()) {
         // The same hairline as the search screen, in the same place, for a first search as well as
