@@ -364,6 +364,10 @@ private fun BasisActions(
  * That is the one place a non-action is better than an action, because the alternative is asking the
  * user to invent a serving size.
  */
+/** `2,09 g / 100 g`: a printed reading as the user will commit it, every digit, local separator. */
+private fun printedChoice(candidate: RecoveryCandidates.Candidate): String =
+    "${candidateFigure(candidate.reading.amount)} g / ${candidate.reading.basis.label}"
+
 @Composable
 private fun LabelledChoices(
     candidates: List<RecoveryCandidates.Candidate>,
@@ -374,7 +378,7 @@ private fun LabelledChoices(
         if (derived == null) {
             Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
                 Text(
-                    text = candidate.label,
+                    text = printedChoice(candidate),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -402,7 +406,7 @@ private fun LabelledChoices(
                         // itself. See ResultFormatter.quantity.
                         "${ResultFormatter.quantity(derived.amount)} g / ${derived.basis.label}"
                     } else {
-                        candidate.label
+                        printedChoice(candidate)
                     },
                 )
             }
@@ -410,7 +414,7 @@ private fun LabelledChoices(
                 Text(
                     text = stringResource(
                         R.string.assist_derived_from,
-                        ResultFormatter.quantity(candidate.reading.amount),
+                        candidateFigure(candidate.reading.amount),
                         candidate.reading.basis.label,
                     ),
                     style = MaterialTheme.typography.bodySmall,
@@ -487,7 +491,8 @@ fun AssistedReadingScreen(
     // tracked separately from whether it has actually been EDITED — see CorrectionFieldState, which
     // is what stops an unedited resubmission being treated as though the rejection never happened.
     var correctionTyped by remember(state.correctionTarget) {
-        mutableStateOf(state.correctionTarget?.rejectedValue?.let { ResultFormatter.quantity(it) } ?: "")
+        // Every digit: a rounded pre-fill (`2.09` shown as `2.1`) would compare as already edited.
+        mutableStateOf(state.correctionTarget?.rejectedValue?.let { candidateFigure(it) } ?: "")
     }
     var rowCandidates by remember { mutableStateOf<List<RecoveryCandidates.Candidate>>(emptyList()) }
     var tappedRowText by remember { mutableStateOf<String?>(null) }
@@ -1009,7 +1014,7 @@ fun AssistedReadingScreen(
                                     if (offered != null) {
                                         stringResource(
                                             R.string.assist_focused_confirm,
-                                            ResultFormatter.quantity(offered.value),
+                                            candidateFigure(offered.value),
                                             focusedTarget.basis.unitLabel,
                                         )
                                     } else {
@@ -1120,7 +1125,7 @@ fun AssistedReadingScreen(
                                 if (submittable != null) {
                                     stringResource(
                                         R.string.assist_focused_confirm,
-                                        ResultFormatter.quantity(submittable),
+                                        candidateFigure(submittable),
                                         target.basis.unitLabel,
                                     )
                                 } else {

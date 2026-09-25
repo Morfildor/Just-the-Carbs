@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.justthecarbs.R
 import app.justthecarbs.domain.NutritionBasis
+import app.justthecarbs.domain.ResultFormatter
 import app.justthecarbs.ocr.CropSelectionGeometry
 import app.justthecarbs.ocr.EvidenceResolver
 import app.justthecarbs.ocr.OcrBox
@@ -311,7 +312,7 @@ fun VerificationScreen(
                 Text(
                     text = stringResource(
                         R.string.verify_scale_printed_value,
-                        printedAmount.stripTrailingZeros().toPlainString(),
+                        candidateFigure(printedAmount),
                         printedBasisLabel,
                     ),
                     style = MaterialTheme.typography.headlineSmall,
@@ -320,7 +321,8 @@ fun VerificationScreen(
                 Text(
                     text = stringResource(
                         R.string.verify_scale_normalized_value,
-                        value.stripTrailingZeros().toPlainString(),
+                        // Derived by division, so shown as the calculator will show it.
+                        ResultFormatter.quantity(value),
                         basis.unitLabel,
                     ),
                     style = MaterialTheme.typography.bodySmall,
@@ -330,7 +332,7 @@ fun VerificationScreen(
                 Text(
                     text = stringResource(
                         R.string.verify_found_value,
-                        value.stripTrailingZeros().toPlainString(),
+                        candidateFigure(value),
                         basis.unitLabel,
                     ),
                     style = MaterialTheme.typography.headlineSmall,

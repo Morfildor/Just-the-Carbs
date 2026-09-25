@@ -5,6 +5,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -227,5 +231,28 @@ class CorrectingKnownAmountScreenTest {
         rule.onNodeWithTag(ASSIST_CORRECTION_SUBMIT_TAG).assertIsNotEnabled()
         rule.onNodeWithTag(ASSIST_CORRECTION_FIELD_TAG).performImeAction()
         assertNull(used)
+    }
+
+    /**
+     * The field holds the rejected figure exactly (2026-09-25 review). Rounded to `2.1`, an untouched
+     * `2.09` compared as already edited, so the rejected reading could go straight back unchanged.
+     */
+    @Test
+    fun aRejectedValueIsPrefilledWithEveryDigitAndStillCannotBeResubmitted() {
+        rule.setContent {
+            JustTheCarbsTheme {
+                AssistedReadingScreen(
+                    bitmap = bitmap(),
+                    state = AssistState(document = null, correctionTarget = target("2.09")),
+                    onUseValue = { _, _ -> },
+                    onRetake = {},
+                    onClose = {},
+                )
+            }
+        }
+
+        rule.onNodeWithTag(ASSIST_CORRECTION_FIELD_TAG)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("2.09")))
+        rule.onNodeWithTag(ASSIST_CORRECTION_SUBMIT_TAG).assertIsNotEnabled()
     }
 }

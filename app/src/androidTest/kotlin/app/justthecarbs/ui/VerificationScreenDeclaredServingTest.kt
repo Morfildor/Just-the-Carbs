@@ -109,4 +109,23 @@ class VerificationScreenDeclaredServingTest {
         rule.onNodeWithText("41 g per 100 ml").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Equivalent to", substring = true).assertDoesNotExist()
     }
+
+    /**
+     * The per-100 figure a declared serving becomes is derived, so it is shown the way the
+     * calculator will show it, to one decimal, not with every digit of the division.
+     */
+    @Test
+    fun aDerivedFigureIsShownToOneDecimal() {
+        showScreen(value = BigDecimal("33.33333333"))
+
+        rule.onNodeWithText("Equivalent to 33.3 g per 100 g").performScrollTo().assertIsDisplayed()
+    }
+
+    /** A figure read off the label is shown with every digit, the figure Confirm will carry. */
+    @Test
+    fun aReadFigureKeepsEveryDigit() {
+        showScreen(value = BigDecimal("2.09"), printedAmount = null, printedBasisLabel = null)
+
+        rule.onNodeWithText("2.09 g per 100 g").performScrollTo().assertIsDisplayed()
+    }
 }

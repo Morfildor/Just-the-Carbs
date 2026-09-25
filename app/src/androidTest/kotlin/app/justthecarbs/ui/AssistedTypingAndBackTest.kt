@@ -3,6 +3,8 @@ package app.justthecarbs.ui
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
@@ -194,6 +196,15 @@ class AssistedTypingAndBackTest {
         rule.onNodeWithTag(ASSIST_FOCUSED_SUBMIT_TAG).assertIsNotEnabled()
         rule.onNodeWithTag(ASSIST_FOCUSED_FIELD_TAG).performTextInput("2,8")
         rule.onNodeWithTag(ASSIST_FOCUSED_SUBMIT_TAG).assertIsEnabled()
+    }
+
+    /** The action says the figure it will use, every digit of it, not a rounding of it. */
+    @Test
+    fun theFocusedActionNamesTheExactFigureItWillUse() {
+        show(AssistState(document = whiteTableDocument(), startOnFocusedEntry = true))
+
+        rule.onNodeWithTag(ASSIST_FOCUSED_FIELD_TAG).performTextInput("2.09")
+        rule.onNodeWithTag(ASSIST_FOCUSED_SUBMIT_TAG).assert(hasText("Use 2.09 g / 100 g"))
     }
 
     @Test
