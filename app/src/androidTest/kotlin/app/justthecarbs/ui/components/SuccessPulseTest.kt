@@ -51,4 +51,41 @@ class SuccessPulseTest {
         composeRule.mainClock.advanceTimeBy(200L)
         composeRule.onNodeWithText("IDLE").assertExists()
     }
+
+    // ---- rememberSuccessPulseSince: the hold is measured from the success itself --------------
+
+    /** Composed well after the success: nothing to confirm (the meal buttons' re-entry case). */
+    @Test
+    fun aSuccessOlderThanTheHoldShowsNothingWhenComposedLater() {
+        composeRule.setContent {
+            val showing = rememberSuccessPulseSince(at = 1_000L, holdMs = 500L, now = { 10_000L })
+            Text(if (showing) "SHOWING" else "IDLE")
+        }
+        composeRule.onNodeWithText("IDLE").assertExists()
+    }
+
+    /** Composed partway through the hold: shows only for what is left of it. */
+    @Test
+    fun aSuccessInsideTheHoldShowsOnlyForTheRemainder() {
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            val showing = rememberSuccessPulseSince(at = 1_000L, holdMs = 500L, now = { 1_300L })
+            Text(if (showing) "SHOWING" else "IDLE")
+        }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithText("SHOWING").assertExists()
+
+        composeRule.mainClock.advanceTimeBy(250L)
+        composeRule.onNodeWithText("IDLE").assertExists()
+    }
+
+    /** A time in the future (the clock moved back) holds nothing rather than holding forever. */
+    @Test
+    fun aSuccessInTheFutureShowsNothing() {
+        composeRule.setContent {
+            val showing = rememberSuccessPulseSince(at = 5_000L, holdMs = 500L, now = { 1_000L })
+            Text(if (showing) "SHOWING" else "IDLE")
+        }
+        composeRule.onNodeWithText("IDLE").assertExists()
+    }
 }

@@ -67,6 +67,7 @@ import androidx.compose.ui.semantics.Role
 import app.justthecarbs.ui.product.PRODUCT_RESULT_TAG
 import app.justthecarbs.ui.product.PRODUCT_VERIFY_INLINE_TAG
 import app.justthecarbs.ui.product.ProductScreen
+import app.justthecarbs.ui.product.AddedPortion
 import app.justthecarbs.ui.product.ProductUiState
 import app.justthecarbs.ui.theme.JustTheCarbsTheme
 import app.justthecarbs.ui.theme.Motion
@@ -1063,23 +1064,26 @@ class ProductScreenTest {
             var portion by remember { mutableStateOf("65") }
             var addingToMeal by remember { mutableStateOf(false) }
             var lastMealAddSucceeded by remember { mutableStateOf<Long?>(null) }
+            var lastMealAddedPortion by remember { mutableStateOf<AddedPortion?>(null) }
             val scope = rememberCoroutineScope()
             val parsed = app.justthecarbs.domain.PortionParser.parse(portion)
             val product = product()
+            val state = ProductUiState(
+                loading = false,
+                product = product,
+                portionText = portion,
+                result = parsed?.let {
+                    CarbCalculator.calculate(product.carbsPer100, it, product.basis)
+                },
+                barcode = product.barcode,
+                addingToMeal = addingToMeal,
+                lastMealAddSucceeded = lastMealAddSucceeded,
+                lastMealAddedPortion = lastMealAddedPortion,
+            )
 
             JustTheCarbsTheme {
                 ProductScreen(
-                    state = ProductUiState(
-                        loading = false,
-                        product = product,
-                        portionText = portion,
-                        result = parsed?.let {
-                            CarbCalculator.calculate(product.carbsPer100, it, product.basis)
-                        },
-                        barcode = product.barcode,
-                        addingToMeal = addingToMeal,
-                        lastMealAddSucceeded = lastMealAddSucceeded,
-                    ),
+                    state = state,
                     settings = AppSettings(),
                     onPortionChanged = { portion = it },
                     onSetPortion = {},
@@ -1095,10 +1099,12 @@ class ProductScreenTest {
                     onAddToMeal = { _, _ ->
                         onAddRequested()
                         addingToMeal = true
+                        val added = AddedPortion.of(state)
                         scope.launch {
                             gate.await()
                             addingToMeal = false
                             lastMealAddSucceeded = System.currentTimeMillis()
+                            lastMealAddedPortion = added
                         }
                     },
                     onAddToMealAndScanNext = { _, _ -> onAddAndScanRequested() },
@@ -1106,6 +1112,32 @@ class ProductScreenTest {
                 )
             }
         }
+    }
+
+    /**
+     * 2026-09-25 review: "Added" stayed beside a portion typed after the add, the button refused the
+     * tap and the second button only scanned on, so the new portion never reached the meal. A
+     * changed portion is not the one that was added.
+     */
+    @Test
+    fun aPortionChangedAfterTheAddIsNotShownAsAdded() {
+        val gate = CompletableDeferred<Unit>().apply { complete(Unit) }
+        var adds = 0
+        showCalculatorWithControllableMealAdd(gate, onAddRequested = { adds++ })
+
+        compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Added").assertExists()
+
+        compose.onNode(portionField()).performTextReplacement("80")
+        compose.onNode(portionField()).performImeAction()
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Added").assertDoesNotExist()
+        compose.onNodeWithTag(MEAL_ADD_TAG).performClick()
+        compose.waitForIdle()
+        assertEquals("the changed portion must be addable", 2, adds)
     }
 
     /** The confirmation appears once the write behind *Add to meal* has actually landed. */

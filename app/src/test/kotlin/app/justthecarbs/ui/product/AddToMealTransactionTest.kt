@@ -410,4 +410,79 @@ class AddToMealTransactionTest {
         assertTrue(viewModel.state.value.mealAddFailed)
     }
 
+    // ---- the confirmation describes only the portion that was added (2026-09-25 review) ---------
+
+    /**
+     * The 2026-09-25 review found "Added" beside a portion that was never added: add 65 g, type 80,
+     * and the dock said Added, refused the tap and offered only *Scan next item*. The meal came out
+     * short by 80 g. [ProductUiState.mealAddConfirmedAt] is the confirmation the screen reads, and it
+     * holds only while the calculator still shows exactly what was written.
+     */
+    @Test
+    fun `the Added confirmation ends when the typed portion changes`() = runTest(dispatcher) {
+        val viewModel = viewModelWith(DelayedMeal(delayMs = 0L))
+        viewModel.load(barcode)
+        advanceUntilIdle()
+        viewModel.onPortionChanged("65")
+        viewModel.addCurrentToMeal("65 g", scanNext = false)
+        advanceUntilIdle()
+        assertNotNull("precondition: the add landed", viewModel.state.value.mealAddConfirmedAt)
+
+        // The same text again (a caret move reports the unchanged text) keeps it.
+        viewModel.onPortionChanged("65")
+        assertNotNull(viewModel.state.value.mealAddConfirmedAt)
+
+        viewModel.onPortionChanged("80")
+        assertEquals(null, viewModel.state.value.mealAddConfirmedAt)
+    }
+
+    @Test
+    fun `the Added confirmation ends when a shortcut or adjustment changes the portion`() = runTest(dispatcher) {
+        val viewModel = viewModelWith(DelayedMeal(delayMs = 0L))
+        viewModel.load(barcode)
+        advanceUntilIdle()
+        viewModel.onPortionChanged("65")
+        viewModel.addCurrentToMeal("65 g", scanNext = false)
+        advanceUntilIdle()
+        assertNotNull(viewModel.state.value.mealAddConfirmedAt)
+
+        viewModel.setPortion(BigDecimal("100"))
+        assertEquals(null, viewModel.state.value.mealAddConfirmedAt)
+
+        viewModel.onPortionChanged("65")
+        viewModel.adjustPortion(5)
+        assertEquals(null, viewModel.state.value.mealAddConfirmedAt)
+    }
+
+    /** "65" and "65.0" are the same portion; the confirmation compares amounts, not strings. */
+    @Test
+    fun `an equal amount written differently is still the added portion`() = runTest(dispatcher) {
+        val viewModel = viewModelWith(DelayedMeal(delayMs = 0L))
+        viewModel.load(barcode)
+        advanceUntilIdle()
+        viewModel.onPortionChanged("65")
+        viewModel.addCurrentToMeal("65 g", scanNext = false)
+        advanceUntilIdle()
+
+        viewModel.onPortionChanged("65.0")
+        assertNotNull(viewModel.state.value.mealAddConfirmedAt)
+    }
+
+    /** A portion edited while the write was still in flight was not what was written. */
+    @Test
+    fun `a portion changed during the write is not confirmed as added`() = runTest(dispatcher) {
+        val meal = DelayedMeal(delayMs = 500L)
+        val viewModel = viewModelWith(meal)
+        viewModel.load(barcode)
+        advanceUntilIdle()
+        viewModel.onPortionChanged("65")
+        viewModel.addCurrentToMeal("65 g", scanNext = false)
+        advanceTimeBy(100L)
+        viewModel.onPortionChanged("80")
+        advanceUntilIdle()
+
+        assertEquals("the 65 g item was written", 1, meal.added.size)
+        assertEquals(null, viewModel.state.value.mealAddConfirmedAt)
+    }
+
 }

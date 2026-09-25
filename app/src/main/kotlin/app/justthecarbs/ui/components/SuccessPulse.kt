@@ -35,3 +35,32 @@ fun rememberSuccessPulse(trigger: Any?, holdMs: Long = Motion.COPIED_STATE_MS): 
     }
     return trigger != null && shownFor == trigger
 }
+
+/**
+ * A success hold measured from when the success happened, not from when this composable first saw
+ * it (2026-09-25 review).
+ *
+ * [rememberSuccessPulse] starts its hold when the trigger first reaches composition, so a control
+ * that leaves composition and returns (the calculator's meal buttons step aside while the keyboard
+ * is open) started a fresh hold for a success that was long over. Here [at] is a wall-clock time
+ * from [now]; the hold shows only for what is left of [holdMs] after it, and a time in the future
+ * (the clock moved) shows nothing rather than holding indefinitely.
+ */
+@Composable
+fun rememberSuccessPulseSince(
+    at: Long?,
+    holdMs: Long = Motion.COPIED_STATE_MS,
+    now: () -> Long = System::currentTimeMillis,
+): Boolean {
+    fun remaining(): Long = if (at == null) 0L else (holdMs - (now() - at)).takeIf { it in 1..holdMs } ?: 0L
+    var showing by remember(at) { mutableStateOf(remaining() > 0L) }
+    LaunchedEffect(at) {
+        val left = remaining()
+        showing = left > 0L
+        if (left > 0L) {
+            delay(left)
+            showing = false
+        }
+    }
+    return showing
+}

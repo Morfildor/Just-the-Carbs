@@ -50,7 +50,7 @@ import app.justthecarbs.domain.StaleMeal
 import app.justthecarbs.ui.components.JtcDialogDefaults
 import app.justthecarbs.ui.components.jtcDialogOutline
 import app.justthecarbs.ui.components.jtcOutlinedButtonBorder
-import app.justthecarbs.ui.components.rememberSuccessPulse
+import app.justthecarbs.ui.components.rememberSuccessPulseSince
 import app.justthecarbs.ui.theme.Space
 import app.justthecarbs.ui.theme.extendedColors
 
@@ -92,14 +92,15 @@ fun MealActions(
      */
     enabled: Boolean = true,
     /**
-     * A distinct value each time a meal-add write has just succeeded (see
-     * `ProductUiState.lastMealAddSucceeded`). Null means no recent success to show. Drives a brief
-     * "✓ Added" label on *Add to meal* via `rememberSuccessPulse` — the same confirmation grammar
-     * as the result's copy button, generalized rather than reinvented.
+     * When the portion on screen was added to the meal, in `System.currentTimeMillis()` (see
+     * `ProductUiState.mealAddConfirmedAt`), or null if it was not. Drives a brief "✓ Added" label on
+     * *Add to meal*, held for the shared confirmation window measured from the add itself: these
+     * buttons leave composition while the keyboard is open, and a hold restarted on re-entry said
+     * "Added" long after the add, beside a portion that had since changed (2026-09-25 review).
      */
-    justAdded: Any? = null,
+    justAdded: Long? = null,
 ) {
-    val showAdded = rememberSuccessPulse(justAdded)
+    val showAdded = rememberSuccessPulseSince(justAdded)
     val addedState = stringResource(R.string.meal_added_state)
     // One height for the pair (2026-09-23 calculator refinement). *Add to meal* was 48dp and *Add &
     // scan next* 56dp, top-aligned, so the two labels sat on different baselines; at 1.3x text the

@@ -156,6 +156,11 @@ data class ProductUiState(
      */
     val lastMealAddSucceeded: Long? = null,
     /**
+     * What that successful add wrote. The confirmation is only true while the calculator still
+     * shows exactly this portion: see [mealAddConfirmedAt].
+     */
+    val lastMealAddedPortion: AddedPortion? = null,
+    /**
      * An Add is waiting for the user to say whether it starts a new meal, because the meal already
      * stored has gone quiet (see [app.justthecarbs.domain.MealStaleness]). Nothing has been written.
      */
@@ -204,8 +209,54 @@ data class ProductUiState(
      */
     val exactCarbs: BigDecimal? get() = result?.exact ?: directCarbResult
 
+    /**
+     * When the portion on screen was added to the meal, or null if what is on screen was not
+     * (2026-09-25 review). The dock's "Added" hold reads this, never [lastMealAddSucceeded] alone:
+     * after an add, typing a new amount, a shortcut, a count or a mode change leaves the timestamp
+     * in place but describes a portion that was never written, and "Added" beside it refused the
+     * tap that would have added it.
+     */
+    val mealAddConfirmedAt: Long?
+        get() = lastMealAddSucceeded?.takeIf { lastMealAddedPortion?.describes(this) == true }
+
     /** Running total of the meal, or null when the meal is empty and the bar should not show. */
     val mealTotal: CarbResult? get() = if (mealItems.isEmpty()) null else MealTotal.asResult(mealItems)
+}
+
+/**
+ * The portion one successful *Add to meal* wrote: the mode, the unit, the typed amount and the
+ * carbohydrate figure, compared by value so "65" and "65.0" are the same portion.
+ */
+data class AddedPortion(
+    val inputMode: InputMode,
+    val portionUnitId: Long?,
+    val amount: BigDecimal?,
+    val exactCarbs: BigDecimal,
+) {
+    fun describes(state: ProductUiState): Boolean {
+        val current = of(state) ?: return false
+        return current.inputMode == inputMode &&
+            current.portionUnitId == portionUnitId &&
+            sameAmount(current.amount, amount) &&
+            current.exactCarbs.compareTo(exactCarbs) == 0
+    }
+
+    companion object {
+        /** The portion the calculator is showing now, or null when there is no figure to add. */
+        fun of(state: ProductUiState): AddedPortion? {
+            val carbs = state.exactCarbs ?: return null
+            val countable = state.inputMode == InputMode.PORTION_UNIT
+            return AddedPortion(
+                inputMode = state.inputMode,
+                portionUnitId = state.selectedPortionUnitId.takeIf { countable },
+                amount = PortionParser.parse(if (countable) state.countText else state.portionText),
+                exactCarbs = carbs,
+            )
+        }
+
+        private fun sameAmount(a: BigDecimal?, b: BigDecimal?): Boolean =
+            if (a == null || b == null) a == b else a.compareTo(b) == 0
+    }
 }
 
 /** Every way the screen can fail to show a number, each with its own recovery (§13, §26, §36). */
@@ -849,7 +900,7 @@ class ProductViewModel(
     fun addCurrentToMeal(portionDescription: String, fallbackName: String = "", scanNext: Boolean = false) {
         if (_state.value.addingToMeal || _state.value.staleMeal != null) return
         val pending = buildPendingMealItem(portionDescription, fallbackName) ?: return
-        val add = HeldMealAdd(pending, buildUsageSnapshot(), scanNext)
+        val add = HeldMealAdd(pending, buildUsageSnapshot(), scanNext, AddedPortion.of(_state.value))
 
         _state.update { it.copy(addingToMeal = true, mealAddFailed = false) }
         viewModelScope.launch {
@@ -893,6 +944,8 @@ class ProductViewModel(
         val pending: PendingMealItem,
         val usage: UsageSnapshot?,
         val scanNext: Boolean,
+        /** What the calculator showed at the tap; the confirmation holds only while it still does. */
+        val addedPortion: AddedPortion?,
     )
 
     private var heldMealAdd: HeldMealAdd? = null
@@ -926,7 +979,11 @@ class ProductViewModel(
             // but report history failure separately from the already committed meal.
             recordUsageSnapshot(add.usage, deduplicate = false)
             _state.update {
-                it.copy(addingToMeal = false, lastMealAddSucceeded = System.currentTimeMillis())
+                it.copy(
+                    addingToMeal = false,
+                    lastMealAddSucceeded = System.currentTimeMillis(),
+                    lastMealAddedPortion = add.addedPortion,
+                )
             }
             if (add.scanNext) {
                 _navigationEvents.send(ProductNavigationEvent.ScanNext)
