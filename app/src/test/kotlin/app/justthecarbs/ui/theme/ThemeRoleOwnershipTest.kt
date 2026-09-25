@@ -145,9 +145,12 @@ class ThemeRoleOwnershipTest {
         val groundAt = home.indexOf(paintedGround)
         val backdropAt = home.indexOf("AccentBackdrop(", startIndex = maxOf(groundAt, 0))
         val contentAt = home.indexOf("Column(", startIndex = maxOf(groundAt, 0))
+        // The content column must be found: were it missing, "no content between" would hold for
+        // nothing and the check would pass without looking (2026-09-25 review).
+        assertTrue("HomeScreen's content column was not found after the painted ground", contentAt >= 0)
         assertTrue(
             "HomeScreen must paint the opaque page ground below AccentBackdrop",
-            groundAt >= 0 && backdropAt > groundAt && (contentAt < 0 || backdropAt < contentAt),
+            groundAt >= 0 && backdropAt > groundAt && backdropAt < contentAt,
         )
 
         listOf(
