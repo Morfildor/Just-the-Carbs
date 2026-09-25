@@ -886,6 +886,8 @@
     <string name="tutorial_chapter_total" tools:ignore="MissingTranslation">TOTAL</string>
     <string name="tutorial_chapter_counter" tools:ignore="MissingTranslation">%1$d / %2$d · %3$s</string>
     <string name="tutorial_pane_title" tools:ignore="MissingTranslation">Tutorial</string>
+    <!-- TalkBack's name for the first-run welcome carousel, as each destination has one. -->
+    <string name="welcome_pane_title" tools:ignore="MissingTranslation">Welcome</string>
     <string name="tutorial_completion_failed" tools:ignore="MissingTranslation">Could not save. Try again.</string>
 
     <string name="tutorial_title_orientation" tools:ignore="MissingTranslation">Three ways to get started</string>

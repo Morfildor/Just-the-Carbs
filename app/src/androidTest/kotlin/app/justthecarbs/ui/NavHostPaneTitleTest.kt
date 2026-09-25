@@ -37,14 +37,15 @@ class NavHostPaneTitleTest {
 
     private fun hasPaneTitle(title: String) = SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, title)
 
-    private fun showNavHost() {
+    private fun showNavHost(firstRun: Boolean = false) {
         rule.setContent {
             nav = rememberNavController()
             JustTheCarbsTheme {
                 JustTheCarbsNavHost(
                     container = container,
-                    // Past both introductions, so the start destination is Home and no card competes.
-                    settings = AppSettings(hasSeenOnboarding = true, hasSeenTutorial = true),
+                    // Past both introductions, so the start destination is Home and no card competes;
+                    // a first run starts on the welcome carousel instead.
+                    settings = AppSettings(hasSeenOnboarding = !firstRun, hasSeenTutorial = !firstRun),
                     navController = nav,
                 )
             }
@@ -80,6 +81,15 @@ class NavHostPaneTitleTest {
 
         goTo("manual")
         assertOnlyPane(context.getString(R.string.manual_title), previous = context.getString(R.string.search_title))
+    }
+
+    /** The first screen a new user meets is announced too (2026-09-25 review). */
+    @Test
+    fun theWelcomeCarouselAnnouncesItsTitle() {
+        showNavHost(firstRun = true)
+
+        val welcome = context.getString(R.string.welcome_pane_title)
+        rule.waitUntil(5_000) { rule.onAllNodes(hasPaneTitle(welcome)).fetchSemanticsNodes().size == 1 }
     }
 
     @Test

@@ -327,18 +327,22 @@ fun JustTheCarbsNavHost(
 
             val saving = completionState is WelcomeCarouselViewModel.CompletionState.Saving
 
-            WelcomeCarouselScreen(
-                slideIndex = slideIndex,
-                onNext = viewModel::next,
-                onSkip = viewModel::skip,
-                onGetStarted = {
-                    if (!saving) coroutineScope.launch { viewModel.complete() }
-                },
-                onSlideChanged = viewModel::showSlide,
-                completionError =
-                    (completionState as? WelcomeCarouselViewModel.CompletionState.Failed)?.message,
-                busy = saving,
-            )
+            // Named for TalkBack like every other destination (2026-09-25 review). The tutorial
+            // needs no wrapper: OnboardingScreen sets its own pane title on its root.
+            DestinationPane(stringResource(R.string.welcome_pane_title)) {
+                WelcomeCarouselScreen(
+                    slideIndex = slideIndex,
+                    onNext = viewModel::next,
+                    onSkip = viewModel::skip,
+                    onGetStarted = {
+                        if (!saving) coroutineScope.launch { viewModel.complete() }
+                    },
+                    onSlideChanged = viewModel::showSlide,
+                    completionError =
+                        (completionState as? WelcomeCarouselViewModel.CompletionState.Failed)?.message,
+                    busy = saving,
+                )
+            }
         }
 
         composable(
