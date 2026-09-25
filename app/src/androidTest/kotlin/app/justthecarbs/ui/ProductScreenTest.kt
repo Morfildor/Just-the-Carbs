@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
@@ -1455,6 +1456,27 @@ class ProductScreenTest {
 
         assertEquals(before.top, after.top, 1f)
         assertEquals(before.bottom, after.bottom, 1f)
+    }
+
+    /**
+     * A shortcut tapped while typing replaces the field's value and leaves the keyboard up, since
+     * buttons consume their taps. The next digit must replace that value, as it does after a
+     * focus: with the caret left at the end, 65, then Full pack, then 5 read 4005 g
+     * (2026-09-25 review).
+     */
+    @Test
+    fun aDigitTypedAfterAShortcutWhileTypingReplacesTheShortcutsValue() {
+        showCalculator(product(packageAmount = "400"))
+        compose.onNode(portionField()).performClick()
+        compose.onNode(portionField()).performTextInput("65")
+
+        compose.onNodeWithText("Full pack").performScrollTo().performClick()
+        compose.onNode(portionField()).assertIsFocused()
+        compose.onNode(portionField()).performTextInput("5")
+
+        compose.onNode(portionField()).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("5")),
+        )
     }
 
     @Test

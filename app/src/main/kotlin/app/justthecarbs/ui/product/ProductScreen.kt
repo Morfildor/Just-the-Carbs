@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.SolidColor
+import app.justthecarbs.ui.components.FieldSync
 import app.justthecarbs.ui.components.JtcFilterChip
 import app.justthecarbs.ui.components.JtcValueButton
 import app.justthecarbs.ui.components.ProductIdentityRow
@@ -1403,10 +1404,12 @@ private fun PortionField(
     // replace it: with the caret after `65`, typing `80` read 6580 g (measured on the emulator as
     // 3783.5 g of carbs). The composable owns the selection; the caller still owns the text.
     var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
-    if (fieldValue.text != value) {
-        fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
-    }
     var hasFocus by remember { mutableStateOf(false) }
+    // A value from outside (a shortcut tapped while typing) is selected while focused, so the next
+    // digit replaces it; a late echo of the field's own keystroke is not mistaken for one.
+    val sync = remember { FieldSync() }
+    val reconciled = sync.reconcile(fieldValue, value, hasFocus)
+    if (reconciled != fieldValue) fieldValue = reconciled
 
     // Requested once per screen, not once per recomposition: `Unit` as the key means a later
     // recomposition — a keystroke, a result arriving, the meal bar appearing — cannot pull focus
@@ -1420,6 +1423,7 @@ private fun PortionField(
         value = fieldValue,
         onValueChange = {
             fieldValue = it
+            sync.typed(it.text)
             onValueChange(it.text)
         },
         textStyle = NumberType.portion.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -1925,10 +1929,12 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
     val focusManager = LocalFocusManager.current
     val countLabel = stringResource(R.string.product_count_field_label, unit.unitLabel(count = 2))
     var fieldValue by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
-    if (fieldValue.text != value) {
-        fieldValue = fieldValue.copy(text = value, selection = TextRange(value.length))
-    }
     var hasFocus by remember { mutableStateOf(false) }
+    // A value from outside (a shortcut tapped while typing) is selected while focused, so the next
+    // digit replaces it; a late echo of the field's own keystroke is not mistaken for one.
+    val sync = remember { FieldSync() }
+    val reconciled = sync.reconcile(fieldValue, value, hasFocus)
+    if (reconciled != fieldValue) fieldValue = reconciled
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
 
@@ -1936,6 +1942,7 @@ private fun CountField(value: String, unit: PortionUnit, onValueChange: (String)
         value = fieldValue,
         onValueChange = {
             fieldValue = it
+            sync.typed(it.text)
             onValueChange(it.text)
         },
         textStyle = NumberType.portion.copy(color = MaterialTheme.colorScheme.onSurface),

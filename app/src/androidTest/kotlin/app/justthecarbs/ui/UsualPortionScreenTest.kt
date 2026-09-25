@@ -18,6 +18,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
 import app.justthecarbs.domain.AppSettings
@@ -134,6 +136,7 @@ class UsualPortionScreenTest {
                     settings = AppSettings(),
                     onPortionChanged = { portion = it },
                     onSetPortion = { portion = it.stripTrailingZeros().toPlainString() },
+                    onCountChanged = { count = it },
                     onToggleFavorite = {},
                     onBack = {},
                     onVerify = {},
@@ -333,5 +336,29 @@ class UsualPortionScreenTest {
 
         compose.onNodeWithText("65 g").assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
         compose.onNodeWithText("30 g").assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, false))
+    }
+
+    /**
+     * The count field, like the portion field: a Usual shortcut tapped while typing leaves the
+     * keyboard up, and the next digit replaces the shortcut's count rather than appending to it
+     * (2026-09-25 review).
+     */
+    @Test
+    fun aDigitTypedAfterAUsualCountWhileTypingReplacesIt() {
+        showWithUsual(
+            usuals = listOf(usage("2", mode = InputMode.PORTION_UNIT, unitId = 7)),
+            units = listOf(sliceUnit()),
+        )
+        compose.onNodeWithText("2 slices").performClick()
+        compose.onNode(hasSetTextAction()).performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("3")
+
+        compose.onNodeWithText("2 slices").performScrollTo().performClick()
+        compose.onNode(hasSetTextAction()).assertIsFocused()
+        compose.onNode(hasSetTextAction()).performTextInput("4")
+
+        compose.onNode(hasSetTextAction()).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("4")),
+        )
     }
 }
